@@ -56,6 +56,11 @@ export default function SetupScreen() {
   const [isOAuthLoading, setIsOAuthLoading] = useState(false);
   const [showManual, setShowManual] = useState(false);
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [orderCheck, setOrderCheck] = useState<{
+    loading: boolean;
+    orders?: { id: string; state: string; source?: string; total?: number; created_at?: string }[];
+    error?: string;
+  } | null>(null);
 
   const topPad = Platform.OS === "web" ? WEB_TOP_INSET : insets.top;
   const bottomPad = Platform.OS === "web" ? WEB_BOTTOM_INSET : insets.bottom;
@@ -172,7 +177,30 @@ export default function SetupScreen() {
     setSelectedLocation(null);
     setResult(null);
     setShowManual(false);
+    setOrderCheck(null);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+  }
+
+  async function checkRecentOrders() {
+    if (!accessToken || !locationId) return;
+    setOrderCheck({ loading: true });
+    try {
+      const base = getBaseUrl();
+      const res = await fetch(`${base}api/square/orders/recent`, {
+        headers: {
+          "x-square-token": accessToken,
+          "x-square-location": locationId,
+        },
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setOrderCheck({ loading: false, error: data.error || "Failed to check orders" });
+      } else {
+        setOrderCheck({ loading: false, orders: data.orders ?? [] });
+      }
+    } catch (e: any) {
+      setOrderCheck({ loading: false, error: e.message });
+    }
   }
 
   return (
@@ -389,6 +417,41 @@ export default function SetupScreen() {
               </Pressable>
             </Animated.View>
 
+            {/* Recent orders diagnostic */}
+            <Pressable
+              onPress={checkRecentOrders}
+              style={[styles.fetchBtn, { alignSelf: "stretch", justifyContent: "center" }]}
+              disabled={orderCheck?.loading}
+            >
+              {orderCheck?.loading
+                ? <ActivityIndicator size="small" color={Colors.dark.accent} />
+                : <><Feather name="search" size={14} color={Colors.dark.accent} />
+                    <Text style={styles.fetchBtnText}>Check recent orders in Square</Text></>
+              }
+            </Pressable>
+
+            {orderCheck && !orderCheck.loading && (
+              <View style={styles.ordersResult}>
+                {orderCheck.error ? (
+                  <Text style={[styles.ordersEmpty, { color: Colors.dark.danger }]}>{orderCheck.error}</Text>
+                ) : orderCheck.orders?.length === 0 ? (
+                  <Text style={styles.ordersEmpty}>No orders found at this location.</Text>
+                ) : (
+                  orderCheck.orders?.map((o) => (
+                    <View key={o.id} style={styles.orderRow}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.orderSource}>{o.source ?? "Unknown source"} · {o.state}</Text>
+                        <Text style={styles.orderId} numberOfLines={1}>{o.id}</Text>
+                      </View>
+                      <Text style={styles.orderTotal}>
+                        {o.total != null ? `$${(o.total / 100).toFixed(2)}` : "—"}
+                      </Text>
+                    </View>
+                  ))
+                )}
+              </View>
+            )}
+
             <Pressable onPress={handleDisconnect} style={styles.disconnectBtn}>
               <Feather name="link-2" size={16} color={Colors.dark.danger} />
               <Text style={styles.disconnectText}>Disconnect</Text>
@@ -523,4 +586,23 @@ const styles = StyleSheet.create({
     padding: 14, borderWidth: 1, borderColor: Colors.dark.surfaceBorder,
   },
   sandboxText: { flex: 1, fontFamily: "Inter_400Regular", fontSize: 12, color: Colors.dark.textSecondary, lineHeight: 17 },
+
+  // Recent orders diagnostic
+  ordersResult: {
+    backgroundColor: Colors.dark.surface, borderRadius: 12,
+    borderWidth: 1, borderColor: Colors.dark.surfaceBorder,
+    overflow: "hidden",
+  },
+  ordersEmpty: {
+    fontFamily: "Inter_400Regular", fontSize: 13, color: Colors.dark.textSecondary,
+    textAlign: "center", padding: 16,
+  },
+  orderRow: {
+    flexDirection: "row", alignItems: "center", gap: 10,
+    paddingHorizontal: 14, paddingVertical: 11,
+    borderBottomWidth: 1, borderBottomColor: Colors.dark.surfaceBorder,
+  },
+  orderSource: { fontFamily: "Inter_500Medium", fontSize: 12, color: Colors.dark.accent },
+  orderId: { fontFamily: "Inter_400Regular", fontSize: 11, color: Colors.dark.textSecondary, marginTop: 1 },
+  orderTotal: { fontFamily: "Inter_700Bold", fontSize: 14, color: Colors.dark.text },
 });
