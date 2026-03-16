@@ -203,7 +203,7 @@ export function attachRealtimeRelay(server: HttpServer): void {
     let catalog: CatalogItem[] = [];
     let order: OrderItem[] = [];
 
-    const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY ?? "";
+    const apiKey = process.env.OPENAI_API_KEY ?? process.env.AI_INTEGRATIONS_OPENAI_API_KEY ?? "";
 
     const openaiWs = new WebSocket(REALTIME_URL, {
       headers: {
