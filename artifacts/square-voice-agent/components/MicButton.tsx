@@ -33,7 +33,7 @@ export function MicButton({
   useEffect(() => {
     if (isRecording) {
       pulseScale.value = withRepeat(
-        withTiming(2.2, { duration: 1000, easing: Easing.out(Easing.ease) }),
+        withTiming(2.2, { duration: 1000, easing: Easing.out(Easing.quad) }),
         -1,
         false
       );

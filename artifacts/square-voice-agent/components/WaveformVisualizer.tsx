@@ -37,7 +37,7 @@ function WaveBar({ index, isActive, isSpeaking, barCount, maxHeight }: WaveBarPr
       anim.value = withDelay(
         delay,
         withRepeat(
-          withTiming(1, { duration, easing: Easing.inOut(Easing.sine) }),
+          withTiming(1, { duration, easing: Easing.inOut(Easing.sin) }),
           -1,
           true
         )
