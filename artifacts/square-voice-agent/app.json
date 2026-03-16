@@ -1,22 +1,24 @@
 {
   "expo": {
-    "name": "Square POS Voice Agent",
+    "name": "Voice POS",
     "slug": "square-voice-agent",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "square-voice-agent",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "splash": {
       "image": "./assets/images/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#0A0A0A"
     },
     "ios": {
       "supportsTablet": false
     },
-    "android": {},
+    "android": {
+      "backgroundColor": "#0A0A0A"
+    },
     "web": {
       "favicon": "./assets/images/icon.png"
     },
@@ -28,7 +30,13 @@
         }
       ],
       "expo-font",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Allow Voice POS to access your microphone for voice ordering."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
