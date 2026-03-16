@@ -151,7 +151,7 @@ export default function SetupScreen() {
     setResult(null);
     try {
       await setCredentials(token.trim(), selectedLocation.id);
-      const count = await loadCatalog();
+      const count = await loadCatalog(token.trim(), selectedLocation.id);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setResult({
         success: true,
@@ -383,7 +383,7 @@ export default function SetupScreen() {
                   <Text style={styles.statsValue}>{catalogItems.length}</Text>
                 )}
               </View>
-              <Pressable onPress={loadCatalog} style={styles.refreshBtn}>
+              <Pressable onPress={() => loadCatalog()} style={styles.refreshBtn}>
                 <Feather name="refresh-cw" size={14} color={Colors.dark.textSecondary} />
                 <Text style={styles.refreshText}>Refresh catalog</Text>
               </Pressable>

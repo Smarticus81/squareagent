@@ -29,7 +29,7 @@ interface SquareContextType {
   locationsError: string | null;
   setCredentials: (token: string, locationId: string) => Promise<void>;
   clearCredentials: () => Promise<void>;
-  loadCatalog: () => Promise<number>;
+  loadCatalog: (overrideToken?: string, overrideLocationId?: string) => Promise<number>;
   fetchLocations: (token: string) => Promise<SquareLocation[]>;
   searchCatalog: (query: string) => SquareCatalogItem[];
 }
@@ -125,8 +125,10 @@ export function SquareProvider({ children }: { children: ReactNode }) {
     setLocations([]);
   }
 
-  async function loadCatalog(): Promise<number> {
-    if (!accessToken || !locationId) return 0;
+  async function loadCatalog(overrideToken?: string, overrideLocationId?: string): Promise<number> {
+    const tok = overrideToken ?? accessToken;
+    const loc = overrideLocationId ?? locationId;
+    if (!tok || !loc) return 0;
     setIsLoadingCatalog(true);
     setCatalogError(null);
 
@@ -134,8 +136,8 @@ export function SquareProvider({ children }: { children: ReactNode }) {
       const baseUrl = getBaseUrl();
       const response = await fetch(`${baseUrl}api/square/catalog`, {
         headers: {
-          "x-square-token": accessToken,
-          "x-square-location": locationId,
+          "x-square-token": tok,
+          "x-square-location": loc,
         },
       });
 
