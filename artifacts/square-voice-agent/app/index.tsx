@@ -7,6 +7,7 @@ import {
   Pressable,
   ActivityIndicator,
   Platform,
+  Linking,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
@@ -448,6 +449,13 @@ export default function MainScreen() {
                 </Text>
               </View>
             ))}
+            <Pressable
+              onPress={() => Linking.openURL("https://squareup.com/dashboard/orders")}
+              style={styles.dashboardBtn}
+            >
+              <Feather name="external-link" size={14} color={Colors.dark.accent} />
+              <Text style={styles.dashboardBtnText}>View in Square Dashboard</Text>
+            </Pressable>
           </Animated.View>
         </View>
       );
@@ -798,6 +806,12 @@ const styles = StyleSheet.create({
   submittedLineQty: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: Colors.dark.textSecondary, width: 28 },
   submittedLineName: { flex: 1, fontFamily: "Inter_500Medium", fontSize: 14, color: Colors.dark.text },
   submittedLinePrice: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: Colors.dark.accent },
+  dashboardBtn: {
+    flexDirection: "row", alignItems: "center", gap: 6,
+    marginTop: 4, paddingTop: 12,
+    borderTopWidth: 1, borderTopColor: Colors.dark.accentDim,
+  },
+  dashboardBtnText: { fontFamily: "Inter_500Medium", fontSize: 13, color: Colors.dark.accent },
   orderList: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 100 },
   orderFooter: {
     position: "absolute", bottom: 0, left: 0, right: 0,
