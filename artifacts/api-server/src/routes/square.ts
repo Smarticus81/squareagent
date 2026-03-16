@@ -13,9 +13,9 @@ function squareHeaders(token: string) {
 }
 
 // GET /api/square/locations
-router.get("/locations", async (req: Request, res: Response) => {
+router.get("/locations", async (req: Request, res: Response): Promise<void> => {
   const token = req.headers["x-square-token"] as string;
-  if (!token) return res.status(401).json({ error: "Missing Square access token" });
+  if (!token) { res.status(401).json({ error: "Missing Square access token" }); return; }
 
   try {
     const response = await fetch(`${SQUARE_BASE}/locations`, {
@@ -24,7 +24,8 @@ router.get("/locations", async (req: Request, res: Response) => {
     const data = await response.json() as any;
 
     if (!response.ok) {
-      return res.status(response.status).json({ error: data.errors?.[0]?.detail || "Failed to load locations" });
+      res.status(response.status).json({ error: data.errors?.[0]?.detail || "Failed to load locations" });
+      return;
     }
 
     const locations = (data.locations || []).map((loc: any) => ({
@@ -40,13 +41,11 @@ router.get("/locations", async (req: Request, res: Response) => {
 });
 
 // GET /api/square/catalog
-router.get("/catalog", async (req: Request, res: Response) => {
+router.get("/catalog", async (req: Request, res: Response): Promise<void> => {
   const token = req.headers["x-square-token"] as string;
-  const locationId = req.headers["x-square-location"] as string;
-  if (!token) return res.status(401).json({ error: "Missing Square access token" });
+  if (!token) { res.status(401).json({ error: "Missing Square access token" }); return; }
 
   try {
-    // Fetch catalog items
     const response = await fetch(
       `${SQUARE_BASE}/catalog/list?types=ITEM&include_deleted_objects=false`,
       { headers: squareHeaders(token) }
@@ -55,7 +54,8 @@ router.get("/catalog", async (req: Request, res: Response) => {
     const data = await response.json() as any;
 
     if (!response.ok) {
-      return res.status(response.status).json({ error: data.errors?.[0]?.detail || "Failed to load catalog" });
+      res.status(response.status).json({ error: data.errors?.[0]?.detail || "Failed to load catalog" });
+      return;
     }
 
     const items: any[] = [];
@@ -65,7 +65,6 @@ router.get("/catalog", async (req: Request, res: Response) => {
       const itemData = obj.item_data;
       if (!itemData) continue;
 
-      // Get the first active variation with price
       for (const variation of itemData.variations || []) {
         const varData = variation.item_variation_data;
         if (!varData) continue;
@@ -82,7 +81,7 @@ router.get("/catalog", async (req: Request, res: Response) => {
           description: itemData.description || "",
         });
 
-        break; // Use only first variation for simplicity
+        break;
       }
     }
 
@@ -93,16 +92,17 @@ router.get("/catalog", async (req: Request, res: Response) => {
 });
 
 // POST /api/square/orders
-router.post("/orders", async (req: Request, res: Response) => {
+router.post("/orders", async (req: Request, res: Response): Promise<void> => {
   const token = req.headers["x-square-token"] as string;
   const locationId = req.headers["x-square-location"] as string;
-  if (!token) return res.status(401).json({ error: "Missing Square access token" });
-  if (!locationId) return res.status(400).json({ error: "Missing location ID" });
+  if (!token) { res.status(401).json({ error: "Missing Square access token" }); return; }
+  if (!locationId) { res.status(400).json({ error: "Missing location ID" }); return; }
 
   try {
     const { items } = req.body;
     if (!items || items.length === 0) {
-      return res.status(400).json({ error: "No items provided" });
+      res.status(400).json({ error: "No items provided" });
+      return;
     }
 
     const lineItems = items.map((item: any) => ({
@@ -131,7 +131,8 @@ router.post("/orders", async (req: Request, res: Response) => {
     const data = await response.json() as any;
 
     if (!response.ok) {
-      return res.status(response.status).json({ error: data.errors?.[0]?.detail || "Failed to create order" });
+      res.status(response.status).json({ error: data.errors?.[0]?.detail || "Failed to create order" });
+      return;
     }
 
     res.json({

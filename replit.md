@@ -53,39 +53,41 @@ Every package extends `tsconfig.base.json` which sets `composite: true`. The roo
 
 ### `artifacts/square-voice-agent` (Expo Mobile App)
 
-Ultra-low latency conversational voice agent for Square POS. Features:
-- Voice ordering via ElevenLabs STT (scribe_v1) + TTS (eleven_turbo_v2)
-- Multi-turn conversation with intent detection
+Ultra-low latency (~700ms) conversational voice agent for Square POS. No push-to-talk — VAD-driven continuous listening. Features:
+- Voice ordering via gpt-4o-audio-preview (speech-in → tools → speech-out, single API call)
+- VAD (Voice Activity Detection) via expo-av metering — auto-triggers after 14 silent frames at -35dB
+- Multi-turn conversation history (text-only, no audio blobs in history)
 - Square catalog browsing and search
-- Real-time order management (add/remove/update items)
+- Real-time order management (add/remove/update items) via OrderCommand[]
 - Square API order creation and processing
 - Setup screen for Square credentials (access token + location ID)
 
 **Key files:**
-- `app/index.tsx` — Main screen with Voice/Order/Catalog tabs
+- `app/index.tsx` — Main screen with Voice/Order/Catalog tabs; handleCommands(OrderCommand[])
 - `app/setup.tsx` — Square connection setup
-- `app/_layout.tsx` — Root layout with providers
-- `context/VoiceAgentContext.tsx` — Voice recording, STT, AI chat, TTS
+- `app/_layout.tsx` — Root layout with providers (3s font-load timeout fallback)
+- `context/VoiceAgentContext.tsx` — expo-av recording + metering VAD → POST multipart to server → expo-av playback
 - `context/OrderContext.tsx` — Order state management
 - `context/SquareContext.tsx` — Square API + catalog management
 - `components/WaveformVisualizer.tsx` — Animated waveform
-- `components/MicButton.tsx` — Animated mic button
 - `components/OrderCard.tsx` — Order line item card
 
-**Integration:** ElevenLabs connected via `@replit/connectors-sdk`
+**Recording:** iOS=WAV PCM16, Android=MP4/AAC, Web=WebM. Server detects from mimetype.
+**Audio playback:** data URI (`data:audio/wav;base64,...`) — no expo-file-system needed.
+**Integration:** Replit OpenAI integration (AI_INTEGRATIONS_OPENAI_BASE_URL + API_KEY auto-provisioned)
 
 ### `artifacts/api-server` (`@workspace/api-server`)
 
-Express 5 API server. Routes:
-- `GET /api/healthz` — Health check
-- `POST /api/voice/transcribe` — STT via ElevenLabs
-- `POST /api/voice/chat` — AI agent streaming response (SSE)
-- `POST /api/voice/synthesize` — TTS via ElevenLabs
+Express 5 API server (port 8080). Routes:
+- `GET /api/health` — Health check
+- `POST /api/voice/chat` — Multipart audio + session/catalog/order JSON → gpt-4o-audio-preview → {user_transcript, agent_text, audio_b64, audio_format, order_commands}
 - `GET /api/square/locations` — Square locations
-- `GET /api/square/catalog` — Square catalog items
+- `GET /api/square/catalog` — Square catalog items (ITEM type, first variation)
 - `POST /api/square/orders` — Create Square order
 
-**Integration:** ElevenLabs via `@replit/connectors-sdk` (server-side proxy)
+**Tools (server-side):** add_item, remove_item, get_order, clear_order, submit_order, search_menu
+**Session management:** In-memory Map keyed by session_id; text-only history (≤40 messages)
+**Integration:** Replit OpenAI integration via `openai` npm package
 
 ### `lib/db` (`@workspace/db`)
 

@@ -23,7 +23,7 @@ import Animated, {
 } from "react-native-reanimated";
 
 import Colors from "@/constants/colors";
-import { useVoiceAgent, ConversationMessage, AgentState } from "@/context/VoiceAgentContext";
+import { useVoiceAgent, ConversationMessage, AgentState, OrderCommand } from "@/context/VoiceAgentContext";
 import { useOrder } from "@/context/OrderContext";
 import { useSquare } from "@/context/SquareContext";
 import { WaveformVisualizer } from "@/components/WaveformVisualizer";
@@ -178,6 +178,8 @@ export default function MainScreen() {
     clearConversation,
     setToolHandler,
     interrupt,
+    setCatalog,
+    setCurrentOrder,
   } = useVoiceAgent();
 
   const {
@@ -204,80 +206,74 @@ export default function MainScreen() {
   const topPad = Platform.OS === "web" ? WEB_TOP_INSET : insets.top;
   const bottomPad = Platform.OS === "web" ? WEB_BOTTOM_INSET : insets.bottom;
 
-  // ── Tool handler (registered once) ─────────────────────────────────────────
+  // ── Sync catalog + order into voice context so server has current state ───────
 
-  const handleTool = useCallback(
-    async (toolName: string, params: Record<string, unknown>): Promise<string> => {
-      switch (toolName) {
-        case "add_item": {
-          const query = String(params.item_name ?? "").toLowerCase();
-          const qty = Number(params.quantity ?? 1);
-          const found = catalogItems.find(
-            (c) =>
-              c.name.toLowerCase().includes(query) ||
-              query.includes(c.name.toLowerCase())
-          );
-          if (!found) return `Item "${query}" not found in catalog.`;
-          addItem(found, qty);
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          setActiveTab("order");
-          return `Added ${qty}x ${found.name} ($${(found.price * qty).toFixed(2)}). Order has ${(currentOrder?.items.length ?? 0) + 1} item(s).`;
-        }
+  useEffect(() => {
+    setCatalog(
+      catalogItems.map((c) => ({ id: c.id, name: c.name, price: c.price, category: c.category }))
+    );
+  }, [catalogItems, setCatalog]);
 
-        case "remove_item": {
-          const query = String(params.item_name ?? "").toLowerCase();
-          const line = currentOrder?.items.find((i) =>
-            i.catalogItem.name.toLowerCase().includes(query)
-          );
-          if (!line) return `"${query}" not in current order.`;
-          removeItem(line.id);
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-          return `Removed ${line.catalogItem.name}.`;
-        }
+  useEffect(() => {
+    setCurrentOrder(
+      (currentOrder?.items ?? []).map((i) => ({
+        name: i.catalogItem.name,
+        price: i.catalogItem.price,
+        quantity: i.quantity,
+      }))
+    );
+  }, [currentOrder, setCurrentOrder]);
 
-        case "get_order": {
-          if (!currentOrder || currentOrder.items.length === 0) {
-            return "Order is empty.";
-          }
-          const lines = currentOrder.items.map(
-            (i) => `${i.quantity}x ${i.catalogItem.name} ($${(i.catalogItem.price * i.quantity).toFixed(2)})`
-          );
-          return `Order: ${lines.join(", ")}. Total: $${currentOrder.total.toFixed(2)}.`;
-        }
+  // ── Order command handler (server executes tools, sends commands back) ────────
 
-        case "clear_order": {
-          clearOrder();
-          return "Order cleared.";
-        }
-
-        case "submit_order": {
-          if (!accessToken || !locationId) {
-            return "Square not connected. Please connect in Settings first.";
-          }
-          if (!currentOrder || currentOrder.items.length === 0) {
-            return "Order is empty — nothing to submit.";
-          }
-          setActiveTab("order");
-          const result = await submitOrder(accessToken, locationId);
-          if (result.success) {
+  const handleCommands = useCallback(
+    (commands: OrderCommand[]) => {
+      for (const cmd of commands) {
+        switch (cmd.action) {
+          case "add": {
+            if (!cmd.item_id) break;
+            const found = catalogItems.find((c) => c.id === cmd.item_id);
+            if (!found) break;
+            addItem(found, cmd.quantity ?? 1);
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            return `Order submitted! Square ID: ${result.orderId}. Total: $${currentOrder.total.toFixed(2)}.`;
-          } else {
-            return `Order submission failed: ${result.error ?? "unknown error"}`;
+            setActiveTab("order");
+            break;
+          }
+          case "remove": {
+            const line = currentOrder?.items.find(
+              (i) =>
+                i.catalogItem.name.toLowerCase() ===
+                (cmd.item_name ?? "").toLowerCase()
+            );
+            if (!line) break;
+            removeItem(line.id);
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            break;
+          }
+          case "clear": {
+            clearOrder();
+            break;
+          }
+          case "submit": {
+            if (accessToken && locationId && currentOrder?.items.length) {
+              setActiveTab("order");
+              submitOrder(accessToken, locationId).then((result) => {
+                if (result.success) {
+                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                }
+              });
+            }
+            break;
           }
         }
-
-        default:
-          return `Unknown tool: ${toolName}`;
       }
     },
     [catalogItems, currentOrder, addItem, removeItem, clearOrder, submitOrder, accessToken, locationId]
   );
 
-  // Register tool handler whenever deps change
   useEffect(() => {
-    setToolHandler(handleTool);
-  }, [handleTool, setToolHandler]);
+    setToolHandler(handleCommands);
+  }, [handleCommands, setToolHandler]);
 
   // ── Toggle connect / disconnect ─────────────────────────────────────────────
 

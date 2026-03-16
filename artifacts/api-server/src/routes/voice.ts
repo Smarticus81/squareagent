@@ -1,264 +1,365 @@
 import { Router, type IRouter, Request, Response } from "express";
 import multer from "multer";
-import { ReplitConnectors } from "@replit/connectors-sdk";
+import OpenAI from "openai";
 
 const router: IRouter = Router();
-const connectors = new ReplitConnectors();
 
-// multer: keep file in memory as Buffer
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
-
-// POST /api/voice/transcribe — STT via ElevenLabs Scribe
-router.post("/transcribe", upload.single("file"), async (req: Request, res: Response) => {
-  try {
-    const file = (req as any).file as Express.Multer.File | undefined;
-    if (!file) {
-      return res.status(400).json({ error: "No audio file received. Expected field name: 'file'" });
-    }
-
-    console.log(`[STT] Received audio: ${file.originalname}, size=${file.size}, mime=${file.mimetype}`);
-
-    // ElevenLabs Scribe expects multipart/form-data with:
-    //   file   = audio buffer
-    //   model_id = "scribe_v1"
-    const modelId = (req.body?.model_id as string) || "scribe_v1";
-
-    // Use native FormData + Blob (Node 18+)
-    const fd = new FormData();
-    const audioBlob = new Blob([file.buffer], { type: file.mimetype || "audio/webm" });
-    fd.append("file", audioBlob, file.originalname || "recording.webm");
-    fd.append("model_id", modelId);
-
-    const response = await connectors.proxy("elevenlabs", "/v1/speech-to-text", {
-      method: "POST",
-      body: fd,
-    });
-
-    if (!response.ok) {
-      const errText = await response.text();
-      console.error("[STT] ElevenLabs error:", response.status, errText);
-      return res.status(502).json({ error: "Transcription failed", details: errText });
-    }
-
-    const data = await response.json() as any;
-    console.log("[STT] Success:", data.text?.slice(0, 80));
-    res.json({ text: data.text || "" });
-  } catch (e: any) {
-    console.error("[STT] Error:", e);
-    res.status(500).json({ error: e.message || "Transcription failed" });
-  }
+const openai = new OpenAI({
+  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY ?? "placeholder",
 });
 
-// POST /api/voice/chat — Streaming AI agent response
-router.post("/chat", async (req: Request, res: Response) => {
-  try {
-    const { messages = [] } = req.body;
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
-    res.setHeader("Content-Type", "text/event-stream");
-    res.setHeader("Cache-Control", "no-cache, no-transform");
-    res.setHeader("X-Accel-Buffering", "no");
-    res.flushHeaders();
+// ── Session store ─────────────────────────────────────────────────────────────
 
-    const userMessage = messages[messages.length - 1]?.content || "";
-    const { text, actions } = await generateAgentResponse(userMessage, messages);
-
-    // Stream word by word for natural feel
-    const words = text.split(" ");
-    for (let i = 0; i < words.length; i++) {
-      const chunk = (i === 0 ? "" : " ") + words[i];
-      res.write(`data: ${JSON.stringify({ content: chunk })}\n\n`);
-      await delay(15);
-    }
-
-    for (const action of actions) {
-      res.write(`data: ${JSON.stringify({ action })}\n\n`);
-    }
-
-    res.write("data: [DONE]\n\n");
-    res.end();
-  } catch (e: any) {
-    console.error("[Chat] Error:", e);
-    if (!res.headersSent) {
-      res.status(500).json({ error: e.message || "Chat failed" });
-    } else {
-      res.write(`data: ${JSON.stringify({ content: "I encountered an error. Please try again." })}\n\n`);
-      res.write("data: [DONE]\n\n");
-      res.end();
-    }
-  }
-});
-
-// POST /api/voice/synthesize — TTS via ElevenLabs
-router.post("/synthesize", async (req: Request, res: Response) => {
-  try {
-    const { text } = req.body;
-    if (!text) return res.status(400).json({ error: "text is required" });
-
-    const VOICE_ID = "21m00Tcm4TlvDq8ikWAM"; // Rachel
-
-    const ttsResponse = await connectors.proxy(
-      "elevenlabs",
-      `/v1/text-to-speech/${VOICE_ID}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          text,
-          model_id: "eleven_turbo_v2",
-          voice_settings: {
-            stability: 0.5,
-            similarity_boost: 0.75,
-            style: 0.0,
-            use_speaker_boost: true,
-          },
-          output_format: "mp3_22050_32",
-        }),
-      }
-    );
-
-    if (!ttsResponse.ok) {
-      const errText = await ttsResponse.text();
-      console.error("[TTS] ElevenLabs error:", ttsResponse.status, errText);
-      return res.status(502).json({ error: "TTS failed", details: errText });
-    }
-
-    const audioBuffer = await ttsResponse.arrayBuffer();
-    res.setHeader("Content-Type", "audio/mpeg");
-    res.setHeader("Content-Length", audioBuffer.byteLength.toString());
-    res.send(Buffer.from(audioBuffer));
-  } catch (e: any) {
-    console.error("[TTS] Error:", e);
-    res.status(500).json({ error: e.message || "Synthesis failed" });
-  }
-});
-
-// ─── Agent Intelligence ──────────────────────────────────────────────────────
-
-function delay(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+interface SessionMsg {
+  role: "user" | "assistant";
+  content: string;
 }
 
-interface Action {
-  type: string;
-  itemName?: string;
+interface SessionData {
+  messages: SessionMsg[];
+  lastAccess: number;
+}
+
+const sessions = new Map<string, SessionData>();
+
+function getSession(id: string): SessionData {
+  let s = sessions.get(id);
+  if (!s) {
+    s = { messages: [], lastAccess: Date.now() };
+    sessions.set(id, s);
+  }
+  s.lastAccess = Date.now();
+  return s;
+}
+
+// Prune old sessions every 10 minutes
+setInterval(() => {
+  const cutoff = Date.now() - 30 * 60 * 1000;
+  for (const [k, v] of sessions) {
+    if (v.lastAccess < cutoff) sessions.delete(k);
+  }
+}, 10 * 60 * 1000);
+
+// ── Tool definitions ──────────────────────────────────────────────────────────
+
+const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
+  {
+    type: "function",
+    function: {
+      name: "add_item",
+      description: "Add an item to the customer's current order. Match item by name from the catalog.",
+      parameters: {
+        type: "object",
+        properties: {
+          item_name: { type: "string", description: "Name of the item to add (matched from catalog)" },
+          quantity: { type: "integer", description: "How many to add (default 1)", default: 1 },
+        },
+        required: ["item_name"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "remove_item",
+      description: "Remove an item from the current order by name.",
+      parameters: {
+        type: "object",
+        properties: {
+          item_name: { type: "string", description: "Name of the item to remove" },
+        },
+        required: ["item_name"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_order",
+      description: "Get the current order summary with all items and total.",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "clear_order",
+      description: "Clear all items from the current order.",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "submit_order",
+      description: "Submit and process the current order through the POS system.",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+];
+
+// ── Order command types ───────────────────────────────────────────────────────
+
+interface OrderCommand {
+  action: "add" | "remove" | "clear" | "submit";
+  item_id?: string;
+  item_name?: string;
   quantity?: number;
+  price?: number;
 }
 
-async function generateAgentResponse(
-  userMessage: string,
-  history: { role: string; content: string }[]
-): Promise<{ text: string; actions: Action[] }> {
-  const msg = userMessage.toLowerCase();
-  const actions: Action[] = [];
-
-  const qtyWords: Record<string, number> = {
-    one: 1, two: 2, three: 3, four: 4, five: 5,
-    six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
-  };
-
-  // ── Add items ──────────────────────────────────────────────────────────────
-  if (
-    msg.includes("add") || msg.includes("put") || msg.includes("ring up") ||
-    msg.includes("i'll have") || msg.includes("i want") || msg.includes("give me") ||
-    msg.includes("get me") || msg.includes("can i get") || msg.includes("i'll take") ||
-    msg.includes("i'd like") || msg.includes("i have") || msg.includes("i take")
-  ) {
-    let quantity = 1;
-    const numericQty = msg.match(/\b(\d+)\s+/);
-    if (numericQty) {
-      quantity = parseInt(numericQty[1], 10);
-    } else {
-      for (const [word, val] of Object.entries(qtyWords)) {
-        if (msg.includes(word + " ") || msg.endsWith(word)) { quantity = val; break; }
-      }
-    }
-
-    const afterAction = msg
-      .replace(/^(add|put|ring up|give me|get me|can i get|i'll have|i want|i'd like|i'll take|i have|i take)\s+/i, "")
-      .replace(/\b(one|two|three|four|five|six|seven|eight|nine|ten|\d+)\s+/i, "")
-      .replace(/\s*(please|to (?:the )?(?:order|cart|tab))$/i, "")
-      .replace(/\s+and\s+.*/i, "")
-      .trim();
-
-    const andMatch = userMessage.match(/\band\s+(.+?)(?:\s+please|$)/i);
-    const hasMultiple = andMatch?.[1];
-
-    if (afterAction) {
-      actions.push({ type: "ADD_ITEM", itemName: afterAction, quantity });
-      if (hasMultiple) {
-        const secondItem = hasMultiple
-          .replace(/\b(one|two|three|four|five|\d+)\s+/i, "")
-          .replace(/\s*(please)$/i, "").trim();
-        if (secondItem) actions.push({ type: "ADD_ITEM", itemName: secondItem, quantity: 1 });
-      }
-      const qtyStr = quantity === 1 ? "" : `${quantity} `;
-      const itemsStr = hasMultiple
-        ? `${afterAction} and ${hasMultiple.replace(/\b(one|two|three|four|five|\d+)\s+/i, "").trim()}`
-        : afterAction;
-      return { text: `Adding ${qtyStr}${itemsStr} to your order.`, actions };
-    }
-  }
-
-  // ── Remove items ───────────────────────────────────────────────────────────
-  if (msg.includes("remove") || msg.includes("take off") || msg.includes("delete") || msg.includes("cancel")) {
-    const afterVerb = msg
-      .replace(/^(remove|take off|delete|cancel)\s+/i, "")
-      .replace(/\b(one|two|three|four|five|\d+)\s+/i, "")
-      .replace(/\s*(please)$/i, "").trim();
-    if (afterVerb) {
-      actions.push({ type: "REMOVE_ITEM", itemName: afterVerb, quantity: 1 });
-      return { text: `Removing ${afterVerb}.`, actions };
-    }
-  }
-
-  // ── Show order ─────────────────────────────────────────────────────────────
-  if ((msg.includes("show") || msg.includes("what") || msg.includes("review")) &&
-      (msg.includes("order") || msg.includes("cart") || msg.includes("have so far"))) {
-    actions.push({ type: "SHOW_ORDER" });
-    return { text: "Here's your current order.", actions };
-  }
-
-  if (msg.includes("total") || msg.includes("how much") || msg.includes("what's the total")) {
-    actions.push({ type: "SHOW_ORDER" });
-    return { text: "Let me pull up the order total.", actions };
-  }
-
-  // ── Clear order ────────────────────────────────────────────────────────────
-  if (msg.includes("clear") || msg.includes("start over") || msg.includes("reset") || msg.includes("empty")) {
-    actions.push({ type: "CLEAR_ORDER" });
-    return { text: "Order cleared. Starting fresh!", actions };
-  }
-
-  // ── Submit order ───────────────────────────────────────────────────────────
-  if (
-    msg.includes("submit") || msg.includes("process") || msg.includes("charge") ||
-    msg.includes("checkout") || msg.includes("that's all") || msg.includes("thats all") ||
-    msg.includes("done") || msg.includes("finish") || msg.includes("complete")
-  ) {
-    actions.push({ type: "SUBMIT_ORDER" });
-    return { text: "Processing your order now.", actions };
-  }
-
-  // ── Greetings ──────────────────────────────────────────────────────────────
-  if (msg.includes("hello") || msg.includes("hey") || msg.includes("hi")) {
-    return { text: "Hey! Ready to take your order. What can I get you?", actions };
-  }
-
-  // ── Help ───────────────────────────────────────────────────────────────────
-  if (msg.includes("help") || msg.includes("what can you")) {
-    return {
-      text: "I can add or remove items, show your order total, and process payment. Just tell me what you need!",
-      actions,
-    };
-  }
-
-  // ── Menu / catalog ─────────────────────────────────────────────────────────
-  if (msg.includes("menu") || msg.includes("catalog") || msg.includes("available") || msg.includes("options")) {
-    return { text: "Check the Catalog tab to browse everything. Just tell me what to add!", actions };
-  }
-
-  // ── Fallback ───────────────────────────────────────────────────────────────
-  return { text: "Got it! What would you like to add to the order?", actions };
+interface CatalogItem {
+  id: string;
+  name: string;
+  price: number;
+  category?: string;
 }
+
+interface OrderItem {
+  id?: string;
+  name: string;
+  price: number;
+  quantity: number;
+}
+
+function executeTool(
+  name: string,
+  params: Record<string, unknown>,
+  catalog: CatalogItem[],
+  currentOrder: OrderItem[]
+): { result: string; command?: OrderCommand } {
+  switch (name) {
+    case "add_item": {
+      const query = String(params.item_name ?? "").toLowerCase().trim();
+      const qty = Number(params.quantity ?? 1);
+      const found = catalog.find(
+        (c) =>
+          c.name.toLowerCase().includes(query) ||
+          query.includes(c.name.toLowerCase())
+      );
+      if (!found) {
+        return { result: `Item "${params.item_name}" not found in catalog. Available: ${catalog.map((c) => c.name).join(", ")}` };
+      }
+      return {
+        result: `Added ${qty}x ${found.name} at $${found.price.toFixed(2)} each. Total for this item: $${(found.price * qty).toFixed(2)}.`,
+        command: { action: "add", item_id: found.id, item_name: found.name, quantity: qty, price: found.price },
+      };
+    }
+
+    case "remove_item": {
+      const query = String(params.item_name ?? "").toLowerCase().trim();
+      const line = currentOrder.find((i) => i.name.toLowerCase().includes(query));
+      if (!line) {
+        return { result: `"${params.item_name}" is not in the current order.` };
+      }
+      return {
+        result: `Removed ${line.name} from the order.`,
+        command: { action: "remove", item_name: line.name },
+      };
+    }
+
+    case "get_order": {
+      if (currentOrder.length === 0) return { result: "The order is currently empty." };
+      const lines = currentOrder.map(
+        (i) => `${i.quantity}x ${i.name} ($${(i.price * i.quantity).toFixed(2)})`
+      );
+      const total = currentOrder.reduce((s, i) => s + i.price * i.quantity, 0);
+      return { result: `Current order: ${lines.join(", ")}. Total: $${total.toFixed(2)}.` };
+    }
+
+    case "clear_order": {
+      return { result: "Order cleared. Starting fresh.", command: { action: "clear" } };
+    }
+
+    case "submit_order": {
+      if (currentOrder.length === 0) {
+        return { result: "The order is empty — nothing to submit." };
+      }
+      const total = currentOrder.reduce((s, i) => s + i.price * i.quantity, 0);
+      return {
+        result: `Order submitted. Total charged: $${total.toFixed(2)}.`,
+        command: { action: "submit" },
+      };
+    }
+
+    default:
+      return { result: `Unknown tool: ${name}` };
+  }
+}
+
+function detectAudioFormat(mimetype: string): "wav" | "mp3" | "m4a" | "ogg" | "webm" | "flac" {
+  if (mimetype.includes("webm")) return "webm";
+  if (mimetype.includes("mp4") || mimetype.includes("m4a") || mimetype.includes("aac")) return "m4a";
+  if (mimetype.includes("wav") || mimetype.includes("wave")) return "wav";
+  if (mimetype.includes("ogg")) return "ogg";
+  if (mimetype.includes("mp3") || mimetype.includes("mpeg")) return "mp3";
+  if (mimetype.includes("flac")) return "flac";
+  return "webm";
+}
+
+function buildSystemPrompt(catalog: CatalogItem[], currentOrder: OrderItem[]): string {
+  const catalogStr =
+    catalog.length > 0
+      ? catalog.map((c) => `  - ${c.name}: $${c.price.toFixed(2)}${c.category ? ` (${c.category})` : ""}`).join("\n")
+      : "  (No catalog loaded — ask user to connect Square POS)";
+
+  const orderStr =
+    currentOrder.length > 0
+      ? currentOrder.map((i) => `  - ${i.quantity}x ${i.name}: $${(i.price * i.quantity).toFixed(2)}`).join("\n")
+      : "  (empty)";
+
+  return `You are a fast, friendly voice POS assistant for a retail/food business.
+Your job: ring up orders by voice — add, remove, and confirm items accurately.
+
+Available catalog:
+${catalogStr}
+
+Current order:
+${orderStr}
+
+Rules:
+- Be brief and conversational (1–2 short sentences max).
+- Always confirm actions ("Added 2 coffees!", "Got it, removed the burger.").
+- Use tools for every order action — never guess or describe without calling a tool.
+- Match items by name flexibly (e.g. "large coffee" → "Coffee", "burger" → "Cheeseburger").
+- If item not found, say so and suggest what's available.
+- On submit, confirm the total.`;
+}
+
+// ── POST /api/voice/chat ──────────────────────────────────────────────────────
+
+router.post(
+  "/chat",
+  upload.single("audio"),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const audioFile = (req as any).file as Express.Multer.File | undefined;
+      if (!audioFile) {
+        res.status(400).json({ error: "No audio file — expected field name: 'audio'" });
+        return;
+      }
+
+      const sessionId: string = (req.body.session_id as string) || "default";
+      let catalog: CatalogItem[] = [];
+      let currentOrder: OrderItem[] = [];
+      try { catalog = JSON.parse(req.body.catalog || "[]"); } catch {}
+      try { currentOrder = JSON.parse(req.body.current_order || "[]"); } catch {}
+
+      const session = getSession(sessionId);
+      const systemPrompt = buildSystemPrompt(catalog, currentOrder);
+      const audioBase64 = audioFile.buffer.toString("base64");
+      const audioFormat = detectAudioFormat(audioFile.mimetype || "audio/webm");
+
+      console.log(`[Voice] session=${sessionId} audio=${audioFile.size}b format=${audioFormat} catalog=${catalog.length} order=${currentOrder.length}`);
+
+      // Build messages: system + history (as text) + current audio turn
+      const historyMsgs: OpenAI.Chat.Completions.ChatCompletionMessageParam[] =
+        session.messages.map((m) => ({ role: m.role, content: m.content }));
+
+      const audioUserMsg: OpenAI.Chat.Completions.ChatCompletionMessageParam = {
+        role: "user",
+        content: [
+          {
+            type: "input_audio",
+            input_audio: { data: audioBase64, format: audioFormat },
+          } as any,
+        ],
+      };
+
+      const messagesRound1: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+        { role: "system", content: systemPrompt },
+        ...historyMsgs,
+        audioUserMsg,
+      ];
+
+      // First LLM call: speech-in, may return tool calls or direct audio
+      const resp1 = await openai.chat.completions.create({
+        model: "gpt-audio-mini",
+        modalities: ["text", "audio"],
+        audio: { voice: "alloy", format: "wav" },
+        messages: messagesRound1,
+        tools: TOOLS,
+        tool_choice: "auto",
+        max_completion_tokens: 256,
+      } as any);
+
+      const msg1 = resp1.choices[0].message as any;
+      const userTranscript: string = msg1.audio?.transcript ?? "";
+
+      const orderCommands: OrderCommand[] = [];
+      let finalAudioB64: string | null = null;
+      let finalText = "";
+
+      if (msg1.tool_calls && msg1.tool_calls.length > 0) {
+        // Execute all tool calls
+        const toolResultMsgs: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [];
+        for (const tc of msg1.tool_calls) {
+          let params: Record<string, unknown> = {};
+          try { params = JSON.parse(tc.function.arguments); } catch {}
+          const { result, command } = executeTool(tc.function.name, params, catalog, currentOrder);
+          if (command) orderCommands.push(command);
+          toolResultMsgs.push({ role: "tool", tool_call_id: tc.id, content: result });
+          console.log(`[Tool] ${tc.function.name}(${tc.function.arguments}) → ${result}`);
+        }
+
+        // Strip audio data from assistant message before storing in history
+        const assistantMsgForHistory: OpenAI.Chat.Completions.ChatCompletionMessageParam = {
+          role: "assistant",
+          content: msg1.content ?? null,
+          tool_calls: msg1.tool_calls,
+        } as any;
+        if (msg1.audio?.id) {
+          (assistantMsgForHistory as any).audio = { id: msg1.audio.id };
+        }
+
+        // Second call: get spoken response to tool results
+        const messagesRound2: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+          { role: "system", content: systemPrompt },
+          ...historyMsgs,
+          { role: "user", content: userTranscript || "(audio input)" },
+          assistantMsgForHistory,
+          ...toolResultMsgs,
+        ];
+
+        const resp2 = await openai.chat.completions.create({
+          model: "gpt-audio-mini",
+          modalities: ["text", "audio"],
+          audio: { voice: "alloy", format: "wav" },
+          messages: messagesRound2,
+          max_completion_tokens: 200,
+        } as any);
+
+        const msg2 = resp2.choices[0].message as any;
+        finalAudioB64 = msg2.audio?.data ?? null;
+        finalText = msg2.audio?.transcript ?? (typeof msg2.content === "string" ? msg2.content : "") ?? "";
+      } else {
+        // Direct audio response
+        finalAudioB64 = msg1.audio?.data ?? null;
+        finalText = msg1.audio?.transcript ?? (typeof msg1.content === "string" ? msg1.content : "") ?? "";
+      }
+
+      // Persist text history (not audio blobs)
+      if (userTranscript) session.messages.push({ role: "user", content: userTranscript });
+      if (finalText) session.messages.push({ role: "assistant", content: finalText });
+      if (session.messages.length > 40) session.messages = session.messages.slice(-40);
+
+      console.log(`[Voice] user="${userTranscript}" agent="${finalText}" cmds=${orderCommands.length} audio=${finalAudioB64 ? "yes" : "no"}`);
+
+      res.json({
+        user_transcript: userTranscript,
+        agent_text: finalText,
+        audio_b64: finalAudioB64,
+        audio_format: "wav",
+        order_commands: orderCommands,
+      });
+    } catch (e: any) {
+      console.error("[Voice] Error:", e?.message ?? e);
+      res.status(500).json({ error: e?.message ?? "Voice processing failed" });
+    }
+  }
+);
 
 export default router;
