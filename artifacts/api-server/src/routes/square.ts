@@ -359,7 +359,9 @@ router.post("/orders", async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    console.log("[Square] Order created:", data.order?.id, "| state:", data.order?.state, "| source:", data.order?.source?.name, "| total:", data.order?.total_money?.amount, "| location:", data.order?.location_id);
+    const fulfillmentState = data.order?.fulfillments?.[0]?.state ?? "none";
+    const fulfillmentType = data.order?.fulfillments?.[0]?.type ?? "none";
+    console.log("[Square] Order created:", data.order?.id, "| state:", data.order?.state, "| fulfillment:", fulfillmentType, fulfillmentState, "| source:", data.order?.source?.name, "| total:", data.order?.total_money?.amount);
     res.json({
       success: true,
       orderId: data.order?.id,
