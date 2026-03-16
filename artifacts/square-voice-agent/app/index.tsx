@@ -184,6 +184,7 @@ export default function MainScreen() {
 
   const {
     currentOrder,
+    lastSubmittedOrder,
     addItem,
     removeItem,
     updateQuantity,
@@ -418,6 +419,39 @@ export default function MainScreen() {
   function renderOrderTab() {
     const items = currentOrder?.items || [];
     const total = currentOrder?.total || 0;
+
+    if (lastSubmittedOrder) {
+      return (
+        <View style={styles.orderTabContent}>
+          <Animated.View entering={FadeInDown.duration(250)} style={styles.submittedCard}>
+            <View style={styles.submittedHeader}>
+              <View style={styles.submittedIconWrap}>
+                <Feather name="check-circle" size={28} color={Colors.dark.accent} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.submittedTitle}>Order Submitted!</Text>
+                {lastSubmittedOrder.squareOrderId && (
+                  <Text style={styles.submittedId} numberOfLines={1}>
+                    #{lastSubmittedOrder.squareOrderId.slice(-8).toUpperCase()}
+                  </Text>
+                )}
+              </View>
+              <Text style={styles.submittedTotal}>${lastSubmittedOrder.total.toFixed(2)}</Text>
+            </View>
+            <View style={styles.submittedDivider} />
+            {lastSubmittedOrder.items.map((item) => (
+              <View key={item.id} style={styles.submittedLine}>
+                <Text style={styles.submittedLineQty}>{item.quantity}×</Text>
+                <Text style={styles.submittedLineName}>{item.catalogItem.name}</Text>
+                <Text style={styles.submittedLinePrice}>
+                  ${(item.catalogItem.price * item.quantity).toFixed(2)}
+                </Text>
+              </View>
+            ))}
+          </Animated.View>
+        </View>
+      );
+    }
 
     return (
       <View style={styles.orderTabContent}>
@@ -741,6 +775,29 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_400Regular", fontSize: 14,
     color: Colors.dark.textSecondary, textAlign: "center",
   },
+  submittedCard: {
+    margin: 16,
+    backgroundColor: Colors.dark.accentSubtle,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: Colors.dark.accentDim,
+    padding: 20,
+    gap: 12,
+  },
+  submittedHeader: { flexDirection: "row", alignItems: "center", gap: 12 },
+  submittedIconWrap: {
+    width: 48, height: 48, borderRadius: 24,
+    backgroundColor: Colors.dark.accentDim,
+    alignItems: "center", justifyContent: "center",
+  },
+  submittedTitle: { fontFamily: "Inter_700Bold", fontSize: 17, color: Colors.dark.accent },
+  submittedId: { fontFamily: "Inter_400Regular", fontSize: 12, color: Colors.dark.textSecondary, marginTop: 2 },
+  submittedTotal: { fontFamily: "Inter_700Bold", fontSize: 22, color: Colors.dark.accent },
+  submittedDivider: { height: 1, backgroundColor: Colors.dark.accentDim },
+  submittedLine: { flexDirection: "row", alignItems: "center", gap: 8 },
+  submittedLineQty: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: Colors.dark.textSecondary, width: 28 },
+  submittedLineName: { flex: 1, fontFamily: "Inter_500Medium", fontSize: 14, color: Colors.dark.text },
+  submittedLinePrice: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: Colors.dark.accent },
   orderList: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 100 },
   orderFooter: {
     position: "absolute", bottom: 0, left: 0, right: 0,

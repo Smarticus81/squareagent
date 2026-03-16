@@ -20,6 +20,7 @@ export interface Order {
 
 interface OrderContextType {
   currentOrder: Order | null;
+  lastSubmittedOrder: Order | null;
   addItem: (item: SquareCatalogItem, quantity?: number) => void;
   removeItem: (lineItemId: string) => void;
   updateQuantity: (lineItemId: string, quantity: number) => void;
@@ -38,6 +39,7 @@ function generateId() {
 
 export function OrderProvider({ children }: { children: ReactNode }) {
   const [currentOrder, setCurrentOrder] = useState<Order | null>(null);
+  const [lastSubmittedOrder, setLastSubmittedOrder] = useState<Order | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [orderHistory, setOrderHistory] = useState<Order[]>([]);
@@ -60,6 +62,7 @@ export function OrderProvider({ children }: { children: ReactNode }) {
   }
 
   function addItem(catalogItem: SquareCatalogItem, quantity = 1) {
+    setLastSubmittedOrder(null);
     setCurrentOrder((prev) => {
       const order = prev || {
         id: generateId(),
@@ -165,6 +168,8 @@ export function OrderProvider({ children }: { children: ReactNode }) {
 
       setOrderHistory((prev) => [completedOrder, ...prev]);
       setCurrentOrder(null);
+      setLastSubmittedOrder(completedOrder);
+      setTimeout(() => setLastSubmittedOrder(null), 5000);
 
       return { success: true, orderId: data.orderId };
     } catch (e: any) {
@@ -180,6 +185,7 @@ export function OrderProvider({ children }: { children: ReactNode }) {
     <OrderContext.Provider
       value={{
         currentOrder,
+        lastSubmittedOrder,
         addItem,
         removeItem,
         updateQuantity,
