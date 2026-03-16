@@ -334,7 +334,20 @@ router.post("/orders", async (req: Request, res: Response): Promise<void> => {
       headers: squareHeaders(token),
       body: JSON.stringify({
         idempotency_key: idempotencyKey,
-        order: { location_id: locationId, line_items: lineItems },
+        order: {
+          location_id: locationId,
+          line_items: lineItems,
+          fulfillments: [
+            {
+              type: "PICKUP",
+              state: "PROPOSED",
+              pickup_details: {
+                pickup_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(), // ready in 5 min
+                note: "Voice order — ring up at counter",
+              },
+            },
+          ],
+        },
       }),
     });
 
