@@ -1,6 +1,13 @@
 import { Router, type IRouter, Request, Response } from "express";
 import multer from "multer";
 import OpenAI from "openai";
+import { execFile } from "child_process";
+import { promisify } from "util";
+import { tmpdir } from "os";
+import { join } from "path";
+import { writeFile, readFile, unlink } from "fs/promises";
+
+const execFileAsync = promisify(execFile);
 
 const router: IRouter = Router();
 
@@ -200,6 +207,27 @@ function detectAudioFormat(mimetype: string): "wav" | "mp3" | "m4a" | "ogg" | "w
   return "webm";
 }
 
+// OpenAI audio models only accept wav or mp3 — convert anything else via ffmpeg
+async function toWavBuffer(inputBuffer: Buffer, inputFormat: string): Promise<Buffer> {
+  const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const inPath = join(tmpdir(), `va-in-${id}.${inputFormat}`);
+  const outPath = join(tmpdir(), `va-out-${id}.wav`);
+  try {
+    await writeFile(inPath, inputBuffer);
+    await execFileAsync("ffmpeg", [
+      "-y", "-i", inPath,
+      "-ar", "16000",    // 16kHz — enough for speech
+      "-ac", "1",        // mono
+      "-f", "wav",
+      outPath,
+    ]);
+    return await readFile(outPath);
+  } finally {
+    unlink(inPath).catch(() => {});
+    unlink(outPath).catch(() => {});
+  }
+}
+
 function buildSystemPrompt(catalog: CatalogItem[], currentOrder: OrderItem[]): string {
   const catalogStr =
     catalog.length > 0
@@ -250,10 +278,24 @@ router.post(
 
       const session = getSession(sessionId);
       const systemPrompt = buildSystemPrompt(catalog, currentOrder);
-      const audioBase64 = audioFile.buffer.toString("base64");
-      const audioFormat = detectAudioFormat(audioFile.mimetype || "audio/webm");
+      const rawFormat = detectAudioFormat(audioFile.mimetype || "audio/webm");
 
-      console.log(`[Voice] session=${sessionId} audio=${audioFile.size}b format=${audioFormat} catalog=${catalog.length} order=${currentOrder.length}`);
+      // gpt-4o-audio-preview only accepts wav or mp3 — transcode anything else
+      let audioBuffer = audioFile.buffer;
+      let audioFormat: "wav" | "mp3" = "wav";
+      if (rawFormat === "wav") {
+        audioFormat = "wav";
+      } else if (rawFormat === "mp3") {
+        audioFormat = "mp3";
+      } else {
+        console.log(`[Voice] Transcoding ${rawFormat} → wav via ffmpeg`);
+        audioBuffer = await toWavBuffer(audioFile.buffer, rawFormat);
+        audioFormat = "wav";
+      }
+
+      const audioBase64 = audioBuffer.toString("base64");
+
+      console.log(`[Voice] session=${sessionId} audio=${audioBuffer.length}b format=${audioFormat} catalog=${catalog.length} order=${currentOrder.length}`);
 
       // Build messages: system + history (as text) + current audio turn
       const historyMsgs: OpenAI.Chat.Completions.ChatCompletionMessageParam[] =
