@@ -258,6 +258,8 @@ router.post("/orders", async (req: Request, res: Response): Promise<void> => {
 
     const idempotencyKey = `order-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
+    console.log("[Square] Creating order — location:", locationId, "items:", JSON.stringify(lineItems));
+
     const response = await fetch(`${SQUARE_BASE}/orders`, {
       method: "POST",
       headers: squareHeaders(token),
@@ -269,10 +271,13 @@ router.post("/orders", async (req: Request, res: Response): Promise<void> => {
 
     const data = await response.json() as any;
     if (!response.ok) {
-      res.status(response.status).json({ error: data.errors?.[0]?.detail || "Failed to create order" });
+      const errMsg = data.errors?.[0]?.detail || "Failed to create order";
+      console.error("[Square] Order failed:", JSON.stringify(data.errors));
+      res.status(response.status).json({ error: errMsg });
       return;
     }
 
+    console.log("[Square] Order created:", data.order?.id, "total:", data.order?.total_money?.amount);
     res.json({
       success: true,
       orderId: data.order?.id,

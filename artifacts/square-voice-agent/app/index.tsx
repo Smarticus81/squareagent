@@ -231,8 +231,20 @@ export default function MainScreen() {
       for (const cmd of commands) {
         switch (cmd.action) {
           case "add": {
-            if (!cmd.item_id) break;
-            const found = catalogItems.find((c) => c.id === cmd.item_id);
+            // Match by ID first, then fall back to name (AI often omits IDs)
+            let found = cmd.item_id
+              ? catalogItems.find((c) => c.id === cmd.item_id)
+              : undefined;
+            if (!found && cmd.item_name) {
+              const needle = cmd.item_name.toLowerCase();
+              found =
+                catalogItems.find((c) => c.name.toLowerCase() === needle) ??
+                catalogItems.find(
+                  (c) =>
+                    c.name.toLowerCase().includes(needle) ||
+                    needle.includes(c.name.toLowerCase())
+                );
+            }
             if (!found) break;
             addItem(found, cmd.quantity ?? 1);
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -240,11 +252,14 @@ export default function MainScreen() {
             break;
           }
           case "remove": {
-            const line = currentOrder?.items.find(
-              (i) =>
-                i.catalogItem.name.toLowerCase() ===
-                (cmd.item_name ?? "").toLowerCase()
-            );
+            const needle = (cmd.item_name ?? "").toLowerCase();
+            const line =
+              currentOrder?.items.find(
+                (i) => i.catalogItem.name.toLowerCase() === needle
+              ) ??
+              currentOrder?.items.find((i) =>
+                i.catalogItem.name.toLowerCase().includes(needle)
+              );
             if (!line) break;
             removeItem(line.id);
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -255,14 +270,24 @@ export default function MainScreen() {
             break;
           }
           case "submit": {
-            if (accessToken && locationId && currentOrder?.items.length) {
-              setActiveTab("order");
-              submitOrder(accessToken, locationId).then((result) => {
-                if (result.success) {
-                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                }
-              });
+            setActiveTab("order");
+            if (!accessToken || !locationId) {
+              console.warn("[Order] Submit skipped — Square not connected");
+              break;
             }
+            if (!currentOrder?.items.length) {
+              console.warn("[Order] Submit skipped — order is empty");
+              break;
+            }
+            submitOrder(accessToken, locationId).then((result) => {
+              if (result.success) {
+                console.log("[Order] Submitted to Square:", result.orderId);
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              } else {
+                console.error("[Order] Square submit failed:", result.error);
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+              }
+            });
             break;
           }
         }
