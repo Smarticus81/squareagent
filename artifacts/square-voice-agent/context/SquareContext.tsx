@@ -24,10 +24,13 @@ interface SquareContextType {
   catalogItems: SquareCatalogItem[];
   isConfigured: boolean;
   isLoadingCatalog: boolean;
+  isLoadingLocations: boolean;
   catalogError: string | null;
+  locationsError: string | null;
   setCredentials: (token: string, locationId: string) => Promise<void>;
   clearCredentials: () => Promise<void>;
   loadCatalog: () => Promise<void>;
+  fetchLocations: (token: string) => Promise<SquareLocation[]>;
   searchCatalog: (query: string) => SquareCatalogItem[];
 }
 
@@ -38,13 +41,21 @@ const STORAGE_KEYS = {
   LOCATION_ID: "square_location_id",
 };
 
+function getBaseUrl() {
+  return process.env.EXPO_PUBLIC_DOMAIN
+    ? `https://${process.env.EXPO_PUBLIC_DOMAIN}/`
+    : "http://localhost:3000/";
+}
+
 export function SquareProvider({ children }: { children: ReactNode }) {
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [locationId, setLocationId] = useState<string | null>(null);
   const [locations, setLocations] = useState<SquareLocation[]>([]);
   const [catalogItems, setCatalogItems] = useState<SquareCatalogItem[]>([]);
   const [isLoadingCatalog, setIsLoadingCatalog] = useState(false);
+  const [isLoadingLocations, setIsLoadingLocations] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
+  const [locationsError, setLocationsError] = useState<string | null>(null);
 
   useEffect(() => {
     loadStoredCredentials();
@@ -64,6 +75,37 @@ export function SquareProvider({ children }: { children: ReactNode }) {
       if (locId) setLocationId(locId);
     } catch (e) {
       console.error("Failed to load credentials", e);
+    }
+  }
+
+  async function fetchLocations(token: string): Promise<SquareLocation[]> {
+    setIsLoadingLocations(true);
+    setLocationsError(null);
+    try {
+      const baseUrl = getBaseUrl();
+      const response = await fetch(`${baseUrl}api/square/locations`, {
+        headers: { "x-square-token": token },
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({ error: "Failed to fetch locations" }));
+        throw new Error(err.error || "Failed to fetch locations — check your access token");
+      }
+      const data = await response.json();
+      const locs: SquareLocation[] = (data.locations || []).map((l: any) => ({
+        id: l.id,
+        name: l.name,
+        address: [l.address?.address_line_1, l.address?.locality, l.address?.administrative_district_level_1]
+          .filter(Boolean)
+          .join(", "),
+      }));
+      setLocations(locs);
+      return locs;
+    } catch (e: any) {
+      const msg = e.message || "Failed to fetch locations";
+      setLocationsError(msg);
+      throw new Error(msg);
+    } finally {
+      setIsLoadingLocations(false);
     }
   }
 
@@ -89,10 +131,7 @@ export function SquareProvider({ children }: { children: ReactNode }) {
     setCatalogError(null);
 
     try {
-      const baseUrl = process.env.EXPO_PUBLIC_DOMAIN
-        ? `https://${process.env.EXPO_PUBLIC_DOMAIN}/`
-        : "http://localhost:3000/";
-      
+      const baseUrl = getBaseUrl();
       const response = await fetch(`${baseUrl}api/square/catalog`, {
         headers: {
           "x-square-token": accessToken,
@@ -136,10 +175,13 @@ export function SquareProvider({ children }: { children: ReactNode }) {
         catalogItems,
         isConfigured,
         isLoadingCatalog,
+        isLoadingLocations,
         catalogError,
+        locationsError,
         setCredentials,
         clearCredentials,
         loadCatalog,
+        fetchLocations,
         searchCatalog,
       }}
     >

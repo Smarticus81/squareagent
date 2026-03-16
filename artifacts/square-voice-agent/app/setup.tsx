@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -8,7 +8,6 @@ import {
   ScrollView,
   ActivityIndicator,
   Platform,
-  Alert,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
@@ -17,58 +16,95 @@ import * as Haptics from "expo-haptics";
 import Animated, { FadeInDown } from "react-native-reanimated";
 
 import Colors from "@/constants/colors";
-import { useSquare } from "@/context/SquareContext";
+import { useSquare, SquareLocation } from "@/context/SquareContext";
 
 const WEB_TOP_INSET = 67;
 const WEB_BOTTOM_INSET = 34;
 
 export default function SetupScreen() {
   const insets = useSafeAreaInsets();
-  const { setCredentials, clearCredentials, isConfigured, accessToken, locationId, locations, loadCatalog, catalogItems, isLoadingCatalog, catalogError } = useSquare();
+  const {
+    setCredentials,
+    clearCredentials,
+    isConfigured,
+    accessToken,
+    locationId,
+    locations: savedLocations,
+    loadCatalog,
+    catalogItems,
+    isLoadingCatalog,
+    catalogError,
+    fetchLocations,
+    isLoadingLocations,
+    locationsError,
+  } = useSquare();
 
   const [token, setToken] = useState(accessToken || "");
-  const [locId, setLocId] = useState(locationId || "");
-  const [isLoading, setIsLoading] = useState(false);
-  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [fetchedLocations, setFetchedLocations] = useState<SquareLocation[]>(savedLocations || []);
+  const [selectedLocation, setSelectedLocation] = useState<SquareLocation | null>(
+    locationId && savedLocations.length
+      ? savedLocations.find((l) => l.id === locationId) ?? null
+      : null
+  );
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
 
   const topPad = Platform.OS === "web" ? WEB_TOP_INSET : insets.top;
   const bottomPad = Platform.OS === "web" ? WEB_BOTTOM_INSET : insets.bottom;
 
+  const hasFetched = fetchedLocations.length > 0;
+
+  async function handleFetchLocations() {
+    if (!token.trim()) {
+      setResult({ success: false, message: "Paste your Access Token first" });
+      return;
+    }
+    setResult(null);
+    setSelectedLocation(null);
+    try {
+      const locs = await fetchLocations(token.trim());
+      setFetchedLocations(locs);
+      if (locs.length === 1) {
+        setSelectedLocation(locs[0]);
+      }
+    } catch (e: any) {
+      setResult({ success: false, message: e.message || "Could not fetch locations" });
+    }
+  }
+
   async function handleConnect() {
     if (!token.trim()) {
-      setTestResult({ success: false, message: "Please enter your Square access token" });
+      setResult({ success: false, message: "Enter your access token" });
       return;
     }
-    if (!locId.trim()) {
-      setTestResult({ success: false, message: "Please enter your Square location ID" });
+    if (!selectedLocation) {
+      setResult({ success: false, message: "Choose a location" });
       return;
     }
-
-    setIsLoading(true);
-    setTestResult(null);
-
+    setIsConnecting(true);
+    setResult(null);
     try {
-      await setCredentials(token.trim(), locId.trim());
+      await setCredentials(token.trim(), selectedLocation.id);
       await loadCatalog();
-
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setTestResult({
+      setResult({
         success: true,
-        message: `Connected! Found ${catalogItems.length} catalog items.`,
+        message: `Connected to "${selectedLocation.name}"! Loaded ${catalogItems.length} catalog items.`,
       });
     } catch (e: any) {
-      setTestResult({ success: false, message: e.message || "Connection failed" });
+      setResult({ success: false, message: e.message || "Connection failed" });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     } finally {
-      setIsLoading(false);
+      setIsConnecting(false);
     }
   }
 
   async function handleDisconnect() {
     await clearCredentials();
     setToken("");
-    setLocId("");
-    setTestResult(null);
+    setFetchedLocations([]);
+    setSelectedLocation(null);
+    setResult(null);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
   }
 
@@ -93,67 +129,112 @@ export default function SetupScreen() {
         <Animated.View entering={FadeInDown.duration(300)} style={styles.statusCard}>
           <View style={[styles.statusDot, { backgroundColor: isConfigured ? Colors.dark.accent : Colors.dark.textMuted }]} />
           <Text style={styles.statusLabel}>
-            {isConfigured ? "Connected to Square" : "Not connected"}
+            {isConfigured ? `Connected — ${savedLocations.find(l => l.id === locationId)?.name ?? locationId}` : "Not connected"}
           </Text>
         </Animated.View>
 
-        {/* Info Card */}
-        <Animated.View entering={FadeInDown.delay(60).duration(300)} style={styles.infoCard}>
-          <Feather name="info" size={16} color={Colors.dark.accent} />
-          <Text style={styles.infoText}>
-            Get your access token and location ID from the Square Developer Dashboard at{" "}
-            <Text style={styles.infoLink}>developer.squareup.com</Text>
+        {/* Step 1: Access Token */}
+        <Animated.View entering={FadeInDown.delay(60).duration(300)}>
+          <View style={styles.stepHeader}>
+            <View style={styles.stepBadge}>
+              <Text style={styles.stepNum}>1</Text>
+            </View>
+            <Text style={styles.stepTitle}>Access Token</Text>
+          </View>
+          <Text style={styles.stepHint}>
+            Find this at{" "}
+            <Text style={styles.link}>developer.squareup.com</Text>
+            {" "}→ your app → Credentials
           </Text>
-        </Animated.View>
-
-        {/* Token Input */}
-        <Animated.View entering={FadeInDown.delay(120).duration(300)}>
-          <Text style={styles.label}>Access Token</Text>
           <TextInput
             style={styles.input}
             value={token}
-            onChangeText={setToken}
+            onChangeText={(t) => { setToken(t); setFetchedLocations([]); setSelectedLocation(null); }}
             placeholder="EAAAxxxxxxxxxxxxxxx..."
             placeholderTextColor={Colors.dark.textMuted}
             autoCapitalize="none"
             autoCorrect={false}
             secureTextEntry
-            returnKeyType="next"
-          />
-        </Animated.View>
-
-        {/* Location ID Input */}
-        <Animated.View entering={FadeInDown.delay(180).duration(300)}>
-          <Text style={styles.label}>Location ID</Text>
-          <TextInput
-            style={styles.input}
-            value={locId}
-            onChangeText={setLocId}
-            placeholder="LBxxxxxxxxxxxxxxxxxxxxxx"
-            placeholderTextColor={Colors.dark.textMuted}
-            autoCapitalize="none"
-            autoCorrect={false}
             returnKeyType="done"
-            onSubmitEditing={handleConnect}
           />
+          <Pressable
+            onPress={handleFetchLocations}
+            disabled={isLoadingLocations}
+            style={[styles.fetchBtn, { opacity: isLoadingLocations ? 0.6 : 1 }]}
+          >
+            {isLoadingLocations ? (
+              <ActivityIndicator size="small" color={Colors.dark.accent} />
+            ) : (
+              <Feather name="map-pin" size={15} color={Colors.dark.accent} />
+            )}
+            <Text style={styles.fetchBtnText}>
+              {isLoadingLocations ? "Fetching locations…" : "Fetch My Locations"}
+            </Text>
+          </Pressable>
         </Animated.View>
 
-        {/* Test Result */}
-        {testResult && (
+        {/* Step 2: Pick Location */}
+        {hasFetched && (
+          <Animated.View entering={FadeInDown.duration(250)}>
+            <View style={styles.stepHeader}>
+              <View style={styles.stepBadge}>
+                <Text style={styles.stepNum}>2</Text>
+              </View>
+              <Text style={styles.stepTitle}>Choose a Location</Text>
+            </View>
+            <Text style={styles.stepHint}>Tap the location you want to ring up orders at</Text>
+            <View style={styles.locationList}>
+              {fetchedLocations.map((loc) => {
+                const active = selectedLocation?.id === loc.id;
+                return (
+                  <Pressable
+                    key={loc.id}
+                    onPress={() => {
+                      setSelectedLocation(loc);
+                      setResult(null);
+                      Haptics.selectionAsync();
+                    }}
+                    style={[styles.locationRow, active && styles.locationRowActive]}
+                  >
+                    <View style={styles.locationLeft}>
+                      <Text style={[styles.locationName, active && styles.locationNameActive]}>
+                        {loc.name}
+                      </Text>
+                      {loc.address ? (
+                        <Text style={styles.locationAddr}>{loc.address}</Text>
+                      ) : null}
+                    </View>
+                    <View style={[styles.locationCheck, active && styles.locationCheckActive]}>
+                      {active && <Feather name="check" size={13} color={Colors.dark.background} />}
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </Animated.View>
+        )}
+
+        {/* Errors from fetching */}
+        {locationsError && !hasFetched && (
+          <View style={[styles.resultCard, styles.resultError]}>
+            <Feather name="alert-circle" size={16} color={Colors.dark.danger} />
+            <Text style={[styles.resultText, { color: Colors.dark.danger }]}>{locationsError}</Text>
+          </View>
+        )}
+
+        {/* Result message */}
+        {result && (
           <Animated.View
             entering={FadeInDown.duration(200)}
-            style={[
-              styles.resultCard,
-              testResult.success ? styles.resultSuccess : styles.resultError,
-            ]}
+            style={[styles.resultCard, result.success ? styles.resultSuccess : styles.resultError]}
           >
             <Feather
-              name={testResult.success ? "check-circle" : "alert-circle"}
+              name={result.success ? "check-circle" : "alert-circle"}
               size={16}
-              color={testResult.success ? Colors.dark.accent : Colors.dark.danger}
+              color={result.success ? Colors.dark.accent : Colors.dark.danger}
             />
-            <Text style={[styles.resultText, { color: testResult.success ? Colors.dark.accent : Colors.dark.danger }]}>
-              {testResult.message}
+            <Text style={[styles.resultText, { color: result.success ? Colors.dark.accent : Colors.dark.danger }]}>
+              {result.message}
             </Text>
           </Animated.View>
         )}
@@ -166,55 +247,56 @@ export default function SetupScreen() {
         )}
 
         {/* Connect Button */}
-        <Pressable
-          onPress={handleConnect}
-          disabled={isLoading}
-          style={[styles.connectBtn, { opacity: isLoading ? 0.7 : 1 }]}
-          testID="connect-btn"
-        >
-          {isLoading ? (
-            <ActivityIndicator size="small" color={Colors.dark.background} />
-          ) : (
-            <>
-              <Feather name="link" size={18} color={Colors.dark.background} />
-              <Text style={styles.connectBtnText}>
-                {isConfigured ? "Update Connection" : "Connect Square"}
-              </Text>
-            </>
-          )}
-        </Pressable>
-
-        {isConfigured && (
-          <Pressable onPress={handleDisconnect} style={styles.disconnectBtn}>
-            <Feather name="link-2" size={16} color={Colors.dark.danger} />
-            <Text style={styles.disconnectText}>Disconnect</Text>
+        {(hasFetched || isConfigured) && (
+          <Pressable
+            onPress={handleConnect}
+            disabled={isConnecting || !selectedLocation}
+            style={[styles.connectBtn, { opacity: (isConnecting || !selectedLocation) ? 0.6 : 1 }]}
+          >
+            {isConnecting ? (
+              <ActivityIndicator size="small" color={Colors.dark.background} />
+            ) : (
+              <>
+                <Feather name="link" size={18} color={Colors.dark.background} />
+                <Text style={styles.connectBtnText}>
+                  {isConfigured ? "Update Connection" : "Connect Square"}
+                </Text>
+              </>
+            )}
           </Pressable>
         )}
 
-        {/* Catalog Stats */}
         {isConfigured && (
-          <Animated.View entering={FadeInDown.delay(100).duration(300)} style={styles.statsCard}>
-            <View style={styles.statsRow}>
-              <Feather name="package" size={16} color={Colors.dark.accent} />
-              <Text style={styles.statsLabel}>Catalog Items</Text>
-              {isLoadingCatalog ? (
-                <ActivityIndicator size="small" color={Colors.dark.accent} />
-              ) : (
-                <Text style={styles.statsValue}>{catalogItems.length}</Text>
-              )}
-            </View>
-            <Pressable onPress={loadCatalog} style={styles.refreshBtn}>
-              <Feather name="refresh-cw" size={14} color={Colors.dark.textSecondary} />
-              <Text style={styles.refreshText}>Refresh catalog</Text>
+          <>
+            {/* Catalog Stats */}
+            <Animated.View entering={FadeInDown.delay(100).duration(300)} style={styles.statsCard}>
+              <View style={styles.statsRow}>
+                <Feather name="package" size={16} color={Colors.dark.accent} />
+                <Text style={styles.statsLabel}>Catalog Items</Text>
+                {isLoadingCatalog ? (
+                  <ActivityIndicator size="small" color={Colors.dark.accent} />
+                ) : (
+                  <Text style={styles.statsValue}>{catalogItems.length}</Text>
+                )}
+              </View>
+              <Pressable onPress={loadCatalog} style={styles.refreshBtn}>
+                <Feather name="refresh-cw" size={14} color={Colors.dark.textSecondary} />
+                <Text style={styles.refreshText}>Refresh catalog</Text>
+              </Pressable>
+            </Animated.View>
+
+            <Pressable onPress={handleDisconnect} style={styles.disconnectBtn}>
+              <Feather name="link-2" size={16} color={Colors.dark.danger} />
+              <Text style={styles.disconnectText}>Disconnect</Text>
             </Pressable>
-          </Animated.View>
+          </>
         )}
 
-        {/* Sandbox Mode Notice */}
+        {/* Sandbox Note */}
         <Animated.View entering={FadeInDown.delay(240).duration(300)} style={styles.sandboxCard}>
           <Feather name="shield" size={16} color={Colors.dark.warning} />
           <Text style={styles.sandboxText}>
-            Use your Square Sandbox credentials for testing. Switch to Production tokens when ready to go live.
+            Use Sandbox credentials for testing. Switch to Production tokens when ready to go live.
           </Text>
         </Animated.View>
       </ScrollView>
@@ -268,33 +350,41 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_500Medium",
     fontSize: 14,
     color: Colors.dark.text,
-  },
-  infoCard: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 10,
-    backgroundColor: Colors.dark.accentSubtle,
-    borderRadius: 12,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: Colors.dark.accentDim,
-  },
-  infoText: {
     flex: 1,
+  },
+  stepHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 6,
+  },
+  stepBadge: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: Colors.dark.accent,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  stepNum: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 12,
+    color: Colors.dark.background,
+  },
+  stepTitle: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 15,
+    color: Colors.dark.text,
+  },
+  stepHint: {
     fontFamily: "Inter_400Regular",
-    fontSize: 13,
+    fontSize: 12,
     color: Colors.dark.textSecondary,
-    lineHeight: 18,
+    marginBottom: 10,
+    lineHeight: 17,
   },
-  infoLink: {
+  link: {
     color: Colors.dark.accent,
-  },
-  label: {
-    fontFamily: "Inter_500Medium",
-    fontSize: 13,
-    color: Colors.dark.textSecondary,
-    marginBottom: 8,
-    marginLeft: 2,
   },
   input: {
     backgroundColor: Colors.dark.surface,
@@ -306,6 +396,71 @@ const styles = StyleSheet.create({
     color: Colors.dark.text,
     borderWidth: 1,
     borderColor: Colors.dark.surfaceBorder,
+    marginBottom: 10,
+  },
+  fetchBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 11,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.dark.accentDim,
+    backgroundColor: Colors.dark.accentSubtle,
+    alignSelf: "flex-start",
+  },
+  fetchBtnText: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 14,
+    color: Colors.dark.accent,
+  },
+  locationList: {
+    gap: 8,
+  },
+  locationRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: Colors.dark.surface,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    borderWidth: 1,
+    borderColor: Colors.dark.surfaceBorder,
+  },
+  locationRowActive: {
+    borderColor: Colors.dark.accent,
+    backgroundColor: Colors.dark.accentSubtle,
+  },
+  locationLeft: {
+    flex: 1,
+    gap: 2,
+  },
+  locationName: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 15,
+    color: Colors.dark.text,
+  },
+  locationNameActive: {
+    color: Colors.dark.accent,
+  },
+  locationAddr: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 12,
+    color: Colors.dark.textSecondary,
+  },
+  locationCheck: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 1.5,
+    borderColor: Colors.dark.surfaceBorder,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  locationCheckActive: {
+    backgroundColor: Colors.dark.accent,
+    borderColor: Colors.dark.accent,
   },
   resultCard: {
     flexDirection: "row",
