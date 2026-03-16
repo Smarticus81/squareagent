@@ -1,0 +1,27 @@
+kind = "mobile"
+previewPath = "/"
+title = "Square POS Voice Agent"
+version = "1.0.0"
+id = "artifacts/square-voice-agent"
+router = "expo-domain"
+
+[[integratedSkills]]
+name = "expo"
+version = "1.0.0"
+
+[[services]]
+ensurePreviewReachable = "/status"
+localPort = 23591
+name = "expo"
+paths = ["/"]
+
+[services.development]
+run = "pnpm --filter @workspace/square-voice-agent run dev"
+
+[services.env]
+PORT = "23591"
+BASE_PATH = "/"
+
+[services.production]
+build = ["pnpm", "--filter", "@workspace/square-voice-agent", "run", "build"]
+run = ["pnpm", "--filter", "@workspace/square-voice-agent", "run", "serve"]
