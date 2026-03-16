@@ -1,33 +1,27 @@
+// ElevenLabs direct API integration using ELEVENLABS_API_KEY env var
+// Key is sourced from the ElevenLabs Replit connector via listConnections
 import { Router, Request, Response } from "express";
-import { ReplitConnectors } from "@replit/connectors-sdk";
 
 const router = Router();
-const connectors = new ReplitConnectors();
 
 let cachedAgentId: string | null = null;
-let cachedApiKey: string | null = null;
 
-async function getApiKey(): Promise<string> {
-  if (cachedApiKey) return cachedApiKey;
-  const conns = await connectors.listConnections("elevenlabs");
-  if (!conns || conns.length === 0) throw new Error("ElevenLabs connector not found");
-  const key = (conns[0] as any).settings?.api_key;
-  if (!key) throw new Error("ElevenLabs API key missing from connector settings");
-  cachedApiKey = key;
+function getApiKey(): string {
+  const key = process.env.ELEVENLABS_API_KEY;
+  if (!key) throw new Error("ELEVENLABS_API_KEY not set");
   return key;
 }
 
-async function elFetch(apiKey: string, path: string, options: RequestInit = {}) {
-  const url = `https://api.elevenlabs.io${path}`;
-  const res = await fetch(url, {
+async function elFetch(path: string, options: RequestInit = {}): Promise<Response> {
+  const apiKey = getApiKey();
+  return fetch(`https://api.elevenlabs.io${path}`, {
     ...options,
     headers: {
       "xi-api-key": apiKey,
       "Content-Type": "application/json",
-      ...(options.headers ?? {}),
+      ...(options.headers as Record<string, string> ?? {}),
     },
   });
-  return res;
 }
 
 const SYSTEM_PROMPT = `You are a fast, efficient voice POS agent for a Square retail business. Your job is to ring up orders by voice.
@@ -92,11 +86,11 @@ const TOOLS = [
   },
 ];
 
-async function getOrCreateAgent(apiKey: string): Promise<string> {
+async function getOrCreateAgent(): Promise<string> {
   if (cachedAgentId) return cachedAgentId;
 
   console.log("[Session] Creating ElevenLabs Conversational AI agent...");
-  const res = await elFetch(apiKey, "/v1/convai/agents/create", {
+  const res = await elFetch("/v1/convai/agents/create", {
     method: "POST",
     body: JSON.stringify({
       name: "Square Voice POS",
@@ -140,11 +134,9 @@ async function getOrCreateAgent(apiKey: string): Promise<string> {
 
 router.post("/", async (req: Request, res: Response) => {
   try {
-    const apiKey = await getApiKey();
-    const agentId = await getOrCreateAgent(apiKey);
+    const agentId = await getOrCreateAgent();
 
     const urlRes = await elFetch(
-      apiKey,
       `/v1/convai/conversation/get_signed_url?agent_id=${agentId}`
     );
 
