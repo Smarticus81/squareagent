@@ -151,11 +151,11 @@ export default function SetupScreen() {
     setResult(null);
     try {
       await setCredentials(token.trim(), selectedLocation.id);
-      await loadCatalog();
+      const count = await loadCatalog();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setResult({
         success: true,
-        message: `Connected to "${selectedLocation.name}"! Loaded ${catalogItems.length} catalog items.`,
+        message: `Connected to "${selectedLocation.name}"! Loaded ${count} catalog item${count !== 1 ? "s" : ""}.`,
       });
     } catch (e: any) {
       setResult({ success: false, message: e.message || "Connection failed" });

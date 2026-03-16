@@ -195,41 +195,65 @@ router.get("/catalog", async (req: Request, res: Response): Promise<void> => {
   if (!token) { res.status(401).json({ error: "Missing Square access token" }); return; }
 
   try {
-    const response = await fetch(
-      `${SQUARE_BASE}/catalog/list?types=ITEM&include_deleted_objects=false`,
-      { headers: squareHeaders(token) }
-    );
-
-    const data = await response.json() as any;
-
-    if (!response.ok) {
-      res.status(response.status).json({ error: data.errors?.[0]?.detail || "Failed to load catalog" });
-      return;
-    }
-
     const items: any[] = [];
-    for (const obj of data.objects || []) {
-      if (obj.type !== "ITEM") continue;
-      const itemData = obj.item_data;
-      if (!itemData) continue;
+    let cursor: string | undefined;
 
-      for (const variation of itemData.variations || []) {
-        const varData = variation.item_variation_data;
-        if (!varData) continue;
-        const priceMoney = varData.price_money;
-        const price = priceMoney ? priceMoney.amount / 100 : 0;
-        items.push({
-          id: obj.id,
-          variationId: variation.id,
-          name: itemData.name,
-          price,
-          category: itemData.category_id,
-          description: itemData.description || "",
-        });
-        break;
+    // Follow pagination cursors so all items load regardless of catalog size
+    do {
+      const url = `${SQUARE_BASE}/catalog/list?types=ITEM&include_deleted_objects=false${cursor ? `&cursor=${cursor}` : ""}`;
+      const response = await fetch(url, { headers: squareHeaders(token) });
+      const data = await response.json() as any;
+
+      if (!response.ok) {
+        res.status(response.status).json({ error: data.errors?.[0]?.detail || "Failed to load catalog" });
+        return;
       }
-    }
 
+      for (const obj of data.objects || []) {
+        if (obj.type !== "ITEM") continue;
+        const itemData = obj.item_data;
+        if (!itemData) continue;
+
+        const variations = itemData.variations || [];
+        if (variations.length === 0) continue;
+
+        if (variations.length === 1) {
+          // Single variation — use item name directly
+          const varData = variations[0].item_variation_data;
+          const price = varData?.price_money ? varData.price_money.amount / 100 : 0;
+          items.push({
+            id: obj.id,
+            variationId: variations[0].id,
+            name: itemData.name,
+            price,
+            category: itemData.category_id,
+            description: itemData.description || "",
+          });
+        } else {
+          // Multiple variations (e.g. Small/Medium/Large) — add each as its own item
+          for (const variation of variations) {
+            const varData = variation.item_variation_data;
+            if (!varData) continue;
+            const price = varData.price_money ? varData.price_money.amount / 100 : 0;
+            const varName = varData.name && varData.name !== "Regular"
+              ? `${itemData.name} (${varData.name})`
+              : itemData.name;
+            items.push({
+              id: obj.id,
+              variationId: variation.id,
+              name: varName,
+              price,
+              category: itemData.category_id,
+              description: itemData.description || "",
+            });
+          }
+        }
+      }
+
+      cursor = data.cursor;
+    } while (cursor);
+
+    console.log(`[Square] Catalog loaded: ${items.length} items`);
     res.json({ items });
   } catch (e: any) {
     res.status(500).json({ error: e.message || "Failed to load catalog" });
