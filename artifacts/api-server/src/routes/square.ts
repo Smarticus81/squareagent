@@ -260,6 +260,45 @@ router.get("/catalog", async (req: Request, res: Response): Promise<void> => {
   }
 });
 
+// GET /api/square/orders/recent — search Square for orders at this location
+router.get("/orders/recent", async (req: Request, res: Response): Promise<void> => {
+  const token = req.headers["x-square-token"] as string;
+  const locationId = req.headers["x-square-location"] as string;
+  if (!token) { res.status(401).json({ error: "Missing token" }); return; }
+  if (!locationId) { res.status(400).json({ error: "Missing location" }); return; }
+
+  try {
+    const response = await fetch(`${SQUARE_BASE}/orders/search`, {
+      method: "POST",
+      headers: squareHeaders(token),
+      body: JSON.stringify({
+        location_ids: [locationId],
+        query: { sort: { sort_field: "CREATED_AT", sort_order: "DESC" } },
+        limit: 10,
+      }),
+    });
+    const data = await response.json() as any;
+    console.log("[Square] Recent orders search:", JSON.stringify(data).slice(0, 500));
+    if (!response.ok) {
+      res.status(response.status).json({ error: data.errors?.[0]?.detail || "Search failed", raw: data });
+      return;
+    }
+    res.json({
+      count: data.orders?.length ?? 0,
+      orders: (data.orders || []).map((o: any) => ({
+        id: o.id,
+        state: o.state,
+        source: o.source?.name,
+        total: o.total_money?.amount,
+        created_at: o.created_at,
+        location_id: o.location_id,
+      })),
+    });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // POST /api/square/orders
 router.post("/orders", async (req: Request, res: Response): Promise<void> => {
   const token = req.headers["x-square-token"] as string;
@@ -282,6 +321,12 @@ router.post("/orders", async (req: Request, res: Response): Promise<void> => {
 
     const idempotencyKey = `order-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
+    // Verify which merchant account this token belongs to before creating the order
+    const merchantRes = await fetch(`${SQUARE_BASE}/merchants/me`, { headers: squareHeaders(token) });
+    const merchantData = await merchantRes.json() as any;
+    const merchant = merchantData.merchant;
+    console.log("[Square] Token belongs to merchant:", merchant?.business_name, "| id:", merchant?.id, "| country:", merchant?.country, "| status:", merchant?.status);
+
     console.log("[Square] Creating order — location:", locationId, "items:", JSON.stringify(lineItems));
 
     const response = await fetch(`${SQUARE_BASE}/orders`, {
@@ -301,7 +346,7 @@ router.post("/orders", async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    console.log("[Square] Order created:", data.order?.id, "total:", data.order?.total_money?.amount);
+    console.log("[Square] Order created:", data.order?.id, "| state:", data.order?.state, "| source:", data.order?.source?.name, "| total:", data.order?.total_money?.amount, "| location:", data.order?.location_id);
     res.json({
       success: true,
       orderId: data.order?.id,
