@@ -1,7 +1,5 @@
 import React, { createContext, useContext, useState, useRef, ReactNode } from "react";
-import { fetch } from "expo/fetch";
 import { Platform } from "react-native";
-import { useAudioRecorder, RecordingPresets, AudioModule, useAudioPlayer } from "expo-audio";
 
 export type AgentState =
   | "idle"
@@ -35,8 +33,7 @@ const VoiceAgentContext = createContext<VoiceAgentContextType | null>(null);
 
 let msgCounter = 0;
 function genId() {
-  msgCounter++;
-  return `msg-${Date.now()}-${msgCounter}-${Math.random().toString(36).substr(2, 9)}`;
+  return `msg-${Date.now()}-${++msgCounter}`;
 }
 
 function getBaseUrl() {
@@ -53,12 +50,17 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
   const [agentResponse, setAgentResponse] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
-  const audioPlayer = useAudioPlayer(null);
   const cancelRef = useRef(false);
   const conversationRef = useRef<ConversationMessage[]>([]);
 
-  // Keep ref in sync with state
+  // Web recording state
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+
+  // Native recording state (loaded lazily)
+  const nativeRecorderRef = useRef<any>(null);
+  const nativePlayerRef = useRef<any>(null);
+
   const updateConversation = (updater: (prev: ConversationMessage[]) => ConversationMessage[]) => {
     setConversation(prev => {
       const next = updater(prev);
@@ -67,24 +69,76 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
     });
   };
 
+  // ── Web recording via MediaRecorder ──────────────────────────────────────
+  async function startWebRecording() {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+      ? "audio/webm;codecs=opus"
+      : MediaRecorder.isTypeSupported("audio/webm")
+      ? "audio/webm"
+      : "audio/ogg";
+
+    const mr = new MediaRecorder(stream, { mimeType });
+    audioChunksRef.current = [];
+    mr.ondataavailable = (e) => {
+      if (e.data.size > 0) audioChunksRef.current.push(e.data);
+    };
+    mr.start(100);
+    mediaRecorderRef.current = mr;
+  }
+
+  async function stopWebRecording(): Promise<Blob> {
+    return new Promise((resolve, reject) => {
+      const mr = mediaRecorderRef.current;
+      if (!mr) return reject(new Error("No MediaRecorder"));
+      mr.onstop = () => {
+        const mimeType = mr.mimeType || "audio/webm";
+        const blob = new Blob(audioChunksRef.current, { type: mimeType });
+        // Stop all tracks
+        mr.stream.getTracks().forEach(t => t.stop());
+        resolve(blob);
+      };
+      mr.stop();
+    });
+  }
+
+  // ── Native recording via expo-audio ──────────────────────────────────────
+  async function getNativeRecorder() {
+    if (!nativeRecorderRef.current) {
+      const { AudioModule, RecordingPresets } = await import("expo-audio");
+      const { granted } = await AudioModule.requestRecordingPermissionsAsync();
+      if (!granted) throw new Error("Microphone permission denied");
+      // AudioRecorder is created via the module
+      nativeRecorderRef.current = { AudioModule, RecordingPresets };
+    }
+    return nativeRecorderRef.current;
+  }
+
+  // ── Public API ────────────────────────────────────────────────────────────
   async function startListening() {
     try {
       setError(null);
       cancelRef.current = false;
+      setTranscript("");
 
-      if (Platform.OS !== "web") {
-        const status = await AudioModule.requestRecordingPermissionsAsync();
-        if (!status.granted) {
-          setError("Microphone permission denied");
-          return;
+      if (Platform.OS === "web") {
+        await startWebRecording();
+      } else {
+        const { AudioModule, RecordingPresets } = await getNativeRecorder();
+        const { useAudioRecorder } = await import("expo-audio");
+        // For native we use a simple approach with AudioModule directly
+        if (!nativeRecorderRef.current.recorder) {
+          nativeRecorderRef.current.recorder = new AudioModule.AudioRecorder(
+            RecordingPresets.HIGH_QUALITY
+          );
         }
+        const rec = nativeRecorderRef.current.recorder;
+        await rec.prepareToRecordAsync();
+        rec.record();
       }
 
-      await recorder.prepareToRecordAsync();
-      recorder.record();
       setIsRecording(true);
       setAgentState("listening");
-      setTranscript("");
     } catch (e: any) {
       setError(e.message || "Failed to start recording");
       setAgentState("error");
@@ -94,65 +148,92 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
   async function stopListening() {
     try {
       if (!isRecording) return;
-
       setIsRecording(false);
       setAgentState("processing");
 
-      await recorder.stop();
-      const uri = recorder.uri;
-
-      if (!uri) {
-        throw new Error("No recording found");
+      if (Platform.OS === "web") {
+        const blob = await stopWebRecording();
+        await transcribeWebBlob(blob);
+      } else {
+        const rec = nativeRecorderRef.current?.recorder;
+        if (!rec) throw new Error("Recorder not initialized");
+        await rec.stop();
+        const uri = rec.uri;
+        if (!uri) throw new Error("No recording URI");
+        await transcribeNativeUri(uri);
       }
-
-      await transcribeAndProcess(uri);
     } catch (e: any) {
-      setError(e.message || "Failed to process recording");
-      setAgentState("error");
+      setError(e.message || "Failed to stop recording");
+      setAgentState("idle");
     }
   }
 
-  async function transcribeAndProcess(audioUri: string) {
+  async function transcribeWebBlob(blob: Blob) {
     try {
       const baseUrl = getBaseUrl();
       const formData = new FormData();
+      // Use the blob's type to determine the file extension
+      const ext = blob.type.includes("ogg") ? "ogg" : "webm";
+      formData.append("file", blob, `recording.${ext}`);
+      formData.append("model_id", "scribe_v1");
 
-      if (Platform.OS === "web") {
-        const blobResponse = await globalThis.fetch(audioUri);
-        const blob = await blobResponse.blob();
-        formData.append("audio", blob, "recording.webm");
-        formData.append("model_id", "scribe_v1");
-      } else {
-        formData.append("audio", {
-          uri: audioUri,
-          type: "audio/m4a",
-          name: "recording.m4a",
-        } as any);
-        formData.append("model_id", "scribe_v1");
-      }
-
-      const sttResponse = await fetch(`${baseUrl}api/voice/transcribe`, {
+      const response = await fetch(`${baseUrl}api/voice/transcribe`, {
         method: "POST",
         body: formData,
       });
 
-      let userText = "";
-      if (sttResponse.ok) {
-        const sttData = await sttResponse.json();
-        userText = sttData.text?.trim() || "";
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error || `Transcription failed (${response.status})`);
       }
 
-      if (!userText) {
-        // Fallback if STT fails
+      const data = await response.json();
+      const text = data.text?.trim() || "";
+
+      if (!text) {
+        setError("Couldn't catch that — try speaking again.");
         setAgentState("idle");
-        setError("Could not transcribe audio. Try speaking again or type your order.");
         return;
       }
 
-      setTranscript(userText);
-      await processMessage(userText, baseUrl);
+      setTranscript(text);
+      await processMessage(text);
     } catch (e: any) {
-      setError(e.message || "Voice processing failed");
+      setError(e.message || "Transcription failed");
+      setAgentState("idle");
+    }
+  }
+
+  async function transcribeNativeUri(uri: string) {
+    try {
+      const baseUrl = getBaseUrl();
+      const formData = new FormData();
+      formData.append("file", { uri, type: "audio/m4a", name: "recording.m4a" } as any);
+      formData.append("model_id", "scribe_v1");
+
+      const response = await fetch(`${baseUrl}api/voice/transcribe`, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error || `Transcription failed (${response.status})`);
+      }
+
+      const data = await response.json();
+      const text = data.text?.trim() || "";
+
+      if (!text) {
+        setError("Couldn't catch that — try speaking again.");
+        setAgentState("idle");
+        return;
+      }
+
+      setTranscript(text);
+      await processMessage(text);
+    } catch (e: any) {
+      setError(e.message || "Transcription failed");
       setAgentState("idle");
     }
   }
@@ -167,14 +248,13 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
       timestamp: new Date(),
     };
 
-    // Capture current conversation for API call
     const currentConvo = conversationRef.current;
-    updateConversation((prev) => [...prev, userMsg]);
+    updateConversation(prev => [...prev, userMsg]);
     setAgentState("processing");
 
     try {
       const history = [
-        ...currentConvo.map((m) => ({
+        ...currentConvo.map(m => ({
           role: m.role === "agent" ? "assistant" : "user",
           content: m.content,
         })),
@@ -187,10 +267,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
 
       const chatResponse = await fetch(`${base}api/voice/chat`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "text/event-stream",
-        },
+        headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
         body: JSON.stringify({ messages: history }),
       });
 
@@ -216,32 +293,25 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
           if (data === "[DONE]") continue;
           try {
             const parsed = JSON.parse(data);
-
             if (parsed.content) {
               fullText += parsed.content;
               setAgentResponse(fullText);
-
               if (!agentMsgAdded) {
-                updateConversation((prev) => [
+                updateConversation(prev => [
                   ...prev,
                   { id: agentMsgId, role: "agent", content: fullText, timestamp: new Date() },
                 ]);
                 agentMsgAdded = true;
               } else {
-                updateConversation((prev) => {
+                updateConversation(prev => {
                   const updated = [...prev];
-                  const idx = updated.findIndex((m) => m.id === agentMsgId);
-                  if (idx !== -1) {
-                    updated[idx] = { ...updated[idx], content: fullText };
-                  }
+                  const idx = updated.findIndex(m => m.id === agentMsgId);
+                  if (idx !== -1) updated[idx] = { ...updated[idx], content: fullText };
                   return updated;
                 });
               }
             }
-
-            if (parsed.action) {
-              handleAgentAction(parsed.action);
-            }
+            if (parsed.action) handleAgentAction(parsed.action);
           } catch {}
         }
       }
@@ -249,6 +319,8 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
       if (!cancelRef.current && fullText) {
         setAgentState("speaking");
         await synthesizeAndPlay(fullText, base);
+      } else if (!fullText) {
+        setAgentState("idle");
       }
     } catch (e: any) {
       setError(e.message || "Agent processing failed");
@@ -264,10 +336,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
 
   async function synthesizeAndPlay(text: string, baseUrl: string) {
     try {
-      if (cancelRef.current) {
-        setAgentState("idle");
-        return;
-      }
+      if (cancelRef.current) { setAgentState("idle"); setAgentResponse(""); return; }
 
       const ttsResponse = await fetch(`${baseUrl}api/voice/synthesize`, {
         method: "POST",
@@ -275,71 +344,39 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify({ text }),
       });
 
-      if (!ttsResponse.ok) {
-        setAgentState("idle");
-        setAgentResponse("");
-        return;
-      }
+      if (!ttsResponse.ok) { setAgentState("idle"); setAgentResponse(""); return; }
 
       if (Platform.OS === "web") {
         const audioBlob = await ttsResponse.blob();
         const audioUrl = URL.createObjectURL(audioBlob);
-        const audio = new globalThis.Audio(audioUrl);
-        audio.onended = () => {
-          if (!cancelRef.current) {
-            setAgentState("idle");
-            setAgentResponse("");
-          }
-          URL.revokeObjectURL(audioUrl);
-        };
-        audio.onerror = () => {
-          setAgentState("idle");
-          setAgentResponse("");
-        };
-        await audio.play();
-      } else {
-        // Native: write audio to file and play
-        const { FileSystem } = await import("expo-file-system");
-
-        const arrayBuffer = await ttsResponse.arrayBuffer();
-        const uint8 = new Uint8Array(arrayBuffer);
-        let binary = "";
-        for (let i = 0; i < uint8.length; i++) {
-          binary += String.fromCharCode(uint8[i]);
-        }
-        const base64 = btoa(binary);
-
-        const tempPath = `${FileSystem.cacheDirectory}tts_out.mp3`;
-        await FileSystem.writeAsStringAsync(tempPath, base64, {
-          encoding: FileSystem.EncodingType.Base64,
+        const audio = new (globalThis as any).Audio(audioUrl);
+        await new Promise<void>(resolve => {
+          audio.onended = () => { URL.revokeObjectURL(audioUrl); resolve(); };
+          audio.onerror = () => { URL.revokeObjectURL(audioUrl); resolve(); };
+          audio.play().catch(() => resolve());
         });
+      } else {
+        const { FileSystem } = await import("expo-file-system");
+        const arrayBuffer = await ttsResponse.arrayBuffer();
+        const bytes = new Uint8Array(arrayBuffer);
+        let binary = "";
+        for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+        const b64 = btoa(binary);
+        const tmpPath = `${FileSystem.cacheDirectory}tts_${Date.now()}.mp3`;
+        await FileSystem.writeAsStringAsync(tmpPath, b64, { encoding: FileSystem.EncodingType.Base64 });
 
-        audioPlayer.replace({ uri: tempPath });
-        audioPlayer.play();
-
-        // Poll for playback completion
-        const checkInterval = setInterval(() => {
-          if (audioPlayer.status === "idle" || !audioPlayer.playing) {
-            clearInterval(checkInterval);
-            if (!cancelRef.current) {
-              setAgentState("idle");
-              setAgentResponse("");
-            }
-          }
-        }, 500);
-
-        setTimeout(() => {
-          clearInterval(checkInterval);
-          if (!cancelRef.current) {
-            setAgentState("idle");
-            setAgentResponse("");
-          }
-        }, 30000);
+        if (!nativePlayerRef.current) {
+          const { useAudioPlayer } = await import("expo-audio");
+        }
+        const { AudioModule } = await import("expo-audio");
+        const player = new (AudioModule as any).AudioPlayer(null, 500, false, 0);
+        nativePlayerRef.current = player;
+        player.replace({ uri: tmpPath });
+        player.play();
+        await new Promise<void>(resolve => setTimeout(resolve, 30000));
       }
-    } catch (e) {
-      setAgentState("idle");
-      setAgentResponse("");
-    }
+    } catch {}
+    if (!cancelRef.current) { setAgentState("idle"); setAgentResponse(""); }
   }
 
   async function sendTextMessage(text: string) {
@@ -351,9 +388,6 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
 
   function cancelSpeaking() {
     cancelRef.current = true;
-    if (Platform.OS !== "web") {
-      audioPlayer.pause();
-    }
     setAgentState("idle");
     setAgentResponse("");
   }
@@ -370,17 +404,9 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
   return (
     <VoiceAgentContext.Provider
       value={{
-        agentState,
-        conversation,
-        isRecording,
-        transcript,
-        agentResponse,
-        error,
-        startListening,
-        stopListening,
-        sendTextMessage,
-        clearConversation,
-        cancelSpeaking,
+        agentState, conversation, isRecording, transcript,
+        agentResponse, error, startListening, stopListening,
+        sendTextMessage, clearConversation, cancelSpeaking,
       }}
     >
       {children}
