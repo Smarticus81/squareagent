@@ -423,11 +423,14 @@ export default function SetupScreen() {
               style={[styles.fetchBtn, { alignSelf: "stretch", justifyContent: "center" }]}
               disabled={orderCheck?.loading}
             >
-              {orderCheck?.loading
-                ? <ActivityIndicator size="small" color={Colors.dark.accent} />
-                : <><Feather name="search" size={14} color={Colors.dark.accent} />
-                    <Text style={styles.fetchBtnText}>Check recent orders in Square</Text></>
-              }
+              {orderCheck?.loading ? (
+                <ActivityIndicator size="small" color={Colors.dark.accent} />
+              ) : (
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                  <Feather name="search" size={14} color={Colors.dark.accent} />
+                  <Text style={styles.fetchBtnText}>Check recent orders in Square</Text>
+                </View>
+              )}
             </Pressable>
 
             {orderCheck && !orderCheck.loading && (
