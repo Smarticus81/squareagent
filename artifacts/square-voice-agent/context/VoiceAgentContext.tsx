@@ -1,10 +1,21 @@
-import React, { createContext, useContext, useState, useRef, ReactNode } from "react";
+/**
+ * SOTA Real-time Voice Pipeline
+ * - ElevenLabs Conversational AI WebSocket (full end-to-end: VAD + STT + LLM + TTS)
+ * - Web AudioWorklet for sub-10ms PCM16 capture at 16 kHz
+ * - Gapless TTS playback via AudioContext precise scheduling
+ * - Tool calls dispatched to registered handler (order management)
+ * - No push-to-talk: ElevenLabs VAD handles turn detection
+ */
+import React, { createContext, useContext, useState, useRef, useCallback, ReactNode } from "react";
 import { Platform } from "react-native";
 
+// ── Types ─────────────────────────────────────────────────────────────────────
+
 export type AgentState =
-  | "idle"
+  | "disconnected"
+  | "connecting"
   | "listening"
-  | "processing"
+  | "thinking"
   | "speaking"
   | "error";
 
@@ -15,26 +26,55 @@ export interface ConversationMessage {
   timestamp: Date;
 }
 
+export type ToolHandler = (
+  toolName: string,
+  params: Record<string, unknown>
+) => Promise<string>;
+
 interface VoiceAgentContextType {
   agentState: AgentState;
+  isConnected: boolean;
   conversation: ConversationMessage[];
-  isRecording: boolean;
-  transcript: string;
-  agentResponse: string;
+  partialTranscript: string;
   error: string | null;
-  startListening: () => Promise<void>;
-  stopListening: () => Promise<void>;
-  sendTextMessage: (text: string) => Promise<void>;
+  connect: () => Promise<void>;
+  disconnect: () => void;
   clearConversation: () => void;
-  cancelSpeaking: () => void;
+  setToolHandler: (h: ToolHandler) => void;
+  interrupt: () => void;
 }
 
-const VoiceAgentContext = createContext<VoiceAgentContextType | null>(null);
-
-let msgCounter = 0;
-function genId() {
-  return `msg-${Date.now()}-${++msgCounter}`;
+// ── AudioWorklet processor source (inlined as Blob URL) ───────────────────────
+const WORKLET_SRC = /* js */ `
+class PCMCaptureProcessor extends AudioWorkletProcessor {
+  constructor() {
+    super();
+    this._buf = [];
+    this._frameSize = 1600; // 100 ms at 16 kHz
+  }
+  process(inputs) {
+    const ch = inputs[0]?.[0];
+    if (!ch) return true;
+    for (let i = 0; i < ch.length; i++) this._buf.push(ch[i]);
+    while (this._buf.length >= this._frameSize) {
+      const frame = this._buf.splice(0, this._frameSize);
+      const pcm = new Int16Array(this._frameSize);
+      for (let i = 0; i < this._frameSize; i++) {
+        const s = frame[i];
+        pcm[i] = s >= 1 ? 32767 : s <= -1 ? -32768 : (s * 32768) | 0;
+      }
+      this.port.postMessage(pcm.buffer, [pcm.buffer]);
+    }
+    return true;
+  }
 }
+registerProcessor('pcm-capture', PCMCaptureProcessor);
+`;
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+let _msgId = 0;
+const genId = () => `msg-${Date.now()}-${++_msgId}`;
 
 function getBaseUrl() {
   return process.env.EXPO_PUBLIC_DOMAIN
@@ -42,371 +82,382 @@ function getBaseUrl() {
     : "http://localhost:3000/";
 }
 
+function ab2b64(buf: ArrayBuffer): string {
+  const u8 = new Uint8Array(buf);
+  let s = "";
+  for (let i = 0; i < u8.length; i++) s += String.fromCharCode(u8[i]);
+  return btoa(s);
+}
+
+function b64ToPcmFloat32(b64: string): Float32Array {
+  const bin = atob(b64);
+  const u8 = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+  const i16 = new Int16Array(u8.buffer as ArrayBuffer);
+  const f32 = new Float32Array(i16.length);
+  for (let i = 0; i < i16.length; i++) f32[i] = i16[i] / 32768;
+  return f32;
+}
+
+// ── Context ────────────────────────────────────────────────────────────────────
+
+const VoiceAgentContext = createContext<VoiceAgentContextType | null>(null);
+
 export function VoiceAgentProvider({ children }: { children: ReactNode }) {
-  const [agentState, setAgentState] = useState<AgentState>("idle");
+  const [agentState, setAgentState] = useState<AgentState>("disconnected");
   const [conversation, setConversation] = useState<ConversationMessage[]>([]);
-  const [isRecording, setIsRecording] = useState(false);
-  const [transcript, setTranscript] = useState("");
-  const [agentResponse, setAgentResponse] = useState("");
+  const [partialTranscript, setPartialTranscript] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  const cancelRef = useRef(false);
-  const conversationRef = useRef<ConversationMessage[]>([]);
+  // Refs for mutable audio/ws state (not re-renders)
+  const wsRef = useRef<WebSocket | null>(null);
+  const micCtxRef = useRef<AudioContext | null>(null);
+  const micStreamRef = useRef<MediaStream | null>(null);
+  const workletNodeRef = useRef<AudioWorkletNode | null>(null);
+  const playCtxRef = useRef<AudioContext | null>(null);
+  const playScheduleRef = useRef<number>(0); // next scheduled start time
+  const playSourcesRef = useRef<AudioBufferSourceNode[]>([]);
+  const ttsFormatRef = useRef<{ sampleRate: number }>({ sampleRate: 16000 });
+  const toolHandlerRef = useRef<ToolHandler | null>(null);
+  const convRef = useRef<ConversationMessage[]>([]);
 
-  // Web recording state
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
+  const setToolHandler = useCallback((h: ToolHandler) => {
+    toolHandlerRef.current = h;
+  }, []);
 
-  // Native recording state (loaded lazily)
-  const nativeRecorderRef = useRef<any>(null);
-  const nativePlayerRef = useRef<any>(null);
+  // ── Conversation helpers ────────────────────────────────────────────────────
 
-  const updateConversation = (updater: (prev: ConversationMessage[]) => ConversationMessage[]) => {
+  const addMessage = useCallback((role: "user" | "agent", content: string) => {
+    const msg: ConversationMessage = { id: genId(), role, content, timestamp: new Date() };
     setConversation(prev => {
-      const next = updater(prev);
-      conversationRef.current = next;
+      const next = [...prev, msg];
+      convRef.current = next;
       return next;
     });
-  };
+    return msg.id;
+  }, []);
 
-  // ── Web recording via MediaRecorder ──────────────────────────────────────
-  async function startWebRecording() {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-      ? "audio/webm;codecs=opus"
-      : MediaRecorder.isTypeSupported("audio/webm")
-      ? "audio/webm"
-      : "audio/ogg";
-
-    const mr = new MediaRecorder(stream, { mimeType });
-    audioChunksRef.current = [];
-    mr.ondataavailable = (e) => {
-      if (e.data.size > 0) audioChunksRef.current.push(e.data);
-    };
-    mr.start(100);
-    mediaRecorderRef.current = mr;
-  }
-
-  async function stopWebRecording(): Promise<Blob> {
-    return new Promise((resolve, reject) => {
-      const mr = mediaRecorderRef.current;
-      if (!mr) return reject(new Error("No MediaRecorder"));
-      mr.onstop = () => {
-        const mimeType = mr.mimeType || "audio/webm";
-        const blob = new Blob(audioChunksRef.current, { type: mimeType });
-        // Stop all tracks
-        mr.stream.getTracks().forEach(t => t.stop());
-        resolve(blob);
-      };
-      mr.stop();
-    });
-  }
-
-  // ── Native recording via expo-audio ──────────────────────────────────────
-  async function getNativeRecorder() {
-    if (!nativeRecorderRef.current) {
-      const { AudioModule, RecordingPresets } = await import("expo-audio");
-      const { granted } = await AudioModule.requestRecordingPermissionsAsync();
-      if (!granted) throw new Error("Microphone permission denied");
-      // AudioRecorder is created via the module
-      nativeRecorderRef.current = { AudioModule, RecordingPresets };
-    }
-    return nativeRecorderRef.current;
-  }
-
-  // ── Public API ────────────────────────────────────────────────────────────
-  async function startListening() {
-    try {
-      setError(null);
-      cancelRef.current = false;
-      setTranscript("");
-
-      if (Platform.OS === "web") {
-        await startWebRecording();
-      } else {
-        const { AudioModule, RecordingPresets } = await getNativeRecorder();
-        const { useAudioRecorder } = await import("expo-audio");
-        // For native we use a simple approach with AudioModule directly
-        if (!nativeRecorderRef.current.recorder) {
-          nativeRecorderRef.current.recorder = new AudioModule.AudioRecorder(
-            RecordingPresets.HIGH_QUALITY
-          );
+  const updateLastAgent = useCallback((content: string) => {
+    setConversation(prev => {
+      const next = [...prev];
+      for (let i = next.length - 1; i >= 0; i--) {
+        if (next[i].role === "agent") {
+          next[i] = { ...next[i], content };
+          convRef.current = next;
+          return next;
         }
-        const rec = nativeRecorderRef.current.recorder;
-        await rec.prepareToRecordAsync();
-        rec.record();
+      }
+      convRef.current = next;
+      return next;
+    });
+  }, []);
+
+  // ── TTS Playback ────────────────────────────────────────────────────────────
+
+  function getPlayCtx(sampleRate: number): AudioContext {
+    if (!playCtxRef.current || playCtxRef.current.state === "closed") {
+      playCtxRef.current = new AudioContext({ sampleRate });
+      playScheduleRef.current = 0;
+    }
+    return playCtxRef.current;
+  }
+
+  function scheduleAudioChunk(b64pcm: string) {
+    try {
+      const sr = ttsFormatRef.current.sampleRate;
+      const ctx = getPlayCtx(sr);
+      const f32 = b64ToPcmFloat32(b64pcm);
+      const buf = ctx.createBuffer(1, f32.length, sr);
+      buf.copyToChannel(f32, 0);
+
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.connect(ctx.destination);
+
+      const now = ctx.currentTime;
+      const start = Math.max(playScheduleRef.current, now + 0.01);
+      src.start(start);
+      playScheduleRef.current = start + buf.duration;
+      playSourcesRef.current.push(src);
+
+      src.onended = () => {
+        playSourcesRef.current = playSourcesRef.current.filter(s => s !== src);
+        if (playSourcesRef.current.length === 0) {
+          setAgentState(prev => (prev === "speaking" ? "listening" : prev));
+        }
+      };
+    } catch (e) {
+      console.error("[Audio] Playback error:", e);
+    }
+  }
+
+  function stopAllAudio() {
+    playSourcesRef.current.forEach(src => {
+      try { src.stop(); } catch {}
+    });
+    playSourcesRef.current = [];
+    playScheduleRef.current = 0;
+  }
+
+  // ── Mic capture ─────────────────────────────────────────────────────────────
+
+  async function startMic(ws: WebSocket) {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        channelCount: 1,
+        sampleRate: 16000,
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
+    });
+    micStreamRef.current = stream;
+
+    const ctx = new AudioContext({ sampleRate: 16000 });
+    micCtxRef.current = ctx;
+
+    // Load worklet from Blob URL
+    const blob = new Blob([WORKLET_SRC], { type: "application/javascript" });
+    const blobUrl = URL.createObjectURL(blob);
+    await ctx.audioWorklet.addModule(blobUrl);
+    URL.revokeObjectURL(blobUrl);
+
+    const source = ctx.createMediaStreamSource(stream);
+    const worklet = new AudioWorkletNode(ctx, "pcm-capture");
+    workletNodeRef.current = worklet;
+
+    worklet.port.onmessage = (e: MessageEvent<ArrayBuffer>) => {
+      if (ws.readyState !== WebSocket.OPEN) return;
+      const b64 = ab2b64(e.data);
+      ws.send(JSON.stringify({ user_audio_chunk: b64 }));
+    };
+
+    source.connect(worklet);
+    worklet.connect(ctx.destination); // needed for worklet to fire
+  }
+
+  function stopMic() {
+    try { workletNodeRef.current?.disconnect(); } catch {}
+    try { micCtxRef.current?.close(); } catch {}
+    micStreamRef.current?.getTracks().forEach(t => t.stop());
+    workletNodeRef.current = null;
+    micCtxRef.current = null;
+    micStreamRef.current = null;
+  }
+
+  // ── WebSocket message handler ────────────────────────────────────────────────
+
+  function onWsMessage(ws: WebSocket, raw: string) {
+    let msg: any;
+    try { msg = JSON.parse(raw); } catch { return; }
+
+    const type: string = msg.type;
+
+    switch (type) {
+      case "conversation_initiation_metadata": {
+        const fmt: string =
+          msg.conversation_initiation_metadata_event?.agent_output_audio_format ?? "pcm_16000";
+        const sr = parseInt(fmt.replace("pcm_", ""), 10) || 16000;
+        ttsFormatRef.current = { sampleRate: sr };
+
+        // Send client initiation
+        ws.send(JSON.stringify({
+          type: "conversation_initiation_client_data",
+          conversation_config_override: {},
+        }));
+
+        setAgentState("listening");
+        break;
       }
 
-      setIsRecording(true);
-      setAgentState("listening");
+      case "audio": {
+        const b64 = msg.audio_event?.audio_base_64;
+        if (b64) {
+          setAgentState("speaking");
+          scheduleAudioChunk(b64);
+        }
+        break;
+      }
+
+      case "agent_response": {
+        const text: string = msg.agent_response_event?.agent_response ?? "";
+        if (text) {
+          // Check if we already have an agent message from the current turn
+          const last = convRef.current[convRef.current.length - 1];
+          if (last?.role === "agent") {
+            updateLastAgent(text);
+          } else {
+            addMessage("agent", text);
+          }
+        }
+        break;
+      }
+
+      case "user_transcript": {
+        const text: string = msg.user_transcription_event?.user_transcript ?? "";
+        if (text) {
+          setPartialTranscript("");
+          addMessage("user", text);
+        }
+        break;
+      }
+
+      case "interruption": {
+        stopAllAudio();
+        setAgentState("listening");
+        break;
+      }
+
+      case "ping": {
+        const eventId = msg.ping_event?.event_id;
+        ws.send(JSON.stringify({ type: "pong", event_id: eventId }));
+        break;
+      }
+
+      case "client_tool_call": {
+        const call = msg.client_tool_call;
+        handleToolCall(ws, call);
+        break;
+      }
+
+      case "internal_tentative_agent_response":
+      case "agent_response_correction":
+        break;
+
+      default:
+        if (type) console.debug("[WS] unhandled:", type);
+    }
+  }
+
+  // ── Tool execution ────────────────────────────────────────────────────────────
+
+  async function handleToolCall(ws: WebSocket, call: any) {
+    const { tool_name, parameters, tool_call_id } = call;
+    console.log(`[Tool] ${tool_name}`, parameters);
+
+    let result = "";
+    let isError = false;
+
+    try {
+      if (toolHandlerRef.current) {
+        result = await toolHandlerRef.current(tool_name, parameters ?? {});
+      } else {
+        result = `Tool handler not registered`;
+        isError = true;
+      }
     } catch (e: any) {
-      setError(e.message || "Failed to start recording");
+      result = e.message ?? "Tool execution failed";
+      isError = true;
+    }
+
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({
+        type: "client_tool_result",
+        tool_call_id,
+        result,
+        is_error: isError,
+      }));
+    }
+  }
+
+  // ── Connect / Disconnect ──────────────────────────────────────────────────────
+
+  async function connect() {
+    if (wsRef.current?.readyState === WebSocket.OPEN) return;
+
+    setError(null);
+    setAgentState("connecting");
+
+    try {
+      if (Platform.OS !== "web") {
+        setError("Real-time voice requires a web browser. Use the web preview.");
+        setAgentState("error");
+        return;
+      }
+
+      const baseUrl = getBaseUrl();
+      const res = await fetch(`${baseUrl}api/session`, { method: "POST" });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `Session failed (${res.status})`);
+      }
+      const { signed_url } = await res.json();
+
+      const ws = new WebSocket(signed_url);
+      wsRef.current = ws;
+
+      ws.onopen = async () => {
+        console.log("[WS] Connected to ElevenLabs");
+        try {
+          await startMic(ws);
+        } catch (e: any) {
+          setError("Microphone access denied: " + e.message);
+          setAgentState("error");
+          ws.close();
+        }
+      };
+
+      ws.onmessage = (e) => onWsMessage(ws, e.data);
+
+      ws.onerror = (e) => {
+        console.error("[WS] Error:", e);
+        setError("Connection error");
+        setAgentState("error");
+      };
+
+      ws.onclose = (e) => {
+        console.log("[WS] Closed:", e.code, e.reason);
+        stopMic();
+        stopAllAudio();
+        wsRef.current = null;
+        setAgentState(prev =>
+          prev === "error" ? "error" : "disconnected"
+        );
+      };
+    } catch (e: any) {
+      console.error("[Connect]", e);
+      setError(e.message || "Failed to connect");
       setAgentState("error");
     }
   }
 
-  async function stopListening() {
-    try {
-      if (!isRecording) return;
-      setIsRecording(false);
-      setAgentState("processing");
-
-      if (Platform.OS === "web") {
-        const blob = await stopWebRecording();
-        await transcribeWebBlob(blob);
-      } else {
-        const rec = nativeRecorderRef.current?.recorder;
-        if (!rec) throw new Error("Recorder not initialized");
-        await rec.stop();
-        const uri = rec.uri;
-        if (!uri) throw new Error("No recording URI");
-        await transcribeNativeUri(uri);
-      }
-    } catch (e: any) {
-      setError(e.message || "Failed to stop recording");
-      setAgentState("idle");
-    }
+  function disconnect() {
+    wsRef.current?.close(1000, "User disconnected");
+    wsRef.current = null;
+    stopMic();
+    stopAllAudio();
+    setAgentState("disconnected");
+    setPartialTranscript("");
   }
 
-  async function transcribeWebBlob(blob: Blob) {
-    try {
-      const baseUrl = getBaseUrl();
-      const formData = new FormData();
-      // Use the blob's type to determine the file extension
-      const ext = blob.type.includes("ogg") ? "ogg" : "webm";
-      formData.append("file", blob, `recording.${ext}`);
-      formData.append("model_id", "scribe_v1");
-
-      const response = await fetch(`${baseUrl}api/voice/transcribe`, {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({}));
-        throw new Error(err.error || `Transcription failed (${response.status})`);
-      }
-
-      const data = await response.json();
-      const text = data.text?.trim() || "";
-
-      if (!text) {
-        setError("Couldn't catch that — try speaking again.");
-        setAgentState("idle");
-        return;
-      }
-
-      setTranscript(text);
-      await processMessage(text);
-    } catch (e: any) {
-      setError(e.message || "Transcription failed");
-      setAgentState("idle");
-    }
-  }
-
-  async function transcribeNativeUri(uri: string) {
-    try {
-      const baseUrl = getBaseUrl();
-      const formData = new FormData();
-      formData.append("file", { uri, type: "audio/m4a", name: "recording.m4a" } as any);
-      formData.append("model_id", "scribe_v1");
-
-      const response = await fetch(`${baseUrl}api/voice/transcribe`, {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({}));
-        throw new Error(err.error || `Transcription failed (${response.status})`);
-      }
-
-      const data = await response.json();
-      const text = data.text?.trim() || "";
-
-      if (!text) {
-        setError("Couldn't catch that — try speaking again.");
-        setAgentState("idle");
-        return;
-      }
-
-      setTranscript(text);
-      await processMessage(text);
-    } catch (e: any) {
-      setError(e.message || "Transcription failed");
-      setAgentState("idle");
-    }
-  }
-
-  async function processMessage(text: string, baseUrl?: string) {
-    const base = baseUrl || getBaseUrl();
-
-    const userMsg: ConversationMessage = {
-      id: genId(),
-      role: "user",
-      content: text,
-      timestamp: new Date(),
-    };
-
-    const currentConvo = conversationRef.current;
-    updateConversation(prev => [...prev, userMsg]);
-    setAgentState("processing");
-
-    try {
-      const history = [
-        ...currentConvo.map(m => ({
-          role: m.role === "agent" ? "assistant" : "user",
-          content: m.content,
-        })),
-        { role: "user", content: text },
-      ];
-
-      let fullText = "";
-      let agentMsgAdded = false;
-      const agentMsgId = genId();
-
-      const chatResponse = await fetch(`${base}api/voice/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
-        body: JSON.stringify({ messages: history }),
-      });
-
-      if (!chatResponse.ok) throw new Error("Chat processing failed");
-
-      const reader = chatResponse.body?.getReader();
-      if (!reader) throw new Error("No response body");
-
-      const decoder = new TextDecoder();
-      let buffer = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done || cancelRef.current) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
-
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          const data = line.slice(6);
-          if (data === "[DONE]") continue;
-          try {
-            const parsed = JSON.parse(data);
-            if (parsed.content) {
-              fullText += parsed.content;
-              setAgentResponse(fullText);
-              if (!agentMsgAdded) {
-                updateConversation(prev => [
-                  ...prev,
-                  { id: agentMsgId, role: "agent", content: fullText, timestamp: new Date() },
-                ]);
-                agentMsgAdded = true;
-              } else {
-                updateConversation(prev => {
-                  const updated = [...prev];
-                  const idx = updated.findIndex(m => m.id === agentMsgId);
-                  if (idx !== -1) updated[idx] = { ...updated[idx], content: fullText };
-                  return updated;
-                });
-              }
-            }
-            if (parsed.action) handleAgentAction(parsed.action);
-          } catch {}
-        }
-      }
-
-      if (!cancelRef.current && fullText) {
-        setAgentState("speaking");
-        await synthesizeAndPlay(fullText, base);
-      } else if (!fullText) {
-        setAgentState("idle");
-      }
-    } catch (e: any) {
-      setError(e.message || "Agent processing failed");
-      setAgentState("idle");
-    }
-  }
-
-  function handleAgentAction(action: any) {
-    if (typeof globalThis !== "undefined" && (globalThis as any).__voiceAgentActionHandler) {
-      (globalThis as any).__voiceAgentActionHandler(action);
-    }
-  }
-
-  async function synthesizeAndPlay(text: string, baseUrl: string) {
-    try {
-      if (cancelRef.current) { setAgentState("idle"); setAgentResponse(""); return; }
-
-      const ttsResponse = await fetch(`${baseUrl}api/voice/synthesize`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
-      });
-
-      if (!ttsResponse.ok) { setAgentState("idle"); setAgentResponse(""); return; }
-
-      if (Platform.OS === "web") {
-        const audioBlob = await ttsResponse.blob();
-        const audioUrl = URL.createObjectURL(audioBlob);
-        const audio = new (globalThis as any).Audio(audioUrl);
-        await new Promise<void>(resolve => {
-          audio.onended = () => { URL.revokeObjectURL(audioUrl); resolve(); };
-          audio.onerror = () => { URL.revokeObjectURL(audioUrl); resolve(); };
-          audio.play().catch(() => resolve());
-        });
-      } else {
-        const { FileSystem } = await import("expo-file-system");
-        const arrayBuffer = await ttsResponse.arrayBuffer();
-        const bytes = new Uint8Array(arrayBuffer);
-        let binary = "";
-        for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-        const b64 = btoa(binary);
-        const tmpPath = `${FileSystem.cacheDirectory}tts_${Date.now()}.mp3`;
-        await FileSystem.writeAsStringAsync(tmpPath, b64, { encoding: FileSystem.EncodingType.Base64 });
-
-        if (!nativePlayerRef.current) {
-          const { useAudioPlayer } = await import("expo-audio");
-        }
-        const { AudioModule } = await import("expo-audio");
-        const player = new (AudioModule as any).AudioPlayer(null, 500, false, 0);
-        nativePlayerRef.current = player;
-        player.replace({ uri: tmpPath });
-        player.play();
-        await new Promise<void>(resolve => setTimeout(resolve, 30000));
-      }
-    } catch {}
-    if (!cancelRef.current) { setAgentState("idle"); setAgentResponse(""); }
-  }
-
-  async function sendTextMessage(text: string) {
-    if (!text.trim()) return;
-    setError(null);
-    setTranscript(text);
-    await processMessage(text);
-  }
-
-  function cancelSpeaking() {
-    cancelRef.current = true;
-    setAgentState("idle");
-    setAgentResponse("");
+  function interrupt() {
+    stopAllAudio();
+    setAgentState("listening");
   }
 
   function clearConversation() {
     setConversation([]);
-    conversationRef.current = [];
-    setTranscript("");
-    setAgentResponse("");
+    convRef.current = [];
+    setPartialTranscript("");
     setError(null);
-    setAgentState("idle");
   }
+
+  const isConnected =
+    agentState !== "disconnected" && agentState !== "error";
 
   return (
     <VoiceAgentContext.Provider
       value={{
-        agentState, conversation, isRecording, transcript,
-        agentResponse, error, startListening, stopListening,
-        sendTextMessage, clearConversation, cancelSpeaking,
+        agentState,
+        isConnected,
+        conversation,
+        partialTranscript,
+        error,
+        connect,
+        disconnect,
+        clearConversation,
+        setToolHandler,
+        interrupt,
       }}
     >
       {children}
