@@ -58,6 +58,7 @@ interface VoiceAgentContextType {
   interrupt: () => void;
   setCatalog: (items: unknown[]) => void;
   setCurrentOrder: (order: unknown[]) => void;
+  setSquareCredentials: (token: string, locationId: string) => void;
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -172,6 +173,8 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
   const commandHandlerRef = useRef<CommandHandler | null>(null);
   const catalogRef = useRef<unknown[]>([]);
   const currentOrderRef = useRef<unknown[]>([]);
+  const squareTokenRef = useRef<string>("");
+  const squareLocationIdRef = useRef<string>("");
   const isRunning = useRef(false);
 
   // Web Audio refs
@@ -201,19 +204,32 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
     ]);
   }, []);
 
+  const sendContextUpdate = useCallback((overrides: Record<string, unknown> = {}) => {
+    ws.current?.send(JSON.stringify({
+      type: "x.context_update",
+      catalog: catalogRef.current,
+      order: currentOrderRef.current,
+      squareToken: squareTokenRef.current,
+      squareLocationId: squareLocationIdRef.current,
+      ...overrides,
+    }));
+  }, []);
+
   const setCatalog = useCallback((items: unknown[]) => {
     catalogRef.current = items;
-    ws.current?.send(
-      JSON.stringify({ type: "x.context_update", catalog: items, order: currentOrderRef.current })
-    );
-  }, []);
+    sendContextUpdate({ catalog: items });
+  }, [sendContextUpdate]);
 
   const setCurrentOrder = useCallback((order: unknown[]) => {
     currentOrderRef.current = order;
-    ws.current?.send(
-      JSON.stringify({ type: "x.context_update", catalog: catalogRef.current, order })
-    );
-  }, []);
+    sendContextUpdate({ order });
+  }, [sendContextUpdate]);
+
+  const setSquareCredentials = useCallback((token: string, locationId: string) => {
+    squareTokenRef.current = token;
+    squareLocationIdRef.current = locationId;
+    sendContextUpdate({ squareToken: token, squareLocationId: locationId });
+  }, [sendContextUpdate]);
 
   const setToolHandler = useCallback((h: CommandHandler) => {
     commandHandlerRef.current = h;
@@ -599,6 +615,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
         interrupt,
         setCatalog,
         setCurrentOrder,
+        setSquareCredentials,
       }}
     >
       {children}

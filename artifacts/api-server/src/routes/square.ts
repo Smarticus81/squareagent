@@ -44,7 +44,7 @@ router.get("/oauth/authorize", (req: Request, res: Response): void => {
   const params = new URLSearchParams({
     client_id: appId,
     response_type: "code",
-    scope: "MERCHANT_PROFILE_READ ITEMS_READ ORDERS_WRITE ORDERS_READ PAYMENTS_WRITE",
+    scope: "MERCHANT_PROFILE_READ ITEMS_READ ORDERS_WRITE ORDERS_READ PAYMENTS_WRITE INVENTORY_READ INVENTORY_WRITE",
     state,
     redirect_uri: redirectUri,
     session: "false",

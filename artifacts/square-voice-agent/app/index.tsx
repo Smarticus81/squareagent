@@ -181,6 +181,7 @@ export default function MainScreen() {
     interrupt,
     setCatalog,
     setCurrentOrder,
+    setSquareCredentials,
   } = useVoiceAgent();
 
   const {
@@ -212,9 +213,15 @@ export default function MainScreen() {
 
   useEffect(() => {
     setCatalog(
-      catalogItems.map((c) => ({ id: c.id, name: c.name, price: c.price, category: c.category }))
+      catalogItems.map((c) => ({ id: c.id, variationId: c.variationId, name: c.name, price: c.price, category: c.category }))
     );
   }, [catalogItems, setCatalog]);
+
+  useEffect(() => {
+    if (accessToken && locationId) {
+      setSquareCredentials(accessToken, locationId);
+    }
+  }, [accessToken, locationId, setSquareCredentials]);
 
   useEffect(() => {
     setCurrentOrder(
