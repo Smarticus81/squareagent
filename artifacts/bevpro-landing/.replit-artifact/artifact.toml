@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/bevpro/"
+title = "Bevpro — Voice Ordering for Event Bars"
+version = "1.0.0"
+id = "artifacts/bevpro-landing"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+localPort = 25532
+name = "web"
+paths = ["/bevpro/"]
+
+[services.development]
+run = "pnpm --filter @workspace/bevpro-landing run dev"
+
+[services.env]
+PORT = "25532"
+BASE_PATH = "/bevpro/"
+
+[services.production]
+build = ["pnpm", "--filter", "@workspace/bevpro-landing", "run", "build"]
+publicDir = "artifacts/bevpro-landing/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"

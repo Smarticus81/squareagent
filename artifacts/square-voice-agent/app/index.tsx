@@ -414,7 +414,7 @@ export default function MainScreen() {
                 </>
               ) : (
                 <>
-                  <Text style={styles.emptyConvoTitle}>Voice Bar POS</Text>
+                  <Text style={styles.emptyConvoTitle}>Bevpro</Text>
                   <Text style={styles.emptyConvoSub}>
                     {Platform.OS === "web" && isWakeWordSupported()
                       ? 'Press "Wake Word Mode" to arm the agent.\nSay "Hey Bar" to start giving orders.'

@@ -1,43 +1,25 @@
 /**
- * Wake word detection using the browser's built-in SpeechRecognition API.
- * Runs locally in the browser — no API calls, zero cost, zero latency.
- *
- * Flow:
- *   startWakeWord() → listen for WAKE_WORDS → onWakeWordDetected()
- *   while listening: detect STOP_PHRASES → onStopDetected()
- *
- * Automatically restarts on `onend` so recognition stays continuous.
+ * Wake word detection using the browser's SpeechRecognition API.
+ * Fixed: race condition in restart loop, proper cleanup on stop.
  */
-
 import { useRef, useCallback, useState } from "react";
 import { Platform } from "react-native";
 
-export const WAKE_WORDS = ["hey bar", "hey bars", "a bar", "okay bar"];
+export const WAKE_WORDS = ["hey bar", "hey bars", "a bar", "okay bar", "hey bev", "bevpro"];
 export const STOP_PHRASES = ["shut down", "stop listening", "shut it down", "turn off"];
 export const TERMINATE_PHRASES = [
-  "goodbye",
-  "good bye",
-  "wake word mode",
-  "back to sleep",
-  "go to sleep",
-  "nothing else",
-  "that's all",
-  "thats all",
-  "see you",
+  "goodbye", "good bye", "wake word mode", "back to sleep",
+  "go to sleep", "nothing else", "that's all", "thats all",
+  "see you", "stop agent",
 ];
 
-function getSpeechRecognition(): typeof SpeechRecognition | null {
-  if (Platform.OS !== "web") return null;
-  if (typeof window === "undefined") return null;
-  return (
-    (window as any).SpeechRecognition ||
-    (window as any).webkitSpeechRecognition ||
-    null
-  );
+function getSR(): any {
+  if (Platform.OS !== "web" || typeof window === "undefined") return null;
+  return (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition || null;
 }
 
 export function isWakeWordSupported(): boolean {
-  return getSpeechRecognition() !== null;
+  return getSR() !== null;
 }
 
 interface UseWakeWordOptions {
@@ -54,90 +36,109 @@ export function useWakeWord({
   onStopDetected,
 }: UseWakeWordOptions) {
   const [isListening, setIsListening] = useState(false);
-  const recognitionRef = useRef<any>(null);
   const activeRef = useRef(false);
+  const recRef = useRef<any>(null);
+  const restartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const cleanupRec = useCallback(() => {
+    const r = recRef.current;
+    if (!r) return;
+    r.onresult = null;
+    r.onerror = null;
+    r.onend = null;
+    try { r.stop(); } catch {}
+    recRef.current = null;
+  }, []);
 
   const stop = useCallback(() => {
     activeRef.current = false;
-    if (recognitionRef.current) {
-      try { recognitionRef.current.stop(); } catch {}
-      recognitionRef.current = null;
+    if (restartTimerRef.current) {
+      clearTimeout(restartTimerRef.current);
+      restartTimerRef.current = null;
     }
+    cleanupRec();
     setIsListening(false);
-  }, []);
+  }, [cleanupRec]);
 
-  const start = useCallback(() => {
-    const SpeechRecognition = getSpeechRecognition();
-    if (!SpeechRecognition) {
-      console.warn("[WakeWord] SpeechRecognition not supported");
-      return;
-    }
-    if (activeRef.current) return;
+  const spawnRec = useCallback(() => {
+    if (!activeRef.current) return;
 
-    activeRef.current = true;
-    setIsListening(true);
+    const SR = getSR();
+    if (!SR) return;
 
-    function spawnRecognition() {
+    cleanupRec();
+
+    const rec = new SR();
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.lang = "en-US";
+    rec.maxAlternatives = 3;
+    recRef.current = rec;
+
+    rec.onresult = (event: any) => {
       if (!activeRef.current) return;
-
-      const rec = new SpeechRecognition!();
-      rec.continuous = true;
-      rec.interimResults = true;
-      rec.lang = "en-US";
-      rec.maxAlternatives = 3;
-
-      rec.onresult = (event: any) => {
-        if (!activeRef.current) return;
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          const result = event.results[i];
-          const transcripts: string[] = [];
-          for (let j = 0; j < result.length; j++) {
-            transcripts.push(result[j].transcript.toLowerCase().trim());
-          }
-          const combined = transcripts.join(" ");
-
-          if (stopPhrases.some((p) => combined.includes(p))) {
-            console.log("[WakeWord] Stop phrase detected:", combined);
-            stop();
-            onStopDetected();
-            return;
-          }
-
-          if (wakeWords.some((w) => combined.includes(w))) {
-            console.log("[WakeWord] Wake word detected:", combined);
-            stop();
-            onWakeWordDetected();
-            return;
-          }
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const result = event.results[i];
+        const transcripts: string[] = [];
+        for (let j = 0; j < result.length; j++) {
+          transcripts.push(result[j].transcript.toLowerCase().trim());
         }
-      };
+        const combined = transcripts.join(" ");
 
-      rec.onerror = (e: any) => {
-        if (!activeRef.current) return;
-        if (e.error === "not-allowed" || e.error === "service-not-allowed") {
-          console.error("[WakeWord] Mic permission denied");
+        if (stopPhrases.some((p) => combined.includes(p))) {
+          console.log("[WakeWord] Stop phrase:", combined);
           stop();
+          onStopDetected();
           return;
         }
-        console.warn("[WakeWord] Recognition error:", e.error, "— restarting");
-      };
 
-      rec.onend = () => {
-        if (!activeRef.current) return;
-        try { spawnRecognition(); } catch {}
-      };
-
-      try {
-        rec.start();
-        recognitionRef.current = rec;
-      } catch (e) {
-        console.warn("[WakeWord] Failed to start:", e);
-        setTimeout(() => { if (activeRef.current) spawnRecognition(); }, 500);
+        if (wakeWords.some((w) => combined.includes(w))) {
+          console.log("[WakeWord] Wake word:", combined);
+          stop();
+          onWakeWordDetected();
+          return;
+        }
       }
-    }
+    };
 
-    spawnRecognition();
-  }, [wakeWords, stopPhrases, onWakeWordDetected, onStopDetected, stop]);
+    rec.onerror = (e: any) => {
+      if (!activeRef.current) return;
+      if (e.error === "not-allowed" || e.error === "service-not-allowed") {
+        console.error("[WakeWord] Mic denied");
+        stop();
+        return;
+      }
+      console.warn("[WakeWord] Error:", e.error, "— will retry");
+    };
+
+    rec.onend = () => {
+      if (!activeRef.current) return;
+      recRef.current = null;
+      restartTimerRef.current = setTimeout(() => {
+        restartTimerRef.current = null;
+        if (activeRef.current) spawnRec();
+      }, 200);
+    };
+
+    try {
+      rec.start();
+    } catch (e) {
+      console.warn("[WakeWord] Start error:", e);
+      recRef.current = null;
+      restartTimerRef.current = setTimeout(() => {
+        restartTimerRef.current = null;
+        if (activeRef.current) spawnRec();
+      }, 500);
+    }
+  }, [wakeWords, stopPhrases, onWakeWordDetected, onStopDetected, stop, cleanupRec]);
+
+  const start = useCallback(() => {
+    if (!getSR()) { console.warn("[WakeWord] Not supported"); return; }
+    if (activeRef.current) return;
+    activeRef.current = true;
+    setIsListening(true);
+    spawnRec();
+  }, [spawnRec]);
 
   return { isListening, startWakeWord: start, stopWakeWord: stop };
 }

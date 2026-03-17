@@ -1,23 +1,26 @@
 {
   "expo": {
-    "name": "Voice POS",
-    "slug": "square-voice-agent",
+    "name": "Bevpro",
+    "slug": "bevpro",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "square-voice-agent",
+    "scheme": "bevpro",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "splash": {
       "image": "./assets/images/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#0A0A0A"
+      "backgroundColor": "#050508"
     },
     "ios": {
-      "supportsTablet": false
+      "supportsTablet": true,
+      "bundleIdentifier": "com.bevpro.app",
+      "buildNumber": "1"
     },
     "android": {
-      "backgroundColor": "#0A0A0A"
+      "backgroundColor": "#050508",
+      "package": "com.bevpro.app"
     },
     "web": {
       "favicon": "./assets/images/icon.png"
@@ -34,7 +37,7 @@
       [
         "expo-audio",
         {
-          "microphonePermission": "Allow Voice POS to access your microphone for voice ordering."
+          "microphonePermission": "Allow Bevpro to access your microphone for voice ordering."
         }
       ]
     ],
