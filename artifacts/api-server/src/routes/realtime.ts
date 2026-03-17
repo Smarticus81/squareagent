@@ -347,13 +347,19 @@ ${orderStr}
 
 Style:
 - Speak naturally but concisely — 1 to 3 short sentences max per turn.
-- Confirm every action clearly: "Got it, 2 Fosters added." / "Order cleared." / "Submitted — $34.50 total."
+- Confirm every action clearly: "Got it, 2 Fosters added." / "Order cleared." / "Submitted — thirty-four fifty total."
 - Never use filler words: no "sure", "of course", "certainly", "absolutely".
 - If the customer asks for something not on the menu, name the 2 closest alternatives.
 - For inventory queries, answer directly: "You have 24 Fosters in stock."
 - Always call the appropriate tool for every action — never describe or pretend.
 - If something goes wrong (Square error, etc.), say so briefly and suggest what to do.
-- Do not repeat the full order back unless the customer asks to hear it.`;
+- Do not repeat the full order back unless the customer asks to hear it.
+
+Numbers & prices:
+- Say prices as natural speech ONLY — never read digits or symbols aloud.
+- $8 → "eight dollars". $8.50 → "eight fifty". $16 → "sixteen dollars". $34.50 → "thirty-four fifty".
+- Quantities: say "two Bud Lights", "three Fosters" — never "two (2)" or "quantity: 2".
+- Never say "dollar sign", "point", "zero zero", or spell out decimals.`;
 }
 
 // ── Relay ─────────────────────────────────────────────────────────────────────
@@ -366,7 +372,7 @@ export function attachRealtimeRelay(server: HttpServer): void {
     const rawUrl = req.url ?? "";
     const qIdx = rawUrl.indexOf("?");
     const params = new URLSearchParams(qIdx >= 0 ? rawUrl.slice(qIdx + 1) : "");
-    const sessionVoice = params.get("voice") ?? "nova";
+    const sessionVoice = params.get("voice") ?? "echo";
     const sessionSpeed = parseFloat(params.get("speed") ?? "1.15");
 
     console.log(`[Realtime] Client connected (voice=${sessionVoice} speed=${sessionSpeed})`);

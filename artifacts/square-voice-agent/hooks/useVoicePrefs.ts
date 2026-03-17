@@ -4,13 +4,14 @@ import { useState, useEffect, useCallback } from "react";
 export const VOICES = [
   { id: "alloy",   label: "Alloy",   desc: "Neutral" },
   { id: "ash",     label: "Ash",     desc: "Warm" },
+  { id: "ballad",  label: "Ballad",  desc: "Melodic" },
+  { id: "cedar",   label: "Cedar",   desc: "Grounded" },
   { id: "coral",   label: "Coral",   desc: "Bright" },
   { id: "echo",    label: "Echo",    desc: "Crisp" },
-  { id: "fable",   label: "Fable",   desc: "Expressive" },
-  { id: "nova",    label: "Nova",    desc: "Energetic" },
-  { id: "onyx",    label: "Onyx",    desc: "Deep" },
+  { id: "marin",   label: "Marin",   desc: "Smooth" },
   { id: "sage",    label: "Sage",    desc: "Calm" },
   { id: "shimmer", label: "Shimmer", desc: "Clear" },
+  { id: "verse",   label: "Verse",   desc: "Expressive" },
 ];
 
 export const SPEEDS = [
@@ -23,8 +24,10 @@ export const SPEEDS = [
 const VOICE_KEY = "bevpro_voice";
 const SPEED_KEY = "bevpro_speed";
 
-export const DEFAULT_VOICE = "nova";
+export const DEFAULT_VOICE = "echo";
 export const DEFAULT_SPEED = 1.15;
+
+const SUPPORTED_IDS = new Set(VOICES.map((v) => v.id));
 
 export function useVoicePrefs() {
   const [voice, setVoiceState] = useState(DEFAULT_VOICE);
@@ -36,13 +39,15 @@ export function useVoicePrefs() {
       AsyncStorage.getItem(VOICE_KEY),
       AsyncStorage.getItem(SPEED_KEY),
     ]).then(([v, s]) => {
-      if (v) setVoiceState(v);
+      if (v && SUPPORTED_IDS.has(v)) setVoiceState(v);
+      else if (v) AsyncStorage.removeItem(VOICE_KEY).catch(() => {});
       if (s) setSpeedState(parseFloat(s));
       setLoaded(true);
     }).catch(() => setLoaded(true));
   }, []);
 
   const setVoice = useCallback(async (v: string) => {
+    if (!SUPPORTED_IDS.has(v)) return;
     setVoiceState(v);
     await AsyncStorage.setItem(VOICE_KEY, v).catch(() => {});
   }, []);
@@ -61,8 +66,9 @@ export async function getVoicePrefs(): Promise<{ voice: string; speed: number }>
       AsyncStorage.getItem(VOICE_KEY),
       AsyncStorage.getItem(SPEED_KEY),
     ]);
+    const safeVoice = v && SUPPORTED_IDS.has(v) ? v : DEFAULT_VOICE;
     return {
-      voice: v ?? DEFAULT_VOICE,
+      voice: safeVoice,
       speed: s ? parseFloat(s) : DEFAULT_SPEED,
     };
   } catch {

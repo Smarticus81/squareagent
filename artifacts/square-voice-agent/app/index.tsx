@@ -31,7 +31,6 @@ const ORB      = 180;   // sphere diameter (light mode)
 const RING_D   = 266;   // ring SVG container diameter (dark mode)
 const RING_C   = 133;   // SVG center
 const RING_R   = 103;   // circle radius of ring stroke
-const INNER_D  = 150;   // inner dark sphere diameter (dark mode)
 
 // ── Orb colors ─────────────────────────────────────────────────────────────────
 const SPHERE_COLORS: Record<OrbKey, readonly [string, string, string]> = {
@@ -154,34 +153,6 @@ const THEMES = {
   },
 };
 
-// ── State icon inside the orb ─────────────────────────────────────────────────
-function StateIcon({ orbKey }: { orbKey: OrbKey }) {
-  if (orbKey === "speaking") {
-    return (
-      <View style={{ flexDirection: "row", gap: 13 }}>
-        <View style={{ width: 10, height: 32, borderRadius: 5, backgroundColor: "rgba(255,255,255,0.86)" }} />
-        <View style={{ width: 10, height: 32, borderRadius: 5, backgroundColor: "rgba(255,255,255,0.86)" }} />
-      </View>
-    );
-  }
-  if (orbKey === "thinking") {
-    return (
-      <View style={{ flexDirection: "row", gap: 8 }}>
-        {[0, 1, 2].map((i) => (
-          <View key={i} style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "rgba(255,255,255,0.76)" }} />
-        ))}
-      </View>
-    );
-  }
-  // Logo mark
-  return (
-    <View style={{ width: 30, height: 30, alignItems: "center", justifyContent: "center" }}>
-      <View style={{ position: "absolute", width: 30, height: 30, borderRadius: 15, borderWidth: 1.5, borderColor: "rgba(255,255,255,0.72)" }} />
-      <View style={{ position: "absolute", top: 5, right: 5, width: 6, height: 6, borderRadius: 3, backgroundColor: "rgba(255,255,255,0.72)" }} />
-    </View>
-  );
-}
-
 // ── Light mode: gradient 3D sphere ────────────────────────────────────────────
 function OrbSphere({ orbKey }: { orbKey: OrbKey }) {
   const [displayed, setDisplayed] = useState<OrbKey>(orbKey);
@@ -269,30 +240,16 @@ function OrbSphere({ orbKey }: { orbKey: OrbKey }) {
           end={{ x: 1, y: 1 }}
           style={StyleSheet.absoluteFill}
         />
-        {/* State icon */}
-        <View style={[StyleSheet.absoluteFill, { alignItems: "center", justifyContent: "center" }]}>
-          <StateIcon orbKey={displayed} />
-        </View>
       </Animated.View>
     </Animated.View>
   );
 }
 
-// ── Dark mode: rotating gradient ring ─────────────────────────────────────────
+// ── Dark mode: hollow rotating gradient ring ───────────────────────────────────
 function OrbRing({ orbKey }: { orbKey: OrbKey }) {
-  const [displayed, setDisplayed] = useState<OrbKey>(orbKey);
-  const fadeOp  = useSharedValue(1);
   const rotation = useSharedValue(0);
-  const ringOp  = useSharedValue(RING_GLOW[orbKey]);
-
-  useEffect(() => {
-    fadeOp.value = withSequence(
-      withTiming(0, { duration: 180 }),
-      withTiming(1, { duration: 360 }),
-    );
-    const t = setTimeout(() => setDisplayed(orbKey), 180);
-    return () => clearTimeout(t);
-  }, [orbKey]);
+  const ringOp   = useSharedValue(RING_GLOW[orbKey]);
+  const scale    = useSharedValue(1);
 
   useEffect(() => {
     rotation.value = withRepeat(
@@ -300,15 +257,37 @@ function OrbRing({ orbKey }: { orbKey: OrbKey }) {
       -1,
     );
     ringOp.value = withTiming(RING_GLOW[orbKey], { duration: 600 });
+
+    if (orbKey === "speaking") {
+      scale.value = withRepeat(withSequence(
+        withTiming(1.09, { duration: 280, easing: Easing.out(Easing.quad) }),
+        withTiming(0.94, { duration: 280, easing: Easing.in(Easing.quad) }),
+      ), -1);
+    } else if (orbKey === "listening" || orbKey === "wake") {
+      scale.value = withRepeat(withSequence(
+        withTiming(1.06, { duration: 900, easing: Easing.inOut(Easing.sin) }),
+        withTiming(0.96, { duration: 900, easing: Easing.inOut(Easing.sin) }),
+      ), -1);
+    } else if (orbKey === "thinking") {
+      scale.value = withRepeat(withSequence(
+        withTiming(1.03, { duration: 1700, easing: Easing.inOut(Easing.sin) }),
+        withTiming(0.97, { duration: 1700, easing: Easing.inOut(Easing.sin) }),
+      ), -1);
+    } else {
+      scale.value = withRepeat(withSequence(
+        withTiming(1.015, { duration: 2600, easing: Easing.inOut(Easing.sin) }),
+        withTiming(0.990, { duration: 2600, easing: Easing.inOut(Easing.sin) }),
+      ), -1);
+    }
   }, [orbKey]);
 
-  const fadeStyle = useAnimatedStyle(() => ({ opacity: fadeOp.value }));
-  const rotStyle  = useAnimatedStyle(() => ({ transform: [{ rotate: `${rotation.value}deg` }] }));
-  const ringStyle = useAnimatedStyle(() => ({ opacity: ringOp.value }));
+  const rotStyle   = useAnimatedStyle(() => ({ transform: [{ rotate: `${rotation.value}deg` }] }));
+  const ringStyle  = useAnimatedStyle(() => ({ opacity: ringOp.value }));
+  const scaleStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
 
   return (
-    <Animated.View style={[{ width: RING_D, height: RING_D, alignItems: "center", justifyContent: "center" }, fadeStyle]}>
-      {/* Rotating gradient ring */}
+    <Animated.View style={[{ width: RING_D, height: RING_D, alignItems: "center", justifyContent: "center" }, scaleStyle]}>
+      {/* Rotating gradient ring — hollow, nothing inside */}
       <Animated.View style={[StyleSheet.absoluteFill, rotStyle]}>
         <Animated.View style={[StyleSheet.absoluteFill, ringStyle]}>
           <Svg width={RING_D} height={RING_D}>
@@ -330,11 +309,6 @@ function OrbRing({ orbKey }: { orbKey: OrbKey }) {
           </Svg>
         </Animated.View>
       </Animated.View>
-
-      {/* Inner dark sphere */}
-      <View style={[s.innerSphere, { width: INNER_D, height: INNER_D, borderRadius: INNER_D / 2 }]}>
-        <StateIcon orbKey={displayed} />
-      </View>
     </Animated.View>
   );
 }
@@ -390,6 +364,12 @@ export default function MainScreen() {
   const [panelOpen, setPanelOpen] = useState(false);
   const [panelTab,  setPanelTab]  = useState<"order" | "menu" | "settings">("order");
 
+  // Refs so handleCmds never has a stale closure on catalog or order
+  const catalogItemsRef = useRef(catalogItems);
+  const currentOrderRef = useRef(currentOrder);
+  useEffect(() => { catalogItemsRef.current = catalogItems; }, [catalogItems]);
+  useEffect(() => { currentOrderRef.current = currentOrder; }, [currentOrder]);
+
   // ── Wake word ──────────────────────────────────────────────────────────────
   type WakeMode = "idle" | "wake" | "command";
   const [wakeMode, setWakeMode] = useState<WakeMode>("idle");
@@ -431,15 +411,22 @@ export default function MainScreen() {
     setCurrentOrder((currentOrder?.items ?? []).map((i) => ({ name: i.catalogItem.name, price: i.catalogItem.price, quantity: i.quantity })));
   }, [currentOrder, setCurrentOrder]);
 
+  // accessToken/locationId refs so submit never goes stale either
+  const accessTokenRef  = useRef(accessToken);
+  const locationIdRef   = useRef(locationId);
+  useEffect(() => { accessTokenRef.current  = accessToken;  }, [accessToken]);
+  useEffect(() => { locationIdRef.current   = locationId;   }, [locationId]);
+
   const handleCmds = useCallback((cmds: OrderCommand[]) => {
     for (const cmd of cmds) {
       switch (cmd.action) {
         case "add": {
-          let found = cmd.item_id ? catalogItems.find((c) => c.id === cmd.item_id) : undefined;
+          const items = catalogItemsRef.current;
+          let found = cmd.item_id ? items.find((c) => c.id === cmd.item_id) : undefined;
           if (!found && cmd.item_name) {
             const n = cmd.item_name.toLowerCase();
-            found = catalogItems.find((c) => c.name.toLowerCase() === n) ??
-                    catalogItems.find((c) => c.name.toLowerCase().includes(n) || n.includes(c.name.toLowerCase()));
+            found = items.find((c) => c.name.toLowerCase() === n) ??
+                    items.find((c) => c.name.toLowerCase().includes(n) || n.includes(c.name.toLowerCase()));
           }
           if (!found) break;
           addItem(found, cmd.quantity ?? 1);
@@ -448,22 +435,27 @@ export default function MainScreen() {
         }
         case "remove": {
           const n = (cmd.item_name ?? "").toLowerCase();
-          const line = currentOrder?.items.find((i) => i.catalogItem.name.toLowerCase() === n) ??
-                       currentOrder?.items.find((i) => i.catalogItem.name.toLowerCase().includes(n));
+          const ord = currentOrderRef.current;
+          const line = ord?.items.find((i) => i.catalogItem.name.toLowerCase() === n) ??
+                       ord?.items.find((i) => i.catalogItem.name.toLowerCase().includes(n));
           if (line) { removeItem(line.id); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); }
           break;
         }
         case "clear": clearOrder(); break;
-        case "submit":
-          if (!accessToken || !locationId || !currentOrder?.items.length) break;
-          submitOrder(accessToken, locationId).then((r) => {
+        case "submit": {
+          const tok = accessTokenRef.current;
+          const loc = locationIdRef.current;
+          const ord = currentOrderRef.current;
+          if (!tok || !loc || !ord?.items.length) break;
+          submitOrder(tok, loc).then((r) => {
             Haptics.notificationAsync(r.success ? Haptics.NotificationFeedbackType.Success : Haptics.NotificationFeedbackType.Error);
             if (r.success) { setPanelTab("order"); setPanelOpen(true); }
           });
           break;
+        }
       }
     }
-  }, [catalogItems, currentOrder, addItem, removeItem, clearOrder, submitOrder, accessToken, locationId]);
+  }, [addItem, removeItem, clearOrder, submitOrder]);
 
   useEffect(() => { setToolHandler(handleCmds); }, [handleCmds, setToolHandler]);
 
@@ -739,12 +731,6 @@ const s = StyleSheet.create({
   midGlow: {
     position: "absolute",
     width: ORB + 44, height: ORB + 44, borderRadius: (ORB + 44) / 2,
-  },
-
-  // Dark mode inner sphere
-  innerSphere: {
-    backgroundColor: "#0F0E2E",
-    alignItems: "center", justifyContent: "center",
   },
 
   // Below orb
