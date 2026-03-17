@@ -2,7 +2,11 @@
   "expo": {
     "name": "Bevpro",
     "slug": "bevpro",
+    "owner": "REPLACE_WITH_YOUR_EXPO_USERNAME",
     "version": "1.0.0",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "bevpro",
@@ -13,14 +17,26 @@
       "resizeMode": "contain",
       "backgroundColor": "#050508"
     },
+    "updates": {
+      "url": "https://u.expo.dev/REPLACE_WITH_EAS_PROJECT_ID"
+    },
     "ios": {
-      "supportsTablet": true,
+      "supportsTablet": false,
       "bundleIdentifier": "com.bevpro.app",
-      "buildNumber": "1"
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Bevpro uses your microphone to take drink orders by voice.",
+        "NSSpeechRecognitionUsageDescription": "Bevpro uses speech recognition for the voice ordering wake-word feature.",
+        "UIBackgroundModes": ["audio"]
+      }
     },
     "android": {
       "backgroundColor": "#050508",
-      "package": "com.bevpro.app"
+      "package": "com.bevpro.app",
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.INTERNET"
+      ]
     },
     "web": {
       "favicon": "./assets/images/icon.png"
@@ -34,6 +50,7 @@
       ],
       "expo-font",
       "expo-web-browser",
+      "expo-updates",
       [
         "expo-audio",
         {
@@ -44,6 +61,11 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "REPLACE_WITH_EAS_PROJECT_ID"
+      }
     }
   }
 }

@@ -121,3 +121,49 @@ To use with Square POS:
 5. Use voice or text to place orders
 
 Use Sandbox credentials for testing, Production for live use.
+
+## EAS Build / TestFlight
+
+EAS config: `artifacts/square-voice-agent/eas.json`
+Bundle ID: `com.bevpro.app`
+EAS CLI: `eas-cli@18.4.0` installed globally
+
+### One-time setup (run locally, not in Replit)
+```bash
+# 1. Install EAS CLI if not already installed
+npm install -g eas-cli
+
+# 2. Log in to your Expo account
+eas login
+
+# 3. cd into the app directory
+cd artifacts/square-voice-agent
+
+# 4. Create the EAS project (fills in projectId & owner in app.json automatically)
+eas init
+
+# 5. Set EXPO_PUBLIC_DOMAIN in eas.json "env" blocks to your deployed API domain
+#    e.g. "EXPO_PUBLIC_DOMAIN": "your-repl.replit.dev"
+```
+
+### Build profiles
+| Profile | Use case | Command |
+|---|---|---|
+| `development` | Expo Dev Client on device | `eas build --platform ios --profile development` |
+| `preview` | TestFlight internal testing | `eas build --platform ios --profile preview` |
+| `production` | App Store / TestFlight public | `eas build --platform ios --profile production` |
+
+### TestFlight workflow
+```bash
+# Build for TestFlight (internal testers)
+eas build --platform ios --profile preview
+
+# Or submit directly to App Store Connect (for external TestFlight)
+eas build --platform ios --profile production
+eas submit --platform ios --latest
+```
+
+### EAS Update (OTA patches without App Store review)
+```bash
+eas update --branch production --message "Fix: voice speed"
+```
