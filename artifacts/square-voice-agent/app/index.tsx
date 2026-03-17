@@ -24,6 +24,7 @@ import Animated, {
 } from "react-native-reanimated";
 
 import Colors from "@/constants/colors";
+import { useWakeWord, TERMINATE_PHRASES, isWakeWordSupported } from "@/hooks/useWakeWord";
 import { useVoiceAgent, ConversationMessage, AgentState, OrderCommand } from "@/context/VoiceAgentContext";
 import { useOrder } from "@/context/OrderContext";
 import { useSquare } from "@/context/SquareContext";
@@ -51,7 +52,7 @@ function ConversationBubble({ message }: { message: ConversationMessage }) {
 
 // ── Live orb indicator ───────────────────────────────────────────────────────
 
-function LiveOrb({ state }: { state: AgentState }) {
+function LiveOrb({ state, overrideColor, overrideLabel }: { state: AgentState; overrideColor?: string; overrideLabel?: string }) {
   const scale = useSharedValue(1);
   const opacity = useSharedValue(0.7);
 
@@ -115,13 +116,14 @@ function LiveOrb({ state }: { state: AgentState }) {
     error: "Error — tap to retry",
   };
 
+  const activeColor = overrideColor ?? colors[state];
   return (
     <View style={styles.orbWrapper}>
       {/* Outer glow */}
-      <Animated.View style={[styles.orbGlow, orbStyle, { backgroundColor: colors[state] + "22" }]} />
+      <Animated.View style={[styles.orbGlow, orbStyle, { backgroundColor: activeColor + "22" }]} />
       {/* Core */}
-      <Animated.View style={[styles.orbCore, orbStyle, { backgroundColor: colors[state] }]} />
-      <Text style={[styles.orbLabel, { color: colors[state] }]}>{labels[state]}</Text>
+      <Animated.View style={[styles.orbCore, orbStyle, { backgroundColor: activeColor }]} />
+      <Text style={[styles.orbLabel, { color: activeColor }]}>{overrideLabel ?? labels[state]}</Text>
     </View>
   );
 }
@@ -205,6 +207,63 @@ export default function MainScreen() {
 
   const [activeTab, setActiveTab] = useState<"voice" | "order" | "catalog">("voice");
   const listRef = useRef<FlatList>(null);
+
+  // ── Wake word mode (web only) ────────────────────────────────────────────────
+
+  type WakeMode = "idle" | "wake" | "command";
+  const [wakeMode, setWakeMode] = useState<WakeMode>("idle");
+  const wakeModeRef = useRef<WakeMode>("idle");
+  wakeModeRef.current = wakeMode;
+
+  const handleWakeWordDetected = useCallback(async () => {
+    setWakeMode("command");
+    await connect();
+  }, [connect]);
+
+  const handleWakeStopDetected = useCallback(() => {
+    disconnect();
+    setWakeMode("idle");
+  }, [disconnect]);
+
+  const { startWakeWord, stopWakeWord } = useWakeWord({
+    onWakeWordDetected: handleWakeWordDetected,
+    onStopDetected: handleWakeStopDetected,
+  });
+
+  const enterWakeMode = useCallback(() => {
+    setWakeMode("wake");
+    startWakeWord();
+  }, [startWakeWord]);
+
+  const exitToIdle = useCallback(() => {
+    stopWakeWord();
+    disconnect();
+    setWakeMode("idle");
+  }, [stopWakeWord, disconnect]);
+
+  const returnToWakeMode = useCallback(() => {
+    disconnect();
+    setWakeMode("idle");
+    setTimeout(() => {
+      if (wakeModeRef.current === "idle") {
+        setWakeMode("wake");
+        startWakeWord();
+      }
+    }, 400);
+  }, [disconnect, startWakeWord]);
+
+  // Detect termination phrases from agent conversation → return to wake mode
+  useEffect(() => {
+    if (Platform.OS !== "web" || wakeMode !== "command") return;
+    const userMsgs = conversation.filter((m) => m.role === "user");
+    const last = userMsgs[userMsgs.length - 1];
+    if (!last) return;
+    const text = last.content.toLowerCase();
+    if (TERMINATE_PHRASES.some((p) => text.includes(p))) {
+      const timer = setTimeout(() => returnToWakeMode(), 1800);
+      return () => clearTimeout(timer);
+    }
+  }, [conversation, wakeMode, returnToWakeMode]);
 
   const topPad = Platform.OS === "web" ? WEB_TOP_INSET : insets.top;
   const bottomPad = Platform.OS === "web" ? WEB_BOTTOM_INSET : insets.bottom;
@@ -338,12 +397,31 @@ export default function MainScreen() {
           contentContainerStyle={styles.conversationList}
           ListEmptyComponent={
             <View style={styles.emptyConvo}>
-              <Feather name="activity" size={36} color={Colors.dark.textMuted} />
-              <Text style={styles.emptyConvoTitle}>Continuous Voice Agent</Text>
-              <Text style={styles.emptyConvoSub}>
-                Press Start Agent — it listens continuously.{"\n"}
-                No tapping required. Just speak.
-              </Text>
+              <Feather
+                name={wakeMode === "wake" ? "mic" : "activity"}
+                size={36}
+                color={wakeMode === "wake" ? Colors.dark.wake : Colors.dark.textMuted}
+              />
+              {wakeMode === "wake" ? (
+                <>
+                  <Text style={[styles.emptyConvoTitle, { color: Colors.dark.wake }]}>
+                    Waiting for wake word…
+                  </Text>
+                  <Text style={styles.emptyConvoSub}>
+                    Say <Text style={{ color: Colors.dark.wake, fontStyle: "normal" }}>"Hey Bar"</Text> to start taking orders.{"\n"}
+                    Say <Text style={{ color: Colors.dark.textSecondary, fontStyle: "normal" }}>"Shut down"</Text> to stop listening.
+                  </Text>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.emptyConvoTitle}>Voice Bar POS</Text>
+                  <Text style={styles.emptyConvoSub}>
+                    {Platform.OS === "web" && isWakeWordSupported()
+                      ? 'Press "Wake Word Mode" to arm the agent.\nSay "Hey Bar" to start giving orders.'
+                      : "Press Start Agent — it listens continuously.\nNo tapping required. Just speak."}
+                  </Text>
+                </>
+              )}
             </View>
           }
           showsVerticalScrollIndicator={false}
@@ -381,10 +459,51 @@ export default function MainScreen() {
             />
           </Pressable>
 
-          {/* Center: Live orb + connect button */}
+          {/* Center: Live orb + controls */}
           <View style={styles.orbCenter}>
-            <LiveOrb state={agentState} />
-            <ConnectButton state={agentState} onPress={handleToggle} />
+            {Platform.OS === "web" && wakeMode === "wake" ? (
+              // Wake listening mode: purple pulsing orb
+              <>
+                <LiveOrb
+                  state="listening"
+                  overrideColor={Colors.dark.wake}
+                  overrideLabel="Wake listening"
+                />
+                <Pressable onPress={exitToIdle} style={styles.wakeStopBtn}>
+                  <Feather name="mic-off" size={18} color={Colors.dark.textSecondary} />
+                  <Text style={styles.wakeStopText}>Stop Listening</Text>
+                </Pressable>
+              </>
+            ) : Platform.OS === "web" && wakeMode === "command" ? (
+              // Agent active via wake word
+              <>
+                <LiveOrb state={agentState} />
+                <Pressable onPress={returnToWakeMode} style={styles.wakeReturnBtn}>
+                  <Feather name="mic" size={18} color={Colors.dark.wake} />
+                  <Text style={styles.wakeReturnText}>End → Wake Mode</Text>
+                </Pressable>
+              </>
+            ) : Platform.OS === "web" && isWakeWordSupported() ? (
+              // Idle on web with wake word support
+              <>
+                <LiveOrb state={agentState} />
+                <Pressable onPress={enterWakeMode} style={styles.wakeStartBtn}>
+                  <Feather name="mic" size={20} color={Colors.dark.wake} />
+                  <Text style={styles.wakeStartText}>Wake Word Mode</Text>
+                </Pressable>
+                <Pressable onPress={handleToggle} style={styles.manualConnectLink}>
+                  <Text style={styles.manualConnectText}>
+                    {isConnected ? "Stop manual session" : "Or connect manually"}
+                  </Text>
+                </Pressable>
+              </>
+            ) : (
+              // Native or web without speech recognition: standard button
+              <>
+                <LiveOrb state={agentState} />
+                <ConnectButton state={agentState} onPress={handleToggle} />
+              </>
+            )}
           </View>
 
           {/* Right: interrupt */}
@@ -400,6 +519,17 @@ export default function MainScreen() {
             />
           </Pressable>
         </View>
+
+        {/* Wake command mode hint */}
+        {Platform.OS === "web" && wakeMode === "command" && (
+          <View style={styles.wakeHintBar}>
+            <Feather name="info" size={12} color={Colors.dark.wake} />
+            <Text style={styles.wakeHintText}>
+              Say <Text style={{ color: Colors.dark.wake }}>"goodbye"</Text> or{" "}
+              <Text style={{ color: Colors.dark.wake }}>"go to sleep"</Text> to return to wake mode
+            </Text>
+          </View>
+        )}
 
         {/* Error message */}
         {error ? (
@@ -777,6 +907,40 @@ const styles = StyleSheet.create({
   },
   noticeText: {
     flex: 1, fontFamily: "Inter_400Regular", fontSize: 12, color: Colors.dark.textSecondary,
+  },
+
+  // Wake word UI
+  wakeStartBtn: {
+    flexDirection: "row", alignItems: "center", gap: 8,
+    paddingVertical: 13, paddingHorizontal: 28, borderRadius: 14,
+    backgroundColor: Colors.dark.wakeDim,
+    borderWidth: 1.5, borderColor: Colors.dark.wake,
+  },
+  wakeStartText: { fontFamily: "Inter_600SemiBold", fontSize: 15, color: Colors.dark.wake },
+  wakeStopBtn: {
+    flexDirection: "row", alignItems: "center", gap: 8,
+    paddingVertical: 12, paddingHorizontal: 24, borderRadius: 14,
+    backgroundColor: Colors.dark.surface, borderWidth: 1, borderColor: Colors.dark.surfaceBorder,
+  },
+  wakeStopText: { fontFamily: "Inter_500Medium", fontSize: 14, color: Colors.dark.textSecondary },
+  wakeReturnBtn: {
+    flexDirection: "row", alignItems: "center", gap: 8,
+    paddingVertical: 12, paddingHorizontal: 24, borderRadius: 14,
+    backgroundColor: Colors.dark.wakeDim, borderWidth: 1, borderColor: Colors.dark.wake + "55",
+  },
+  wakeReturnText: { fontFamily: "Inter_500Medium", fontSize: 14, color: Colors.dark.wake },
+  wakeHintBar: {
+    flexDirection: "row", alignItems: "center", gap: 6,
+    marginHorizontal: 16, marginBottom: 8,
+    backgroundColor: Colors.dark.wakeDim, borderRadius: 10,
+    paddingHorizontal: 14, paddingVertical: 8,
+    borderWidth: 1, borderColor: Colors.dark.wake + "33",
+  },
+  wakeHintText: { flex: 1, fontFamily: "Inter_400Regular", fontSize: 12, color: Colors.dark.textSecondary },
+  manualConnectLink: { paddingVertical: 4, paddingHorizontal: 8 },
+  manualConnectText: {
+    fontFamily: "Inter_400Regular", fontSize: 12,
+    color: Colors.dark.textMuted, textDecorationLine: "underline",
   },
 
   // Order tab

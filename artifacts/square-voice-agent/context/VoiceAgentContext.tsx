@@ -487,15 +487,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
     socket.onopen = async () => {
       console.log("[Realtime] WebSocket open");
       isRunning.current = true;
-
-      // Send current catalog/order context
-      socket.send(
-        JSON.stringify({
-          type: "x.context_update",
-          catalog: catalogRef.current,
-          order: currentOrderRef.current,
-        })
-      );
+      // Full context (catalog + order + credentials) is sent on session.created
 
       if (Platform.OS === "web") {
         // AudioContext was already created in connect() during user gesture

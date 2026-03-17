@@ -395,9 +395,10 @@ export function attachRealtimeRelay(server: HttpServer): void {
             input_audio_transcription: { model: "whisper-1" },
             turn_detection: {
               type: "server_vad",
-              threshold: 0.5,
-              prefix_padding_ms: 300,
-              silence_duration_ms: 600,
+              threshold: 0.35,
+              prefix_padding_ms: 200,
+              silence_duration_ms: 380,
+              create_response: true,
             },
             tools: TOOLS,
             tool_choice: "auto",

@@ -22,6 +22,8 @@ const Colors = {
     micActive: "#00D084",
     micInactive: "#2A2A2A",
     cardShadow: "#00000066",
+    wake: "#7C3AED",
+    wakeDim: "#7C3AED33",
   },
 };
 
