@@ -3,9 +3,9 @@ import React, {
 } from "react";
 import {
   View, Text, StyleSheet, Pressable, Platform,
-  FlatList, Modal, ActivityIndicator, Linking,
+  FlatList, Modal, ActivityIndicator, Linking, useWindowDimensions,
 } from "react-native";
-import Svg, { Circle, Defs, RadialGradient, Stop, G, ClipPath } from "react-native-svg";
+import Svg, { Circle } from "react-native-svg";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
@@ -24,242 +24,159 @@ import { useOrder } from "@/context/OrderContext";
 import { useSquare } from "@/context/SquareContext";
 import { OrderCard } from "@/components/OrderCard";
 
-// ── Animated SVG circle ───────────────────────────────────────────────────────
+// ── Animated SVG ──────────────────────────────────────────────────────────────
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
 const WEB_TOP = 67;
 const WEB_BOT = 34;
-
-// ── Types ─────────────────────────────────────────────────────────────────────
 type OrbKey = AgentState | "wake";
 
-// ── Particle system ───────────────────────────────────────────────────────────
-// Viewbox is -110 -110 220 220 → radius = 100 usable units
-const SVG_R = 100;
-const N = 48;
-
+// ── Particle ──────────────────────────────────────────────────────────────────
 interface P {
-  bx: number; by: number;     // base position (home)
-  r: number;                  // dot radius
-  ax: number; ay: number;     // drift amplitude
-  fx: number; fy: number;     // drift frequency
-  fo: number;                 // opacity flicker frequency
-  px: number; py: number;     // position phases (for desync)
-  po: number;                 // opacity phase
-  bo: number;                 // base opacity ceiling
+  bx: number; by: number;
+  r: number;
+  ax: number; ay: number;
+  fx: number; fy: number; fo: number;
+  px: number; py: number; po: number;
+  bo: number;
 }
 
-function mkParticles(): P[] {
-  return Array.from({ length: N }, () => {
-    const a = Math.random() * Math.PI * 2;
-    const d = Math.sqrt(Math.random()) * SVG_R * 0.86; // uniform disk distribution
-    return {
-      bx: Math.cos(a) * d,
-      by: Math.sin(a) * d,
-      r:  0.6 + Math.random() * 2.4,
-      ax: 4   + Math.random() * 16,
-      ay: 4   + Math.random() * 16,
-      // frequencies: tiny so motion is slow and organic
-      fx: 0.00016 + Math.random() * 0.00054,
-      fy: 0.00014 + Math.random() * 0.00048,
-      fo: 0.00012 + Math.random() * 0.00040,
-      px: Math.random() * Math.PI * 2,
-      py: Math.random() * Math.PI * 2,
-      po: Math.random() * Math.PI * 2,
-      bo: 0.22 + Math.random() * 0.72,
-    };
-  });
+function mkParticles(W: number, H: number, n: number): P[] {
+  return Array.from({ length: n }, () => ({
+    bx: Math.random() * W,
+    by: Math.random() * H,
+    r:  1.5 + Math.random() * 3.5,     // 1.5 – 5px, clearly visible
+    ax: 8  + Math.random() * 24,
+    ay: 8  + Math.random() * 24,
+    fx: 0.00013 + Math.random() * 0.00044,
+    fy: 0.00011 + Math.random() * 0.00040,
+    fo: 0.00009 + Math.random() * 0.00034,
+    px: Math.random() * Math.PI * 2,
+    py: Math.random() * Math.PI * 2,
+    po: Math.random() * Math.PI * 2,
+    bo: 0.38 + Math.random() * 0.52,   // 0.38 – 0.90, clearly visible
+  }));
 }
 
-// Each particle is its own component, driven by a single shared time value
 function Dot({ p, time, fill }: { p: P; time: SharedValue<number>; fill: string }) {
-  const ap = useAnimatedProps(() => {
-    const t = time.value;
-    return {
-      cx: p.bx + Math.sin(t * p.fx + p.px) * p.ax,
-      cy: p.by + Math.sin(t * p.fy + p.py) * p.ay,
-      // opacity: smooth sinusoidal flicker, always positive
-      opacity: p.bo * (0.12 + 0.88 * ((1 + Math.sin(t * p.fo + p.po)) * 0.5)),
-    };
-  });
+  const ap = useAnimatedProps(() => ({
+    cx: p.bx + Math.sin(time.value * p.fx + p.px) * p.ax,
+    cy: p.by + Math.sin(time.value * p.fy + p.py) * p.ay,
+    opacity: p.bo * (0.12 + 0.88 * ((1 + Math.sin(time.value * p.fo + p.po)) * 0.5)),
+  }));
   return <AnimatedCircle animatedProps={ap} r={p.r} fill={fill} />;
 }
 
-// ── Orb palette (per state) ───────────────────────────────────────────────────
-interface Pal {
-  dot: string;       // particle fill color
-  gc: string; gco: number;   // gradient center
-  gm: string; gmo: number;   // gradient mid
-  ring: string;      // boundary ring stroke
-  bloom: string;     // soft bloom behind orb
-}
+// ── Palette ───────────────────────────────────────────────────────────────────
+interface Pal { dot: string; glow: string; edge: string }
 
 const PAL: Record<OrbKey, Pal> = {
-  disconnected: {
-    dot: "#a5b4fc",
-    gc: "#4338ca", gco: 0.40,  gm: "#1e1b4b", gmo: 0.10,
-    ring: "rgba(165,180,252,0.14)", bloom: "rgba(99,102,241,0.06)",
-  },
-  connecting: {
-    dot: "#fcd34d",
-    gc: "#b45309", gco: 0.48,  gm: "#451a03", gmo: 0.14,
-    ring: "rgba(252,211,77,0.22)",  bloom: "rgba(217,119,6,0.09)",
-  },
-  listening: {
-    dot: "#7dd3fc",
-    gc: "#0284c7", gco: 0.52,  gm: "#0c4a6e", gmo: 0.18,
-    ring: "rgba(125,211,252,0.32)", bloom: "rgba(14,165,233,0.13)",
-  },
-  thinking: {
-    dot: "#fde68a",
-    gc: "#78716c", gco: 0.32,  gm: "#292524", gmo: 0.08,
-    ring: "rgba(253,230,138,0.16)", bloom: "rgba(120,113,108,0.06)",
-  },
-  speaking: {
-    dot: "#6ee7b7",
-    gc: "#059669", gco: 0.50,  gm: "#022c22", gmo: 0.16,
-    ring: "rgba(110,231,183,0.28)", bloom: "rgba(5,150,105,0.12)",
-  },
-  error: {
-    dot: "#fca5a5",
-    gc: "#b91c1c", gco: 0.48,  gm: "#450a0a", gmo: 0.14,
-    ring: "rgba(252,165,165,0.22)", bloom: "rgba(185,28,28,0.08)",
-  },
-  wake: {
-    dot: "#d8b4fe",
-    gc: "#7c3aed", gco: 0.50,  gm: "#2e1065", gmo: 0.16,
-    ring: "rgba(216,180,254,0.28)", bloom: "rgba(124,58,237,0.11)",
-  },
+  disconnected: { dot: "#5C3E08", glow: "rgba(160,118,20,0.18)",  edge: "rgba(175,138,44,0.20)" },
+  connecting:   { dot: "#6A3010", glow: "rgba(170,84,22,0.20)",   edge: "rgba(190,100,38,0.22)" },
+  listening:    { dot: "#0E3E6E", glow: "rgba(20,96,180,0.20)",   edge: "rgba(36,112,196,0.22)" },
+  thinking:     { dot: "#302828", glow: "rgba(100,88,88,0.16)",   edge: "rgba(120,108,108,0.18)" },
+  speaking:     { dot: "#0E3E28", glow: "rgba(18,100,64,0.20)",   edge: "rgba(32,120,80,0.22)" },
+  error:        { dot: "#600A0A", glow: "rgba(150,24,24,0.18)",   edge: "rgba(170,40,40,0.20)" },
+  wake:         { dot: "#340A70", glow: "rgba(88,32,172,0.20)",   edge: "rgba(108,48,192,0.22)" },
 };
 
-// ── Nebula orb ────────────────────────────────────────────────────────────────
-function NebulaOrb({ orbKey }: { orbKey: OrbKey }) {
-  const pal = PAL[orbKey] ?? PAL.disconnected;
-  const particles = useMemo(mkParticles, []);
-
-  // Single monotonic timer — all particles derive position from this
+// ── Full-screen particle cloud ────────────────────────────────────────────────
+function ParticleCloud({ W, H, orbKey }: { W: number; H: number; orbKey: OrbKey }) {
+  const { dot } = PAL[orbKey] ?? PAL.disconnected;
+  const particles = useMemo(() => mkParticles(W, H, 52), [W, H]);
   const time = useSharedValue(0);
+
   useEffect(() => {
-    // Tick indefinitely at 1 unit/ms (effectively forever)
-    time.value = withTiming(9_000_000, {
-      duration: 9_000_000_000,
-      easing: Easing.linear,
-    });
+    time.value = withTiming(9_000_000, { duration: 9_000_000_000, easing: Easing.linear });
   }, []);
 
-  // Scale + bloom driven by agent state
-  const sc   = useSharedValue(1);
-  const blSc = useSharedValue(1);
+  const cloudOp = useSharedValue(0.78);
+  useEffect(() => {
+    const t = (orbKey === "listening" || orbKey === "speaking" || orbKey === "wake")
+      ? 1.0 : orbKey === "thinking" ? 0.58 : 0.78;
+    cloudOp.value = withTiming(t, { duration: 700 });
+  }, [orbKey]);
+
+  const cloudStyle = useAnimatedStyle(() => ({ opacity: cloudOp.value }));
+
+  return (
+    <Animated.View style={[StyleSheet.absoluteFill, cloudStyle]} pointerEvents="none">
+      <Svg width={W} height={H} viewBox={`0 0 ${W} ${H}`}>
+        {particles.map((p, i) => (
+          <Dot key={i} p={p} time={time} fill={dot} />
+        ))}
+      </Svg>
+    </Animated.View>
+  );
+}
+
+// ── Center glow — lives INSIDE the logo container ────────────────────────────
+function useGlowAnim(orbKey: OrbKey) {
+  const sc = useSharedValue(1);
+  const op = useSharedValue(0.88);
 
   useEffect(() => {
     if (orbKey === "listening") {
       sc.value = withRepeat(withSequence(
-        withTiming(1.05, { duration: 2400, easing: Easing.inOut(Easing.sin) }),
+        withTiming(1.18, { duration: 2400, easing: Easing.inOut(Easing.sin) }),
         withTiming(1.00, { duration: 2400, easing: Easing.inOut(Easing.sin) }),
       ), -1);
-      blSc.value = withRepeat(withSequence(
-        withTiming(1.6, { duration: 2400 }), withTiming(1.1, { duration: 2400 }),
-      ), -1);
+      op.value = withTiming(1.0, { duration: 500 });
     } else if (orbKey === "speaking") {
       sc.value = withRepeat(withSequence(
-        withTiming(1.12, { duration: 460, easing: Easing.out(Easing.quad) }),
-        withTiming(1.03, { duration: 460, easing: Easing.in(Easing.quad) }),
+        withTiming(1.50, { duration: 480, easing: Easing.out(Easing.quad) }),
+        withTiming(1.15, { duration: 480, easing: Easing.in(Easing.quad) }),
       ), -1);
-      blSc.value = withRepeat(withSequence(
-        withTiming(2.0, { duration: 460 }), withTiming(1.4, { duration: 460 }),
-      ), -1);
+      op.value = withTiming(1.0, { duration: 300 });
     } else if (orbKey === "wake") {
       sc.value = withRepeat(withSequence(
-        withTiming(1.06, { duration: 2900, easing: Easing.inOut(Easing.sin) }),
+        withTiming(1.28, { duration: 2900, easing: Easing.inOut(Easing.sin) }),
         withTiming(1.00, { duration: 2900, easing: Easing.inOut(Easing.sin) }),
       ), -1);
-      blSc.value = withRepeat(withSequence(
-        withTiming(1.7, { duration: 2900 }), withTiming(1.1, { duration: 2900 }),
-      ), -1);
+      op.value = withTiming(1.0, { duration: 500 });
     } else if (orbKey === "thinking") {
       sc.value = withRepeat(withSequence(
-        withTiming(0.97, { duration: 1100 }), withTiming(0.99, { duration: 1100 }),
+        withTiming(0.90, { duration: 1100 }), withTiming(0.97, { duration: 1100 }),
       ), -1);
-      blSc.value = withTiming(0.75, { duration: 700 });
+      op.value = withTiming(0.62, { duration: 600 });
     } else {
-      sc.value  = withTiming(1, { duration: 800 });
-      blSc.value = withTiming(1, { duration: 800 });
+      sc.value = withTiming(1, { duration: 800 });
+      op.value = withTiming(0.88, { duration: 700 });
     }
   }, [orbKey]);
 
-  const orbSt  = useAnimatedStyle(() => ({ transform: [{ scale: sc.value }] }));
-  const blSt   = useAnimatedStyle(() => ({
-    transform: [{ scale: blSc.value }],
-    opacity: Math.min(1, (blSc.value - 0.7) * 0.55),
+  return useAnimatedStyle(() => ({
+    transform: [{ scale: sc.value }],
+    opacity: op.value,
   }));
-
-  return (
-    <View style={ns.wrap}>
-      {/* Diffuse bloom that breathes with the orb */}
-      <Animated.View style={[ns.bloom, blSt, { backgroundColor: pal.bloom }]} />
-
-      {/* Orb body */}
-      <Animated.View style={orbSt}>
-        <Svg width={220} height={220} viewBox="-110 -110 220 220">
-          <Defs>
-            <RadialGradient id="g" cx="50%" cy="50%" r="50%">
-              <Stop offset="0%"   stopColor={pal.gc} stopOpacity={pal.gco} />
-              <Stop offset="55%"  stopColor={pal.gm} stopOpacity={pal.gmo} />
-              <Stop offset="100%" stopColor="#000000" stopOpacity={0} />
-            </RadialGradient>
-            <ClipPath id="c">
-              <Circle cx={0} cy={0} r={SVG_R} />
-            </ClipPath>
-          </Defs>
-
-          {/* Radial glow base */}
-          <Circle cx={0} cy={0} r={SVG_R} fill="url(#g)" />
-
-          {/* Particles — clipped to sphere boundary */}
-          <G clipPath="url(#c)">
-            {particles.map((p, i) => (
-              <Dot key={i} p={p} time={time} fill={pal.dot} />
-            ))}
-          </G>
-
-          {/* Thin outer ring */}
-          <Circle cx={0} cy={0} r={SVG_R} fill="none" stroke={pal.ring} strokeWidth={0.6} />
-        </Svg>
-      </Animated.View>
-    </View>
-  );
 }
 
 // ── Logo ──────────────────────────────────────────────────────────────────────
 function Logo() {
   return (
-    <View style={ns.logoWrap}>
-      {/* Geometric mark: thin ring + accent bead */}
-      <View style={ns.logoMark}>
-        <View style={ns.logoRing} />
-        <View style={ns.logoBead} />
+    <View style={s.logoWrap}>
+      <View style={s.logoMark}>
+        <View style={s.logoRing} />
+        <View style={s.logoBead} />
       </View>
-      <Text style={ns.logoWord}>BEVPRO</Text>
+      <Text style={s.logoWord}>BEVPRO</Text>
     </View>
   );
 }
 
-// ── Floating conversation line ────────────────────────────────────────────────
+// ── Conversation ghost text ───────────────────────────────────────────────────
 function GhostLine({ msg, rank }: { msg: ConversationMessage; rank: number }) {
   const isUser = msg.role === "user";
-  const opacity = rank === 0 ? (isUser ? 0.40 : 0.84) : rank === 1 ? 0.22 : 0.10;
-  const size    = rank === 0 ? (isUser ? 14 : 16) : 13;
+  const op = rank === 0 ? (isUser ? 0.42 : 0.80) : rank === 1 ? 0.26 : 0.12;
+  const sz = rank === 0 ? (isUser ? 14 : 16) : 13;
   return (
     <Animated.Text
       entering={FadeIn.duration(500)}
       exiting={FadeOut.duration(400)}
       style={{
-        textAlign: "center",
-        fontSize: size,
-        lineHeight: 24,
-        letterSpacing: isUser ? 0.1 : 0.2,
+        textAlign: "center", fontSize: sz, lineHeight: 24,
         fontFamily: isUser ? "Inter_300Light" : "Inter_400Regular",
-        color: `rgba(255,255,255,${opacity})`,
+        color: `rgba(20,16,8,${op})`, letterSpacing: 0.1,
       }}
     >
       {msg.content}
@@ -267,24 +184,16 @@ function GhostLine({ msg, rank }: { msg: ConversationMessage; rank: number }) {
   );
 }
 
-// ── State labels ──────────────────────────────────────────────────────────────
-const LABEL: Partial<Record<OrbKey, { t: string; c: string }>> = {
-  connecting: { t: "CONNECTING", c: "rgba(252,211,77,0.45)" },
-  thinking:   { t: "\u00B7  \u00B7  \u00B7", c: "rgba(253,230,138,0.40)" },
-  error:      { t: "ERROR",      c: "rgba(252,165,165,0.52)" },
-  wake:       { t: "HEY BAR",   c: "rgba(216,180,254,0.52)" },
-};
-
 // ── Main screen ───────────────────────────────────────────────────────────────
 export default function MainScreen() {
-  const insets    = useSafeAreaInsets();
-  const topPad    = Platform.OS === "web" ? WEB_TOP : insets.top;
-  const bottomPad = Platform.OS === "web" ? WEB_BOT : insets.bottom;
+  const insets = useSafeAreaInsets();
+  const { width: W, height: H } = useWindowDimensions();
+  const topPad    = Platform.OS === "web" ? WEB_TOP  : insets.top;
+  const bottomPad = Platform.OS === "web" ? WEB_BOT  : insets.bottom;
 
-  // ── Contexts ───────────────────────────────────────────────────────────────
   const {
     agentState, isConnected, conversation, partialTranscript, error,
-    connect, disconnect, clearConversation, setToolHandler, interrupt,
+    connect, disconnect, setToolHandler, interrupt,
     setCatalog, setCurrentOrder, setSquareCredentials,
   } = useVoiceAgent();
 
@@ -295,14 +204,13 @@ export default function MainScreen() {
 
   const { isConfigured, catalogItems, isLoadingCatalog, accessToken, locationId } = useSquare();
 
-  // ── Panel ──────────────────────────────────────────────────────────────────
   const [panelOpen, setPanelOpen] = useState(false);
-  const [panelTab,  setPanelTab]  = useState<"order" | "catalog">("order");
+  const [panelTab,  setPanelTab]  = useState<"order" | "menu" | "settings">("order");
 
   // ── Wake word ──────────────────────────────────────────────────────────────
   type WakeMode = "idle" | "wake" | "command";
-  const [wakeMode, setWakeMode]   = useState<WakeMode>("idle");
-  const wakeModeRef               = useRef<WakeMode>("idle");
+  const [wakeMode, setWakeMode] = useState<WakeMode>("idle");
+  const wakeModeRef = useRef<WakeMode>("idle");
   wakeModeRef.current = wakeMode;
 
   const onWake = useCallback(async () => { setWakeMode("command"); await connect(); }, [connect]);
@@ -333,9 +241,10 @@ export default function MainScreen() {
     }
   }, [conversation, wakeMode, disconnect]);
 
-  // ── Sync contexts ──────────────────────────────────────────────────────────
   useEffect(() => {
-    setCatalog(catalogItems.map((c) => ({ id: c.id, variationId: c.variationId, name: c.name, price: c.price, category: c.category })));
+    setCatalog(catalogItems.map((c) => ({
+      id: c.id, variationId: c.variationId, name: c.name, price: c.price, category: c.category,
+    })));
   }, [catalogItems, setCatalog]);
 
   useEffect(() => {
@@ -343,12 +252,13 @@ export default function MainScreen() {
   }, [accessToken, locationId, setSquareCredentials]);
 
   useEffect(() => {
-    setCurrentOrder((currentOrder?.items ?? []).map((i) => ({ name: i.catalogItem.name, price: i.catalogItem.price, quantity: i.quantity })));
+    setCurrentOrder((currentOrder?.items ?? []).map((i) => ({
+      name: i.catalogItem.name, price: i.catalogItem.price, quantity: i.quantity,
+    })));
   }, [currentOrder, setCurrentOrder]);
 
-  // ── Order commands ─────────────────────────────────────────────────────────
-  const handleCmds = useCallback((commands: OrderCommand[]) => {
-    for (const cmd of commands) {
+  const handleCmds = useCallback((cmds: OrderCommand[]) => {
+    for (const cmd of cmds) {
       switch (cmd.action) {
         case "add": {
           let found = cmd.item_id ? catalogItems.find((c) => c.id === cmd.item_id) : undefined;
@@ -373,7 +283,9 @@ export default function MainScreen() {
         case "submit": {
           if (!accessToken || !locationId || !currentOrder?.items.length) break;
           submitOrder(accessToken, locationId).then((r) => {
-            Haptics.notificationAsync(r.success ? Haptics.NotificationFeedbackType.Success : Haptics.NotificationFeedbackType.Error);
+            Haptics.notificationAsync(r.success
+              ? Haptics.NotificationFeedbackType.Success
+              : Haptics.NotificationFeedbackType.Error);
             if (r.success) { setPanelTab("order"); setPanelOpen(true); }
           });
           break;
@@ -384,8 +296,7 @@ export default function MainScreen() {
 
   useEffect(() => { setToolHandler(handleCmds); }, [handleCmds, setToolHandler]);
 
-  // ── Orb tap ────────────────────────────────────────────────────────────────
-  async function handleOrbPress() {
+  async function handleLogoPress() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (Platform.OS === "web") {
       if (wakeMode === "wake")    { exitWake(); return; }
@@ -401,118 +312,128 @@ export default function MainScreen() {
     : wakeMode === "command" ? agentState
     : agentState;
 
-  const msgs = conversation.slice(-3);
+  const msgs       = conversation.slice(-3);
   const orderCount = currentOrder?.items.length ?? 0;
-  const stateLabel = wakeMode === "wake"
-    ? { t: wakeListening ? "HEY BAR" : "OPENING MIC\u2026", c: "rgba(216,180,254,0.50)" }
-    : LABEL[orbKey] ?? null;
+  const edgeColor  = PAL[orbKey]?.edge ?? PAL.disconnected.edge;
+  const glowColor  = PAL[orbKey]?.glow ?? PAL.disconnected.glow;
+  const glowStyle  = useGlowAnim(orbKey);
+
+  const stateLabel: { t: string; c: string } | null =
+    wakeMode === "wake"
+      ? { t: wakeListening ? "HEY BAR" : "OPENING MIC…", c: "rgba(52,10,112,0.58)" }
+      : orbKey === "connecting" ? { t: "CONNECTING", c: "rgba(106,48,16,0.55)" }
+      : orbKey === "thinking"   ? { t: "\u00B7  \u00B7  \u00B7", c: "rgba(48,40,40,0.48)" }
+      : orbKey === "error"      ? { t: "ERROR", c: "rgba(96,10,10,0.62)" }
+      : null;
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <View style={s.root}>
-      {/* Subtle depth gradient on page background */}
-      <LinearGradient
-        colors={["#060818", "#0a0d24", "#060818"]}
-        style={StyleSheet.absoluteFill}
-        start={{ x: 0.5, y: 0 }}
-        end={{ x: 0.5, y: 1 }}
-      />
 
-      {/* ── Logo ── */}
-      <View style={[s.topRow, { paddingTop: topPad + 22 }]}>
-        <Logo />
+      {/* Particle cloud — full screen, behind everything */}
+      <ParticleCloud W={W} H={H} orbKey={orbKey} />
+
+      {/* Edge glow overlays — state-colored */}
+      <View style={s.edgeTop} pointerEvents="none">
+        <LinearGradient colors={[edgeColor, "transparent"]} style={StyleSheet.absoluteFill}
+          start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }} />
+      </View>
+      <View style={s.edgeBot} pointerEvents="none">
+        <LinearGradient colors={["transparent", edgeColor]} style={StyleSheet.absoluteFill}
+          start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }} />
+      </View>
+      <View style={s.edgeLeft} pointerEvents="none">
+        <LinearGradient colors={[edgeColor, "transparent"]} style={StyleSheet.absoluteFill}
+          start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} />
+      </View>
+      <View style={s.edgeRight} pointerEvents="none">
+        <LinearGradient colors={[edgeColor, "transparent"]} style={StyleSheet.absoluteFill}
+          start={{ x: 1, y: 0.5 }} end={{ x: 0, y: 0.5 }} />
       </View>
 
-      {/* ── Floating conversation — pinterEvents none so taps pass through ── */}
-      <View style={s.convoArea} pointerEvents="none">
-        {msgs.map((m, i) => (
-          <GhostLine key={m.id} msg={m} rank={msgs.length - 1 - i} />
-        ))}
-        {partialTranscript ? (
-          <Animated.Text entering={FadeIn.duration(180)} style={s.partial}>
-            {partialTranscript}
-          </Animated.Text>
-        ) : null}
+      {/* Main content */}
+      <View style={[s.content, { paddingTop: topPad }]}>
+
+        {/* Upper: conversation */}
+        <View style={s.convoArea} pointerEvents="none">
+          {msgs.map((m, i) => (
+            <GhostLine key={m.id} msg={m} rank={msgs.length - 1 - i} />
+          ))}
+          {partialTranscript ? (
+            <Animated.Text entering={FadeIn.duration(180)} style={s.partial}>
+              {partialTranscript}
+            </Animated.Text>
+          ) : null}
+        </View>
+
+        {/* Center: logo inside glow bubble */}
+        <View style={s.centerWrapper}>
+          {/* Glow circle fills the wrapper, scales behind the logo */}
+          <Animated.View
+            style={[StyleSheet.absoluteFill, s.glowCircle, { backgroundColor: glowColor }, glowStyle]}
+            pointerEvents="none"
+          />
+          <Pressable onPress={handleLogoPress} hitSlop={60} style={s.logoBtn}>
+            <Logo />
+          </Pressable>
+        </View>
+
+        {/* State label / tap hint below center */}
+        <View style={s.belowCenter}>
+          {stateLabel ? (
+            <Animated.Text key={stateLabel.t} entering={FadeIn.duration(600)} exiting={FadeOut.duration(400)}
+              style={[s.stateLabel, { color: stateLabel.c }]}>
+              {stateLabel.t}
+            </Animated.Text>
+          ) : orbKey === "disconnected" ? (
+            <Text style={s.tapHint}>tap to begin</Text>
+          ) : null}
+        </View>
+
+        {/* Lower breathing area */}
+        <View style={s.lowerArea}>
+          {agentState === "speaking" ? (
+            <Pressable onPress={interrupt} hitSlop={24}>
+              <View style={s.interruptDot} />
+            </Pressable>
+          ) : null}
+          {error ? <Text style={s.errorText}>{error}</Text> : null}
+        </View>
       </View>
 
-      {/* ── Particle orb ── */}
-      <Pressable onPress={handleOrbPress} style={s.orbArea} hitSlop={32}>
-        <NebulaOrb orbKey={orbKey} />
-      </Pressable>
-
-      {/* ── State label ── */}
-      {stateLabel ? (
-        <Animated.Text
-          key={stateLabel.t}
-          entering={FadeIn.duration(600)}
-          exiting={FadeOut.duration(400)}
-          style={[s.stateLabel, { color: stateLabel.c }]}
-        >
-          {stateLabel.t}
-        </Animated.Text>
-      ) : <View style={{ height: 34 }} />}
-
-      {/* ── Error whisper ── */}
-      {error ? (
-        <Animated.Text entering={FadeIn.duration(300)} style={s.errorWhisper}>
-          {error}
-        </Animated.Text>
-      ) : null}
-
-      {/* ── Bottom corners ── */}
-      <View style={[s.bottomRow, { paddingBottom: bottomPad + 22 }]}>
-
-        {/* Order indicator */}
-        <Pressable onPress={() => { setPanelTab("order"); setPanelOpen(true); }} hitSlop={22}>
-          {orderCount > 0 ? (
+      {/* Bottom bar */}
+      <View style={[s.bottomBar, { paddingBottom: bottomPad + 18 }]}>
+        <Pressable onPress={() => setPanelOpen(true)} hitSlop={22} style={s.hamburger}>
+          <Feather name="menu" size={18} color="rgba(20,16,8,0.32)" />
+        </Pressable>
+        <View style={{ flex: 1 }} />
+        {orderCount > 0 ? (
+          <Pressable onPress={() => { setPanelTab("order"); setPanelOpen(true); }} hitSlop={22}>
             <View style={s.orderBadge}>
               <Text style={s.orderBadgeNum}>{orderCount}</Text>
             </View>
-          ) : (
-            <View style={s.dot} />
-          )}
-        </Pressable>
-
-        {/* Interrupt — center, only while speaking */}
-        {agentState === "speaking" ? (
-          <Pressable onPress={interrupt} hitSlop={28} style={s.interruptWrap}>
-            <View style={s.interruptDot} />
           </Pressable>
-        ) : <View style={{ flex: 1 }} />}
-
-        {/* Settings indicator */}
-        <Pressable onPress={() => router.push("/setup")} hitSlop={22}>
-          <View style={[s.dot, isConfigured && s.dotActive]} />
-        </Pressable>
+        ) : null}
       </View>
 
       {/* ── Slide-up panel ── */}
-      <Modal
-        visible={panelOpen}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setPanelOpen(false)}
-      >
+      <Modal visible={panelOpen} transparent animationType="slide" onRequestClose={() => setPanelOpen(false)}>
         <Pressable style={s.backdrop} onPress={() => setPanelOpen(false)} />
-
         <View style={[s.panel, { paddingBottom: bottomPad + 20 }]}>
           <View style={s.panelHandle} />
 
-          {/* Panel tabs */}
-          <View style={s.panelHeader}>
-            {(["order", "catalog"] as const).map((tab) => (
-              <Pressable key={tab} onPress={() => setPanelTab(tab)} style={s.panelTabBtn}>
-                <Text style={[s.panelTabTxt, panelTab === tab && s.panelTabOn]}>
-                  {tab}
-                </Text>
+          <View style={s.panelNav}>
+            {(["order", "menu", "settings"] as const).map((tab) => (
+              <Pressable key={tab} onPress={() => setPanelTab(tab)} style={s.panelNavBtn}>
+                <Text style={[s.panelNavTxt, panelTab === tab && s.panelNavOn]}>{tab}</Text>
               </Pressable>
             ))}
             <Pressable onPress={() => setPanelOpen(false)} style={{ marginLeft: "auto" }}>
-              <Feather name="x" size={16} color="rgba(255,255,255,0.25)" />
+              <Feather name="x" size={16} color="rgba(20,16,8,0.28)" />
             </Pressable>
           </View>
 
-          {/* ── Order tab ── */}
+          {/* ── Order ── */}
           {panelTab === "order" && (() => {
             const items = currentOrder?.items ?? [];
             const total = currentOrder?.total ?? 0;
@@ -524,22 +445,22 @@ export default function MainScreen() {
                   keyExtractor={(it) => it.id}
                   contentContainerStyle={{ padding: 24, gap: 8 }}
                   ListHeaderComponent={
-                    <View style={{ marginBottom: 16, gap: 4 }}>
-                      <Text style={s.bigTotal}>${lastSubmittedOrder.total.toFixed(2)}</Text>
-                      <Text style={s.bigTotalSub}>SUBMITTED</Text>
-                      <View style={s.divider} />
+                    <View style={{ gap: 4, marginBottom: 16 }}>
+                      <Text style={s.receiptTotal}>${lastSubmittedOrder.total.toFixed(2)}</Text>
+                      <Text style={s.receiptLabel}>SUBMITTED</Text>
+                      <View style={s.panelDivider} />
                     </View>
                   }
                   renderItem={({ item }) => (
-                    <View style={s.sRow}>
-                      <Text style={s.sQty}>{item.quantity}×</Text>
-                      <Text style={s.sName}>{item.catalogItem.name}</Text>
-                      <Text style={s.sPrice}>${(item.catalogItem.price * item.quantity).toFixed(2)}</Text>
+                    <View style={s.receiptRow}>
+                      <Text style={s.receiptQty}>{item.quantity}×</Text>
+                      <Text style={s.receiptName}>{item.catalogItem.name}</Text>
+                      <Text style={s.receiptPrice}>${(item.catalogItem.price * item.quantity).toFixed(2)}</Text>
                     </View>
                   )}
                   ListFooterComponent={
-                    <Pressable onPress={() => Linking.openURL("https://squareup.com/dashboard/orders")} style={{ marginTop: 12 }}>
-                      <Text style={s.link}>view in Square ↗</Text>
+                    <Pressable onPress={() => Linking.openURL("https://squareup.com/dashboard/orders")} style={{ marginTop: 14 }}>
+                      <Text style={s.panelLink}>view in Square ↗</Text>
                     </Pressable>
                   }
                   showsVerticalScrollIndicator={false}
@@ -550,7 +471,7 @@ export default function MainScreen() {
             return items.length === 0 ? (
               <View style={s.emptyPanel}>
                 <Text style={s.emptyTxt}>no items yet</Text>
-                <Text style={s.emptyHint}>speak to the orb to add items</Text>
+                <Text style={s.emptyHint}>speak to add items</Text>
               </View>
             ) : (
               <View style={{ flex: 1 }}>
@@ -571,10 +492,10 @@ export default function MainScreen() {
                   showsVerticalScrollIndicator={false}
                 />
                 <View style={s.orderFooter}>
-                  <Text style={s.totalAmt}>${total.toFixed(2)}</Text>
+                  <Text style={s.orderTotal}>${total.toFixed(2)}</Text>
                   <View style={s.orderActions}>
                     <Pressable onPress={clearOrder} style={s.clearBtn}>
-                      <Feather name="trash-2" size={15} color="rgba(248,113,113,0.7)" />
+                      <Feather name="trash-2" size={15} color="rgba(160,40,40,0.70)" />
                     </Pressable>
                     <Pressable
                       onPress={async () => {
@@ -586,7 +507,7 @@ export default function MainScreen() {
                       style={[s.submitBtn, { opacity: isSubmitting || !isConfigured ? 0.45 : 1 }]}
                     >
                       {isSubmitting
-                        ? <ActivityIndicator size="small" color={Colors.dark.accent} />
+                        ? <ActivityIndicator size="small" color="rgba(20,16,8,0.6)" />
                         : <Text style={s.submitTxt}>process</Text>}
                     </Pressable>
                   </View>
@@ -595,17 +516,17 @@ export default function MainScreen() {
             );
           })()}
 
-          {/* ── Catalog tab ── */}
-          {panelTab === "catalog" && (
+          {/* ── Menu (catalog) ── */}
+          {panelTab === "menu" && (
             isLoadingCatalog ? (
               <View style={s.emptyPanel}>
-                <ActivityIndicator size="small" color="rgba(255,255,255,0.2)" />
+                <ActivityIndicator size="small" color="rgba(20,16,8,0.25)" />
               </View>
             ) : !isConfigured ? (
               <View style={s.emptyPanel}>
                 <Text style={s.emptyTxt}>square not connected</Text>
                 <Pressable onPress={() => { setPanelOpen(false); router.push("/setup"); }}>
-                  <Text style={s.link}>connect →</Text>
+                  <Text style={[s.panelLink, { marginTop: 8 }]}>connect →</Text>
                 </Pressable>
               </View>
             ) : (
@@ -615,11 +536,7 @@ export default function MainScreen() {
                 renderItem={({ item }) => (
                   <Pressable
                     style={s.catalogRow}
-                    onPress={() => {
-                      addItem(item, 1);
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      setPanelTab("order");
-                    }}
+                    onPress={() => { addItem(item, 1); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setPanelTab("order"); }}
                   >
                     <View style={{ flex: 1, gap: 2 }}>
                       <Text style={s.catalogName}>{item.name}</Text>
@@ -628,10 +545,21 @@ export default function MainScreen() {
                     <Text style={s.catalogPrice}>${item.price.toFixed(2)}</Text>
                   </Pressable>
                 )}
-                contentContainerStyle={{ paddingBottom: 16 }}
                 showsVerticalScrollIndicator={false}
               />
             )
+          )}
+
+          {/* ── Settings ── */}
+          {panelTab === "settings" && (
+            <View style={s.settingsPanel}>
+              <Pressable style={s.settingsRow} onPress={() => { setPanelOpen(false); router.push("/setup"); }}>
+                <Feather name="link" size={16} color="rgba(20,16,8,0.45)" />
+                <Text style={s.settingsRowTxt}>Square Connection</Text>
+                <View style={[s.statusDot, { backgroundColor: isConfigured ? "#167A3C" : "#7A3016" }]} />
+                <Feather name="chevron-right" size={15} color="rgba(20,16,8,0.25)" />
+              </Pressable>
+            </View>
           )}
         </View>
       </Modal>
@@ -639,189 +567,193 @@ export default function MainScreen() {
   );
 }
 
-// ── Nebula orb component styles ───────────────────────────────────────────────
-const ns = StyleSheet.create({
-  wrap: {
-    width: 220, height: 220,
-    alignItems: "center", justifyContent: "center",
-  },
-  bloom: {
-    position: "absolute",
-    width: 360, height: 360, borderRadius: 180,
-  },
-  // Logo
-  logoWrap: { alignItems: "center", gap: 7 },
-  logoMark: { width: 26, height: 26, alignItems: "center", justifyContent: "center" },
-  logoRing: {
-    position: "absolute",
-    width: 26, height: 26, borderRadius: 13,
-    borderWidth: 0.5, borderColor: "rgba(165,180,252,0.30)",
-  },
-  logoBead: {
-    position: "absolute", top: 5, right: 5,
-    width: 4, height: 4, borderRadius: 2,
-    backgroundColor: "rgba(165,180,252,0.50)",
-  },
-  logoWord: {
-    fontFamily: "Inter_300Light",
-    fontSize: 8, letterSpacing: 5,
-    color: "rgba(255,255,255,0.26)",
-  },
-});
-
-// ── Main screen styles ────────────────────────────────────────────────────────
+// ── Styles ────────────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#060818" },
+  root: { flex: 1, backgroundColor: "#F5F3EE" },
 
-  topRow: { alignItems: "center", paddingBottom: 8 },
+  // Edges
+  edgeTop:   { position: "absolute", top: 0, left: 0, right: 0, height: 200 },
+  edgeBot:   { position: "absolute", bottom: 0, left: 0, right: 0, height: 200 },
+  edgeLeft:  { position: "absolute", top: 0, bottom: 0, left: 0, width: 140 },
+  edgeRight: { position: "absolute", top: 0, bottom: 0, right: 0, width: 140 },
 
+  // Content
+  content: { flex: 1, flexDirection: "column" },
   convoArea: {
     flex: 1,
     alignItems: "center", justifyContent: "flex-end",
-    paddingHorizontal: 36, paddingBottom: 32, gap: 10,
+    paddingHorizontal: 40, paddingBottom: 40, gap: 10,
   },
   partial: {
-    textAlign: "center", fontSize: 13, fontStyle: "italic",
-    fontFamily: "Inter_300Light", color: "rgba(255,255,255,0.26)",
+    textAlign: "center", fontSize: 13, fontFamily: "Inter_300Light",
+    color: "rgba(20,16,8,0.30)", fontStyle: "italic",
   },
 
-  orbArea: { alignItems: "center" },
-
-  stateLabel: {
-    textAlign: "center",
+  // Center logo + glow
+  centerWrapper: {
+    width: 280, height: 280,
+    alignSelf: "center",
+    alignItems: "center", justifyContent: "center",
+  },
+  glowCircle: { borderRadius: 140 },
+  logoBtn: { alignItems: "center" },
+  logoWrap: { alignItems: "center", gap: 10 },
+  logoMark: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
+  logoRing: {
+    position: "absolute",
+    width: 36, height: 36, borderRadius: 18,
+    borderWidth: 0.75, borderColor: "rgba(20,16,8,0.28)",
+  },
+  logoBead: {
+    position: "absolute", top: 7, right: 7,
+    width: 5.5, height: 5.5, borderRadius: 2.75,
+    backgroundColor: "rgba(20,16,8,0.28)",
+  },
+  logoWord: {
     fontFamily: "Inter_300Light",
-    fontSize: 9, letterSpacing: 3.5,
-    marginTop: 18,
-  },
-  errorWhisper: {
-    textAlign: "center",
-    fontFamily: "Inter_300Light", fontSize: 11,
-    color: "rgba(252,165,165,0.48)",
-    paddingHorizontal: 40, marginTop: 8,
+    fontSize: 12, letterSpacing: 6,
+    color: "rgba(20,16,8,0.58)",
   },
 
-  bottomRow: {
-    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    paddingHorizontal: 36, paddingTop: 10,
+  // Below center
+  belowCenter: { alignItems: "center", height: 40, justifyContent: "center" },
+  stateLabel: {
+    fontFamily: "Inter_300Light", fontSize: 9,
+    letterSpacing: 3.5, textAlign: "center",
   },
-  dot: {
-    width: 6, height: 6, borderRadius: 3,
-    backgroundColor: "rgba(255,255,255,0.10)",
+  tapHint: {
+    fontFamily: "Inter_300Light", fontSize: 10, letterSpacing: 2.5,
+    color: "rgba(20,16,8,0.24)", textAlign: "center",
   },
-  dotActive: {
-    backgroundColor: "rgba(124,110,245,0.45)",
-    borderWidth: 0.5, borderColor: "rgba(124,110,245,0.6)",
+
+  // Lower
+  lowerArea: {
+    flex: 1, alignItems: "center", justifyContent: "flex-start",
+    paddingTop: 30, gap: 10,
   },
+  interruptDot: {
+    width: 8, height: 8, borderRadius: 4,
+    backgroundColor: "rgba(20,16,8,0.30)",
+  },
+  errorText: {
+    textAlign: "center", fontFamily: "Inter_300Light",
+    fontSize: 11, color: "rgba(96,10,10,0.55)",
+    paddingHorizontal: 40,
+  },
+
+  // Bottom bar
+  bottomBar: {
+    flexDirection: "row", alignItems: "center",
+    paddingHorizontal: 32, paddingTop: 8,
+  },
+  hamburger: { padding: 4 },
   orderBadge: {
     minWidth: 22, height: 22, borderRadius: 11,
-    backgroundColor: "rgba(124,110,245,0.16)",
-    borderWidth: 0.5, borderColor: "rgba(124,110,245,0.40)",
+    backgroundColor: "rgba(20,16,8,0.08)",
+    borderWidth: 0.5, borderColor: "rgba(20,16,8,0.22)",
     alignItems: "center", justifyContent: "center", paddingHorizontal: 5,
   },
   orderBadgeNum: {
-    fontFamily: "Inter_500Medium", fontSize: 11, color: Colors.dark.accent,
-  },
-  interruptWrap: { flex: 1, alignItems: "center" },
-  interruptDot: {
-    width: 7, height: 7, borderRadius: 3.5,
-    backgroundColor: "rgba(255,255,255,0.32)",
+    fontFamily: "Inter_500Medium", fontSize: 11, color: "rgba(20,16,8,0.58)",
   },
 
   // Panel
   backdrop: { flex: 1 },
   panel: {
-    backgroundColor: "#0b0d20",
+    backgroundColor: "#FAFAF6",
     borderTopLeftRadius: 26, borderTopRightRadius: 26,
-    borderTopWidth: 0.5, borderColor: "rgba(255,255,255,0.07)",
+    borderTopWidth: 0.5, borderColor: "rgba(20,16,8,0.09)",
     maxHeight: "78%",
-    shadowColor: "#000", shadowOpacity: 0.7, shadowRadius: 40,
-    shadowOffset: { width: 0, height: -10 },
-    elevation: 20,
+    shadowColor: "#000", shadowOpacity: 0.10, shadowRadius: 24,
+    shadowOffset: { width: 0, height: -5 }, elevation: 10,
   },
   panelHandle: {
     width: 36, height: 3, borderRadius: 2,
-    backgroundColor: "rgba(255,255,255,0.10)",
+    backgroundColor: "rgba(20,16,8,0.14)",
     alignSelf: "center", marginTop: 14, marginBottom: 4,
   },
-  panelHeader: {
+  panelNav: {
     flexDirection: "row", alignItems: "center",
     paddingHorizontal: 22, paddingVertical: 12, gap: 22,
   },
-  panelTabBtn: { paddingVertical: 4 },
-  panelTabTxt: {
+  panelNavBtn: { paddingVertical: 4 },
+  panelNavTxt: {
     fontFamily: "Inter_300Light", fontSize: 13, letterSpacing: 1,
-    color: "rgba(255,255,255,0.22)", textTransform: "lowercase",
+    color: "rgba(20,16,8,0.30)", textTransform: "lowercase",
   },
-  panelTabOn: { color: "rgba(255,255,255,0.82)", fontFamily: "Inter_400Regular" },
-
-  // Submitted receipt
-  bigTotal: {
-    fontFamily: "Inter_300Light", fontSize: 46,
-    color: Colors.dark.accent, letterSpacing: -2,
-  },
-  bigTotalSub: {
-    fontFamily: "Inter_300Light", fontSize: 9, letterSpacing: 4,
-    color: "rgba(255,255,255,0.24)", marginBottom: 16,
-  },
-  divider: { height: 0.5, backgroundColor: "rgba(255,255,255,0.06)", marginBottom: 8 },
-  sRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 3 },
-  sQty:  { fontFamily: "Inter_400Regular", fontSize: 13, color: "rgba(255,255,255,0.28)", width: 28 },
-  sName: { flex: 1, fontFamily: "Inter_400Regular", fontSize: 13, color: "rgba(255,255,255,0.62)" },
-  sPrice: { fontFamily: "Inter_500Medium", fontSize: 13, color: "rgba(255,255,255,0.40)" },
-  link: {
+  panelNavOn: { color: "rgba(20,16,8,0.82)", fontFamily: "Inter_400Regular" },
+  panelDivider: { height: 0.5, backgroundColor: "rgba(20,16,8,0.09)", marginTop: 6 },
+  panelLink: {
     fontFamily: "Inter_300Light", fontSize: 12, letterSpacing: 0.5,
-    color: Colors.dark.accent, textDecorationLine: "underline",
+    color: "rgba(20,60,140,0.72)", textDecorationLine: "underline",
   },
+
+  // Receipt
+  receiptTotal: {
+    fontFamily: "Inter_300Light", fontSize: 44,
+    color: "rgba(20,16,8,0.80)", letterSpacing: -1.5,
+  },
+  receiptLabel: {
+    fontFamily: "Inter_300Light", fontSize: 9, letterSpacing: 4,
+    color: "rgba(20,16,8,0.32)", marginBottom: 10,
+  },
+  receiptRow:  { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 3 },
+  receiptQty:  { fontFamily: "Inter_400Regular", fontSize: 13, color: "rgba(20,16,8,0.34)", width: 28 },
+  receiptName: { flex: 1, fontFamily: "Inter_400Regular", fontSize: 13, color: "rgba(20,16,8,0.70)" },
+  receiptPrice:{ fontFamily: "Inter_500Medium", fontSize: 13, color: "rgba(20,16,8,0.46)" },
 
   // Empty
-  emptyPanel: {
-    flex: 1, alignItems: "center", justifyContent: "center",
-    paddingBottom: 60, gap: 8,
-  },
-  emptyTxt: {
-    fontFamily: "Inter_300Light", fontSize: 13, letterSpacing: 0.5,
-    color: "rgba(255,255,255,0.18)",
-  },
-  emptyHint: {
-    fontFamily: "Inter_300Light", fontSize: 11,
-    color: "rgba(255,255,255,0.10)", letterSpacing: 0.3,
-  },
+  emptyPanel: { flex: 1, alignItems: "center", justifyContent: "center", paddingBottom: 60, gap: 8 },
+  emptyTxt:   { fontFamily: "Inter_300Light", fontSize: 13, letterSpacing: 0.5, color: "rgba(20,16,8,0.30)" },
+  emptyHint:  { fontFamily: "Inter_300Light", fontSize: 11, color: "rgba(20,16,8,0.18)" },
 
   // Order footer
   orderFooter: {
     position: "absolute", bottom: 0, left: 0, right: 0,
-    backgroundColor: "#0b0d20",
+    backgroundColor: "#FAFAF6",
     paddingHorizontal: 20, paddingTop: 14, paddingBottom: 20,
-    borderTopWidth: 0.5, borderTopColor: "rgba(255,255,255,0.05)",
+    borderTopWidth: 0.5, borderTopColor: "rgba(20,16,8,0.07)",
   },
-  totalAmt: {
+  orderTotal: {
     fontFamily: "Inter_300Light", fontSize: 36,
-    color: "rgba(255,255,255,0.70)", letterSpacing: -0.5, marginBottom: 14,
+    color: "rgba(20,16,8,0.74)", letterSpacing: -0.5, marginBottom: 14,
   },
   orderActions: { flexDirection: "row", gap: 12 },
   clearBtn: {
     width: 50, height: 50, borderRadius: 25,
-    borderWidth: 0.5, borderColor: "rgba(248,113,113,0.28)",
+    borderWidth: 0.5, borderColor: "rgba(160,40,40,0.24)",
     alignItems: "center", justifyContent: "center",
   },
   submitBtn: {
     flex: 1, height: 50, borderRadius: 25,
-    backgroundColor: "rgba(124,110,245,0.15)",
-    borderWidth: 0.5, borderColor: "rgba(124,110,245,0.40)",
+    backgroundColor: "rgba(20,16,8,0.05)",
+    borderWidth: 0.5, borderColor: "rgba(20,16,8,0.20)",
     alignItems: "center", justifyContent: "center",
   },
   submitTxt: {
-    fontFamily: "Inter_400Regular", fontSize: 14, letterSpacing: 1,
-    color: Colors.dark.accent, textTransform: "lowercase",
+    fontFamily: "Inter_400Regular", fontSize: 14,
+    letterSpacing: 1, color: "rgba(20,16,8,0.68)", textTransform: "lowercase",
   },
 
   // Catalog
   catalogRow: {
     flexDirection: "row", alignItems: "center",
     paddingVertical: 15, paddingHorizontal: 22,
-    borderBottomWidth: 0.5, borderBottomColor: "rgba(255,255,255,0.04)",
+    borderBottomWidth: 0.5, borderBottomColor: "rgba(20,16,8,0.06)",
   },
-  catalogName: { fontFamily: "Inter_400Regular", fontSize: 14, color: "rgba(255,255,255,0.58)" },
-  catalogCat:  { fontFamily: "Inter_300Light", fontSize: 11, color: "rgba(255,255,255,0.22)" },
-  catalogPrice: { fontFamily: "Inter_300Light", fontSize: 13, color: "rgba(255,255,255,0.26)" },
+  catalogName:  { fontFamily: "Inter_400Regular", fontSize: 14, color: "rgba(20,16,8,0.70)" },
+  catalogCat:   { fontFamily: "Inter_300Light", fontSize: 11, color: "rgba(20,16,8,0.32)" },
+  catalogPrice: { fontFamily: "Inter_300Light", fontSize: 13, color: "rgba(20,16,8,0.40)" },
+
+  // Settings
+  settingsPanel: { padding: 16 },
+  settingsRow: {
+    flexDirection: "row", alignItems: "center", gap: 12,
+    paddingVertical: 16, paddingHorizontal: 8,
+    borderBottomWidth: 0.5, borderBottomColor: "rgba(20,16,8,0.07)",
+  },
+  settingsRowTxt: {
+    flex: 1, fontFamily: "Inter_400Regular", fontSize: 14, color: "rgba(20,16,8,0.68)",
+  },
+  statusDot: { width: 7, height: 7, borderRadius: 3.5 },
 });
