@@ -44,7 +44,7 @@ router.get("/oauth/authorize", (req: Request, res: Response): void => {
   const params = new URLSearchParams({
     client_id: appId,
     response_type: "code",
-    scope: "MERCHANT_PROFILE_READ ITEMS_READ ORDERS_WRITE ORDERS_READ",
+    scope: "MERCHANT_PROFILE_READ ITEMS_READ ORDERS_WRITE ORDERS_READ PAYMENTS_WRITE",
     state,
     redirect_uri: redirectUri,
     session: "false",
@@ -351,13 +351,41 @@ router.post("/orders", async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const fulfillmentState = data.order?.fulfillments?.[0]?.state ?? "none";
-    const fulfillmentType = data.order?.fulfillments?.[0]?.type ?? "none";
-    console.log("[Square] Order created:", data.order?.id, "| state:", data.order?.state, "| fulfillment:", fulfillmentType, fulfillmentState, "| source:", data.order?.source?.name, "| total:", data.order?.total_money?.amount);
+    const orderId = data.order?.id;
+    const orderTotal = data.order?.total_money?.amount ?? 0;
+    console.log("[Square] Order created:", orderId, "| state:", data.order?.state, "| total:", orderTotal);
+
+    // Create an external payment to mark the order as a completed transaction
+    // so it appears in Square's sales reports and transaction history
+    const paymentRes = await fetch(`${SQUARE_BASE}/payments`, {
+      method: "POST",
+      headers: squareHeaders(token),
+      body: JSON.stringify({
+        idempotency_key: `payment-${orderId}`,
+        source_id: "EXTERNAL",
+        amount_money: { amount: orderTotal, currency: "USD" },
+        order_id: orderId,
+        location_id: locationId,
+        external_details: {
+          type: "OTHER",
+          source: "Pre-paid Event Package",
+        },
+        note: "Voice order — pre-paid event package",
+      }),
+    });
+
+    const paymentData = await paymentRes.json() as any;
+    if (!paymentRes.ok) {
+      // Order was created but payment failed — still return success, log the issue
+      console.warn("[Square] Payment failed (order still created):", JSON.stringify(paymentData.errors));
+    } else {
+      console.log("[Square] Payment created:", paymentData.payment?.id, "| status:", paymentData.payment?.status);
+    }
+
     res.json({
       success: true,
-      orderId: data.order?.id,
-      total: data.order?.total_money?.amount ? data.order.total_money.amount / 100 : 0,
+      orderId,
+      total: orderTotal / 100,
     });
   } catch (e: any) {
     res.status(500).json({ error: e.message || "Failed to create order" });
