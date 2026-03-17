@@ -1,26 +1,18 @@
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, {
+  useEffect, useRef, useState, useCallback,
+} from "react";
 import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  Pressable,
-  ActivityIndicator,
-  Platform,
-  Linking,
+  View, Text, StyleSheet, Pressable, Platform,
+  FlatList, Modal, ScrollView, ActivityIndicator, Linking,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import Animated, {
-  useAnimatedStyle,
-  useSharedValue,
-  withRepeat,
-  withTiming,
-  withSequence,
-  FadeInDown,
-  Easing,
+  useAnimatedStyle, useSharedValue,
+  withRepeat, withSequence, withTiming, withSpring,
+  FadeIn, FadeOut, Easing,
 } from "react-native-reanimated";
 
 import Colors from "@/constants/colors";
@@ -28,190 +20,180 @@ import { useWakeWord, TERMINATE_PHRASES, isWakeWordSupported } from "@/hooks/use
 import { useVoiceAgent, ConversationMessage, AgentState, OrderCommand } from "@/context/VoiceAgentContext";
 import { useOrder } from "@/context/OrderContext";
 import { useSquare } from "@/context/SquareContext";
-import { WaveformVisualizer } from "@/components/WaveformVisualizer";
 import { OrderCard } from "@/components/OrderCard";
 
 const WEB_TOP_INSET = 67;
 const WEB_BOTTOM_INSET = 34;
 
-// ── Conversation bubble ───────────────────────────────────────────────────────
+// ── Palette ───────────────────────────────────────────────────────────────────
 
-function ConversationBubble({ message }: { message: ConversationMessage }) {
-  const isUser = message.role === "user";
-  return (
-    <Animated.View
-      entering={FadeInDown.duration(180)}
-      style={[styles.bubble, isUser ? styles.userBubble : styles.agentBubble]}
-    >
-      <Text style={[styles.bubbleText, isUser ? styles.userText : styles.agentText]}>
-        {message.content}
-      </Text>
-    </Animated.View>
-  );
-}
+const ORB: Record<string, { core: string; ring: string; glow: string }> = {
+  disconnected: { core: "#1a1a2e", ring: "rgba(255,255,255,0.06)", glow: "transparent" },
+  connecting:   { core: "#1e1a10", ring: "rgba(251,191,36,0.18)",  glow: "rgba(251,191,36,0.04)" },
+  listening:    { core: "#0f1524", ring: "rgba(255,255,255,0.22)",  glow: "rgba(255,255,255,0.04)" },
+  thinking:     { core: "#12100e", ring: "rgba(251,191,36,0.15)",  glow: "rgba(251,191,36,0.03)" },
+  speaking:     { core: "#0c0a1a", ring: "rgba(124,110,245,0.35)", glow: "rgba(124,110,245,0.07)" },
+  error:        { core: "#1a0a0a", ring: "rgba(255,92,122,0.28)",  glow: "rgba(255,92,122,0.05)" },
+  wake:         { core: "#10091a", ring: "rgba(168,85,247,0.28)",  glow: "rgba(168,85,247,0.06)" },
+};
 
-// ── Live orb indicator ───────────────────────────────────────────────────────
+// ── Zen Orb ───────────────────────────────────────────────────────────────────
 
-function LiveOrb({ state, overrideColor, overrideLabel }: { state: AgentState; overrideColor?: string; overrideLabel?: string }) {
-  const scale = useSharedValue(1);
-  const opacity = useSharedValue(0.7);
+type OrbKey = AgentState | "wake";
+
+function ZenOrb({ orbKey }: { orbKey: OrbKey }) {
+  const p = ORB[orbKey] ?? ORB.disconnected;
+
+  const outerScale   = useSharedValue(1);
+  const outerOpacity = useSharedValue(0.5);
+  const midScale     = useSharedValue(1);
+  const midOpacity   = useSharedValue(0.5);
+  const coreOpacity  = useSharedValue(0.6);
 
   useEffect(() => {
-    if (state === "listening") {
-      scale.value = withRepeat(
-        withSequence(
-          withTiming(1.15, { duration: 900, easing: Easing.inOut(Easing.sin) }),
-          withTiming(1, { duration: 900, easing: Easing.inOut(Easing.sin) })
-        ),
-        -1, false
-      );
-      opacity.value = withRepeat(
-        withSequence(
-          withTiming(1, { duration: 900 }),
-          withTiming(0.5, { duration: 900 })
-        ),
-        -1, false
-      );
-    } else if (state === "thinking") {
-      scale.value = withRepeat(
-        withTiming(1.05, { duration: 400, easing: Easing.inOut(Easing.quad) }),
-        -1, true
-      );
-      opacity.value = withTiming(0.9);
-    } else if (state === "speaking") {
-      scale.value = withRepeat(
-        withSequence(
-          withTiming(1.25, { duration: 200, easing: Easing.out(Easing.quad) }),
-          withTiming(1, { duration: 200, easing: Easing.in(Easing.quad) })
-        ),
-        -1, false
-      );
-      opacity.value = withTiming(1);
+    const base = { duration: 2200, easing: Easing.inOut(Easing.sin) };
+
+    if (orbKey === "listening") {
+      outerScale.value   = withRepeat(withSequence(withTiming(1.12, base), withTiming(1, base)), -1, false);
+      outerOpacity.value = withRepeat(withSequence(withTiming(0.9, base), withTiming(0.35, base)), -1, false);
+      midScale.value     = withRepeat(withSequence(withTiming(1.08, { duration: 1800, easing: base.easing }), withTiming(1, { duration: 1800, easing: base.easing })), -1, false);
+      midOpacity.value   = withRepeat(withSequence(withTiming(0.75, base), withTiming(0.3, base)), -1, false);
+      coreOpacity.value  = withRepeat(withSequence(withTiming(0.9, base), withTiming(0.55, base)), -1, false);
+
+    } else if (orbKey === "wake") {
+      const slow = { duration: 3000, easing: Easing.inOut(Easing.sin) };
+      outerScale.value   = withRepeat(withSequence(withTiming(1.1, slow), withTiming(1, slow)), -1, false);
+      outerOpacity.value = withRepeat(withSequence(withTiming(0.7, slow), withTiming(0.2, slow)), -1, false);
+      midScale.value     = withRepeat(withSequence(withTiming(1.06, slow), withTiming(1, slow)), -1, false);
+      midOpacity.value   = withRepeat(withSequence(withTiming(0.55, slow), withTiming(0.18, slow)), -1, false);
+      coreOpacity.value  = withRepeat(withSequence(withTiming(0.7, slow), withTiming(0.3, slow)), -1, false);
+
+    } else if (orbKey === "speaking") {
+      const fast = { duration: 620, easing: Easing.out(Easing.quad) };
+      outerScale.value   = withRepeat(withSequence(withTiming(1.22, fast), withTiming(1, fast)), -1, false);
+      outerOpacity.value = withRepeat(withSequence(withTiming(0.9, fast), withTiming(0.1, fast)), -1, false);
+      midScale.value     = withRepeat(withSequence(withTiming(1.14, { ...fast, duration: 480 }), withTiming(1, { ...fast, duration: 480 })), -1, false);
+      midOpacity.value   = withRepeat(withSequence(withTiming(0.8, fast), withTiming(0.25, fast)), -1, false);
+      coreOpacity.value  = withTiming(0.95, { duration: 300 });
+
+    } else if (orbKey === "thinking") {
+      const subtle = { duration: 900, easing: Easing.inOut(Easing.quad) };
+      outerScale.value   = withRepeat(withSequence(withTiming(1.04, subtle), withTiming(1, subtle)), -1, true);
+      outerOpacity.value = withTiming(0.3, { duration: 400 });
+      midScale.value     = withTiming(1, { duration: 300 });
+      midOpacity.value   = withTiming(0.25, { duration: 400 });
+      coreOpacity.value  = withRepeat(withSequence(withTiming(0.65, subtle), withTiming(0.35, subtle)), -1, true);
+
+    } else if (orbKey === "connecting") {
+      const pulse = { duration: 1400, easing: Easing.inOut(Easing.sin) };
+      outerScale.value   = withRepeat(withSequence(withTiming(1.08, pulse), withTiming(1, pulse)), -1, false);
+      outerOpacity.value = withRepeat(withSequence(withTiming(0.6, pulse), withTiming(0.1, pulse)), -1, false);
+      midScale.value     = withTiming(1, { duration: 300 });
+      midOpacity.value   = withTiming(0.2, { duration: 400 });
+      coreOpacity.value  = withTiming(0.45, { duration: 400 });
+
     } else {
-      scale.value = withTiming(1, { duration: 400 });
-      opacity.value = withTiming(0.5, { duration: 400 });
+      // disconnected / error / idle
+      outerScale.value   = withTiming(1, { duration: 600 });
+      outerOpacity.value = withTiming(orbKey === "error" ? 0.4 : 0.12, { duration: 600 });
+      midScale.value     = withTiming(1, { duration: 600 });
+      midOpacity.value   = withTiming(orbKey === "error" ? 0.3 : 0.08, { duration: 600 });
+      coreOpacity.value  = withTiming(orbKey === "error" ? 0.5 : 0.18, { duration: 600 });
     }
-  }, [state]);
+  }, [orbKey]);
 
-  const orbStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-    opacity: opacity.value,
+  const outerStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: outerScale.value }],
+    opacity: outerOpacity.value,
   }));
+  const midStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: midScale.value }],
+    opacity: midOpacity.value,
+  }));
+  const coreStyle = useAnimatedStyle(() => ({ opacity: coreOpacity.value }));
 
-  const colors: Record<AgentState, string> = {
-    disconnected: Colors.dark.textMuted,
-    connecting: Colors.dark.warning,
-    listening: Colors.dark.accent,
-    thinking: Colors.dark.warning,
-    speaking: Colors.dark.accent,
-    error: Colors.dark.danger,
-  };
-
-  const labels: Record<AgentState, string> = {
-    disconnected: "Tap to start",
-    connecting: "Connecting...",
-    listening: "Listening",
-    thinking: "Thinking...",
-    speaking: "Speaking",
-    error: "Error — tap to retry",
-  };
-
-  const activeColor = overrideColor ?? colors[state];
   return (
-    <View style={styles.orbWrapper}>
+    <View style={s.orbWrap}>
       {/* Outer glow */}
-      <Animated.View style={[styles.orbGlow, orbStyle, { backgroundColor: activeColor + "22" }]} />
+      <Animated.View style={[s.orbOuter, outerStyle, { borderColor: p.ring, backgroundColor: p.glow }]} />
+      {/* Mid ring */}
+      <Animated.View style={[s.orbMid,   midStyle,   { borderColor: p.ring }]} />
       {/* Core */}
-      <Animated.View style={[styles.orbCore, orbStyle, { backgroundColor: activeColor }]} />
-      <Text style={[styles.orbLabel, { color: activeColor }]}>{overrideLabel ?? labels[state]}</Text>
+      <Animated.View style={[s.orbCore,  coreStyle,  { backgroundColor: p.core, borderColor: p.ring }]} />
     </View>
   );
 }
 
-// ── Connect / Disconnect button ───────────────────────────────────────────────
+// ── Minimal Logo ──────────────────────────────────────────────────────────────
 
-function ConnectButton({
-  state,
-  onPress,
-}: {
-  state: AgentState;
-  onPress: () => void;
-}) {
-  const isConnected = state !== "disconnected" && state !== "error" && state !== "connecting";
-  const isConnecting = state === "connecting";
-
+function Logo() {
   return (
-    <Pressable
-      onPress={onPress}
-      disabled={isConnecting}
-      style={[
-        styles.connectButton,
-        isConnected && styles.connectButtonActive,
-        { opacity: isConnecting ? 0.7 : 1 },
-      ]}
-    >
-      {isConnecting ? (
-        <ActivityIndicator size="small" color={Colors.dark.warning} />
-      ) : (
-        <Feather
-          name={isConnected ? "mic-off" : "mic"}
-          size={22}
-          color={isConnected ? Colors.dark.danger : Colors.dark.accent}
-        />
-      )}
-      <Text style={[styles.connectButtonText, isConnected && { color: Colors.dark.danger }]}>
-        {isConnecting ? "Connecting" : isConnected ? "Stop Agent" : "Start Agent"}
-      </Text>
-    </Pressable>
+    <View style={s.logoWrap}>
+      <View style={s.logoMark}>
+        <View style={s.logoCircle} />
+        <View style={s.logoDot} />
+      </View>
+      <Text style={s.logoText}>bevpro</Text>
+    </View>
   );
 }
+
+// ── Floating conversation ─────────────────────────────────────────────────────
+
+function ConvoLine({ msg, idx, total }: { msg: ConversationMessage; idx: number; total: number }) {
+  const isUser  = msg.role === "user";
+  const recency = total - idx; // 1 = most recent
+  const opacity = recency === 1 ? (isUser ? 0.45 : 0.88) : recency === 2 ? 0.28 : 0.14;
+  const size    = recency === 1 ? (isUser ? 14 : 15) : 13;
+  return (
+    <Animated.Text
+      entering={FadeIn.duration(400)}
+      exiting={FadeOut.duration(600)}
+      style={[s.convoLine, { opacity, fontSize: size, fontFamily: isUser ? "Inter_300Light" : "Inter_400Regular" }]}
+    >
+      {msg.content}
+    </Animated.Text>
+  );
+}
+
+// ── State label ───────────────────────────────────────────────────────────────
+
+const STATE_LABEL: Partial<Record<OrbKey, string>> = {
+  connecting: "connecting",
+  thinking:   "\u00B7\u00B7\u00B7",
+  error:      "error",
+};
 
 // ── Main screen ───────────────────────────────────────────────────────────────
 
 export default function MainScreen() {
-  const insets = useSafeAreaInsets();
+  const insets    = useSafeAreaInsets();
+  const topPad    = Platform.OS === "web" ? WEB_TOP_INSET : insets.top;
+  const bottomPad = Platform.OS === "web" ? WEB_BOTTOM_INSET : insets.bottom;
+
+  // ── Voice agent ────────────────────────────────────────────────────────────
   const {
-    agentState,
-    isConnected,
-    conversation,
-    partialTranscript,
-    error,
-    connect,
-    disconnect,
-    clearConversation,
-    setToolHandler,
-    interrupt,
-    setCatalog,
-    setCurrentOrder,
-    setSquareCredentials,
+    agentState, isConnected, conversation, partialTranscript, error,
+    connect, disconnect, clearConversation, setToolHandler, interrupt,
+    setCatalog, setCurrentOrder, setSquareCredentials,
   } = useVoiceAgent();
 
+  // ── Order context ──────────────────────────────────────────────────────────
   const {
-    currentOrder,
-    lastSubmittedOrder,
-    addItem,
-    removeItem,
-    updateQuantity,
-    clearOrder,
-    submitOrder,
-    isSubmitting,
+    currentOrder, lastSubmittedOrder,
+    addItem, removeItem, updateQuantity, clearOrder, submitOrder, isSubmitting,
   } = useOrder();
 
-  const {
-    isConfigured,
-    catalogItems,
-    isLoadingCatalog,
-    accessToken,
-    locationId,
-  } = useSquare();
+  // ── Square ─────────────────────────────────────────────────────────────────
+  const { isConfigured, catalogItems, isLoadingCatalog, accessToken, locationId } = useSquare();
 
-  const [activeTab, setActiveTab] = useState<"voice" | "order" | "catalog">("voice");
-  const listRef = useRef<FlatList>(null);
+  // ── Panel ──────────────────────────────────────────────────────────────────
+  const [panelOpen,  setPanelOpen]  = useState(false);
+  const [panelTab,   setPanelTab]   = useState<"order" | "catalog">("order");
 
-  // ── Wake word mode (web only) ────────────────────────────────────────────────
-
+  // ── Wake word ──────────────────────────────────────────────────────────────
   type WakeMode = "idle" | "wake" | "command";
-  const [wakeMode, setWakeMode] = useState<WakeMode>("idle");
+  const [wakeMode, setWakeMode]   = useState<WakeMode>("idle");
   const wakeModeRef = useRef<WakeMode>("idle");
   wakeModeRef.current = wakeMode;
 
@@ -241,828 +223,521 @@ export default function MainScreen() {
     setWakeMode("idle");
   }, [stopWakeWord, disconnect]);
 
-  // ── Auto-return to wake word mode when a session ends ─────────────────────
-  // Fires whenever the agent disconnects while we were in "command" mode —
-  // handles both explicit terminate phrases AND normal session endings
-  // (order submitted, timeout, error, etc.).
+  // Auto-return to wake mode when session ends
   useEffect(() => {
     if (Platform.OS !== "web") return;
     if (wakeModeRef.current !== "command") return;
-    if (isConnected) return; // session still active
-
-    // Session just ended — go straight back to wake word mode.
-    // Give the AudioContext a moment to fully close before re-acquiring the mic.
-    const timer = setTimeout(() => {
-      if (wakeModeRef.current !== "command") return; // already handled
+    if (isConnected) return;
+    const t = setTimeout(() => {
+      if (wakeModeRef.current !== "command") return;
       setWakeMode("wake");
       startWakeWord();
     }, 350);
-    return () => clearTimeout(timer);
+    return () => clearTimeout(t);
   }, [isConnected, startWakeWord]);
 
-  // ── Terminate-phrase shortcut: disconnect immediately when user says "done" ─
+  // Terminate-phrase shortcut
   useEffect(() => {
     if (Platform.OS !== "web" || wakeMode !== "command") return;
-    const userMsgs = conversation.filter((m) => m.role === "user");
-    const last = userMsgs[userMsgs.length - 1];
+    const last = [...conversation].reverse().find((m) => m.role === "user");
     if (!last) return;
     const text = last.content.toLowerCase();
     if (TERMINATE_PHRASES.some((p) => text.includes(p))) {
-      // Disconnect after a short pause (let agent finish its goodbye reply)
-      const timer = setTimeout(() => disconnect(), 1600);
-      return () => clearTimeout(timer);
+      const t = setTimeout(() => disconnect(), 1600);
+      return () => clearTimeout(t);
     }
   }, [conversation, wakeMode, disconnect]);
 
-  const topPad = Platform.OS === "web" ? WEB_TOP_INSET : insets.top;
-  const bottomPad = Platform.OS === "web" ? WEB_BOTTOM_INSET : insets.bottom;
-
-  // ── Sync catalog + order into voice context so server has current state ───────
-
+  // ── Sync contexts ──────────────────────────────────────────────────────────
   useEffect(() => {
-    setCatalog(
-      catalogItems.map((c) => ({ id: c.id, variationId: c.variationId, name: c.name, price: c.price, category: c.category }))
-    );
+    setCatalog(catalogItems.map((c) => ({ id: c.id, variationId: c.variationId, name: c.name, price: c.price, category: c.category })));
   }, [catalogItems, setCatalog]);
 
   useEffect(() => {
-    if (accessToken && locationId) {
-      setSquareCredentials(accessToken, locationId);
-    }
+    if (accessToken && locationId) setSquareCredentials(accessToken, locationId);
   }, [accessToken, locationId, setSquareCredentials]);
 
   useEffect(() => {
-    setCurrentOrder(
-      (currentOrder?.items ?? []).map((i) => ({
-        name: i.catalogItem.name,
-        price: i.catalogItem.price,
-        quantity: i.quantity,
-      }))
-    );
+    setCurrentOrder((currentOrder?.items ?? []).map((i) => ({
+      name: i.catalogItem.name, price: i.catalogItem.price, quantity: i.quantity,
+    })));
   }, [currentOrder, setCurrentOrder]);
 
-  // ── Order command handler (server executes tools, sends commands back) ────────
-
-  const handleCommands = useCallback(
-    (commands: OrderCommand[]) => {
-      for (const cmd of commands) {
-        switch (cmd.action) {
-          case "add": {
-            // Match by ID first, then fall back to name (AI often omits IDs)
-            let found = cmd.item_id
-              ? catalogItems.find((c) => c.id === cmd.item_id)
-              : undefined;
-            if (!found && cmd.item_name) {
-              const needle = cmd.item_name.toLowerCase();
-              found =
-                catalogItems.find((c) => c.name.toLowerCase() === needle) ??
-                catalogItems.find(
-                  (c) =>
-                    c.name.toLowerCase().includes(needle) ||
-                    needle.includes(c.name.toLowerCase())
-                );
-            }
-            if (!found) break;
-            addItem(found, cmd.quantity ?? 1);
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            setActiveTab("order");
-            break;
+  // ── Order commands ─────────────────────────────────────────────────────────
+  const handleCommands = useCallback((commands: OrderCommand[]) => {
+    for (const cmd of commands) {
+      switch (cmd.action) {
+        case "add": {
+          let found = cmd.item_id ? catalogItems.find((c) => c.id === cmd.item_id) : undefined;
+          if (!found && cmd.item_name) {
+            const n = cmd.item_name.toLowerCase();
+            found = catalogItems.find((c) => c.name.toLowerCase() === n) ??
+                    catalogItems.find((c) => c.name.toLowerCase().includes(n) || n.includes(c.name.toLowerCase()));
           }
-          case "remove": {
-            const needle = (cmd.item_name ?? "").toLowerCase();
-            const line =
-              currentOrder?.items.find(
-                (i) => i.catalogItem.name.toLowerCase() === needle
-              ) ??
-              currentOrder?.items.find((i) =>
-                i.catalogItem.name.toLowerCase().includes(needle)
-              );
-            if (!line) break;
-            removeItem(line.id);
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-            break;
-          }
-          case "clear": {
-            clearOrder();
-            break;
-          }
-          case "submit": {
-            setActiveTab("order");
-            if (!accessToken || !locationId) {
-              console.warn("[Order] Submit skipped — Square not connected");
-              break;
-            }
-            if (!currentOrder?.items.length) {
-              console.warn("[Order] Submit skipped — order is empty");
-              break;
-            }
-            submitOrder(accessToken, locationId).then((result) => {
-              if (result.success) {
-                console.log("[Order] Submitted to Square:", result.orderId);
-                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-              } else {
-                console.error("[Order] Square submit failed:", result.error);
-                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-              }
-            });
-            break;
-          }
+          if (!found) break;
+          addItem(found, cmd.quantity ?? 1);
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          break;
+        }
+        case "remove": {
+          const n = (cmd.item_name ?? "").toLowerCase();
+          const line = currentOrder?.items.find((i) => i.catalogItem.name.toLowerCase() === n) ??
+                       currentOrder?.items.find((i) => i.catalogItem.name.toLowerCase().includes(n));
+          if (line) { removeItem(line.id); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); }
+          break;
+        }
+        case "clear": clearOrder(); break;
+        case "submit": {
+          if (!accessToken || !locationId || !currentOrder?.items.length) break;
+          submitOrder(accessToken, locationId).then((r) => {
+            Haptics.notificationAsync(r.success
+              ? Haptics.NotificationFeedbackType.Success
+              : Haptics.NotificationFeedbackType.Error);
+            if (r.success) { setPanelTab("order"); setPanelOpen(true); }
+          });
+          break;
         }
       }
-    },
-    [catalogItems, currentOrder, addItem, removeItem, clearOrder, submitOrder, accessToken, locationId]
-  );
-
-  useEffect(() => {
-    setToolHandler(handleCommands);
-  }, [handleCommands, setToolHandler]);
-
-  // ── Toggle connect / disconnect ─────────────────────────────────────────────
-
-  async function handleToggle() {
-    if (isConnected || agentState === "connecting") {
-      await disconnect();
-    } else {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      await connect();
     }
+  }, [catalogItems, currentOrder, addItem, removeItem, clearOrder, submitOrder, accessToken, locationId]);
+
+  useEffect(() => { setToolHandler(handleCommands); }, [handleCommands, setToolHandler]);
+
+  // ── Toggle ─────────────────────────────────────────────────────────────────
+  async function handleOrbPress() {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (Platform.OS === "web") {
+      if (wakeMode === "wake")    { exitToIdle(); return; }
+      if (wakeMode === "command") { disconnect(); return; }
+      if (isWakeWordSupported())  { enterWakeMode(); return; }
+    }
+    if (isConnected || agentState === "connecting") { disconnect(); }
+    else { await connect(); }
   }
 
-  // ── Tabs ──────────────────────────────────────────────────────────────────
+  // ── Derived ────────────────────────────────────────────────────────────────
+  const orbKey: OrbKey = wakeMode === "wake" ? "wake"
+    : wakeMode === "command" ? agentState
+    : agentState;
 
-  const reversedConvo = [...conversation].reverse();
+  const lastMsgs = conversation.slice(-3);
+  const orderCount = currentOrder?.items.length ?? 0;
 
-  function renderVoiceTab() {
-    return (
-      <View style={styles.voiceTabContent}>
-        {/* Conversation history */}
-        <FlatList
-          ref={listRef}
-          data={reversedConvo}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => <ConversationBubble message={item} />}
-          inverted={!!conversation.length}
-          scrollEnabled={!!conversation.length}
-          contentContainerStyle={styles.conversationList}
-          ListHeaderComponent={
-            partialTranscript ? (
-              <Animated.View entering={FadeInDown.duration(120)} style={styles.partialBubble}>
-                <View style={styles.partialDot} />
-                <Text style={styles.partialBubbleText}>{partialTranscript}</Text>
-              </Animated.View>
-            ) : null
-          }
-          ListEmptyComponent={
-            <View style={styles.emptyConvo}>
-              <Feather
-                name={wakeMode === "wake" ? "mic" : "activity"}
-                size={36}
-                color={wakeMode === "wake" ? Colors.dark.wake : Colors.dark.textMuted}
-              />
-              {wakeMode === "wake" ? (
-                <>
-                  <Text style={[styles.emptyConvoTitle, { color: Colors.dark.wake }]}>
-                    Waiting for wake word…
-                  </Text>
-                  <Text style={styles.emptyConvoSub}>
-                    Say <Text style={{ color: Colors.dark.wake, fontStyle: "normal" }}>"Hey Bar"</Text> to start taking orders.{"\n"}
-                    Say <Text style={{ color: Colors.dark.textSecondary, fontStyle: "normal" }}>"Shut down"</Text> to stop listening.
-                  </Text>
-                </>
-              ) : (
-                <>
-                  <Text style={styles.emptyConvoTitle}>Bevpro</Text>
-                  <Text style={styles.emptyConvoSub}>
-                    {Platform.OS === "web" && isWakeWordSupported()
-                      ? 'Press "Wake Word Mode" to arm the agent.\nSay "Hey Bar" to start giving orders.'
-                      : "Press Start Agent — it listens continuously.\nNo tapping required. Just speak."}
-                  </Text>
-                </>
-              )}
-            </View>
-          }
-          showsVerticalScrollIndicator={false}
-        />
+  // State label
+  const wakeLabel = wakeMode === "wake"
+    ? (wakeIsListening ? `"hey bar"` : "opening mic\u2026")
+    : null;
+  const stateLabel = wakeLabel ?? STATE_LABEL[orbKey] ?? null;
 
-        {/* Waveform */}
-        <View style={styles.waveformContainer}>
-          <WaveformVisualizer
-            isActive={agentState === "listening"}
-            isSpeaking={agentState === "speaking"}
-            barCount={36}
-            height={48}
-          />
-        </View>
+  // ── Render ─────────────────────────────────────────────────────────────────
+  return (
+    <View style={[s.root, { backgroundColor: Colors.dark.background }]}>
 
-        {/* Orb + status */}
-        <View style={styles.orbArea}>
-          {/* Left: clear conversation */}
-          <Pressable
-            onPress={clearConversation}
-            disabled={conversation.length === 0}
-            style={styles.sideBtn}
-          >
-            <Feather
-              name="trash-2"
-              size={20}
-              color={conversation.length === 0 ? Colors.dark.textMuted : Colors.dark.textSecondary}
-            />
-          </Pressable>
-
-          {/* Center: Live orb + controls */}
-          <View style={styles.orbCenter}>
-            {Platform.OS === "web" && wakeMode === "wake" ? (
-              // Wake listening mode
-              <>
-                <LiveOrb
-                  state={wakeIsListening ? "listening" : "connecting"}
-                  overrideColor={wakeIsListening ? Colors.dark.wake : Colors.dark.textMuted}
-                  overrideLabel={wakeIsListening ? `Say "Hey Bar"` : "Opening mic\u2026"}
-                />
-                <Pressable onPress={exitToIdle} style={styles.wakeStopBtn}>
-                  <Feather name="mic-off" size={18} color={Colors.dark.textSecondary} />
-                  <Text style={styles.wakeStopText}>
-                    {wakeIsListening ? "Stop Listening" : "Cancel"}
-                  </Text>
-                </Pressable>
-              </>
-            ) : Platform.OS === "web" && wakeMode === "command" ? (
-              // Agent active via wake word
-              <>
-                <LiveOrb state={agentState} />
-                <Pressable onPress={disconnect} style={styles.wakeReturnBtn}>
-                  <Feather name="mic" size={18} color={Colors.dark.wake} />
-                  <Text style={styles.wakeReturnText}>End → Wake Mode</Text>
-                </Pressable>
-              </>
-            ) : Platform.OS === "web" && isWakeWordSupported() ? (
-              // Idle on web with wake word support
-              <>
-                <LiveOrb state={agentState} />
-                <Pressable onPress={enterWakeMode} style={styles.wakeStartBtn}>
-                  <Feather name="mic" size={20} color={Colors.dark.wake} />
-                  <Text style={styles.wakeStartText}>Wake Word Mode</Text>
-                </Pressable>
-                <Pressable onPress={handleToggle} style={styles.manualConnectLink}>
-                  <Text style={styles.manualConnectText}>
-                    {isConnected ? "Stop manual session" : "Or connect manually"}
-                  </Text>
-                </Pressable>
-              </>
-            ) : (
-              // Native or web without speech recognition: standard button
-              <>
-                <LiveOrb state={agentState} />
-                <ConnectButton state={agentState} onPress={handleToggle} />
-              </>
-            )}
-          </View>
-
-          {/* Right: interrupt */}
-          <Pressable
-            onPress={interrupt}
-            disabled={agentState !== "speaking"}
-            style={styles.sideBtn}
-          >
-            <Feather
-              name="square"
-              size={20}
-              color={agentState === "speaking" ? Colors.dark.accent : Colors.dark.textMuted}
-            />
-          </Pressable>
-        </View>
-
-        {/* Wake command mode hint */}
-        {Platform.OS === "web" && wakeMode === "command" && (
-          <View style={styles.wakeHintBar}>
-            <Feather name="info" size={12} color={Colors.dark.wake} />
-            <Text style={styles.wakeHintText}>
-              Say <Text style={{ color: Colors.dark.wake }}>"goodbye"</Text> or{" "}
-              <Text style={{ color: Colors.dark.wake }}>"go to sleep"</Text> to return to wake mode
-            </Text>
-          </View>
-        )}
-
-        {/* Error message */}
-        {error ? (
-          <View style={styles.errorBanner}>
-            <Feather name="alert-circle" size={14} color={Colors.dark.danger} />
-            <Text style={styles.errorText}>{error}</Text>
-          </View>
-        ) : null}
-
-        {/* Not connected notice */}
-        {agentState === "disconnected" && !error && !isConfigured && (
-          <Pressable
-            onPress={() => router.push("/setup")}
-            style={[styles.noticeBar, { marginBottom: bottomPad + 8 }]}
-          >
-            <Feather name="link" size={13} color={Colors.dark.warning} />
-            <Text style={styles.noticeText}>Connect Square to enable order management</Text>
-            <Feather name="chevron-right" size={13} color={Colors.dark.textMuted} />
-          </Pressable>
-        )}
+      {/* ── Logo top-center ── */}
+      <View style={[s.logoRow, { paddingTop: topPad + 20 }]}>
+        <Logo />
       </View>
-    );
-  }
 
-  function renderOrderTab() {
-    const items = currentOrder?.items || [];
-    const total = currentOrder?.total || 0;
+      {/* ── Floating conversation ── */}
+      <View style={[s.convoArea, { pointerEvents: "none" }]}>
+        {lastMsgs.map((m, i) => (
+          <ConvoLine key={m.id} msg={m} idx={i} total={lastMsgs.length} />
+        ))}
+        {partialTranscript ? (
+          <Animated.Text entering={FadeIn.duration(200)} style={s.partialLine}>
+            {partialTranscript}
+          </Animated.Text>
+        ) : null}
+      </View>
 
-    if (lastSubmittedOrder) {
-      return (
-        <View style={styles.orderTabContent}>
-          <Animated.View entering={FadeInDown.duration(250)} style={styles.submittedCard}>
-            <View style={styles.submittedHeader}>
-              <View style={styles.submittedIconWrap}>
-                <Feather name="check-circle" size={28} color={Colors.dark.accent} />
-              </View>
+      {/* ── Orb — central interactive element ── */}
+      <Pressable onPress={handleOrbPress} style={s.orbArea} hitSlop={40}>
+        <ZenOrb orbKey={orbKey} />
+        {stateLabel ? (
+          <Animated.Text entering={FadeIn.duration(500)} exiting={FadeOut.duration(400)} style={[s.stateLabel, wakeMode === "wake" && { color: "#A855F7" }]}>
+            {stateLabel}
+          </Animated.Text>
+        ) : null}
+      </Pressable>
+
+      {/* ── Error whisper ── */}
+      {error ? (
+        <Animated.Text entering={FadeIn.duration(300)} style={s.errorWhisper}>
+          {error}
+        </Animated.Text>
+      ) : null}
+
+      {/* ── Bottom corners ── */}
+      <View style={[s.bottomRow, { paddingBottom: bottomPad + 16 }]}>
+
+        {/* Order badge — bottom left */}
+        <Pressable
+          onPress={() => { setPanelTab("order"); setPanelOpen(true); }}
+          style={s.cornerBtn}
+          hitSlop={16}
+        >
+          {orderCount > 0 ? (
+            <View style={s.orderBadge}>
+              <Text style={s.orderBadgeText}>{orderCount}</Text>
+            </View>
+          ) : (
+            <View style={s.cornerDot} />
+          )}
+        </Pressable>
+
+        {/* Interrupt — center, only when speaking */}
+        {agentState === "speaking" ? (
+          <Pressable onPress={interrupt} hitSlop={20} style={s.interruptBtn}>
+            <View style={s.interruptDot} />
+          </Pressable>
+        ) : <View style={{ flex: 1 }} />}
+
+        {/* Settings — bottom right */}
+        <Pressable
+          onPress={() => router.push("/setup")}
+          style={s.cornerBtn}
+          hitSlop={16}
+        >
+          <View style={[s.cornerDot, isConfigured && { backgroundColor: Colors.dark.accent + "55" }]} />
+        </Pressable>
+      </View>
+
+      {/* ── Panel (order / catalog) ── */}
+      <Modal
+        visible={panelOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setPanelOpen(false)}
+      >
+        <Pressable style={s.panelBackdrop} onPress={() => setPanelOpen(false)} />
+        <View style={[s.panel, { paddingBottom: bottomPad + 16 }]}>
+          <View style={s.panelHandle} />
+
+          {/* Panel tab row */}
+          <View style={s.panelTabs}>
+            {(["order", "catalog"] as const).map((t) => (
+              <Pressable key={t} onPress={() => setPanelTab(t)} style={s.panelTabBtn}>
+                <Text style={[s.panelTabText, panelTab === t && s.panelTabActive]}>
+                  {t}
+                </Text>
+              </Pressable>
+            ))}
+            <Pressable onPress={() => setPanelOpen(false)} style={s.panelClose}>
+              <Feather name="x" size={16} color={Colors.dark.textMuted} />
+            </Pressable>
+          </View>
+
+          {/* ── Order ── */}
+          {panelTab === "order" && (() => {
+            const items = currentOrder?.items ?? [];
+            const total = currentOrder?.total ?? 0;
+            if (lastSubmittedOrder) {
+              return (
+                <ScrollView style={s.panelScroll} contentContainerStyle={{ padding: 20, gap: 10 }}>
+                  <Text style={s.submittedTotal}>${lastSubmittedOrder.total.toFixed(2)}</Text>
+                  <Text style={s.submittedSub}>submitted</Text>
+                  <View style={s.submittedDivider} />
+                  {lastSubmittedOrder.items.map((item) => (
+                    <View key={item.id} style={s.submittedRow}>
+                      <Text style={s.submittedQty}>{item.quantity}×</Text>
+                      <Text style={s.submittedName}>{item.catalogItem.name}</Text>
+                      <Text style={s.submittedPrice}>${(item.catalogItem.price * item.quantity).toFixed(2)}</Text>
+                    </View>
+                  ))}
+                  <Pressable onPress={() => Linking.openURL("https://squareup.com/dashboard/orders")} style={s.squareLinkBtn}>
+                    <Text style={s.squareLinkText}>view in Square</Text>
+                  </Pressable>
+                </ScrollView>
+              );
+            }
+            return (
               <View style={{ flex: 1 }}>
-                <Text style={styles.submittedTitle}>Order Submitted!</Text>
-                {lastSubmittedOrder.squareOrderId && (
-                  <Text style={styles.submittedId} numberOfLines={1}>
-                    #{lastSubmittedOrder.squareOrderId.slice(-8).toUpperCase()}
-                  </Text>
+                {items.length === 0 ? (
+                  <View style={s.emptyPanel}>
+                    <Text style={s.emptyPanelText}>no items yet</Text>
+                  </View>
+                ) : (
+                  <>
+                    <FlatList
+                      data={items}
+                      keyExtractor={(it) => it.id}
+                      renderItem={({ item }) => (
+                        <View style={{ marginBottom: 8 }}>
+                          <OrderCard
+                            lineItem={item}
+                            onIncrement={() => updateQuantity(item.id, item.quantity + 1)}
+                            onDecrement={() => updateQuantity(item.id, item.quantity - 1)}
+                            onRemove={() => removeItem(item.id)}
+                          />
+                        </View>
+                      )}
+                      contentContainerStyle={{ padding: 16, paddingBottom: 120 }}
+                      showsVerticalScrollIndicator={false}
+                    />
+                    <View style={s.orderFooter}>
+                      <Text style={s.totalText}>${total.toFixed(2)}</Text>
+                      <View style={s.orderActions}>
+                        <Pressable onPress={clearOrder} style={s.clearBtn}>
+                          <Feather name="trash-2" size={15} color={Colors.dark.danger} />
+                        </Pressable>
+                        <Pressable
+                          onPress={async () => {
+                            if (!accessToken || !locationId) return;
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+                            await submitOrder(accessToken, locationId);
+                          }}
+                          disabled={isSubmitting || !isConfigured}
+                          style={[s.submitBtn, { opacity: isSubmitting || !isConfigured ? 0.5 : 1 }]}
+                        >
+                          {isSubmitting
+                            ? <ActivityIndicator size="small" color={Colors.dark.background} />
+                            : <Text style={s.submitText}>process</Text>
+                          }
+                        </Pressable>
+                      </View>
+                    </View>
+                  </>
                 )}
               </View>
-              <Text style={styles.submittedTotal}>${lastSubmittedOrder.total.toFixed(2)}</Text>
-            </View>
-            <View style={styles.submittedDivider} />
-            {lastSubmittedOrder.items.map((item) => (
-              <View key={item.id} style={styles.submittedLine}>
-                <Text style={styles.submittedLineQty}>{item.quantity}×</Text>
-                <Text style={styles.submittedLineName}>{item.catalogItem.name}</Text>
-                <Text style={styles.submittedLinePrice}>
-                  ${(item.catalogItem.price * item.quantity).toFixed(2)}
-                </Text>
-              </View>
-            ))}
-            <Pressable
-              onPress={() => Linking.openURL("https://squareup.com/dashboard/orders")}
-              style={styles.dashboardBtn}
-            >
-              <Feather name="external-link" size={14} color={Colors.dark.accent} />
-              <Text style={styles.dashboardBtnText}>View in Square Dashboard</Text>
-            </Pressable>
-          </Animated.View>
-        </View>
-      );
-    }
+            );
+          })()}
 
-    return (
-      <View style={styles.orderTabContent}>
-        {items.length === 0 ? (
-          <View style={styles.emptyOrder}>
-            <Feather name="shopping-bag" size={40} color={Colors.dark.textMuted} />
-            <Text style={styles.emptyOrderTitle}>No items yet</Text>
-            <Text style={styles.emptyOrderSub}>
-              Start the agent and say what you need
-            </Text>
-          </View>
-        ) : (
-          <>
-            <FlatList
-              data={items}
-              keyExtractor={(item) => item.id}
-              renderItem={({ item }) => (
-                <View style={{ marginBottom: 8 }}>
-                  <OrderCard
-                    lineItem={item}
-                    onIncrement={() => updateQuantity(item.id, item.quantity + 1)}
-                    onDecrement={() => updateQuantity(item.id, item.quantity - 1)}
-                    onRemove={() => removeItem(item.id)}
-                  />
-                </View>
-              )}
-              contentContainerStyle={styles.orderList}
-              showsVerticalScrollIndicator={false}
-            />
-            <View style={[styles.orderFooter, { paddingBottom: bottomPad + 8 }]}>
-              <View style={styles.totalRow}>
-                <Text style={styles.totalLabel}>Total</Text>
-                <Text style={styles.totalAmount}>${total.toFixed(2)}</Text>
+          {/* ── Catalog ── */}
+          {panelTab === "catalog" && (
+            isLoadingCatalog ? (
+              <View style={s.emptyPanel}>
+                <ActivityIndicator size="small" color={Colors.dark.textMuted} />
               </View>
-              <View style={styles.orderActions}>
-                <Pressable onPress={clearOrder} style={styles.clearOrderBtn}>
-                  <Feather name="trash-2" size={18} color={Colors.dark.danger} />
-                </Pressable>
-                <Pressable
-                  onPress={async () => {
-                    if (!accessToken || !locationId) return;
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-                    await submitOrder(accessToken, locationId);
-                  }}
-                  disabled={isSubmitting || !isConfigured}
-                  style={[styles.submitBtn, { opacity: isSubmitting || !isConfigured ? 0.6 : 1 }]}
-                >
-                  {isSubmitting ? (
-                    <ActivityIndicator size="small" color={Colors.dark.background} />
-                  ) : (
-                    <>
-                      <Feather name="check" size={18} color={Colors.dark.background} />
-                      <Text style={styles.submitBtnText}>
-                        {!isConfigured ? "Connect Square first" : "Process Order"}
-                      </Text>
-                    </>
-                  )}
+            ) : !isConfigured ? (
+              <View style={s.emptyPanel}>
+                <Text style={s.emptyPanelText}>square not connected</Text>
+                <Pressable onPress={() => { setPanelOpen(false); router.push("/setup"); }} style={s.squareLinkBtn}>
+                  <Text style={s.squareLinkText}>connect</Text>
                 </Pressable>
               </View>
-            </View>
-          </>
-        )}
-      </View>
-    );
-  }
-
-  function renderCatalogTab() {
-    return (
-      <View style={styles.catalogTabContent}>
-        {isLoadingCatalog ? (
-          <View style={styles.loadingCatalog}>
-            <ActivityIndicator size="large" color={Colors.dark.accent} />
-            <Text style={styles.loadingText}>Loading catalog...</Text>
-          </View>
-        ) : !isConfigured ? (
-          <View style={styles.notConnected}>
-            <Feather name="link" size={40} color={Colors.dark.textMuted} />
-            <Text style={styles.notConnectedTitle}>Not Connected</Text>
-            <Text style={styles.notConnectedSub}>Connect Square to see inventory</Text>
-            <Pressable onPress={() => router.push("/setup")} style={styles.connectCatalogBtn}>
-              <Text style={styles.connectCatalogBtnText}>Connect Square</Text>
-            </Pressable>
-          </View>
-        ) : catalogItems.length === 0 ? (
-          <View style={styles.emptyOrder}>
-            <Feather name="package" size={40} color={Colors.dark.textMuted} />
-            <Text style={styles.emptyOrderTitle}>No items found</Text>
-            <Text style={styles.emptyOrderSub}>Add items to your Square catalog</Text>
-          </View>
-        ) : (
-          <FlatList
-            data={catalogItems}
-            keyExtractor={(item) => item.id}
-            renderItem={({ item }) => (
-              <Pressable
-                style={styles.catalogItem}
-                onPress={() => {
-                  addItem(item, 1);
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  setActiveTab("order");
-                }}
-              >
-                <View style={styles.catalogInfo}>
-                  <Text style={styles.catalogName}>{item.name}</Text>
-                  {item.category && <Text style={styles.catalogCategory}>{item.category}</Text>}
-                </View>
-                <View style={styles.catalogRight}>
-                  <Text style={styles.catalogPrice}>${item.price.toFixed(2)}</Text>
-                  <View style={styles.addBadge}>
-                    <Feather name="plus" size={14} color={Colors.dark.background} />
-                  </View>
-                </View>
-              </Pressable>
-            )}
-            contentContainerStyle={{ paddingBottom: bottomPad + 16 }}
-            showsVerticalScrollIndicator={false}
-          />
-        )}
-      </View>
-    );
-  }
-
-  return (
-    <View style={[styles.root, { backgroundColor: Colors.dark.background }]}>
-      {/* Header */}
-      <View style={[styles.header, { paddingTop: topPad + 12 }]}>
-        <View style={styles.headerLeft}>
-          <View style={[styles.logoMark, isConnected && styles.logoMarkActive]}>
-            <Feather name="mic" size={16} color={isConnected ? Colors.dark.background : Colors.dark.accent} />
-          </View>
-          <Text style={styles.headerTitle}>Voice POS</Text>
-        </View>
-        <View style={styles.headerRight}>
-          {currentOrder && currentOrder.items.length > 0 && (
-            <Pressable onPress={() => setActiveTab("order")} style={styles.orderBadgeBtn}>
-              <Feather name="shopping-bag" size={16} color={Colors.dark.accent} />
-              <View style={styles.orderCount}>
-                <Text style={styles.orderCountText}>{currentOrder.items.length}</Text>
-              </View>
-            </Pressable>
+            ) : (
+              <FlatList
+                data={catalogItems}
+                keyExtractor={(it) => it.id}
+                renderItem={({ item }) => (
+                  <Pressable
+                    style={s.catalogRow}
+                    onPress={() => {
+                      addItem(item, 1);
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      setPanelTab("order");
+                    }}
+                  >
+                    <Text style={s.catalogName}>{item.name}</Text>
+                    <Text style={s.catalogPrice}>${item.price.toFixed(2)}</Text>
+                  </Pressable>
+                )}
+                contentContainerStyle={{ padding: 16 }}
+                showsVerticalScrollIndicator={false}
+              />
+            )
           )}
-          <Pressable onPress={() => router.push("/setup")} style={styles.settingsBtn}>
-            <Feather
-              name="settings"
-              size={20}
-              color={isConfigured ? Colors.dark.accent : Colors.dark.textSecondary}
-            />
-          </Pressable>
         </View>
-      </View>
-
-      {/* Tab Bar */}
-      <View style={styles.tabBar}>
-        {(["voice", "order", "catalog"] as const).map((tab) => (
-          <Pressable
-            key={tab}
-            onPress={() => { setActiveTab(tab); Haptics.selectionAsync(); }}
-            style={[styles.tab, activeTab === tab && styles.tabActive]}
-          >
-            <Feather
-              name={tab === "voice" ? "activity" : tab === "order" ? "shopping-bag" : "grid"}
-              size={15}
-              color={activeTab === tab ? Colors.dark.accent : Colors.dark.textSecondary}
-            />
-            <Text style={[styles.tabLabel, activeTab === tab && styles.tabLabelActive]}>
-              {tab === "voice" ? "Voice" : tab === "order" ? "Order" : "Catalog"}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
-
-      {/* Content */}
-      <View style={styles.content}>
-        {activeTab === "voice" && renderVoiceTab()}
-        {activeTab === "order" && renderOrderTab()}
-        {activeTab === "catalog" && renderCatalogTab()}
-      </View>
+      </Modal>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  root: { flex: 1 },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingBottom: 12,
-  },
-  headerLeft: { flexDirection: "row", alignItems: "center", gap: 10 },
-  logoMark: {
-    width: 32, height: 32, borderRadius: 10,
-    backgroundColor: Colors.dark.accentDim,
-    alignItems: "center", justifyContent: "center",
-  },
-  logoMarkActive: { backgroundColor: Colors.dark.accent },
-  headerTitle: {
-    fontFamily: "Inter_700Bold", fontSize: 20, color: Colors.dark.text, letterSpacing: -0.5,
-  },
-  headerRight: { flexDirection: "row", alignItems: "center", gap: 12 },
-  orderBadgeBtn: {
-    flexDirection: "row", alignItems: "center", gap: 4,
-    backgroundColor: Colors.dark.accentDim, borderRadius: 20,
-    paddingHorizontal: 10, paddingVertical: 5,
-  },
-  orderCount: {
-    backgroundColor: Colors.dark.accent, borderRadius: 8,
-    minWidth: 16, height: 16, alignItems: "center", justifyContent: "center", paddingHorizontal: 3,
-  },
-  orderCountText: { fontFamily: "Inter_700Bold", fontSize: 10, color: Colors.dark.background },
-  settingsBtn: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
-  tabBar: {
-    flexDirection: "row", marginHorizontal: 16,
-    backgroundColor: Colors.dark.surface, borderRadius: 14, padding: 4, marginBottom: 8,
-    borderWidth: 1, borderColor: Colors.dark.surfaceBorder,
-  },
-  tab: {
-    flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center",
-    gap: 6, paddingVertical: 9, borderRadius: 11,
-  },
-  tabActive: { backgroundColor: Colors.dark.surfaceElevated },
-  tabLabel: { fontFamily: "Inter_500Medium", fontSize: 13, color: Colors.dark.textSecondary },
-  tabLabelActive: { color: Colors.dark.accent },
-  content: { flex: 1 },
+// ── Styles ────────────────────────────────────────────────────────────────────
 
-  // Voice tab
-  voiceTabContent: { flex: 1 },
-  conversationList: {
-    paddingHorizontal: 16, paddingTop: 8, paddingBottom: 16, flexGrow: 1,
+const s = StyleSheet.create({
+  root: { flex: 1 },
+
+  // Logo
+  logoRow:   { alignItems: "center", paddingBottom: 8 },
+  logoWrap:  { alignItems: "center", gap: 7 },
+  logoMark:  { width: 28, height: 28, alignItems: "center", justifyContent: "center" },
+  logoCircle: {
+    position: "absolute",
+    width: 28, height: 28, borderRadius: 14,
+    borderWidth: 0.5, borderColor: "rgba(255,255,255,0.18)",
   },
-  bubble: {
-    maxWidth: "80%", borderRadius: 16, paddingHorizontal: 14, paddingVertical: 10, marginBottom: 8,
+  logoDot: {
+    position: "absolute",
+    top: 5, right: 5,
+    width: 4, height: 4, borderRadius: 2,
+    backgroundColor: "rgba(255,255,255,0.22)",
   },
-  userBubble: {
-    alignSelf: "flex-end", backgroundColor: Colors.dark.accent, borderBottomRightRadius: 4,
+  logoText: {
+    fontFamily: "Inter_300Light", fontSize: 10,
+    letterSpacing: 4, color: "rgba(255,255,255,0.2)",
+    textTransform: "lowercase",
   },
-  agentBubble: {
-    alignSelf: "flex-start", backgroundColor: Colors.dark.surfaceElevated,
-    borderBottomLeftRadius: 4, borderWidth: 1, borderColor: Colors.dark.surfaceBorder,
+
+  // Conversation
+  convoArea: {
+    flex: 1, alignItems: "center", justifyContent: "flex-end",
+    paddingHorizontal: 36, paddingBottom: 28, gap: 10,
   },
-  bubbleText: { fontFamily: "Inter_400Regular", fontSize: 14, lineHeight: 20 },
-  userText: { color: Colors.dark.background },
-  agentText: { color: Colors.dark.text },
-  emptyConvo: {
-    flex: 1, alignItems: "center", justifyContent: "center",
-    gap: 12, paddingHorizontal: 32, paddingVertical: 40,
+  convoLine: {
+    textAlign: "center", lineHeight: 22,
+    color: "rgba(255,255,255,0.85)",
   },
-  emptyConvoTitle: { fontFamily: "Inter_600SemiBold", fontSize: 18, color: Colors.dark.text },
-  emptyConvoSub: {
-    fontFamily: "Inter_400Regular", fontSize: 14,
-    color: Colors.dark.textSecondary, textAlign: "center", lineHeight: 20,
+  partialLine: {
+    textAlign: "center", fontSize: 13, lineHeight: 20,
+    color: "rgba(255,255,255,0.3)", fontStyle: "italic",
+    fontFamily: "Inter_300Light",
   },
-  partialBubble: {
-    flexDirection: "row", alignItems: "center", gap: 8,
-    alignSelf: "flex-start", marginHorizontal: 12, marginBottom: 6,
-    backgroundColor: Colors.dark.surfaceElevated,
-    borderWidth: 1, borderColor: Colors.dark.surfaceBorder,
-    borderRadius: 16, paddingHorizontal: 14, paddingVertical: 9,
-    maxWidth: "80%",
+
+  // Orb
+  orbArea: { alignItems: "center", gap: 18, paddingVertical: 8 },
+  orbWrap: { width: 200, height: 200, alignItems: "center", justifyContent: "center" },
+  orbOuter: {
+    position: "absolute",
+    width: 200, height: 200, borderRadius: 100,
+    borderWidth: 0.5,
   },
-  partialDot: {
-    width: 7, height: 7, borderRadius: 4,
-    backgroundColor: Colors.dark.accent, opacity: 0.9,
-  },
-  partialBubbleText: {
-    fontFamily: "Inter_400Regular", fontSize: 14,
-    color: Colors.dark.textSecondary, fontStyle: "italic", flex: 1,
-  },
-  partialContainer: {
-    marginHorizontal: 20, marginBottom: 6,
-    backgroundColor: Colors.dark.surface, borderRadius: 10,
-    paddingHorizontal: 14, paddingVertical: 8,
-    borderWidth: 1, borderColor: Colors.dark.surfaceBorder,
-  },
-  partialText: {
-    fontFamily: "Inter_400Regular", fontSize: 13,
-    color: Colors.dark.textSecondary, fontStyle: "italic",
-  },
-  waveformContainer: {
-    alignItems: "center", paddingHorizontal: 20, paddingBottom: 4,
-  },
-  orbArea: {
-    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    paddingHorizontal: 24, paddingVertical: 16,
-  },
-  sideBtn: {
-    width: 48, height: 48, alignItems: "center", justifyContent: "center",
-  },
-  orbCenter: { flex: 1, alignItems: "center", gap: 16 },
-  orbWrapper: { alignItems: "center", justifyContent: "center", gap: 8 },
-  orbGlow: {
-    position: "absolute", width: 80, height: 80, borderRadius: 40,
+  orbMid: {
+    position: "absolute",
+    width: 120, height: 120, borderRadius: 60,
+    borderWidth: 0.75,
+    backgroundColor: "transparent",
   },
   orbCore: {
-    width: 24, height: 24, borderRadius: 12,
-  },
-  orbLabel: { fontFamily: "Inter_500Medium", fontSize: 12 },
-  connectButton: {
-    flexDirection: "row", alignItems: "center", gap: 8,
-    paddingVertical: 12, paddingHorizontal: 24, borderRadius: 14,
-    backgroundColor: Colors.dark.surface, borderWidth: 1.5,
-    borderColor: Colors.dark.accent,
-  },
-  connectButtonActive: {
-    borderColor: Colors.dark.danger,
-    backgroundColor: Colors.dark.dangerDim,
-  },
-  connectButtonText: {
-    fontFamily: "Inter_600SemiBold", fontSize: 15, color: Colors.dark.accent,
-  },
-  errorBanner: {
-    flexDirection: "row", alignItems: "center", gap: 8,
-    marginHorizontal: 16, marginBottom: 8, backgroundColor: Colors.dark.dangerDim,
-    borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10,
-    borderWidth: 1, borderColor: Colors.dark.danger + "44",
-  },
-  errorText: { flex: 1, fontFamily: "Inter_500Medium", fontSize: 12, color: Colors.dark.danger },
-  noticeBar: {
-    flexDirection: "row", alignItems: "center", gap: 8,
-    marginHorizontal: 16, paddingHorizontal: 14, paddingVertical: 10,
-    backgroundColor: Colors.dark.surface, borderRadius: 10,
-    borderWidth: 1, borderColor: Colors.dark.surfaceBorder,
-  },
-  noticeText: {
-    flex: 1, fontFamily: "Inter_400Regular", fontSize: 12, color: Colors.dark.textSecondary,
-  },
-
-  // Wake word UI
-  wakeStartBtn: {
-    flexDirection: "row", alignItems: "center", gap: 8,
-    paddingVertical: 13, paddingHorizontal: 28, borderRadius: 14,
-    backgroundColor: Colors.dark.wakeDim,
-    borderWidth: 1.5, borderColor: Colors.dark.wake,
-  },
-  wakeStartText: { fontFamily: "Inter_600SemiBold", fontSize: 15, color: Colors.dark.wake },
-  wakeStopBtn: {
-    flexDirection: "row", alignItems: "center", gap: 8,
-    paddingVertical: 12, paddingHorizontal: 24, borderRadius: 14,
-    backgroundColor: Colors.dark.surface, borderWidth: 1, borderColor: Colors.dark.surfaceBorder,
-  },
-  wakeStopText: { fontFamily: "Inter_500Medium", fontSize: 14, color: Colors.dark.textSecondary },
-  wakeReturnBtn: {
-    flexDirection: "row", alignItems: "center", gap: 8,
-    paddingVertical: 12, paddingHorizontal: 24, borderRadius: 14,
-    backgroundColor: Colors.dark.wakeDim, borderWidth: 1, borderColor: Colors.dark.wake + "55",
-  },
-  wakeReturnText: { fontFamily: "Inter_500Medium", fontSize: 14, color: Colors.dark.wake },
-  wakeHintBar: {
-    flexDirection: "row", alignItems: "center", gap: 6,
-    marginHorizontal: 16, marginBottom: 8,
-    backgroundColor: Colors.dark.wakeDim, borderRadius: 10,
-    paddingHorizontal: 14, paddingVertical: 8,
-    borderWidth: 1, borderColor: Colors.dark.wake + "33",
-  },
-  wakeHintText: { flex: 1, fontFamily: "Inter_400Regular", fontSize: 12, color: Colors.dark.textSecondary },
-  manualConnectLink: { paddingVertical: 4, paddingHorizontal: 8 },
-  manualConnectText: {
-    fontFamily: "Inter_400Regular", fontSize: 12,
-    color: Colors.dark.textMuted, textDecorationLine: "underline",
-  },
-
-  // Order tab
-  orderTabContent: { flex: 1 },
-  emptyOrder: {
-    flex: 1, alignItems: "center", justifyContent: "center",
-    gap: 12, paddingHorizontal: 32,
-  },
-  emptyOrderTitle: { fontFamily: "Inter_600SemiBold", fontSize: 18, color: Colors.dark.text },
-  emptyOrderSub: {
-    fontFamily: "Inter_400Regular", fontSize: 14,
-    color: Colors.dark.textSecondary, textAlign: "center",
-  },
-  submittedCard: {
-    margin: 16,
-    backgroundColor: Colors.dark.accentSubtle,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: Colors.dark.accentDim,
-    padding: 20,
-    gap: 12,
-  },
-  submittedHeader: { flexDirection: "row", alignItems: "center", gap: 12 },
-  submittedIconWrap: {
     width: 48, height: 48, borderRadius: 24,
-    backgroundColor: Colors.dark.accentDim,
-    alignItems: "center", justifyContent: "center",
+    borderWidth: 0.5,
   },
-  submittedTitle: { fontFamily: "Inter_700Bold", fontSize: 17, color: Colors.dark.accent },
-  submittedId: { fontFamily: "Inter_400Regular", fontSize: 12, color: Colors.dark.textSecondary, marginTop: 2 },
-  submittedTotal: { fontFamily: "Inter_700Bold", fontSize: 22, color: Colors.dark.accent },
-  submittedDivider: { height: 1, backgroundColor: Colors.dark.accentDim },
-  submittedLine: { flexDirection: "row", alignItems: "center", gap: 8 },
-  submittedLineQty: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: Colors.dark.textSecondary, width: 28 },
-  submittedLineName: { flex: 1, fontFamily: "Inter_500Medium", fontSize: 14, color: Colors.dark.text },
-  submittedLinePrice: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: Colors.dark.accent },
-  dashboardBtn: {
-    flexDirection: "row", alignItems: "center", gap: 6,
-    marginTop: 4, paddingTop: 12,
-    borderTopWidth: 1, borderTopColor: Colors.dark.accentDim,
+  stateLabel: {
+    fontFamily: "Inter_300Light",
+    fontSize: 11, letterSpacing: 2,
+    color: "rgba(255,255,255,0.28)",
+    textTransform: "lowercase",
   },
-  dashboardBtnText: { fontFamily: "Inter_500Medium", fontSize: 13, color: Colors.dark.accent },
-  orderList: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 100 },
+
+  // Error
+  errorWhisper: {
+    textAlign: "center", paddingHorizontal: 40,
+    fontFamily: "Inter_300Light", fontSize: 11,
+    color: "rgba(255,92,122,0.5)", letterSpacing: 0.5,
+  },
+
+  // Bottom bar
+  bottomRow: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    paddingHorizontal: 32, paddingTop: 12,
+  },
+  cornerBtn: { width: 32, height: 32, alignItems: "center", justifyContent: "center" },
+  cornerDot: {
+    width: 5, height: 5, borderRadius: 2.5,
+    backgroundColor: "rgba(255,255,255,0.12)",
+  },
+  orderBadge: {
+    minWidth: 20, height: 20, borderRadius: 10,
+    backgroundColor: Colors.dark.accent + "22",
+    borderWidth: 0.5, borderColor: Colors.dark.accent + "55",
+    alignItems: "center", justifyContent: "center", paddingHorizontal: 4,
+  },
+  orderBadgeText: {
+    fontFamily: "Inter_500Medium", fontSize: 11, color: Colors.dark.accent,
+  },
+  interruptBtn: { flex: 1, alignItems: "center" },
+  interruptDot: {
+    width: 6, height: 6, borderRadius: 3,
+    backgroundColor: "rgba(255,255,255,0.3)",
+  },
+
+  // Panel
+  panelBackdrop: { flex: 1 },
+  panel: {
+    backgroundColor: "#0c0c14",
+    borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    borderTopWidth: 0.5, borderColor: "rgba(255,255,255,0.06)",
+    maxHeight: "75%",
+    shadowColor: "#000", shadowOpacity: 0.6, shadowRadius: 40, shadowOffset: { width: 0, height: -8 },
+  },
+  panelHandle: {
+    width: 32, height: 2.5, borderRadius: 2,
+    backgroundColor: "rgba(255,255,255,0.1)",
+    alignSelf: "center", marginTop: 12, marginBottom: 4,
+  },
+  panelTabs: {
+    flexDirection: "row", alignItems: "center",
+    paddingHorizontal: 20, paddingVertical: 12, gap: 20,
+  },
+  panelTabBtn: { paddingVertical: 4 },
+  panelTabText: {
+    fontFamily: "Inter_400Regular", fontSize: 13,
+    color: "rgba(255,255,255,0.25)", letterSpacing: 0.5,
+    textTransform: "lowercase",
+  },
+  panelTabActive: { color: "rgba(255,255,255,0.75)" },
+  panelClose: {
+    marginLeft: "auto", padding: 4,
+  },
+  panelScroll: { flex: 1 },
+
+  // Order
+  emptyPanel: {
+    flex: 1, alignItems: "center", justifyContent: "center",
+    gap: 12, paddingBottom: 40,
+  },
+  emptyPanelText: {
+    fontFamily: "Inter_300Light", fontSize: 13,
+    color: "rgba(255,255,255,0.2)", letterSpacing: 0.5,
+  },
+  submittedTotal: {
+    fontFamily: "Inter_300Light", fontSize: 40,
+    color: Colors.dark.accent, letterSpacing: -1,
+  },
+  submittedSub: {
+    fontFamily: "Inter_300Light", fontSize: 11, letterSpacing: 2,
+    color: "rgba(255,255,255,0.3)", textTransform: "lowercase", marginTop: -6,
+  },
+  submittedDivider: { height: 0.5, backgroundColor: "rgba(255,255,255,0.06)" },
+  submittedRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 2 },
+  submittedQty: { fontFamily: "Inter_400Regular", fontSize: 13, color: "rgba(255,255,255,0.3)", width: 26 },
+  submittedName: { flex: 1, fontFamily: "Inter_400Regular", fontSize: 13, color: "rgba(255,255,255,0.7)" },
+  submittedPrice: { fontFamily: "Inter_500Medium", fontSize: 13, color: "rgba(255,255,255,0.5)" },
+  squareLinkBtn: { marginTop: 4 },
+  squareLinkText: {
+    fontFamily: "Inter_300Light", fontSize: 12, letterSpacing: 0.5,
+    color: Colors.dark.accent, textDecorationLine: "underline",
+  },
   orderFooter: {
     position: "absolute", bottom: 0, left: 0, right: 0,
-    backgroundColor: Colors.dark.background,
-    paddingHorizontal: 16, paddingTop: 12,
-    borderTopWidth: 1, borderTopColor: Colors.dark.surfaceBorder,
+    paddingHorizontal: 20, paddingTop: 14, paddingBottom: 16,
+    borderTopWidth: 0.5, borderTopColor: "rgba(255,255,255,0.05)",
+    backgroundColor: "#0c0c14",
   },
-  totalRow: {
-    flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12,
+  totalText: {
+    fontFamily: "Inter_300Light", fontSize: 30,
+    color: "rgba(255,255,255,0.75)", letterSpacing: -0.5, marginBottom: 12,
   },
-  totalLabel: { fontFamily: "Inter_500Medium", fontSize: 16, color: Colors.dark.textSecondary },
-  totalAmount: { fontFamily: "Inter_700Bold", fontSize: 24, color: Colors.dark.text },
-  orderActions: { flexDirection: "row", gap: 12 },
-  clearOrderBtn: {
-    width: 52, height: 52, borderRadius: 14, backgroundColor: Colors.dark.dangerDim,
+  orderActions: { flexDirection: "row", gap: 10 },
+  clearBtn: {
+    width: 46, height: 46, borderRadius: 23,
+    borderWidth: 0.5, borderColor: Colors.dark.danger + "33",
     alignItems: "center", justifyContent: "center",
-    borderWidth: 1, borderColor: Colors.dark.danger + "44",
   },
   submitBtn: {
-    flex: 1, height: 52, borderRadius: 14, backgroundColor: Colors.dark.accent,
-    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8,
-  },
-  submitBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 16, color: Colors.dark.background },
-
-  // Catalog tab
-  catalogTabContent: { flex: 1 },
-  loadingCatalog: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12 },
-  loadingText: { fontFamily: "Inter_400Regular", fontSize: 14, color: Colors.dark.textSecondary },
-  notConnected: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12, paddingHorizontal: 32 },
-  notConnectedTitle: { fontFamily: "Inter_600SemiBold", fontSize: 18, color: Colors.dark.text },
-  notConnectedSub: {
-    fontFamily: "Inter_400Regular", fontSize: 14,
-    color: Colors.dark.textSecondary, textAlign: "center",
-  },
-  connectCatalogBtn: {
-    backgroundColor: Colors.dark.accent, borderRadius: 12,
-    paddingHorizontal: 24, paddingVertical: 12,
-  },
-  connectCatalogBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 15, color: Colors.dark.background },
-  catalogItem: {
-    flexDirection: "row", alignItems: "center",
-    backgroundColor: Colors.dark.surface, borderRadius: 12,
-    paddingHorizontal: 16, paddingVertical: 14, marginHorizontal: 16, marginBottom: 8,
-    borderWidth: 1, borderColor: Colors.dark.surfaceBorder,
-  },
-  catalogInfo: { flex: 1, gap: 2 },
-  catalogName: { fontFamily: "Inter_500Medium", fontSize: 15, color: Colors.dark.text },
-  catalogCategory: { fontFamily: "Inter_400Regular", fontSize: 12, color: Colors.dark.textSecondary },
-  catalogRight: { flexDirection: "row", alignItems: "center", gap: 10 },
-  catalogPrice: { fontFamily: "Inter_600SemiBold", fontSize: 15, color: Colors.dark.text },
-  addBadge: {
-    width: 28, height: 28, borderRadius: 8, backgroundColor: Colors.dark.accent,
+    flex: 1, height: 46, borderRadius: 23,
+    backgroundColor: Colors.dark.accent + "22",
+    borderWidth: 0.5, borderColor: Colors.dark.accent + "55",
     alignItems: "center", justifyContent: "center",
+  },
+  submitText: {
+    fontFamily: "Inter_400Regular", fontSize: 14,
+    letterSpacing: 1, color: Colors.dark.accent,
+    textTransform: "lowercase",
+  },
+
+  // Catalog
+  catalogRow: {
+    flexDirection: "row", alignItems: "center",
+    paddingVertical: 14,
+    borderBottomWidth: 0.5, borderBottomColor: "rgba(255,255,255,0.04)",
+  },
+  catalogName: {
+    flex: 1, fontFamily: "Inter_400Regular", fontSize: 14,
+    color: "rgba(255,255,255,0.65)",
+  },
+  catalogPrice: {
+    fontFamily: "Inter_300Light", fontSize: 13,
+    color: "rgba(255,255,255,0.3)",
   },
 });
