@@ -220,8 +220,8 @@ export default function MainScreen() {
     await connect();
   }, [connect]);
 
-  const handleWakeStopDetected = useCallback(() => {
-    disconnect();
+  const handleWakeStopDetected = useCallback(async () => {
+    await disconnect();
     setWakeMode("idle");
   }, [disconnect]);
 
@@ -235,21 +235,23 @@ export default function MainScreen() {
     startWakeWord();
   }, [startWakeWord]);
 
-  const exitToIdle = useCallback(() => {
+  const exitToIdle = useCallback(async () => {
     stopWakeWord();
-    disconnect();
+    await disconnect();
     setWakeMode("idle");
   }, [stopWakeWord, disconnect]);
 
-  const returnToWakeMode = useCallback(() => {
-    disconnect();
+  const returnToWakeMode = useCallback(async () => {
     setWakeMode("idle");
+    // Await disconnect so AudioContext fully closes and mic hardware is freed
+    // before SpeechRecognition tries to acquire it again
+    await disconnect();
     setTimeout(() => {
       if (wakeModeRef.current === "idle") {
         setWakeMode("wake");
         startWakeWord();
       }
-    }, 400);
+    }, 150);
   }, [disconnect, startWakeWord]);
 
   // Detect termination phrases from agent conversation → return to wake mode
@@ -372,7 +374,7 @@ export default function MainScreen() {
 
   async function handleToggle() {
     if (isConnected || agentState === "connecting") {
-      disconnect();
+      await disconnect();
     } else {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       await connect();

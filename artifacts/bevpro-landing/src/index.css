@@ -3,7 +3,6 @@
 @import "tw-animate-css";
 
 @plugin "@tailwindcss/typography";
-@custom-variant dark (&:is(.dark *));
 
 @theme inline {
   --color-background: hsl(var(--background));
@@ -38,46 +37,46 @@
   --font-sans: 'Inter', sans-serif;
   --font-display: 'Outfit', sans-serif;
 
-  --radius-sm: 0.25rem;
-  --radius-md: 0.5rem;
-  --radius-lg: 1rem;
-  --radius-xl: 1.5rem;
-  --radius-2xl: 2rem;
+  --radius-sm: 0;
+  --radius-md: 0;
+  --radius-lg: 0;
+  --radius-xl: 0;
+  --radius-2xl: 0;
 }
 
 :root {
-  /* Ultra Dark Luxury Minimal Theme */
-  --background: 240 23% 3%; /* #050508 */
-  --foreground: 240 10% 98%; /* #F0F0FF */
+  /* Ultra-minimalist Light Theme */
+  --background: 60 14% 98%; /* #FAFAF8 */
+  --foreground: 0 0% 6%; /* #0F0F0F */
   
-  --card: 240 21% 6%; /* #0D0D14 */
-  --card-foreground: 240 10% 98%;
-  --card-border: 240 15% 15%;
+  --card: 0 0% 100%; /* #FFFFFF */
+  --card-foreground: 0 0% 6%;
+  --card-border: 0 0% 90%; /* Light gray border */
   
-  --popover: 240 21% 6%;
-  --popover-foreground: 240 10% 98%;
-  --popover-border: 240 15% 15%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 0 0% 6%;
+  --popover-border: 0 0% 90%;
   
-  --primary: 248 88% 70%; /* #7C6EF5 - Deep Indigo/Violet */
+  --primary: 247 87% 62%; /* Deep Indigo/Violet */
   --primary-foreground: 0 0% 100%;
   
-  --secondary: 240 15% 12%;
-  --secondary-foreground: 240 10% 98%;
+  --secondary: 0 0% 96%;
+  --secondary-foreground: 0 0% 6%;
   
-  --muted: 240 15% 12%;
-  --muted-foreground: 240 10% 65%;
+  --muted: 0 0% 96%;
+  --muted-foreground: 0 0% 40%;
   
-  --accent: 248 88% 70%;
+  --accent: 247 87% 62%;
   --accent-foreground: 0 0% 100%;
   
-  --destructive: 350 100% 68%;
+  --destructive: 0 84% 60%;
   --destructive-foreground: 0 0% 100%;
 
-  --border: 240 15% 15%;
-  --input: 240 15% 15%;
-  --ring: 248 88% 70%;
+  --border: 0 0% 90%;
+  --input: 0 0% 90%;
+  --ring: 247 87% 62%;
   
-  --radius: 1rem;
+  --radius: 0rem;
 }
 
 @layer base {
@@ -86,7 +85,7 @@
   }
 
   body {
-    @apply font-sans antialiased bg-background text-foreground selection:bg-primary/30 selection:text-primary-foreground;
+    @apply font-sans antialiased bg-background text-foreground selection:bg-primary/20 selection:text-primary;
   }
 
   h1, h2, h3, h4, h5, h6 {
@@ -95,19 +94,4 @@
 }
 
 @layer utilities {
-  .glass-panel {
-    @apply bg-card/60 backdrop-blur-xl border border-white/5 shadow-2xl shadow-black/50;
-  }
-  
-  .glow-text {
-    text-shadow: 0 0 20px hsl(var(--primary) / 0.5);
-  }
-
-  .gradient-text {
-    @apply bg-clip-text text-transparent bg-gradient-to-r from-white via-white to-white/60;
-  }
-  
-  .gradient-text-primary {
-    @apply bg-clip-text text-transparent bg-gradient-to-r from-primary via-[#A855F7] to-primary;
-  }
 }

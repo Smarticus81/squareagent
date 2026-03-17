@@ -52,7 +52,7 @@ interface VoiceAgentContextType {
   partialTranscript: string;
   error: string | null;
   connect: () => Promise<void>;
-  disconnect: () => void;
+  disconnect: () => Promise<void>;
   clearConversation: () => void;
   setToolHandler: (h: CommandHandler) => void;
   interrupt: () => void;
@@ -549,21 +549,27 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const stopWebAudio = useCallback(() => {
+  const stopWebAudio = useCallback(async () => {
     processorRef.current?.disconnect();
     processorRef.current = null;
-    audioCtxRef.current?.close().catch(() => {});
-    audioCtxRef.current = null;
+    // Stop mic tracks FIRST so the hardware is released immediately
     mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
     mediaStreamRef.current = null;
+    // Await the AudioContext close so Chrome fully releases audio hardware
+    // before any subsequent mic acquisition (e.g. SpeechRecognition)
+    if (audioCtxRef.current) {
+      await audioCtxRef.current.close().catch(() => {});
+      audioCtxRef.current = null;
+    }
     nextPlayTime.current = 0;
   }, []);
 
   // ── Disconnect ─────────────────────────────────────────────────────────────
 
-  const disconnect = useCallback(() => {
+  const disconnect = useCallback(async () => {
     isRunning.current = false;
-    stopWebAudio();
+    // Await so audio hardware is fully released before mic can be re-acquired
+    await stopWebAudio();
 
     const rec = currentRecording.current;
     if (rec) { rec.stopAndUnloadAsync().catch(() => {}); currentRecording.current = null; }
