@@ -397,6 +397,14 @@ export default function MainScreen() {
           inverted={!!conversation.length}
           scrollEnabled={!!conversation.length}
           contentContainerStyle={styles.conversationList}
+          ListHeaderComponent={
+            partialTranscript ? (
+              <Animated.View entering={FadeInDown.duration(120)} style={styles.partialBubble}>
+                <View style={styles.partialDot} />
+                <Text style={styles.partialBubbleText}>{partialTranscript}</Text>
+              </Animated.View>
+            ) : null
+          }
           ListEmptyComponent={
             <View style={styles.emptyConvo}>
               <Feather
@@ -428,13 +436,6 @@ export default function MainScreen() {
           }
           showsVerticalScrollIndicator={false}
         />
-
-        {/* Live partial transcript */}
-        {partialTranscript ? (
-          <View style={styles.partialContainer}>
-            <Text style={styles.partialText}>{partialTranscript}</Text>
-          </View>
-        ) : null}
 
         {/* Waveform */}
         <View style={styles.waveformContainer}>
@@ -851,6 +852,22 @@ const styles = StyleSheet.create({
   emptyConvoSub: {
     fontFamily: "Inter_400Regular", fontSize: 14,
     color: Colors.dark.textSecondary, textAlign: "center", lineHeight: 20,
+  },
+  partialBubble: {
+    flexDirection: "row", alignItems: "center", gap: 8,
+    alignSelf: "flex-start", marginHorizontal: 12, marginBottom: 6,
+    backgroundColor: Colors.dark.surfaceElevated,
+    borderWidth: 1, borderColor: Colors.dark.surfaceBorder,
+    borderRadius: 16, paddingHorizontal: 14, paddingVertical: 9,
+    maxWidth: "80%",
+  },
+  partialDot: {
+    width: 7, height: 7, borderRadius: 4,
+    backgroundColor: Colors.dark.accent, opacity: 0.9,
+  },
+  partialBubbleText: {
+    fontFamily: "Inter_400Regular", fontSize: 14,
+    color: Colors.dark.textSecondary, fontStyle: "italic", flex: 1,
   },
   partialContainer: {
     marginHorizontal: 20, marginBottom: 6,

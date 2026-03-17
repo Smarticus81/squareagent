@@ -17,6 +17,7 @@ import Animated, { FadeInDown } from "react-native-reanimated";
 
 import Colors from "@/constants/colors";
 import { useSquare, SquareLocation } from "@/context/SquareContext";
+import { useVoicePrefs, VOICES, SPEEDS } from "@/hooks/useVoicePrefs";
 
 const WEB_TOP_INSET = 67;
 const WEB_BOTTOM_INSET = 34;
@@ -52,6 +53,8 @@ export default function SetupScreen() {
       ? savedLocations.find((l) => l.id === locationId) ?? null
       : null
   );
+  const { voice, speed, setVoice, setSpeed } = useVoicePrefs();
+
   const [isConnecting, setIsConnecting] = useState(false);
   const [isOAuthLoading, setIsOAuthLoading] = useState(false);
   const [showManual, setShowManual] = useState(false);
@@ -469,6 +472,52 @@ export default function SetupScreen() {
             Orders submitted here go directly to your live Square account. Use your Sandbox credentials from developer.squareup.com to test without real transactions.
           </Text>
         </Animated.View>
+
+        {/* ── Voice Settings ───────────────────────────────────────────── */}
+        <Animated.View entering={FadeInDown.delay(280).duration(300)} style={styles.voiceSection}>
+          <View style={styles.voiceSectionHeader}>
+            <Feather name="mic" size={16} color={Colors.dark.accent} />
+            <Text style={styles.voiceSectionTitle}>Voice Settings</Text>
+          </View>
+
+          {/* Voice picker */}
+          <Text style={styles.voiceLabel}>Voice</Text>
+          <View style={styles.voiceGrid}>
+            {VOICES.map((v) => {
+              const active = voice === v.id;
+              return (
+                <Pressable
+                  key={v.id}
+                  onPress={() => { setVoice(v.id); Haptics.selectionAsync(); }}
+                  style={[styles.voiceChip, active && styles.voiceChipActive]}
+                >
+                  <Text style={[styles.voiceChipName, active && styles.voiceChipNameActive]}>{v.label}</Text>
+                  <Text style={[styles.voiceChipDesc, active && styles.voiceChipDescActive]}>{v.desc}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          {/* Speed picker */}
+          <Text style={[styles.voiceLabel, { marginTop: 14 }]}>Speed</Text>
+          <View style={styles.speedRow}>
+            {SPEEDS.map((s) => {
+              const active = speed === s.id;
+              return (
+                <Pressable
+                  key={s.id}
+                  onPress={() => { setSpeed(s.id); Haptics.selectionAsync(); }}
+                  style={[styles.speedChip, active && styles.speedChipActive]}
+                >
+                  <Text style={[styles.speedChipText, active && styles.speedChipTextActive]}>{s.label}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <Text style={styles.voiceHint}>
+            Voice and speed apply when you next start a session.
+          </Text>
+        </Animated.View>
       </ScrollView>
     </View>
   );
@@ -589,6 +638,37 @@ const styles = StyleSheet.create({
     padding: 14, borderWidth: 1, borderColor: Colors.dark.surfaceBorder,
   },
   sandboxText: { flex: 1, fontFamily: "Inter_400Regular", fontSize: 12, color: Colors.dark.textSecondary, lineHeight: 17 },
+
+  // Voice Settings
+  voiceSection: {
+    backgroundColor: Colors.dark.surface, borderRadius: 16,
+    padding: 18, borderWidth: 1, borderColor: Colors.dark.surfaceBorder, gap: 8,
+  },
+  voiceSectionHeader: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 4 },
+  voiceSectionTitle: { fontFamily: "Inter_600SemiBold", fontSize: 16, color: Colors.dark.text },
+  voiceLabel: { fontFamily: "Inter_500Medium", fontSize: 13, color: Colors.dark.textSecondary },
+  voiceGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  voiceChip: {
+    paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10,
+    backgroundColor: Colors.dark.surfaceElevated,
+    borderWidth: 1, borderColor: Colors.dark.surfaceBorder,
+    alignItems: "center",
+  },
+  voiceChipActive: { borderColor: Colors.dark.accent, backgroundColor: Colors.dark.accentSubtle },
+  voiceChipName: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: Colors.dark.text },
+  voiceChipNameActive: { color: Colors.dark.accent },
+  voiceChipDesc: { fontFamily: "Inter_400Regular", fontSize: 10, color: Colors.dark.textMuted, marginTop: 2 },
+  voiceChipDescActive: { color: Colors.dark.accentBright },
+  speedRow: { flexDirection: "row", gap: 8 },
+  speedChip: {
+    flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: "center",
+    backgroundColor: Colors.dark.surfaceElevated,
+    borderWidth: 1, borderColor: Colors.dark.surfaceBorder,
+  },
+  speedChipActive: { borderColor: Colors.dark.accent, backgroundColor: Colors.dark.accentSubtle },
+  speedChipText: { fontFamily: "Inter_500Medium", fontSize: 13, color: Colors.dark.textSecondary },
+  speedChipTextActive: { color: Colors.dark.accent, fontFamily: "Inter_600SemiBold" },
+  voiceHint: { fontFamily: "Inter_400Regular", fontSize: 11, color: Colors.dark.textMuted, marginTop: 4 },
 
   // Recent orders diagnostic
   ordersResult: {

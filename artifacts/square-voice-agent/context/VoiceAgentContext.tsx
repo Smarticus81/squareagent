@@ -16,6 +16,7 @@ import React, {
 } from "react";
 import { Platform } from "react-native";
 import { Audio } from "expo-av";
+import { getVoicePrefs } from "@/hooks/useVoicePrefs";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -99,9 +100,11 @@ const RECORDING_OPTIONS: Audio.RecordingOptions = {
 let _msgId = 0;
 const genId = () => `msg-${Date.now()}-${++_msgId}`;
 
-function getWsUrl(): string {
-  const domain = process.env.EXPO_PUBLIC_DOMAIN;
-  return domain ? `wss://${domain}/api/realtime` : "ws://localhost:8080/api/realtime";
+function getWsUrl(voice: string, speed: number): string {
+  const base = process.env.EXPO_PUBLIC_DOMAIN
+    ? `wss://${process.env.EXPO_PUBLIC_DOMAIN}/api/realtime`
+    : "ws://localhost:8080/api/realtime";
+  return `${base}?voice=${encodeURIComponent(voice)}&speed=${speed}`;
 }
 
 // Float32 PCM → Int16 PCM → base64
@@ -479,7 +482,8 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    const wsUrl = getWsUrl();
+    const { voice, speed } = await getVoicePrefs();
+    const wsUrl = getWsUrl(voice, speed);
     console.log("[Realtime] Connecting to", wsUrl);
     const socket = new WebSocket(wsUrl);
     ws.current = socket;

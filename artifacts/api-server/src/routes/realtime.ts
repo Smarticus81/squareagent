@@ -337,28 +337,21 @@ function buildInstructions(catalog: CatalogItem[], order: OrderItem[]): string {
       ? order.map((i) => `  - ${i.quantity}x ${i.item_name} @ $${i.price.toFixed(2)}`).join("\n")
       : "  (empty)";
 
-  return `You are a friendly Square POS voice agent for an event bar.
-You handle two modes by voice — order taking and inventory management.
+  return `You are a terse bar voice agent. Ultra-short replies only — max one sentence, never more.
 
-Available catalog:
+Catalog:
 ${catalogStr}
 
 Current order:
 ${orderStr}
 
-Order taking rules:
-- Be brief and conversational (1–2 short sentences max).
-- Always confirm actions ("Added 2 Fosters!", "Got it, removed the wine.").
-- Use tools for every order action — never guess or describe without calling a tool.
-- Match items by name flexibly.
-- If item not found, say so and suggest what's available.
-- On submit, confirm the total.
-
-Inventory rules:
-- Use check_inventory to report stock levels ("How many Coors Light do we have?").
-- Use adjust_inventory to add stock ("We received 24 Fosters") or remove it ("We wasted 3 Amarula").
-- Use set_inventory after a physical count ("Set Coors Light to 48").
-- Always confirm the action and report the new stock level.`;
+Rules:
+- Confirm actions in 3–6 words: "2 Fosters added." / "Cleared." / "Done, $34.50."
+- Never say "sure", "of course", "certainly", "let me", "I'll", "I've", "I will".
+- Unknown item: name 2 alternatives, nothing else.
+- Inventory queries: item name + number only. "Fosters: 24."
+- After submit, just the total. Nothing else.
+- Never repeat the order back unless asked.`;
 }
 
 // ── Relay ─────────────────────────────────────────────────────────────────────
@@ -366,8 +359,15 @@ Inventory rules:
 export function attachRealtimeRelay(server: HttpServer): void {
   const wss = new WebSocketServer({ server, path: "/api/realtime" });
 
-  wss.on("connection", (clientWs) => {
-    console.log("[Realtime] Client connected");
+  wss.on("connection", (clientWs, req) => {
+    // Parse voice/speed preferences from query params
+    const rawUrl = req.url ?? "";
+    const qIdx = rawUrl.indexOf("?");
+    const params = new URLSearchParams(qIdx >= 0 ? rawUrl.slice(qIdx + 1) : "");
+    const sessionVoice = params.get("voice") ?? "nova";
+    const sessionSpeed = parseFloat(params.get("speed") ?? "1.15");
+
+    console.log(`[Realtime] Client connected (voice=${sessionVoice} speed=${sessionSpeed})`);
     let catalog: CatalogItem[] = [];
     let order: OrderItem[] = [];
     let squareToken = "";
@@ -389,7 +389,8 @@ export function attachRealtimeRelay(server: HttpServer): void {
           type: "session.update",
           session: {
             modalities: ["text", "audio"],
-            voice: "alloy",
+            voice: sessionVoice,
+            speed: sessionSpeed,
             input_audio_format: "pcm16",
             output_audio_format: "pcm16",
             input_audio_transcription: { model: "whisper-1" },
@@ -402,7 +403,7 @@ export function attachRealtimeRelay(server: HttpServer): void {
             },
             tools: TOOLS,
             tool_choice: "auto",
-            temperature: 0.8,
+            temperature: 0.7,
             instructions: buildInstructions(catalog, order),
           },
         })
