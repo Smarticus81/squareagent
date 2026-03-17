@@ -180,6 +180,10 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
   const squareLocationIdRef = useRef<string>("");
   const isRunning = useRef(false);
 
+  // Ref that mirrors agentState — readable from the audio processor callback
+  // without stale closure issues
+  const agentStateRef = useRef<AgentState>("disconnected");
+
   // Web Audio refs
   const audioCtxRef = useRef<AudioContext | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
@@ -245,19 +249,21 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
       let event: Record<string, unknown>;
       try { event = JSON.parse(raw); } catch { return; }
 
+      const setAs = (s: AgentState) => { agentStateRef.current = s; setAgentState(s); };
+
       switch (event.type) {
         case "session.created":
-          setAgentState("listening");
+          setAs("listening");
           // Bootstrap the relay with current catalog, order, and Square credentials
           sendContextUpdate();
           break;
 
         case "input_audio_buffer.speech_started":
-          setAgentState("listening");
+          setAs("listening");
           break;
 
         case "input_audio_buffer.speech_stopped":
-          setAgentState("thinking");
+          setAs("thinking");
           break;
 
         case "response.audio_transcript.delta":
@@ -283,13 +289,16 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
           if (!chunk) break;
 
           if (Platform.OS === "web") {
-            // Web: schedule for immediate AudioContext playback
+            // On first audio chunk, clear any mic input that accumulated while
+            // transitioning (prevents agent hearing its own playback via speaker)
+            if (agentStateRef.current !== "speaking") {
+              ws.current?.send(JSON.stringify({ type: "input_audio_buffer.clear" }));
+            }
             scheduleWebAudioChunk(chunk);
           } else {
-            // Native: accumulate until done
             nativeAudioChunks.current.push(chunk);
           }
-          setAgentState("speaking");
+          setAs("speaking");
           break;
         }
 
@@ -305,8 +314,9 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
 
         case "response.done":
           if (Platform.OS === "web") {
-            // Web: after speaking, back to listening automatically (server VAD)
-            if (isRunning.current) setAgentState("listening");
+            // Clear any echo that may have leaked into the buffer during playback
+            ws.current?.send(JSON.stringify({ type: "input_audio_buffer.clear" }));
+            if (isRunning.current) setAs("listening");
           }
           break;
 
@@ -527,7 +537,13 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
     if (!ctx) return;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { sampleRate: 24000, channelCount: 1, echoCancellation: true, noiseSuppression: true },
+        audio: {
+          sampleRate: 24000,
+          channelCount: 1,
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: false, // Prevent AGC from amplifying speaker echo during silence
+        },
       });
       mediaStreamRef.current = stream;
 
@@ -537,6 +553,9 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
 
       processor.onaudioprocess = (e) => {
         if (ws.current?.readyState !== WebSocket.OPEN) return;
+        // Do NOT send mic audio while the agent is speaking — prevents the agent
+        // from hearing its own output through the speakers (echo / self-interruption)
+        if (agentStateRef.current === "speaking") return;
         const float32 = e.inputBuffer.getChannelData(0);
         const b64 = float32ToPcm16Base64(float32);
         ws.current.send(JSON.stringify({ type: "input_audio_buffer.append", audio: b64 }));
@@ -572,6 +591,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
 
   const disconnect = useCallback(async () => {
     isRunning.current = false;
+    agentStateRef.current = "disconnected";
     // Await so audio hardware is fully released before mic can be re-acquired
     await stopWebAudio();
 

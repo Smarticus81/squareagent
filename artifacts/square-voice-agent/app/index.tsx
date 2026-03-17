@@ -241,20 +241,26 @@ export default function MainScreen() {
     setWakeMode("idle");
   }, [stopWakeWord, disconnect]);
 
-  const returnToWakeMode = useCallback(async () => {
-    setWakeMode("idle");
-    // Await disconnect so AudioContext fully closes and mic hardware is freed
-    // before SpeechRecognition tries to acquire it again
-    await disconnect();
-    setTimeout(() => {
-      if (wakeModeRef.current === "idle") {
-        setWakeMode("wake");
-        startWakeWord();
-      }
-    }, 150);
-  }, [disconnect, startWakeWord]);
+  // ── Auto-return to wake word mode when a session ends ─────────────────────
+  // Fires whenever the agent disconnects while we were in "command" mode —
+  // handles both explicit terminate phrases AND normal session endings
+  // (order submitted, timeout, error, etc.).
+  useEffect(() => {
+    if (Platform.OS !== "web") return;
+    if (wakeModeRef.current !== "command") return;
+    if (isConnected) return; // session still active
 
-  // Detect termination phrases from agent conversation → return to wake mode
+    // Session just ended — go straight back to wake word mode.
+    // Give the AudioContext a moment to fully close before re-acquiring the mic.
+    const timer = setTimeout(() => {
+      if (wakeModeRef.current !== "command") return; // already handled
+      setWakeMode("wake");
+      startWakeWord();
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [isConnected, startWakeWord]);
+
+  // ── Terminate-phrase shortcut: disconnect immediately when user says "done" ─
   useEffect(() => {
     if (Platform.OS !== "web" || wakeMode !== "command") return;
     const userMsgs = conversation.filter((m) => m.role === "user");
@@ -262,10 +268,11 @@ export default function MainScreen() {
     if (!last) return;
     const text = last.content.toLowerCase();
     if (TERMINATE_PHRASES.some((p) => text.includes(p))) {
-      const timer = setTimeout(() => returnToWakeMode(), 1800);
+      // Disconnect after a short pause (let agent finish its goodbye reply)
+      const timer = setTimeout(() => disconnect(), 1600);
       return () => clearTimeout(timer);
     }
-  }, [conversation, wakeMode, returnToWakeMode]);
+  }, [conversation, wakeMode, disconnect]);
 
   const topPad = Platform.OS === "web" ? WEB_TOP_INSET : insets.top;
   const bottomPad = Platform.OS === "web" ? WEB_BOTTOM_INSET : insets.bottom;
@@ -481,7 +488,7 @@ export default function MainScreen() {
               // Agent active via wake word
               <>
                 <LiveOrb state={agentState} />
-                <Pressable onPress={returnToWakeMode} style={styles.wakeReturnBtn}>
+                <Pressable onPress={disconnect} style={styles.wakeReturnBtn}>
                   <Feather name="mic" size={18} color={Colors.dark.wake} />
                   <Text style={styles.wakeReturnText}>End → Wake Mode</Text>
                 </Pressable>
