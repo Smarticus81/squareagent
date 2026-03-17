@@ -245,6 +245,8 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
       switch (event.type) {
         case "session.created":
           setAgentState("listening");
+          // Bootstrap the relay with current catalog, order, and Square credentials
+          sendContextUpdate();
           break;
 
         case "input_audio_buffer.speech_started":
@@ -320,7 +322,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
         }
       }
     },
-    [addMessage]
+    [addMessage, sendContextUpdate]
   );
 
   // ── Web Audio playback (streaming PCM16, low-latency) ──────────────────────
