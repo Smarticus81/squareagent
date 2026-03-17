@@ -1,6 +1,9 @@
 /**
  * Wake word detection using the browser's SpeechRecognition API.
- * Fixed: race condition in restart loop, proper cleanup on stop.
+ *
+ * Key invariant: isListening === true ONLY after SpeechRecognition.onstart
+ * fires — i.e. the OS mic indicator is actually on.  We never trust that
+ * rec.start() succeeded until the browser confirms it.
  */
 import { useRef, useCallback, useState } from "react";
 import { Platform } from "react-native";
@@ -35,14 +38,26 @@ export function useWakeWord({
   onWakeWordDetected,
   onStopDetected,
 }: UseWakeWordOptions) {
+  // true only once the OS mic indicator is confirmed on (onstart fired)
   const [isListening, setIsListening] = useState(false);
+
   const activeRef = useRef(false);
   const recRef = useRef<any>(null);
   const restartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Tracks how many consecutive audio-capture failures (mic still held by WebAudio)
+  const captureFailsRef = useRef(0);
+
+  const clearRestartTimer = useCallback(() => {
+    if (restartTimerRef.current) {
+      clearTimeout(restartTimerRef.current);
+      restartTimerRef.current = null;
+    }
+  }, []);
 
   const cleanupRec = useCallback(() => {
     const r = recRef.current;
     if (!r) return;
+    r.onstart = null;
     r.onresult = null;
     r.onerror = null;
     r.onend = null;
@@ -52,13 +67,22 @@ export function useWakeWord({
 
   const stop = useCallback(() => {
     activeRef.current = false;
-    if (restartTimerRef.current) {
-      clearTimeout(restartTimerRef.current);
-      restartTimerRef.current = null;
-    }
+    captureFailsRef.current = 0;
+    clearRestartTimer();
     cleanupRec();
     setIsListening(false);
-  }, [cleanupRec]);
+  }, [cleanupRec, clearRestartTimer]);
+
+  // spawnRecRef lets scheduleRetry call spawnRec without a forward-reference dep
+  const spawnRecRef = useRef<() => void>(() => {});
+
+  const scheduleRetry = useCallback((delayMs: number) => {
+    clearRestartTimer();
+    restartTimerRef.current = setTimeout(() => {
+      restartTimerRef.current = null;
+      if (activeRef.current) spawnRecRef.current();
+    }, delayMs);
+  }, [clearRestartTimer]);
 
   const spawnRec = useCallback(() => {
     if (!activeRef.current) return;
@@ -74,6 +98,14 @@ export function useWakeWord({
     rec.lang = "en-US";
     rec.maxAlternatives = 3;
     recRef.current = rec;
+
+    // ── onstart: mic is ACTUALLY on now ──────────────────────────────────────
+    rec.onstart = () => {
+      if (!activeRef.current) return;
+      captureFailsRef.current = 0; // reset failure counter on success
+      setIsListening(true);
+      console.log("[WakeWord] Mic confirmed open");
+    };
 
     rec.onresult = (event: any) => {
       if (!activeRef.current) return;
@@ -103,40 +135,63 @@ export function useWakeWord({
 
     rec.onerror = (e: any) => {
       if (!activeRef.current) return;
+
       if (e.error === "not-allowed" || e.error === "service-not-allowed") {
-        console.error("[WakeWord] Mic denied");
+        // Permanent denial — stop trying
+        console.error("[WakeWord] Mic permission denied — stopping");
         stop();
         return;
       }
-      console.warn("[WakeWord] Error:", e.error, "— will retry");
+
+      if (e.error === "audio-capture") {
+        // Mic is temporarily held by another stream (e.g. just-closed WebAudio).
+        // Back off progressively, up to 3 s, then give up.
+        captureFailsRef.current += 1;
+        const delay = Math.min(800 * captureFailsRef.current, 3000);
+        console.warn(`[WakeWord] audio-capture (attempt ${captureFailsRef.current}) — retry in ${delay}ms`);
+        setIsListening(false); // mic is NOT on despite activeRef=true
+        if (captureFailsRef.current >= 6) {
+          console.error("[WakeWord] audio-capture persistent — giving up");
+          stop();
+          return;
+        }
+        cleanupRec();
+        scheduleRetry(delay);
+        return;
+      }
+
+      // All other transient errors (network, aborted, etc.) — short retry
+      console.warn("[WakeWord] Error:", e.error, "— retrying in 300ms");
     };
 
     rec.onend = () => {
       if (!activeRef.current) return;
+      // Mic closed — no longer listening until next onstart
+      setIsListening(false);
       recRef.current = null;
-      restartTimerRef.current = setTimeout(() => {
-        restartTimerRef.current = null;
-        if (activeRef.current) spawnRec();
-      }, 200);
+      // Short pause before restarting (Chrome requires a gap)
+      scheduleRetry(250);
     };
 
     try {
       rec.start();
+      // Do NOT set isListening here — wait for onstart
     } catch (e) {
-      console.warn("[WakeWord] Start error:", e);
+      console.warn("[WakeWord] start() threw:", e);
       recRef.current = null;
-      restartTimerRef.current = setTimeout(() => {
-        restartTimerRef.current = null;
-        if (activeRef.current) spawnRec();
-      }, 500);
+      scheduleRetry(500);
     }
-  }, [wakeWords, stopPhrases, onWakeWordDetected, onStopDetected, stop, cleanupRec]);
+  }, [wakeWords, stopPhrases, onWakeWordDetected, onStopDetected, stop, cleanupRec, scheduleRetry]);
+
+  // Wire the ref so scheduleRetry can call spawnRec without a dep cycle
+  spawnRecRef.current = spawnRec;
 
   const start = useCallback(() => {
     if (!getSR()) { console.warn("[WakeWord] Not supported"); return; }
     if (activeRef.current) return;
     activeRef.current = true;
-    setIsListening(true);
+    captureFailsRef.current = 0;
+    // isListening stays false until onstart confirms the mic
     spawnRec();
   }, [spawnRec]);
 

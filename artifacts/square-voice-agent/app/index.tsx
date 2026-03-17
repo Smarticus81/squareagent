@@ -225,7 +225,7 @@ export default function MainScreen() {
     setWakeMode("idle");
   }, [disconnect]);
 
-  const { startWakeWord, stopWakeWord } = useWakeWord({
+  const { isListening: wakeIsListening, startWakeWord, stopWakeWord } = useWakeWord({
     onWakeWordDetected: handleWakeWordDetected,
     onStopDetected: handleWakeStopDetected,
   });
@@ -472,16 +472,18 @@ export default function MainScreen() {
           {/* Center: Live orb + controls */}
           <View style={styles.orbCenter}>
             {Platform.OS === "web" && wakeMode === "wake" ? (
-              // Wake listening mode: purple pulsing orb
+              // Wake listening mode
               <>
                 <LiveOrb
-                  state="listening"
-                  overrideColor={Colors.dark.wake}
-                  overrideLabel="Wake listening"
+                  state={wakeIsListening ? "listening" : "connecting"}
+                  overrideColor={wakeIsListening ? Colors.dark.wake : Colors.dark.textMuted}
+                  overrideLabel={wakeIsListening ? `Say "Hey Bar"` : "Opening mic\u2026"}
                 />
                 <Pressable onPress={exitToIdle} style={styles.wakeStopBtn}>
                   <Feather name="mic-off" size={18} color={Colors.dark.textSecondary} />
-                  <Text style={styles.wakeStopText}>Stop Listening</Text>
+                  <Text style={styles.wakeStopText}>
+                    {wakeIsListening ? "Stop Listening" : "Cancel"}
+                  </Text>
                 </Pressable>
               </>
             ) : Platform.OS === "web" && wakeMode === "command" ? (
