@@ -329,6 +329,7 @@ router.post("/orders", async (req: Request, res: Response): Promise<void> => {
 
     console.log("[Square] Creating order — location:", locationId, "items:", JSON.stringify(lineItems));
 
+    const ticketRef = `VOICE-${Date.now()}`;
     const response = await fetch(`${SQUARE_BASE}/orders`, {
       method: "POST",
       headers: squareHeaders(token),
@@ -336,17 +337,8 @@ router.post("/orders", async (req: Request, res: Response): Promise<void> => {
         idempotency_key: idempotencyKey,
         order: {
           location_id: locationId,
+          reference_id: ticketRef,
           line_items: lineItems,
-          fulfillments: [
-            {
-              type: "PICKUP",
-              state: "PROPOSED",
-              pickup_details: {
-                pickup_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(), // ready in 5 min
-                note: "Voice order — ring up at counter",
-              },
-            },
-          ],
         },
       }),
     });
