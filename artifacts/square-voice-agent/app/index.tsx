@@ -1,18 +1,20 @@
 import React, {
-  useEffect, useRef, useState, useCallback,
+  useEffect, useMemo, useRef, useState, useCallback,
 } from "react";
 import {
   View, Text, StyleSheet, Pressable, Platform,
-  FlatList, Modal, ScrollView, ActivityIndicator, Linking,
+  FlatList, Modal, ActivityIndicator, Linking,
 } from "react-native";
+import Svg, { Circle, Defs, RadialGradient, Stop, G, ClipPath } from "react-native-svg";
+import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import Animated, {
-  useAnimatedStyle, useSharedValue,
-  withRepeat, withSequence, withTiming, withSpring,
-  FadeIn, FadeOut, Easing,
+  useAnimatedProps, useAnimatedStyle, useSharedValue,
+  withRepeat, withSequence, withTiming,
+  FadeIn, FadeOut, Easing, SharedValue,
 } from "react-native-reanimated";
 
 import Colors from "@/constants/colors";
@@ -22,227 +24,310 @@ import { useOrder } from "@/context/OrderContext";
 import { useSquare } from "@/context/SquareContext";
 import { OrderCard } from "@/components/OrderCard";
 
-const WEB_TOP_INSET = 67;
-const WEB_BOTTOM_INSET = 34;
+// ── Animated SVG circle ───────────────────────────────────────────────────────
+const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
-// ── Palette ───────────────────────────────────────────────────────────────────
+const WEB_TOP = 67;
+const WEB_BOT = 34;
 
-const ORB: Record<string, { core: string; ring: string; glow: string }> = {
-  disconnected: { core: "#1a1a2e", ring: "rgba(255,255,255,0.06)", glow: "transparent" },
-  connecting:   { core: "#1e1a10", ring: "rgba(251,191,36,0.18)",  glow: "rgba(251,191,36,0.04)" },
-  listening:    { core: "#0f1524", ring: "rgba(255,255,255,0.22)",  glow: "rgba(255,255,255,0.04)" },
-  thinking:     { core: "#12100e", ring: "rgba(251,191,36,0.15)",  glow: "rgba(251,191,36,0.03)" },
-  speaking:     { core: "#0c0a1a", ring: "rgba(124,110,245,0.35)", glow: "rgba(124,110,245,0.07)" },
-  error:        { core: "#1a0a0a", ring: "rgba(255,92,122,0.28)",  glow: "rgba(255,92,122,0.05)" },
-  wake:         { core: "#10091a", ring: "rgba(168,85,247,0.28)",  glow: "rgba(168,85,247,0.06)" },
-};
-
-// ── Zen Orb ───────────────────────────────────────────────────────────────────
-
+// ── Types ─────────────────────────────────────────────────────────────────────
 type OrbKey = AgentState | "wake";
 
-function ZenOrb({ orbKey }: { orbKey: OrbKey }) {
-  const p = ORB[orbKey] ?? ORB.disconnected;
+// ── Particle system ───────────────────────────────────────────────────────────
+// Viewbox is -110 -110 220 220 → radius = 100 usable units
+const SVG_R = 100;
+const N = 48;
 
-  const outerScale   = useSharedValue(1);
-  const outerOpacity = useSharedValue(0.5);
-  const midScale     = useSharedValue(1);
-  const midOpacity   = useSharedValue(0.5);
-  const coreOpacity  = useSharedValue(0.6);
+interface P {
+  bx: number; by: number;     // base position (home)
+  r: number;                  // dot radius
+  ax: number; ay: number;     // drift amplitude
+  fx: number; fy: number;     // drift frequency
+  fo: number;                 // opacity flicker frequency
+  px: number; py: number;     // position phases (for desync)
+  po: number;                 // opacity phase
+  bo: number;                 // base opacity ceiling
+}
+
+function mkParticles(): P[] {
+  return Array.from({ length: N }, () => {
+    const a = Math.random() * Math.PI * 2;
+    const d = Math.sqrt(Math.random()) * SVG_R * 0.86; // uniform disk distribution
+    return {
+      bx: Math.cos(a) * d,
+      by: Math.sin(a) * d,
+      r:  0.6 + Math.random() * 2.4,
+      ax: 4   + Math.random() * 16,
+      ay: 4   + Math.random() * 16,
+      // frequencies: tiny so motion is slow and organic
+      fx: 0.00016 + Math.random() * 0.00054,
+      fy: 0.00014 + Math.random() * 0.00048,
+      fo: 0.00012 + Math.random() * 0.00040,
+      px: Math.random() * Math.PI * 2,
+      py: Math.random() * Math.PI * 2,
+      po: Math.random() * Math.PI * 2,
+      bo: 0.22 + Math.random() * 0.72,
+    };
+  });
+}
+
+// Each particle is its own component, driven by a single shared time value
+function Dot({ p, time, fill }: { p: P; time: SharedValue<number>; fill: string }) {
+  const ap = useAnimatedProps(() => {
+    const t = time.value;
+    return {
+      cx: p.bx + Math.sin(t * p.fx + p.px) * p.ax,
+      cy: p.by + Math.sin(t * p.fy + p.py) * p.ay,
+      // opacity: smooth sinusoidal flicker, always positive
+      opacity: p.bo * (0.12 + 0.88 * ((1 + Math.sin(t * p.fo + p.po)) * 0.5)),
+    };
+  });
+  return <AnimatedCircle animatedProps={ap} r={p.r} fill={fill} />;
+}
+
+// ── Orb palette (per state) ───────────────────────────────────────────────────
+interface Pal {
+  dot: string;       // particle fill color
+  gc: string; gco: number;   // gradient center
+  gm: string; gmo: number;   // gradient mid
+  ring: string;      // boundary ring stroke
+  bloom: string;     // soft bloom behind orb
+}
+
+const PAL: Record<OrbKey, Pal> = {
+  disconnected: {
+    dot: "#a5b4fc",
+    gc: "#4338ca", gco: 0.40,  gm: "#1e1b4b", gmo: 0.10,
+    ring: "rgba(165,180,252,0.14)", bloom: "rgba(99,102,241,0.06)",
+  },
+  connecting: {
+    dot: "#fcd34d",
+    gc: "#b45309", gco: 0.48,  gm: "#451a03", gmo: 0.14,
+    ring: "rgba(252,211,77,0.22)",  bloom: "rgba(217,119,6,0.09)",
+  },
+  listening: {
+    dot: "#7dd3fc",
+    gc: "#0284c7", gco: 0.52,  gm: "#0c4a6e", gmo: 0.18,
+    ring: "rgba(125,211,252,0.32)", bloom: "rgba(14,165,233,0.13)",
+  },
+  thinking: {
+    dot: "#fde68a",
+    gc: "#78716c", gco: 0.32,  gm: "#292524", gmo: 0.08,
+    ring: "rgba(253,230,138,0.16)", bloom: "rgba(120,113,108,0.06)",
+  },
+  speaking: {
+    dot: "#6ee7b7",
+    gc: "#059669", gco: 0.50,  gm: "#022c22", gmo: 0.16,
+    ring: "rgba(110,231,183,0.28)", bloom: "rgba(5,150,105,0.12)",
+  },
+  error: {
+    dot: "#fca5a5",
+    gc: "#b91c1c", gco: 0.48,  gm: "#450a0a", gmo: 0.14,
+    ring: "rgba(252,165,165,0.22)", bloom: "rgba(185,28,28,0.08)",
+  },
+  wake: {
+    dot: "#d8b4fe",
+    gc: "#7c3aed", gco: 0.50,  gm: "#2e1065", gmo: 0.16,
+    ring: "rgba(216,180,254,0.28)", bloom: "rgba(124,58,237,0.11)",
+  },
+};
+
+// ── Nebula orb ────────────────────────────────────────────────────────────────
+function NebulaOrb({ orbKey }: { orbKey: OrbKey }) {
+  const pal = PAL[orbKey] ?? PAL.disconnected;
+  const particles = useMemo(mkParticles, []);
+
+  // Single monotonic timer — all particles derive position from this
+  const time = useSharedValue(0);
+  useEffect(() => {
+    // Tick indefinitely at 1 unit/ms (effectively forever)
+    time.value = withTiming(9_000_000, {
+      duration: 9_000_000_000,
+      easing: Easing.linear,
+    });
+  }, []);
+
+  // Scale + bloom driven by agent state
+  const sc   = useSharedValue(1);
+  const blSc = useSharedValue(1);
 
   useEffect(() => {
-    const base = { duration: 2200, easing: Easing.inOut(Easing.sin) };
-
     if (orbKey === "listening") {
-      outerScale.value   = withRepeat(withSequence(withTiming(1.12, base), withTiming(1, base)), -1, false);
-      outerOpacity.value = withRepeat(withSequence(withTiming(0.9, base), withTiming(0.35, base)), -1, false);
-      midScale.value     = withRepeat(withSequence(withTiming(1.08, { duration: 1800, easing: base.easing }), withTiming(1, { duration: 1800, easing: base.easing })), -1, false);
-      midOpacity.value   = withRepeat(withSequence(withTiming(0.75, base), withTiming(0.3, base)), -1, false);
-      coreOpacity.value  = withRepeat(withSequence(withTiming(0.9, base), withTiming(0.55, base)), -1, false);
-
-    } else if (orbKey === "wake") {
-      const slow = { duration: 3000, easing: Easing.inOut(Easing.sin) };
-      outerScale.value   = withRepeat(withSequence(withTiming(1.1, slow), withTiming(1, slow)), -1, false);
-      outerOpacity.value = withRepeat(withSequence(withTiming(0.7, slow), withTiming(0.2, slow)), -1, false);
-      midScale.value     = withRepeat(withSequence(withTiming(1.06, slow), withTiming(1, slow)), -1, false);
-      midOpacity.value   = withRepeat(withSequence(withTiming(0.55, slow), withTiming(0.18, slow)), -1, false);
-      coreOpacity.value  = withRepeat(withSequence(withTiming(0.7, slow), withTiming(0.3, slow)), -1, false);
-
+      sc.value = withRepeat(withSequence(
+        withTiming(1.05, { duration: 2400, easing: Easing.inOut(Easing.sin) }),
+        withTiming(1.00, { duration: 2400, easing: Easing.inOut(Easing.sin) }),
+      ), -1);
+      blSc.value = withRepeat(withSequence(
+        withTiming(1.6, { duration: 2400 }), withTiming(1.1, { duration: 2400 }),
+      ), -1);
     } else if (orbKey === "speaking") {
-      const fast = { duration: 620, easing: Easing.out(Easing.quad) };
-      outerScale.value   = withRepeat(withSequence(withTiming(1.22, fast), withTiming(1, fast)), -1, false);
-      outerOpacity.value = withRepeat(withSequence(withTiming(0.9, fast), withTiming(0.1, fast)), -1, false);
-      midScale.value     = withRepeat(withSequence(withTiming(1.14, { ...fast, duration: 480 }), withTiming(1, { ...fast, duration: 480 })), -1, false);
-      midOpacity.value   = withRepeat(withSequence(withTiming(0.8, fast), withTiming(0.25, fast)), -1, false);
-      coreOpacity.value  = withTiming(0.95, { duration: 300 });
-
+      sc.value = withRepeat(withSequence(
+        withTiming(1.12, { duration: 460, easing: Easing.out(Easing.quad) }),
+        withTiming(1.03, { duration: 460, easing: Easing.in(Easing.quad) }),
+      ), -1);
+      blSc.value = withRepeat(withSequence(
+        withTiming(2.0, { duration: 460 }), withTiming(1.4, { duration: 460 }),
+      ), -1);
+    } else if (orbKey === "wake") {
+      sc.value = withRepeat(withSequence(
+        withTiming(1.06, { duration: 2900, easing: Easing.inOut(Easing.sin) }),
+        withTiming(1.00, { duration: 2900, easing: Easing.inOut(Easing.sin) }),
+      ), -1);
+      blSc.value = withRepeat(withSequence(
+        withTiming(1.7, { duration: 2900 }), withTiming(1.1, { duration: 2900 }),
+      ), -1);
     } else if (orbKey === "thinking") {
-      const subtle = { duration: 900, easing: Easing.inOut(Easing.quad) };
-      outerScale.value   = withRepeat(withSequence(withTiming(1.04, subtle), withTiming(1, subtle)), -1, true);
-      outerOpacity.value = withTiming(0.3, { duration: 400 });
-      midScale.value     = withTiming(1, { duration: 300 });
-      midOpacity.value   = withTiming(0.25, { duration: 400 });
-      coreOpacity.value  = withRepeat(withSequence(withTiming(0.65, subtle), withTiming(0.35, subtle)), -1, true);
-
-    } else if (orbKey === "connecting") {
-      const pulse = { duration: 1400, easing: Easing.inOut(Easing.sin) };
-      outerScale.value   = withRepeat(withSequence(withTiming(1.08, pulse), withTiming(1, pulse)), -1, false);
-      outerOpacity.value = withRepeat(withSequence(withTiming(0.6, pulse), withTiming(0.1, pulse)), -1, false);
-      midScale.value     = withTiming(1, { duration: 300 });
-      midOpacity.value   = withTiming(0.2, { duration: 400 });
-      coreOpacity.value  = withTiming(0.45, { duration: 400 });
-
+      sc.value = withRepeat(withSequence(
+        withTiming(0.97, { duration: 1100 }), withTiming(0.99, { duration: 1100 }),
+      ), -1);
+      blSc.value = withTiming(0.75, { duration: 700 });
     } else {
-      // disconnected / error / idle
-      outerScale.value   = withTiming(1, { duration: 600 });
-      outerOpacity.value = withTiming(orbKey === "error" ? 0.4 : 0.12, { duration: 600 });
-      midScale.value     = withTiming(1, { duration: 600 });
-      midOpacity.value   = withTiming(orbKey === "error" ? 0.3 : 0.08, { duration: 600 });
-      coreOpacity.value  = withTiming(orbKey === "error" ? 0.5 : 0.18, { duration: 600 });
+      sc.value  = withTiming(1, { duration: 800 });
+      blSc.value = withTiming(1, { duration: 800 });
     }
   }, [orbKey]);
 
-  const outerStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: outerScale.value }],
-    opacity: outerOpacity.value,
+  const orbSt  = useAnimatedStyle(() => ({ transform: [{ scale: sc.value }] }));
+  const blSt   = useAnimatedStyle(() => ({
+    transform: [{ scale: blSc.value }],
+    opacity: Math.min(1, (blSc.value - 0.7) * 0.55),
   }));
-  const midStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: midScale.value }],
-    opacity: midOpacity.value,
-  }));
-  const coreStyle = useAnimatedStyle(() => ({ opacity: coreOpacity.value }));
 
   return (
-    <View style={s.orbWrap}>
-      {/* Outer glow */}
-      <Animated.View style={[s.orbOuter, outerStyle, { borderColor: p.ring, backgroundColor: p.glow }]} />
-      {/* Mid ring */}
-      <Animated.View style={[s.orbMid,   midStyle,   { borderColor: p.ring }]} />
-      {/* Core */}
-      <Animated.View style={[s.orbCore,  coreStyle,  { backgroundColor: p.core, borderColor: p.ring }]} />
+    <View style={ns.wrap}>
+      {/* Diffuse bloom that breathes with the orb */}
+      <Animated.View style={[ns.bloom, blSt, { backgroundColor: pal.bloom }]} />
+
+      {/* Orb body */}
+      <Animated.View style={orbSt}>
+        <Svg width={220} height={220} viewBox="-110 -110 220 220">
+          <Defs>
+            <RadialGradient id="g" cx="50%" cy="50%" r="50%">
+              <Stop offset="0%"   stopColor={pal.gc} stopOpacity={pal.gco} />
+              <Stop offset="55%"  stopColor={pal.gm} stopOpacity={pal.gmo} />
+              <Stop offset="100%" stopColor="#000000" stopOpacity={0} />
+            </RadialGradient>
+            <ClipPath id="c">
+              <Circle cx={0} cy={0} r={SVG_R} />
+            </ClipPath>
+          </Defs>
+
+          {/* Radial glow base */}
+          <Circle cx={0} cy={0} r={SVG_R} fill="url(#g)" />
+
+          {/* Particles — clipped to sphere boundary */}
+          <G clipPath="url(#c)">
+            {particles.map((p, i) => (
+              <Dot key={i} p={p} time={time} fill={pal.dot} />
+            ))}
+          </G>
+
+          {/* Thin outer ring */}
+          <Circle cx={0} cy={0} r={SVG_R} fill="none" stroke={pal.ring} strokeWidth={0.6} />
+        </Svg>
+      </Animated.View>
     </View>
   );
 }
 
-// ── Minimal Logo ──────────────────────────────────────────────────────────────
-
+// ── Logo ──────────────────────────────────────────────────────────────────────
 function Logo() {
   return (
-    <View style={s.logoWrap}>
-      <View style={s.logoMark}>
-        <View style={s.logoCircle} />
-        <View style={s.logoDot} />
+    <View style={ns.logoWrap}>
+      {/* Geometric mark: thin ring + accent bead */}
+      <View style={ns.logoMark}>
+        <View style={ns.logoRing} />
+        <View style={ns.logoBead} />
       </View>
-      <Text style={s.logoText}>bevpro</Text>
+      <Text style={ns.logoWord}>BEVPRO</Text>
     </View>
   );
 }
 
-// ── Floating conversation ─────────────────────────────────────────────────────
-
-function ConvoLine({ msg, idx, total }: { msg: ConversationMessage; idx: number; total: number }) {
-  const isUser  = msg.role === "user";
-  const recency = total - idx; // 1 = most recent
-  const opacity = recency === 1 ? (isUser ? 0.45 : 0.88) : recency === 2 ? 0.28 : 0.14;
-  const size    = recency === 1 ? (isUser ? 14 : 15) : 13;
+// ── Floating conversation line ────────────────────────────────────────────────
+function GhostLine({ msg, rank }: { msg: ConversationMessage; rank: number }) {
+  const isUser = msg.role === "user";
+  const opacity = rank === 0 ? (isUser ? 0.40 : 0.84) : rank === 1 ? 0.22 : 0.10;
+  const size    = rank === 0 ? (isUser ? 14 : 16) : 13;
   return (
     <Animated.Text
-      entering={FadeIn.duration(400)}
-      exiting={FadeOut.duration(600)}
-      style={[s.convoLine, { opacity, fontSize: size, fontFamily: isUser ? "Inter_300Light" : "Inter_400Regular" }]}
+      entering={FadeIn.duration(500)}
+      exiting={FadeOut.duration(400)}
+      style={{
+        textAlign: "center",
+        fontSize: size,
+        lineHeight: 24,
+        letterSpacing: isUser ? 0.1 : 0.2,
+        fontFamily: isUser ? "Inter_300Light" : "Inter_400Regular",
+        color: `rgba(255,255,255,${opacity})`,
+      }}
     >
       {msg.content}
     </Animated.Text>
   );
 }
 
-// ── State label ───────────────────────────────────────────────────────────────
-
-const STATE_LABEL: Partial<Record<OrbKey, string>> = {
-  connecting: "connecting",
-  thinking:   "\u00B7\u00B7\u00B7",
-  error:      "error",
+// ── State labels ──────────────────────────────────────────────────────────────
+const LABEL: Partial<Record<OrbKey, { t: string; c: string }>> = {
+  connecting: { t: "CONNECTING", c: "rgba(252,211,77,0.45)" },
+  thinking:   { t: "\u00B7  \u00B7  \u00B7", c: "rgba(253,230,138,0.40)" },
+  error:      { t: "ERROR",      c: "rgba(252,165,165,0.52)" },
+  wake:       { t: "HEY BAR",   c: "rgba(216,180,254,0.52)" },
 };
 
 // ── Main screen ───────────────────────────────────────────────────────────────
-
 export default function MainScreen() {
   const insets    = useSafeAreaInsets();
-  const topPad    = Platform.OS === "web" ? WEB_TOP_INSET : insets.top;
-  const bottomPad = Platform.OS === "web" ? WEB_BOTTOM_INSET : insets.bottom;
+  const topPad    = Platform.OS === "web" ? WEB_TOP : insets.top;
+  const bottomPad = Platform.OS === "web" ? WEB_BOT : insets.bottom;
 
-  // ── Voice agent ────────────────────────────────────────────────────────────
+  // ── Contexts ───────────────────────────────────────────────────────────────
   const {
     agentState, isConnected, conversation, partialTranscript, error,
     connect, disconnect, clearConversation, setToolHandler, interrupt,
     setCatalog, setCurrentOrder, setSquareCredentials,
   } = useVoiceAgent();
 
-  // ── Order context ──────────────────────────────────────────────────────────
   const {
     currentOrder, lastSubmittedOrder,
     addItem, removeItem, updateQuantity, clearOrder, submitOrder, isSubmitting,
   } = useOrder();
 
-  // ── Square ─────────────────────────────────────────────────────────────────
   const { isConfigured, catalogItems, isLoadingCatalog, accessToken, locationId } = useSquare();
 
   // ── Panel ──────────────────────────────────────────────────────────────────
-  const [panelOpen,  setPanelOpen]  = useState(false);
-  const [panelTab,   setPanelTab]   = useState<"order" | "catalog">("order");
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [panelTab,  setPanelTab]  = useState<"order" | "catalog">("order");
 
   // ── Wake word ──────────────────────────────────────────────────────────────
   type WakeMode = "idle" | "wake" | "command";
   const [wakeMode, setWakeMode]   = useState<WakeMode>("idle");
-  const wakeModeRef = useRef<WakeMode>("idle");
+  const wakeModeRef               = useRef<WakeMode>("idle");
   wakeModeRef.current = wakeMode;
 
-  const handleWakeWordDetected = useCallback(async () => {
-    setWakeMode("command");
-    await connect();
-  }, [connect]);
-
-  const handleWakeStopDetected = useCallback(async () => {
-    await disconnect();
-    setWakeMode("idle");
-  }, [disconnect]);
-
-  const { isListening: wakeIsListening, startWakeWord, stopWakeWord } = useWakeWord({
-    onWakeWordDetected: handleWakeWordDetected,
-    onStopDetected: handleWakeStopDetected,
+  const onWake = useCallback(async () => { setWakeMode("command"); await connect(); }, [connect]);
+  const onStop = useCallback(async () => { await disconnect(); setWakeMode("idle"); }, [disconnect]);
+  const { isListening: wakeListening, startWakeWord, stopWakeWord } = useWakeWord({
+    onWakeWordDetected: onWake, onStopDetected: onStop,
   });
 
-  const enterWakeMode = useCallback(() => {
-    setWakeMode("wake");
-    startWakeWord();
-  }, [startWakeWord]);
+  const enterWake = useCallback(() => { setWakeMode("wake"); startWakeWord(); }, [startWakeWord]);
+  const exitWake  = useCallback(async () => { stopWakeWord(); await disconnect(); setWakeMode("idle"); }, [stopWakeWord, disconnect]);
 
-  const exitToIdle = useCallback(async () => {
-    stopWakeWord();
-    await disconnect();
-    setWakeMode("idle");
-  }, [stopWakeWord, disconnect]);
-
-  // Auto-return to wake mode when session ends
   useEffect(() => {
-    if (Platform.OS !== "web") return;
-    if (wakeModeRef.current !== "command") return;
-    if (isConnected) return;
+    if (Platform.OS !== "web" || wakeModeRef.current !== "command" || isConnected) return;
     const t = setTimeout(() => {
       if (wakeModeRef.current !== "command") return;
-      setWakeMode("wake");
-      startWakeWord();
+      setWakeMode("wake"); startWakeWord();
     }, 350);
     return () => clearTimeout(t);
   }, [isConnected, startWakeWord]);
 
-  // Terminate-phrase shortcut
   useEffect(() => {
     if (Platform.OS !== "web" || wakeMode !== "command") return;
     const last = [...conversation].reverse().find((m) => m.role === "user");
     if (!last) return;
-    const text = last.content.toLowerCase();
-    if (TERMINATE_PHRASES.some((p) => text.includes(p))) {
+    if (TERMINATE_PHRASES.some((p) => last.content.toLowerCase().includes(p))) {
       const t = setTimeout(() => disconnect(), 1600);
       return () => clearTimeout(t);
     }
@@ -258,13 +343,11 @@ export default function MainScreen() {
   }, [accessToken, locationId, setSquareCredentials]);
 
   useEffect(() => {
-    setCurrentOrder((currentOrder?.items ?? []).map((i) => ({
-      name: i.catalogItem.name, price: i.catalogItem.price, quantity: i.quantity,
-    })));
+    setCurrentOrder((currentOrder?.items ?? []).map((i) => ({ name: i.catalogItem.name, price: i.catalogItem.price, quantity: i.quantity })));
   }, [currentOrder, setCurrentOrder]);
 
   // ── Order commands ─────────────────────────────────────────────────────────
-  const handleCommands = useCallback((commands: OrderCommand[]) => {
+  const handleCmds = useCallback((commands: OrderCommand[]) => {
     for (const cmd of commands) {
       switch (cmd.action) {
         case "add": {
@@ -290,9 +373,7 @@ export default function MainScreen() {
         case "submit": {
           if (!accessToken || !locationId || !currentOrder?.items.length) break;
           submitOrder(accessToken, locationId).then((r) => {
-            Haptics.notificationAsync(r.success
-              ? Haptics.NotificationFeedbackType.Success
-              : Haptics.NotificationFeedbackType.Error);
+            Haptics.notificationAsync(r.success ? Haptics.NotificationFeedbackType.Success : Haptics.NotificationFeedbackType.Error);
             if (r.success) { setPanelTab("order"); setPanelOpen(true); }
           });
           break;
@@ -301,18 +382,18 @@ export default function MainScreen() {
     }
   }, [catalogItems, currentOrder, addItem, removeItem, clearOrder, submitOrder, accessToken, locationId]);
 
-  useEffect(() => { setToolHandler(handleCommands); }, [handleCommands, setToolHandler]);
+  useEffect(() => { setToolHandler(handleCmds); }, [handleCmds, setToolHandler]);
 
-  // ── Toggle ─────────────────────────────────────────────────────────────────
+  // ── Orb tap ────────────────────────────────────────────────────────────────
   async function handleOrbPress() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (Platform.OS === "web") {
-      if (wakeMode === "wake")    { exitToIdle(); return; }
+      if (wakeMode === "wake")    { exitWake(); return; }
       if (wakeMode === "command") { disconnect(); return; }
-      if (isWakeWordSupported())  { enterWakeMode(); return; }
+      if (isWakeWordSupported())  { enterWake(); return; }
     }
-    if (isConnected || agentState === "connecting") { disconnect(); }
-    else { await connect(); }
+    if (isConnected || agentState === "connecting") disconnect();
+    else await connect();
   }
 
   // ── Derived ────────────────────────────────────────────────────────────────
@@ -320,45 +401,56 @@ export default function MainScreen() {
     : wakeMode === "command" ? agentState
     : agentState;
 
-  const lastMsgs = conversation.slice(-3);
+  const msgs = conversation.slice(-3);
   const orderCount = currentOrder?.items.length ?? 0;
-
-  // State label
-  const wakeLabel = wakeMode === "wake"
-    ? (wakeIsListening ? `"hey bar"` : "opening mic\u2026")
-    : null;
-  const stateLabel = wakeLabel ?? STATE_LABEL[orbKey] ?? null;
+  const stateLabel = wakeMode === "wake"
+    ? { t: wakeListening ? "HEY BAR" : "OPENING MIC\u2026", c: "rgba(216,180,254,0.50)" }
+    : LABEL[orbKey] ?? null;
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <View style={[s.root, { backgroundColor: Colors.dark.background }]}>
+    <View style={s.root}>
+      {/* Subtle depth gradient on page background */}
+      <LinearGradient
+        colors={["#060818", "#0a0d24", "#060818"]}
+        style={StyleSheet.absoluteFill}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 1 }}
+      />
 
-      {/* ── Logo top-center ── */}
-      <View style={[s.logoRow, { paddingTop: topPad + 20 }]}>
+      {/* ── Logo ── */}
+      <View style={[s.topRow, { paddingTop: topPad + 22 }]}>
         <Logo />
       </View>
 
-      {/* ── Floating conversation ── */}
-      <View style={[s.convoArea, { pointerEvents: "none" }]}>
-        {lastMsgs.map((m, i) => (
-          <ConvoLine key={m.id} msg={m} idx={i} total={lastMsgs.length} />
+      {/* ── Floating conversation — pinterEvents none so taps pass through ── */}
+      <View style={s.convoArea} pointerEvents="none">
+        {msgs.map((m, i) => (
+          <GhostLine key={m.id} msg={m} rank={msgs.length - 1 - i} />
         ))}
         {partialTranscript ? (
-          <Animated.Text entering={FadeIn.duration(200)} style={s.partialLine}>
+          <Animated.Text entering={FadeIn.duration(180)} style={s.partial}>
             {partialTranscript}
           </Animated.Text>
         ) : null}
       </View>
 
-      {/* ── Orb — central interactive element ── */}
-      <Pressable onPress={handleOrbPress} style={s.orbArea} hitSlop={40}>
-        <ZenOrb orbKey={orbKey} />
-        {stateLabel ? (
-          <Animated.Text entering={FadeIn.duration(500)} exiting={FadeOut.duration(400)} style={[s.stateLabel, wakeMode === "wake" && { color: "#A855F7" }]}>
-            {stateLabel}
-          </Animated.Text>
-        ) : null}
+      {/* ── Particle orb ── */}
+      <Pressable onPress={handleOrbPress} style={s.orbArea} hitSlop={32}>
+        <NebulaOrb orbKey={orbKey} />
       </Pressable>
+
+      {/* ── State label ── */}
+      {stateLabel ? (
+        <Animated.Text
+          key={stateLabel.t}
+          entering={FadeIn.duration(600)}
+          exiting={FadeOut.duration(400)}
+          style={[s.stateLabel, { color: stateLabel.c }]}
+        >
+          {stateLabel.t}
+        </Animated.Text>
+      ) : <View style={{ height: 34 }} />}
 
       {/* ── Error whisper ── */}
       {error ? (
@@ -368,151 +460,152 @@ export default function MainScreen() {
       ) : null}
 
       {/* ── Bottom corners ── */}
-      <View style={[s.bottomRow, { paddingBottom: bottomPad + 16 }]}>
+      <View style={[s.bottomRow, { paddingBottom: bottomPad + 22 }]}>
 
-        {/* Order badge — bottom left */}
-        <Pressable
-          onPress={() => { setPanelTab("order"); setPanelOpen(true); }}
-          style={s.cornerBtn}
-          hitSlop={16}
-        >
+        {/* Order indicator */}
+        <Pressable onPress={() => { setPanelTab("order"); setPanelOpen(true); }} hitSlop={22}>
           {orderCount > 0 ? (
             <View style={s.orderBadge}>
-              <Text style={s.orderBadgeText}>{orderCount}</Text>
+              <Text style={s.orderBadgeNum}>{orderCount}</Text>
             </View>
           ) : (
-            <View style={s.cornerDot} />
+            <View style={s.dot} />
           )}
         </Pressable>
 
-        {/* Interrupt — center, only when speaking */}
+        {/* Interrupt — center, only while speaking */}
         {agentState === "speaking" ? (
-          <Pressable onPress={interrupt} hitSlop={20} style={s.interruptBtn}>
+          <Pressable onPress={interrupt} hitSlop={28} style={s.interruptWrap}>
             <View style={s.interruptDot} />
           </Pressable>
         ) : <View style={{ flex: 1 }} />}
 
-        {/* Settings — bottom right */}
-        <Pressable
-          onPress={() => router.push("/setup")}
-          style={s.cornerBtn}
-          hitSlop={16}
-        >
-          <View style={[s.cornerDot, isConfigured && { backgroundColor: Colors.dark.accent + "55" }]} />
+        {/* Settings indicator */}
+        <Pressable onPress={() => router.push("/setup")} hitSlop={22}>
+          <View style={[s.dot, isConfigured && s.dotActive]} />
         </Pressable>
       </View>
 
-      {/* ── Panel (order / catalog) ── */}
+      {/* ── Slide-up panel ── */}
       <Modal
         visible={panelOpen}
         transparent
         animationType="slide"
         onRequestClose={() => setPanelOpen(false)}
       >
-        <Pressable style={s.panelBackdrop} onPress={() => setPanelOpen(false)} />
-        <View style={[s.panel, { paddingBottom: bottomPad + 16 }]}>
+        <Pressable style={s.backdrop} onPress={() => setPanelOpen(false)} />
+
+        <View style={[s.panel, { paddingBottom: bottomPad + 20 }]}>
           <View style={s.panelHandle} />
 
-          {/* Panel tab row */}
-          <View style={s.panelTabs}>
-            {(["order", "catalog"] as const).map((t) => (
-              <Pressable key={t} onPress={() => setPanelTab(t)} style={s.panelTabBtn}>
-                <Text style={[s.panelTabText, panelTab === t && s.panelTabActive]}>
-                  {t}
+          {/* Panel tabs */}
+          <View style={s.panelHeader}>
+            {(["order", "catalog"] as const).map((tab) => (
+              <Pressable key={tab} onPress={() => setPanelTab(tab)} style={s.panelTabBtn}>
+                <Text style={[s.panelTabTxt, panelTab === tab && s.panelTabOn]}>
+                  {tab}
                 </Text>
               </Pressable>
             ))}
-            <Pressable onPress={() => setPanelOpen(false)} style={s.panelClose}>
-              <Feather name="x" size={16} color={Colors.dark.textMuted} />
+            <Pressable onPress={() => setPanelOpen(false)} style={{ marginLeft: "auto" }}>
+              <Feather name="x" size={16} color="rgba(255,255,255,0.25)" />
             </Pressable>
           </View>
 
-          {/* ── Order ── */}
+          {/* ── Order tab ── */}
           {panelTab === "order" && (() => {
             const items = currentOrder?.items ?? [];
             const total = currentOrder?.total ?? 0;
+
             if (lastSubmittedOrder) {
               return (
-                <ScrollView style={s.panelScroll} contentContainerStyle={{ padding: 20, gap: 10 }}>
-                  <Text style={s.submittedTotal}>${lastSubmittedOrder.total.toFixed(2)}</Text>
-                  <Text style={s.submittedSub}>submitted</Text>
-                  <View style={s.submittedDivider} />
-                  {lastSubmittedOrder.items.map((item) => (
-                    <View key={item.id} style={s.submittedRow}>
-                      <Text style={s.submittedQty}>{item.quantity}×</Text>
-                      <Text style={s.submittedName}>{item.catalogItem.name}</Text>
-                      <Text style={s.submittedPrice}>${(item.catalogItem.price * item.quantity).toFixed(2)}</Text>
+                <FlatList
+                  data={lastSubmittedOrder.items}
+                  keyExtractor={(it) => it.id}
+                  contentContainerStyle={{ padding: 24, gap: 8 }}
+                  ListHeaderComponent={
+                    <View style={{ marginBottom: 16, gap: 4 }}>
+                      <Text style={s.bigTotal}>${lastSubmittedOrder.total.toFixed(2)}</Text>
+                      <Text style={s.bigTotalSub}>SUBMITTED</Text>
+                      <View style={s.divider} />
                     </View>
-                  ))}
-                  <Pressable onPress={() => Linking.openURL("https://squareup.com/dashboard/orders")} style={s.squareLinkBtn}>
-                    <Text style={s.squareLinkText}>view in Square</Text>
-                  </Pressable>
-                </ScrollView>
+                  }
+                  renderItem={({ item }) => (
+                    <View style={s.sRow}>
+                      <Text style={s.sQty}>{item.quantity}×</Text>
+                      <Text style={s.sName}>{item.catalogItem.name}</Text>
+                      <Text style={s.sPrice}>${(item.catalogItem.price * item.quantity).toFixed(2)}</Text>
+                    </View>
+                  )}
+                  ListFooterComponent={
+                    <Pressable onPress={() => Linking.openURL("https://squareup.com/dashboard/orders")} style={{ marginTop: 12 }}>
+                      <Text style={s.link}>view in Square ↗</Text>
+                    </Pressable>
+                  }
+                  showsVerticalScrollIndicator={false}
+                />
               );
             }
-            return (
+
+            return items.length === 0 ? (
+              <View style={s.emptyPanel}>
+                <Text style={s.emptyTxt}>no items yet</Text>
+                <Text style={s.emptyHint}>speak to the orb to add items</Text>
+              </View>
+            ) : (
               <View style={{ flex: 1 }}>
-                {items.length === 0 ? (
-                  <View style={s.emptyPanel}>
-                    <Text style={s.emptyPanelText}>no items yet</Text>
-                  </View>
-                ) : (
-                  <>
-                    <FlatList
-                      data={items}
-                      keyExtractor={(it) => it.id}
-                      renderItem={({ item }) => (
-                        <View style={{ marginBottom: 8 }}>
-                          <OrderCard
-                            lineItem={item}
-                            onIncrement={() => updateQuantity(item.id, item.quantity + 1)}
-                            onDecrement={() => updateQuantity(item.id, item.quantity - 1)}
-                            onRemove={() => removeItem(item.id)}
-                          />
-                        </View>
-                      )}
-                      contentContainerStyle={{ padding: 16, paddingBottom: 120 }}
-                      showsVerticalScrollIndicator={false}
-                    />
-                    <View style={s.orderFooter}>
-                      <Text style={s.totalText}>${total.toFixed(2)}</Text>
-                      <View style={s.orderActions}>
-                        <Pressable onPress={clearOrder} style={s.clearBtn}>
-                          <Feather name="trash-2" size={15} color={Colors.dark.danger} />
-                        </Pressable>
-                        <Pressable
-                          onPress={async () => {
-                            if (!accessToken || !locationId) return;
-                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-                            await submitOrder(accessToken, locationId);
-                          }}
-                          disabled={isSubmitting || !isConfigured}
-                          style={[s.submitBtn, { opacity: isSubmitting || !isConfigured ? 0.5 : 1 }]}
-                        >
-                          {isSubmitting
-                            ? <ActivityIndicator size="small" color={Colors.dark.background} />
-                            : <Text style={s.submitText}>process</Text>
-                          }
-                        </Pressable>
-                      </View>
+                <FlatList
+                  data={items}
+                  keyExtractor={(it) => it.id}
+                  renderItem={({ item }) => (
+                    <View style={{ marginBottom: 8 }}>
+                      <OrderCard
+                        lineItem={item}
+                        onIncrement={() => updateQuantity(item.id, item.quantity + 1)}
+                        onDecrement={() => updateQuantity(item.id, item.quantity - 1)}
+                        onRemove={() => removeItem(item.id)}
+                      />
                     </View>
-                  </>
-                )}
+                  )}
+                  contentContainerStyle={{ padding: 16, paddingBottom: 130 }}
+                  showsVerticalScrollIndicator={false}
+                />
+                <View style={s.orderFooter}>
+                  <Text style={s.totalAmt}>${total.toFixed(2)}</Text>
+                  <View style={s.orderActions}>
+                    <Pressable onPress={clearOrder} style={s.clearBtn}>
+                      <Feather name="trash-2" size={15} color="rgba(248,113,113,0.7)" />
+                    </Pressable>
+                    <Pressable
+                      onPress={async () => {
+                        if (!accessToken || !locationId) return;
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+                        await submitOrder(accessToken, locationId);
+                      }}
+                      disabled={isSubmitting || !isConfigured}
+                      style={[s.submitBtn, { opacity: isSubmitting || !isConfigured ? 0.45 : 1 }]}
+                    >
+                      {isSubmitting
+                        ? <ActivityIndicator size="small" color={Colors.dark.accent} />
+                        : <Text style={s.submitTxt}>process</Text>}
+                    </Pressable>
+                  </View>
+                </View>
               </View>
             );
           })()}
 
-          {/* ── Catalog ── */}
+          {/* ── Catalog tab ── */}
           {panelTab === "catalog" && (
             isLoadingCatalog ? (
               <View style={s.emptyPanel}>
-                <ActivityIndicator size="small" color={Colors.dark.textMuted} />
+                <ActivityIndicator size="small" color="rgba(255,255,255,0.2)" />
               </View>
             ) : !isConfigured ? (
               <View style={s.emptyPanel}>
-                <Text style={s.emptyPanelText}>square not connected</Text>
-                <Pressable onPress={() => { setPanelOpen(false); router.push("/setup"); }} style={s.squareLinkBtn}>
-                  <Text style={s.squareLinkText}>connect</Text>
+                <Text style={s.emptyTxt}>square not connected</Text>
+                <Pressable onPress={() => { setPanelOpen(false); router.push("/setup"); }}>
+                  <Text style={s.link}>connect →</Text>
                 </Pressable>
               </View>
             ) : (
@@ -528,11 +621,14 @@ export default function MainScreen() {
                       setPanelTab("order");
                     }}
                   >
-                    <Text style={s.catalogName}>{item.name}</Text>
+                    <View style={{ flex: 1, gap: 2 }}>
+                      <Text style={s.catalogName}>{item.name}</Text>
+                      {item.category ? <Text style={s.catalogCat}>{item.category}</Text> : null}
+                    </View>
                     <Text style={s.catalogPrice}>${item.price.toFixed(2)}</Text>
                   </Pressable>
                 )}
-                contentContainerStyle={{ padding: 16 }}
+                contentContainerStyle={{ paddingBottom: 16 }}
                 showsVerticalScrollIndicator={false}
               />
             )
@@ -543,201 +639,189 @@ export default function MainScreen() {
   );
 }
 
-// ── Styles ────────────────────────────────────────────────────────────────────
-
-const s = StyleSheet.create({
-  root: { flex: 1 },
-
+// ── Nebula orb component styles ───────────────────────────────────────────────
+const ns = StyleSheet.create({
+  wrap: {
+    width: 220, height: 220,
+    alignItems: "center", justifyContent: "center",
+  },
+  bloom: {
+    position: "absolute",
+    width: 360, height: 360, borderRadius: 180,
+  },
   // Logo
-  logoRow:   { alignItems: "center", paddingBottom: 8 },
-  logoWrap:  { alignItems: "center", gap: 7 },
-  logoMark:  { width: 28, height: 28, alignItems: "center", justifyContent: "center" },
-  logoCircle: {
+  logoWrap: { alignItems: "center", gap: 7 },
+  logoMark: { width: 26, height: 26, alignItems: "center", justifyContent: "center" },
+  logoRing: {
     position: "absolute",
-    width: 28, height: 28, borderRadius: 14,
-    borderWidth: 0.5, borderColor: "rgba(255,255,255,0.18)",
+    width: 26, height: 26, borderRadius: 13,
+    borderWidth: 0.5, borderColor: "rgba(165,180,252,0.30)",
   },
-  logoDot: {
-    position: "absolute",
-    top: 5, right: 5,
+  logoBead: {
+    position: "absolute", top: 5, right: 5,
     width: 4, height: 4, borderRadius: 2,
-    backgroundColor: "rgba(255,255,255,0.22)",
+    backgroundColor: "rgba(165,180,252,0.50)",
   },
-  logoText: {
-    fontFamily: "Inter_300Light", fontSize: 10,
-    letterSpacing: 4, color: "rgba(255,255,255,0.2)",
-    textTransform: "lowercase",
+  logoWord: {
+    fontFamily: "Inter_300Light",
+    fontSize: 8, letterSpacing: 5,
+    color: "rgba(255,255,255,0.26)",
   },
+});
 
-  // Conversation
+// ── Main screen styles ────────────────────────────────────────────────────────
+const s = StyleSheet.create({
+  root: { flex: 1, backgroundColor: "#060818" },
+
+  topRow: { alignItems: "center", paddingBottom: 8 },
+
   convoArea: {
-    flex: 1, alignItems: "center", justifyContent: "flex-end",
-    paddingHorizontal: 36, paddingBottom: 28, gap: 10,
+    flex: 1,
+    alignItems: "center", justifyContent: "flex-end",
+    paddingHorizontal: 36, paddingBottom: 32, gap: 10,
   },
-  convoLine: {
-    textAlign: "center", lineHeight: 22,
-    color: "rgba(255,255,255,0.85)",
-  },
-  partialLine: {
-    textAlign: "center", fontSize: 13, lineHeight: 20,
-    color: "rgba(255,255,255,0.3)", fontStyle: "italic",
-    fontFamily: "Inter_300Light",
+  partial: {
+    textAlign: "center", fontSize: 13, fontStyle: "italic",
+    fontFamily: "Inter_300Light", color: "rgba(255,255,255,0.26)",
   },
 
-  // Orb
-  orbArea: { alignItems: "center", gap: 18, paddingVertical: 8 },
-  orbWrap: { width: 200, height: 200, alignItems: "center", justifyContent: "center" },
-  orbOuter: {
-    position: "absolute",
-    width: 200, height: 200, borderRadius: 100,
-    borderWidth: 0.5,
-  },
-  orbMid: {
-    position: "absolute",
-    width: 120, height: 120, borderRadius: 60,
-    borderWidth: 0.75,
-    backgroundColor: "transparent",
-  },
-  orbCore: {
-    width: 48, height: 48, borderRadius: 24,
-    borderWidth: 0.5,
-  },
+  orbArea: { alignItems: "center" },
+
   stateLabel: {
+    textAlign: "center",
     fontFamily: "Inter_300Light",
-    fontSize: 11, letterSpacing: 2,
-    color: "rgba(255,255,255,0.28)",
-    textTransform: "lowercase",
+    fontSize: 9, letterSpacing: 3.5,
+    marginTop: 18,
   },
-
-  // Error
   errorWhisper: {
-    textAlign: "center", paddingHorizontal: 40,
+    textAlign: "center",
     fontFamily: "Inter_300Light", fontSize: 11,
-    color: "rgba(255,92,122,0.5)", letterSpacing: 0.5,
+    color: "rgba(252,165,165,0.48)",
+    paddingHorizontal: 40, marginTop: 8,
   },
 
-  // Bottom bar
   bottomRow: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    paddingHorizontal: 32, paddingTop: 12,
+    paddingHorizontal: 36, paddingTop: 10,
   },
-  cornerBtn: { width: 32, height: 32, alignItems: "center", justifyContent: "center" },
-  cornerDot: {
-    width: 5, height: 5, borderRadius: 2.5,
-    backgroundColor: "rgba(255,255,255,0.12)",
+  dot: {
+    width: 6, height: 6, borderRadius: 3,
+    backgroundColor: "rgba(255,255,255,0.10)",
+  },
+  dotActive: {
+    backgroundColor: "rgba(124,110,245,0.45)",
+    borderWidth: 0.5, borderColor: "rgba(124,110,245,0.6)",
   },
   orderBadge: {
-    minWidth: 20, height: 20, borderRadius: 10,
-    backgroundColor: Colors.dark.accent + "22",
-    borderWidth: 0.5, borderColor: Colors.dark.accent + "55",
-    alignItems: "center", justifyContent: "center", paddingHorizontal: 4,
+    minWidth: 22, height: 22, borderRadius: 11,
+    backgroundColor: "rgba(124,110,245,0.16)",
+    borderWidth: 0.5, borderColor: "rgba(124,110,245,0.40)",
+    alignItems: "center", justifyContent: "center", paddingHorizontal: 5,
   },
-  orderBadgeText: {
+  orderBadgeNum: {
     fontFamily: "Inter_500Medium", fontSize: 11, color: Colors.dark.accent,
   },
-  interruptBtn: { flex: 1, alignItems: "center" },
+  interruptWrap: { flex: 1, alignItems: "center" },
   interruptDot: {
-    width: 6, height: 6, borderRadius: 3,
-    backgroundColor: "rgba(255,255,255,0.3)",
+    width: 7, height: 7, borderRadius: 3.5,
+    backgroundColor: "rgba(255,255,255,0.32)",
   },
 
   // Panel
-  panelBackdrop: { flex: 1 },
+  backdrop: { flex: 1 },
   panel: {
-    backgroundColor: "#0c0c14",
-    borderTopLeftRadius: 24, borderTopRightRadius: 24,
-    borderTopWidth: 0.5, borderColor: "rgba(255,255,255,0.06)",
-    maxHeight: "75%",
-    shadowColor: "#000", shadowOpacity: 0.6, shadowRadius: 40, shadowOffset: { width: 0, height: -8 },
+    backgroundColor: "#0b0d20",
+    borderTopLeftRadius: 26, borderTopRightRadius: 26,
+    borderTopWidth: 0.5, borderColor: "rgba(255,255,255,0.07)",
+    maxHeight: "78%",
+    shadowColor: "#000", shadowOpacity: 0.7, shadowRadius: 40,
+    shadowOffset: { width: 0, height: -10 },
+    elevation: 20,
   },
   panelHandle: {
-    width: 32, height: 2.5, borderRadius: 2,
-    backgroundColor: "rgba(255,255,255,0.1)",
-    alignSelf: "center", marginTop: 12, marginBottom: 4,
+    width: 36, height: 3, borderRadius: 2,
+    backgroundColor: "rgba(255,255,255,0.10)",
+    alignSelf: "center", marginTop: 14, marginBottom: 4,
   },
-  panelTabs: {
+  panelHeader: {
     flexDirection: "row", alignItems: "center",
-    paddingHorizontal: 20, paddingVertical: 12, gap: 20,
+    paddingHorizontal: 22, paddingVertical: 12, gap: 22,
   },
   panelTabBtn: { paddingVertical: 4 },
-  panelTabText: {
-    fontFamily: "Inter_400Regular", fontSize: 13,
-    color: "rgba(255,255,255,0.25)", letterSpacing: 0.5,
-    textTransform: "lowercase",
+  panelTabTxt: {
+    fontFamily: "Inter_300Light", fontSize: 13, letterSpacing: 1,
+    color: "rgba(255,255,255,0.22)", textTransform: "lowercase",
   },
-  panelTabActive: { color: "rgba(255,255,255,0.75)" },
-  panelClose: {
-    marginLeft: "auto", padding: 4,
-  },
-  panelScroll: { flex: 1 },
+  panelTabOn: { color: "rgba(255,255,255,0.82)", fontFamily: "Inter_400Regular" },
 
-  // Order
-  emptyPanel: {
-    flex: 1, alignItems: "center", justifyContent: "center",
-    gap: 12, paddingBottom: 40,
+  // Submitted receipt
+  bigTotal: {
+    fontFamily: "Inter_300Light", fontSize: 46,
+    color: Colors.dark.accent, letterSpacing: -2,
   },
-  emptyPanelText: {
-    fontFamily: "Inter_300Light", fontSize: 13,
-    color: "rgba(255,255,255,0.2)", letterSpacing: 0.5,
+  bigTotalSub: {
+    fontFamily: "Inter_300Light", fontSize: 9, letterSpacing: 4,
+    color: "rgba(255,255,255,0.24)", marginBottom: 16,
   },
-  submittedTotal: {
-    fontFamily: "Inter_300Light", fontSize: 40,
-    color: Colors.dark.accent, letterSpacing: -1,
-  },
-  submittedSub: {
-    fontFamily: "Inter_300Light", fontSize: 11, letterSpacing: 2,
-    color: "rgba(255,255,255,0.3)", textTransform: "lowercase", marginTop: -6,
-  },
-  submittedDivider: { height: 0.5, backgroundColor: "rgba(255,255,255,0.06)" },
-  submittedRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 2 },
-  submittedQty: { fontFamily: "Inter_400Regular", fontSize: 13, color: "rgba(255,255,255,0.3)", width: 26 },
-  submittedName: { flex: 1, fontFamily: "Inter_400Regular", fontSize: 13, color: "rgba(255,255,255,0.7)" },
-  submittedPrice: { fontFamily: "Inter_500Medium", fontSize: 13, color: "rgba(255,255,255,0.5)" },
-  squareLinkBtn: { marginTop: 4 },
-  squareLinkText: {
+  divider: { height: 0.5, backgroundColor: "rgba(255,255,255,0.06)", marginBottom: 8 },
+  sRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 3 },
+  sQty:  { fontFamily: "Inter_400Regular", fontSize: 13, color: "rgba(255,255,255,0.28)", width: 28 },
+  sName: { flex: 1, fontFamily: "Inter_400Regular", fontSize: 13, color: "rgba(255,255,255,0.62)" },
+  sPrice: { fontFamily: "Inter_500Medium", fontSize: 13, color: "rgba(255,255,255,0.40)" },
+  link: {
     fontFamily: "Inter_300Light", fontSize: 12, letterSpacing: 0.5,
     color: Colors.dark.accent, textDecorationLine: "underline",
   },
+
+  // Empty
+  emptyPanel: {
+    flex: 1, alignItems: "center", justifyContent: "center",
+    paddingBottom: 60, gap: 8,
+  },
+  emptyTxt: {
+    fontFamily: "Inter_300Light", fontSize: 13, letterSpacing: 0.5,
+    color: "rgba(255,255,255,0.18)",
+  },
+  emptyHint: {
+    fontFamily: "Inter_300Light", fontSize: 11,
+    color: "rgba(255,255,255,0.10)", letterSpacing: 0.3,
+  },
+
+  // Order footer
   orderFooter: {
     position: "absolute", bottom: 0, left: 0, right: 0,
-    paddingHorizontal: 20, paddingTop: 14, paddingBottom: 16,
+    backgroundColor: "#0b0d20",
+    paddingHorizontal: 20, paddingTop: 14, paddingBottom: 20,
     borderTopWidth: 0.5, borderTopColor: "rgba(255,255,255,0.05)",
-    backgroundColor: "#0c0c14",
   },
-  totalText: {
-    fontFamily: "Inter_300Light", fontSize: 30,
-    color: "rgba(255,255,255,0.75)", letterSpacing: -0.5, marginBottom: 12,
+  totalAmt: {
+    fontFamily: "Inter_300Light", fontSize: 36,
+    color: "rgba(255,255,255,0.70)", letterSpacing: -0.5, marginBottom: 14,
   },
-  orderActions: { flexDirection: "row", gap: 10 },
+  orderActions: { flexDirection: "row", gap: 12 },
   clearBtn: {
-    width: 46, height: 46, borderRadius: 23,
-    borderWidth: 0.5, borderColor: Colors.dark.danger + "33",
+    width: 50, height: 50, borderRadius: 25,
+    borderWidth: 0.5, borderColor: "rgba(248,113,113,0.28)",
     alignItems: "center", justifyContent: "center",
   },
   submitBtn: {
-    flex: 1, height: 46, borderRadius: 23,
-    backgroundColor: Colors.dark.accent + "22",
-    borderWidth: 0.5, borderColor: Colors.dark.accent + "55",
+    flex: 1, height: 50, borderRadius: 25,
+    backgroundColor: "rgba(124,110,245,0.15)",
+    borderWidth: 0.5, borderColor: "rgba(124,110,245,0.40)",
     alignItems: "center", justifyContent: "center",
   },
-  submitText: {
-    fontFamily: "Inter_400Regular", fontSize: 14,
-    letterSpacing: 1, color: Colors.dark.accent,
-    textTransform: "lowercase",
+  submitTxt: {
+    fontFamily: "Inter_400Regular", fontSize: 14, letterSpacing: 1,
+    color: Colors.dark.accent, textTransform: "lowercase",
   },
 
   // Catalog
   catalogRow: {
     flexDirection: "row", alignItems: "center",
-    paddingVertical: 14,
+    paddingVertical: 15, paddingHorizontal: 22,
     borderBottomWidth: 0.5, borderBottomColor: "rgba(255,255,255,0.04)",
   },
-  catalogName: {
-    flex: 1, fontFamily: "Inter_400Regular", fontSize: 14,
-    color: "rgba(255,255,255,0.65)",
-  },
-  catalogPrice: {
-    fontFamily: "Inter_300Light", fontSize: 13,
-    color: "rgba(255,255,255,0.3)",
-  },
+  catalogName: { fontFamily: "Inter_400Regular", fontSize: 14, color: "rgba(255,255,255,0.58)" },
+  catalogCat:  { fontFamily: "Inter_300Light", fontSize: 11, color: "rgba(255,255,255,0.22)" },
+  catalogPrice: { fontFamily: "Inter_300Light", fontSize: 13, color: "rgba(255,255,255,0.26)" },
 });
