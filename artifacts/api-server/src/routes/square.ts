@@ -169,11 +169,15 @@ function popupHtml(tokenState: string | null, error: string | null): string {
   <script>
     try {
       var payload = JSON.parse(atob("${payloadB64}"));
+      // Primary: write to localStorage (works reliably since popup callback is same-origin)
+      // The parent window polls for this key.
+      localStorage.setItem("bevpro_oauth_result", JSON.stringify(payload));
+      // Secondary: also try postMessage in case window.opener survived cross-origin nav
       if (window.opener) {
         window.opener.postMessage(payload, '*');
       }
-    } catch(e) { console.error('postMessage failed', e); }
-    setTimeout(function() { window.close(); }, 1500);
+    } catch(e) { console.error('OAuth signal failed', e); }
+    setTimeout(function() { try { window.close(); } catch(e) {} }, 1500);
   </script>
 </body>
 </html>`;

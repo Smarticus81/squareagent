@@ -55,7 +55,12 @@ export default function Dashboard() {
 
       if (!popup) throw new Error("Popup was blocked. Please allow popups for this site and try again.");
 
-      // 3. Listen for the postMessage from the popup
+      // Clear any stale OAuth result from a previous attempt
+      localStorage.removeItem("bevpro_oauth_result");
+
+      // 3. Wait for the popup to signal completion via localStorage or postMessage.
+      //    Modern browsers sever window.opener on cross-origin navigation (Square OAuth),
+      //    so localStorage is the primary channel; postMessage is a fallback.
       const tokenState = await new Promise<string>((resolve, reject) => {
         let settled = false;
         const timeout = setTimeout(() => {
@@ -71,30 +76,58 @@ export default function Dashboard() {
           window.removeEventListener("message", handler);
         }
 
-        function handler(event: MessageEvent) {
+        function handleResult(data: { type: string; tokenState?: string; error?: string }) {
           if (settled) return;
-          if (event.data?.type === "square-oauth-success") {
+          if (data.type === "square-oauth-success" && data.tokenState) {
             settled = true;
             cleanup();
-            resolve(event.data.tokenState);
-          } else if (event.data?.type === "square-oauth-error") {
+            localStorage.removeItem("bevpro_oauth_result");
+            resolve(data.tokenState);
+          } else if (data.type === "square-oauth-error") {
             settled = true;
             cleanup();
-            reject(new Error(event.data.error || "OAuth failed"));
+            localStorage.removeItem("bevpro_oauth_result");
+            reject(new Error(data.error || "OAuth failed"));
           }
         }
 
+        // Channel 1: postMessage (works if window.opener survived)
+        function handler(event: MessageEvent) {
+          if (event.data?.type?.startsWith("square-oauth-")) {
+            handleResult(event.data);
+          }
+        }
         window.addEventListener("message", handler);
 
-        // Poll in case popup closes without sending message
+        // Channel 2: poll localStorage (primary — always works for same-origin callback)
+        // Also detect popup close, but give it a grace period to write localStorage first
+        let popupClosedAt: number | null = null;
         const pollInterval = setInterval(() => {
-          if (settled) { clearInterval(pollInterval); return; }
-          if (popup.closed) {
-            settled = true;
-            cleanup();
-            reject(new Error("Popup closed without completing authorization"));
+          if (settled) return;
+
+          // Check localStorage for the OAuth result
+          const stored = localStorage.getItem("bevpro_oauth_result");
+          if (stored) {
+            try {
+              handleResult(JSON.parse(stored));
+              return;
+            } catch {}
           }
-        }, 500);
+
+          // If popup is closed, wait up to 2s for localStorage to be written
+          // (the callback page writes localStorage then closes after 1.5s)
+          if (popup.closed) {
+            if (!popupClosedAt) {
+              popupClosedAt = Date.now();
+            } else if (Date.now() - popupClosedAt > 2000) {
+              // Popup closed and no result appeared — user likely closed it manually
+              settled = true;
+              cleanup();
+              localStorage.removeItem("bevpro_oauth_result");
+              reject(new Error("Popup closed without completing authorization"));
+            }
+          }
+        }, 300);
       });
 
       // 4. Exchange tokenState for access token
