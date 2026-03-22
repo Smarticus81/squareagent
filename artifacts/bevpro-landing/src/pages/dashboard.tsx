@@ -378,21 +378,20 @@ export default function Dashboard() {
               service.
             </p>
 
-            <a
-              href={isSquareConnected && primaryVenue ? `${voiceAgentBaseUrl}?venue=${primaryVenue.id}&token=${encodeURIComponent(localStorage.getItem("bevpro_token") || "")}` : undefined}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={`block ${!isSquareConnected ? "pointer-events-none opacity-50" : ""}`}
+            <Button
+              variant="default"
+              className="w-full h-12 text-base group rounded-2xl"
+              disabled={!isSquareConnected}
+              onClick={() => {
+                if (!isSquareConnected || !primaryVenue) return;
+                const token = localStorage.getItem("bevpro_token") || "";
+                const url = `${voiceAgentBaseUrl}?venue=${primaryVenue.id}&token=${encodeURIComponent(token)}`;
+                window.open(url, "_blank", "noopener");
+              }}
             >
-              <Button
-                variant="default"
-                className="w-full h-12 text-base group rounded-2xl"
-                disabled={!isSquareConnected}
-              >
-                Launch Voice Agent
-                <ExternalLink className="ml-2 w-4 h-4 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 transition-transform" />
-              </Button>
-            </a>
+              Launch Voice Agent
+              <ExternalLink className="ml-2 w-4 h-4 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 transition-transform" />
+            </Button>
           </div>
         </div>
 
