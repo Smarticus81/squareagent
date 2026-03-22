@@ -386,7 +386,15 @@ export default function Dashboard() {
                 if (!isSquareConnected || !primaryVenue) return;
                 const token = localStorage.getItem("bevpro_token") || "";
                 const url = `${voiceAgentBaseUrl}?venue=${primaryVenue.id}&token=${encodeURIComponent(token)}`;
-                window.open(url, "_blank", "noopener");
+                // Use a temporary <a> element to open reliably —
+                // window.open with features string causes about:blank in some browsers
+                const a = document.createElement("a");
+                a.href = url;
+                a.target = "_blank";
+                a.rel = "noopener noreferrer";
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
               }}
             >
               Launch Voice Agent
