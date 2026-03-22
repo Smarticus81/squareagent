@@ -5,10 +5,7 @@ import { useVenues, useSaveVenue, useDeleteVenue, useSquareLocations, type Squar
 import { Button } from "@/components/ui/button";
 import {
   ExternalLink,
-  CheckCircle2,
   AlertCircle,
-  LayoutDashboard,
-  Smartphone,
   Trash2,
   MapPin,
   Loader2,
@@ -194,7 +191,7 @@ export default function Dashboard() {
   if (isLoading) {
     return (
       <div className="flex-1 flex items-center justify-center bg-background">
-        <div className="w-8 h-8 border-2 border-border border-t-primary rounded-full animate-spin"></div>
+        <div className="w-5 h-5 border border-foreground/20 border-t-foreground/60 rounded-full animate-spin"></div>
       </div>
     );
   }
@@ -225,56 +222,47 @@ export default function Dashboard() {
 
   return (
     <div className="flex-1 bg-background text-foreground">
-      <div className="max-w-6xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-12 pt-32">
+      <div className="max-w-3xl w-full mx-auto px-6 py-12 pt-28">
         {/* Header */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-16 gap-6">
-          <div>
-            <h1 className="text-4xl font-bold tracking-tight text-foreground mb-2">
-              Welcome, {auth.user.name.split(" ")[0]}
-            </h1>
-            <p className="text-muted-foreground font-light text-lg">Manage your venue and voice agent.</p>
-          </div>
+        <div className="mb-14">
+          <h1 className="text-2xl font-display font-medium tracking-tight text-foreground">
+            {auth.user.name.split(" ")[0]}
+          </h1>
+          <p className="text-foreground/40 font-light text-[14px] mt-1">Manage your venue and voice agent</p>
 
           {auth.subscription?.status === "trialing" && (
-            <div className="rounded-full border border-border bg-card px-4 py-2 flex items-center gap-3">
-              <div className="w-2 h-2 bg-primary"></div>
-              <span className="text-sm font-medium text-foreground">
-                Trial active &bull; {getTrialDaysLeft()} days left
-              </span>
-              <Button variant="outline" size="sm" className="ml-2 h-8 rounded-xl border-border">
-                Upgrade
-              </Button>
-            </div>
+            <p className="text-[12px] text-foreground/35 mt-3 tracking-wide">
+              Trial &middot; {getTrialDaysLeft()} days remaining
+            </p>
           )}
         </div>
 
         {/* ── Location Picker Modal ──────────────────────────────────── */}
         {showLocationPicker && locations.length > 0 && (
-          <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-            <div className="bg-card rounded-3xl border border-border max-w-md w-full p-8">
-              <h2 className="text-xl font-bold mb-2">Select a Location</h2>
-              <p className="text-sm text-muted-foreground mb-6">
-                Choose the Square location to connect with Bevpro.
+          <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+            <div className="bg-background border border-foreground/10 max-w-md w-full p-8">
+              <h2 className="text-lg font-display font-medium mb-1">Select a location</h2>
+              <p className="text-[13px] text-foreground/40 font-light mb-6">
+                Choose the Square location to connect.
               </p>
-              <div className="space-y-3 max-h-80 overflow-y-auto">
+              <div className="space-y-2 max-h-80 overflow-y-auto">
                 {locations.map((loc) => (
                   <button
                     key={loc.id}
                     onClick={() => handleSelectLocation(loc)}
                     disabled={saveVenue.isPending}
-                    className="w-full text-left p-4 rounded-2xl border border-border hover:border-primary hover:bg-primary/5 transition-colors flex items-start gap-3 disabled:opacity-50"
+                    className="w-full text-left p-4 border border-foreground/8 hover:border-foreground/20 transition-colors flex items-start gap-3 disabled:opacity-50"
                   >
-                    <MapPin className="w-5 h-5 mt-0.5 text-muted-foreground shrink-0" />
+                    <MapPin className="w-4 h-4 mt-0.5 text-foreground/30 shrink-0" />
                     <div>
-                      <div className="font-medium">{loc.name}</div>
-                      {loc.address && <div className="text-sm text-muted-foreground mt-0.5">{loc.address}</div>}
+                      <div className="text-[14px] font-medium">{loc.name}</div>
+                      {loc.address && <div className="text-[12px] text-foreground/40 mt-0.5">{loc.address}</div>}
                     </div>
                   </button>
                 ))}
               </div>
-              <Button
-                variant="ghost"
-                className="w-full mt-4 rounded-none"
+              <button
+                className="w-full mt-4 text-[13px] text-foreground/40 hover:text-foreground transition-colors py-2"
                 onClick={() => {
                   setShowLocationPicker(false);
                   setOauthToken(null);
@@ -282,112 +270,88 @@ export default function Dashboard() {
                 }}
               >
                 Cancel
-              </Button>
+              </button>
             </div>
           </div>
         )}
 
-        {/* ── Main Cards Grid ────────────────────────────────────────── */}
-        <div className="grid md:grid-cols-2 gap-8">
-          {/* Square Integration Card */}
-          <div className="bg-card rounded-3xl border border-border p-10 flex flex-col">
-            <div className="flex items-center gap-5 mb-8">
-              <div className="w-12 h-12 bg-foreground rounded-xl flex items-center justify-center">
-                <div className="w-5 h-5 bg-foreground relative border-2 border-background rounded-sm">
-                  <div className="absolute inset-1 bg-background rounded-[1px]"></div>
-                </div>
-              </div>
+        {/* ── Cards ──────────────────────────────────────────────────── */}
+        <div className="space-y-6">
+          {/* Square Integration */}
+          <div className="border border-foreground/8 p-8">
+            <div className="flex items-start justify-between mb-6">
               <div>
-                <h2 className="text-xl font-bold text-foreground tracking-tight">Square POS</h2>
-                <p className="text-sm text-muted-foreground font-light mt-1">
+                <p className="text-[12px] tracking-[0.15em] uppercase text-foreground/30 mb-2">Square POS</p>
+                <p className="text-[14px] font-light text-foreground/50">
                   {isSquareConnected ? (
-                    <span className="text-primary font-medium">Connected &mdash; {primaryVenue!.squareLocationName}</span>
+                    <>Connected &mdash; {primaryVenue!.squareLocationName}</>
                   ) : (
                     "Not connected"
                   )}
                 </p>
               </div>
+              {isSquareConnected && (
+                <span className="w-2 h-2 bg-foreground/60 rounded-full mt-1"></span>
+              )}
             </div>
 
-            <div className="space-y-4 mb-10 flex-1">
-              <div className="flex items-center gap-3 text-sm text-foreground font-light">
-                {isSquareConnected ? (
-                  <CheckCircle2 className="w-5 h-5 text-primary" />
-                ) : (
-                  <AlertCircle className="w-5 h-5 text-muted-foreground" />
-                )}
+            <div className="space-y-2.5 mb-8">
+              <div className="flex items-center gap-2.5 text-[13px] text-foreground/50 font-light">
+                <span className={`w-1 h-1 rounded-full ${isSquareConnected ? "bg-foreground/50" : "bg-foreground/15"}`}></span>
                 Menu catalog sync
               </div>
-              <div className="flex items-center gap-3 text-sm text-foreground font-light">
-                {isSquareConnected ? (
-                  <CheckCircle2 className="w-5 h-5 text-primary" />
-                ) : (
-                  <AlertCircle className="w-5 h-5 text-muted-foreground" />
-                )}
+              <div className="flex items-center gap-2.5 text-[13px] text-foreground/50 font-light">
+                <span className={`w-1 h-1 rounded-full ${isSquareConnected ? "bg-foreground/50" : "bg-foreground/15"}`}></span>
                 Order creation &amp; payments
               </div>
               {isSquareConnected && primaryVenue?.connectedAt && (
-                <div className="text-xs text-muted-foreground mt-2">
+                <p className="text-[11px] text-foreground/25 mt-2">
                   Connected {new Date(primaryVenue.connectedAt).toLocaleDateString()}
-                </div>
+                </p>
               )}
             </div>
 
             {isSquareConnected ? (
-              <Button
-                variant="outline"
-                className="w-full rounded-2xl"
+              <button
+                className="text-[13px] text-foreground/35 hover:text-destructive transition-colors flex items-center gap-1.5"
                 onClick={() => handleDisconnect(primaryVenue!.id)}
                 disabled={deleteVenue.isPending}
               >
                 {deleteVenue.isPending ? (
-                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
                 ) : (
-                  <Trash2 className="w-4 h-4 mr-2" />
+                  <Trash2 className="w-3.5 h-3.5" />
                 )}
-                Disconnect Square
-              </Button>
+                Disconnect
+              </button>
             ) : (
               <Button
-                className="w-full h-12 rounded-2xl"
+                className="h-10 px-7 text-[13px]"
                 onClick={handleConnectSquare}
                 disabled={connecting}
               >
-                {connecting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-                Connect Square Account
+                {connecting ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" /> : null}
+                Connect Square
               </Button>
             )}
           </div>
 
-          {/* Voice Agent App Card */}
-          <div className="bg-card rounded-3xl border border-border p-10 flex flex-col">
-            <div className="flex items-center gap-5 mb-8">
-              <div className="w-12 h-12 bg-primary rounded-xl flex items-center justify-center">
-                <LayoutDashboard className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <h2 className="text-xl font-bold text-foreground tracking-tight">Voice Agent</h2>
-                <p className="text-sm text-primary font-medium mt-1">
-                  {isSquareConnected ? "Ready to take orders" : "Connect Square first"}
-                </p>
-              </div>
-            </div>
-
-            <p className="text-muted-foreground font-light mb-10 flex-1 leading-relaxed">
-              Launch the Voice POS interface. This is what your bartenders will use on their iPads during
-              service.
+          {/* Voice Agent */}
+          <div className="border border-foreground/8 p-8">
+            <p className="text-[12px] tracking-[0.15em] uppercase text-foreground/30 mb-2">Voice Agent</p>
+            <p className="text-[14px] text-foreground/50 font-light mb-8 leading-relaxed max-w-lg">
+              {isSquareConnected
+                ? "Launch the voice interface your bartenders use during service."
+                : "Connect Square first to enable voice ordering."}
             </p>
 
             <Button
-              variant="default"
-              className="w-full h-12 text-base group rounded-2xl"
+              className="h-10 px-7 text-[13px] group"
               disabled={!isSquareConnected}
               onClick={() => {
                 if (!isSquareConnected || !primaryVenue) return;
                 const token = localStorage.getItem("bevpro_token") || "";
                 const url = `${voiceAgentBaseUrl}?venue=${primaryVenue.id}&token=${encodeURIComponent(token)}`;
-                // Use a temporary <a> element to open reliably —
-                // window.open with features string causes about:blank in some browsers
                 const a = document.createElement("a");
                 a.href = url;
                 a.target = "_blank";
@@ -398,35 +362,17 @@ export default function Dashboard() {
               }}
             >
               Launch Voice Agent
-              <ExternalLink className="ml-2 w-4 h-4 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 transition-transform" />
+              <ExternalLink className="ml-2 w-3.5 h-3.5" />
             </Button>
           </div>
-        </div>
 
-        {/* ── iOS App Download Card ──────────────────────────────────── */}
-        <div className="mt-8">
-          <div className="bg-card rounded-3xl border border-border p-10 flex flex-col md:flex-row items-center gap-8">
-            <div className="w-16 h-16 bg-gradient-to-br from-primary to-purple-700 rounded-2xl flex items-center justify-center shrink-0">
-              <Smartphone className="w-8 h-8 text-white" />
-            </div>
-            <div className="flex-1 text-center md:text-left">
-              <h2 className="text-xl font-bold text-foreground tracking-tight mb-2">Bevpro for iOS</h2>
-              <p className="text-muted-foreground font-light leading-relaxed">
-                Download the native app for your iPad or iPhone. Sign in with your Bevpro account and your
-                Square connection syncs automatically — no re-setup needed.
-              </p>
-            </div>
-            <div className="flex flex-col gap-3 shrink-0">
-              <Button variant="default" className="h-12 px-8 rounded-2xl" disabled>
-                <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z" />
-                </svg>
-                Coming Soon
-              </Button>
-              <span className="text-xs text-muted-foreground text-center">
-                Linked to your Bevpro account
-              </span>
-            </div>
+          {/* iOS App */}
+          <div className="border border-foreground/8 p-8">
+            <p className="text-[12px] tracking-[0.15em] uppercase text-foreground/30 mb-2">iOS App</p>
+            <p className="text-[14px] text-foreground/50 font-light mb-6 leading-relaxed max-w-lg">
+              Native app for iPad and iPhone. Sign in and your Square connection syncs automatically.
+            </p>
+            <p className="text-[12px] text-foreground/25 tracking-wide">Coming soon</p>
           </div>
         </div>
       </div>

@@ -21,71 +21,59 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center relative bg-background p-4">
-      
-      <Link href="/" className="absolute top-8 left-8 text-muted-foreground hover:text-foreground flex items-center gap-2 transition-colors z-20 text-sm font-medium">
-        <ArrowLeft className="w-4 h-4" /> Home
+    <div className="min-h-screen flex items-center justify-center relative bg-background p-6">
+      <Link href="/" className="absolute top-6 left-6 text-foreground/35 hover:text-foreground flex items-center gap-1.5 transition-colors text-[13px]">
+        <ArrowLeft className="w-3.5 h-3.5" /> Back
       </Link>
 
-      <div className="w-full max-w-sm bg-card rounded-3xl border border-border p-10 md:p-12 relative z-10 shadow-xl shadow-primary/5">
+      <div className="w-full max-w-[340px]">
         <div className="flex justify-center mb-10">
           <Logo />
         </div>
-        
-        <div className="text-center mb-10">
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">Welcome back</h1>
-          <p className="text-muted-foreground mt-2 text-sm font-light">Sign in to manage your venue</p>
-        </div>
 
-        <form onSubmit={handleSubmit} className="space-y-5">
-          <div className="space-y-2">
-            <label className="text-xs font-medium text-foreground uppercase tracking-wide">Email</label>
-            <Input 
-              type="email" 
-              placeholder="name@venue.com" 
+        <h1 className="text-xl font-display font-medium tracking-tight text-foreground text-center">Sign in</h1>
+        <p className="text-foreground/40 text-[13px] font-light text-center mt-1.5 mb-8">Welcome back</p>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-1.5">
+            <label className="text-[12px] font-medium text-foreground/50 tracking-wide">Email</label>
+            <Input
+              type="email"
+              placeholder="name@venue.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="rounded-xl border-border focus-visible:ring-primary bg-background"
+              className="h-10 bg-background border-foreground/10 focus-visible:ring-foreground/20"
             />
           </div>
-          
-          <div className="space-y-2">
-            <div className="flex justify-between items-center">
-              <label className="text-xs font-medium text-foreground uppercase tracking-wide">Password</label>
-              <a href="#" className="text-xs text-primary hover:underline font-medium">Forgot?</a>
-            </div>
-            <Input 
-              type="password" 
-              placeholder="••••••••" 
+
+          <div className="space-y-1.5">
+            <label className="text-[12px] font-medium text-foreground/50 tracking-wide">Password</label>
+            <Input
+              type="password"
+              placeholder="••••••••"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              className="rounded-xl border-border focus-visible:ring-primary bg-background"
+              className="h-10 bg-background border-foreground/10 focus-visible:ring-foreground/20"
             />
           </div>
 
           {login.error && (
-            <div className="p-3 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-sm">
-              {login.error.message}
-            </div>
+            <p className="text-[13px] text-destructive">{login.error.message}</p>
           )}
 
-          <Button 
-            type="submit" 
-            className="w-full h-12 mt-4 rounded-2xl" 
-            disabled={login.isPending}
-          >
+          <Button type="submit" className="w-full h-10 mt-2" disabled={login.isPending}>
             {login.isPending ? "Signing in..." : "Sign In"}
           </Button>
         </form>
 
-        <div className="mt-8 text-center text-sm text-muted-foreground font-light">
-          Don't have an account?{" "}
-          <Link href="/signup" className="text-foreground hover:text-primary font-medium transition-colors">
-            Start free trial
+        <p className="mt-8 text-center text-[13px] text-foreground/35 font-light">
+          No account?{" "}
+          <Link href="/signup" className="text-foreground/70 hover:text-foreground transition-colors">
+            Get started
           </Link>
-        </div>
+        </p>
       </div>
     </div>
   );
