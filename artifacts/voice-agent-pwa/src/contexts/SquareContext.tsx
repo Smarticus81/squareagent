@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, type ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useRef, useCallback, type ReactNode } from "react";
 import { getBaseUrl } from "@/lib/api";
 
 export interface SquareCatalogItem {
@@ -51,9 +51,23 @@ export function SquareProvider({ children }: { children: ReactNode }) {
   const [catalogItems, setCatalogItems] = useState<SquareCatalogItem[]>([]);
   const [isLoadingCatalog, setIsLoadingCatalog] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
+  const catalogLoadedForRef = useRef<string | null>(null);
+  const credentialsLoadedRef = useRef(false);
 
-  useEffect(() => { loadCredentials(); }, []);
-  useEffect(() => { if (accessToken && locationId) loadCatalog(); }, [accessToken, locationId]);
+  useEffect(() => {
+    if (credentialsLoadedRef.current) return;
+    credentialsLoadedRef.current = true;
+    loadCredentials();
+  }, []);
+
+  useEffect(() => {
+    if (!accessToken || !locationId) return;
+    // Avoid re-fetching for the same token+location combo
+    const key = `${accessToken}:${locationId}`;
+    if (catalogLoadedForRef.current === key) return;
+    catalogLoadedForRef.current = key;
+    loadCatalog();
+  }, [accessToken, locationId]);
 
   async function loadCredentials() {
     const launch = getWebLaunchParams();
@@ -109,10 +123,14 @@ export function SquareProvider({ children }: { children: ReactNode }) {
     setCatalogItems([]);
   }
 
+  const loadingRef = useRef(false);
+
   async function loadCatalog(overrideToken?: string, overrideLocationId?: string): Promise<number> {
     const tok = overrideToken ?? accessToken;
     const loc = overrideLocationId ?? locationId;
     if (!tok || !loc) return 0;
+    if (loadingRef.current) return 0; // prevent concurrent loads
+    loadingRef.current = true;
     setIsLoadingCatalog(true);
     setCatalogError(null);
     try {
@@ -126,6 +144,7 @@ export function SquareProvider({ children }: { children: ReactNode }) {
       setCatalogError(e.message);
       return 0;
     } finally {
+      loadingRef.current = false;
       setIsLoadingCatalog(false);
     }
   }

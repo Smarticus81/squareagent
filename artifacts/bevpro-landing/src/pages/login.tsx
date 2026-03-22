@@ -27,7 +27,7 @@ export default function Login() {
         <ArrowLeft className="w-4 h-4" /> Home
       </Link>
 
-      <div className="w-full max-w-sm bg-card border border-border p-10 md:p-12 relative z-10">
+      <div className="w-full max-w-sm bg-card rounded-3xl border border-border p-10 md:p-12 relative z-10 shadow-xl shadow-primary/5">
         <div className="flex justify-center mb-10">
           <Logo />
         </div>
@@ -46,7 +46,7 @@ export default function Login() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="rounded-none border-border focus-visible:ring-primary bg-background"
+              className="rounded-xl border-border focus-visible:ring-primary bg-background"
             />
           </div>
           
@@ -61,19 +61,19 @@ export default function Login() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              className="rounded-none border-border focus-visible:ring-primary bg-background"
+              className="rounded-xl border-border focus-visible:ring-primary bg-background"
             />
           </div>
 
           {login.error && (
-            <div className="p-3 bg-destructive/10 border border-destructive/20 text-destructive text-sm">
+            <div className="p-3 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-sm">
               {login.error.message}
             </div>
           )}
 
           <Button 
             type="submit" 
-            className="w-full h-12 mt-4 rounded-none" 
+            className="w-full h-12 mt-4 rounded-2xl" 
             disabled={login.isPending}
           >
             {login.isPending ? "Signing in..." : "Sign In"}

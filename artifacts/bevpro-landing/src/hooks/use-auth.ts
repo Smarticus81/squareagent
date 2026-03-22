@@ -97,15 +97,19 @@ export function useLogin() {
       setToken(validated.token);
       return validated;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+    onSuccess: (data) => {
+      // Set auth data immediately so dashboard sees the user without a refetch race
+      queryClient.setQueryData(["/api/auth/me"], {
+        user: data.user,
+        subscription: data.subscription ?? null,
+      });
     },
   });
 }
 
 export function useSignup() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: async (userData: { email: string; password: string; name: string }) => {
       const res = await fetch("/api/auth/signup", {
@@ -113,16 +117,19 @@ export function useSignup() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(userData),
       });
-      
+
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Signup failed");
-      
+
       const validated = AuthResponseSchema.parse(data);
       setToken(validated.token);
       return validated;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+    onSuccess: (data) => {
+      queryClient.setQueryData(["/api/auth/me"], {
+        user: data.user,
+        subscription: data.subscription ?? null,
+      });
     },
   });
 }
