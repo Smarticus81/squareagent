@@ -140,9 +140,12 @@ router.get("/oauth/token", (req: Request, res: Response): void => {
 // ── Popup HTML helper ─────────────────────────────────────────────────────────
 
 function popupHtml(tokenState: string | null, error: string | null): string {
-  const payload = tokenState
-    ? JSON.stringify({ type: "square-oauth-success", tokenState })
-    : JSON.stringify({ type: "square-oauth-error", error });
+  // Safely encode the payload for embedding in a <script> tag
+  const payloadObj = tokenState
+    ? { type: "square-oauth-success", tokenState }
+    : { type: "square-oauth-error", error: error ?? "Unknown error" };
+  // Use base64 encoding to avoid any HTML/JS injection issues
+  const payloadB64 = Buffer.from(JSON.stringify(payloadObj)).toString("base64");
 
   return `<!DOCTYPE html>
 <html>
@@ -161,15 +164,20 @@ function popupHtml(tokenState: string | null, error: string | null): string {
   <div class="card">
     <div class="icon">${tokenState ? "✅" : "❌"}</div>
     <h2>${tokenState ? "Connected!" : "Authorization Failed"}</h2>
-    <p>${tokenState ? "Closing window…" : (error ?? "Unknown error")}</p>
+    <p>${tokenState ? "Closing window…" : "Something went wrong. Please try again."}</p>
   </div>
   <script>
     try {
+      var payload = JSON.parse(atob("${payloadB64}"));
+      // Primary: write to localStorage (works reliably since popup callback is same-origin)
+      // The parent window polls for this key.
+      localStorage.setItem("bevpro_oauth_result", JSON.stringify(payload));
+      // Secondary: also try postMessage in case window.opener survived cross-origin nav
       if (window.opener) {
-        window.opener.postMessage(${payload}, '*');
+        window.opener.postMessage(payload, '*');
       }
-    } catch(e) {}
-    setTimeout(() => window.close(), 1500);
+    } catch(e) { console.error('OAuth signal failed', e); }
+    setTimeout(function() { try { window.close(); } catch(e) {} }, 1500);
   </script>
 </body>
 </html>`;

@@ -16,7 +16,7 @@ import {
 
 export default function Dashboard() {
   const [, setLocation] = useLocation();
-  const { data: auth, isLoading, error } = useAuth();
+  const { data: auth, isLoading, error, isFetching } = useAuth();
   const { data: venues, isLoading: venuesLoading } = useVenues();
   const saveVenue = useSaveVenue();
   const deleteVenue = useDeleteVenue();
@@ -30,10 +30,12 @@ export default function Dashboard() {
   const [connecting, setConnecting] = useState(false);
 
   useEffect(() => {
-    if (!isLoading && !auth?.user) {
+    // Only redirect if the query has fully settled (not loading AND not refetching)
+    // This prevents a race where stale cached null data triggers a premature redirect
+    if (!isLoading && !isFetching && !auth?.user) {
       setLocation("/login");
     }
-  }, [isLoading, auth, setLocation]);
+  }, [isLoading, isFetching, auth, setLocation]);
 
   // ── Square OAuth popup flow ───────────────────────────────────────────────
 
@@ -51,36 +53,81 @@ export default function Dashboard() {
       const top = window.screenY + (window.innerHeight - h) / 2;
       const popup = window.open(url, "square-oauth", `width=${w},height=${h},left=${left},top=${top}`);
 
-      // 3. Listen for the postMessage from the popup
+      if (!popup) throw new Error("Popup was blocked. Please allow popups for this site and try again.");
+
+      // Clear any stale OAuth result from a previous attempt
+      localStorage.removeItem("bevpro_oauth_result");
+
+      // 3. Wait for the popup to signal completion via localStorage or postMessage.
+      //    Modern browsers sever window.opener on cross-origin navigation (Square OAuth),
+      //    so localStorage is the primary channel; postMessage is a fallback.
       const tokenState = await new Promise<string>((resolve, reject) => {
+        let settled = false;
         const timeout = setTimeout(() => {
-          window.removeEventListener("message", handler);
+          if (settled) return;
+          settled = true;
+          cleanup();
           reject(new Error("OAuth timed out"));
         }, 5 * 60 * 1000);
 
-        function handler(event: MessageEvent) {
-          if (event.data?.type === "square-oauth-success") {
-            clearTimeout(timeout);
-            window.removeEventListener("message", handler);
-            resolve(event.data.tokenState);
-          } else if (event.data?.type === "square-oauth-error") {
-            clearTimeout(timeout);
-            window.removeEventListener("message", handler);
-            reject(new Error(event.data.error || "OAuth failed"));
+        function cleanup() {
+          clearTimeout(timeout);
+          clearInterval(pollInterval);
+          window.removeEventListener("message", handler);
+        }
+
+        function handleResult(data: { type: string; tokenState?: string; error?: string }) {
+          if (settled) return;
+          if (data.type === "square-oauth-success" && data.tokenState) {
+            settled = true;
+            cleanup();
+            localStorage.removeItem("bevpro_oauth_result");
+            resolve(data.tokenState);
+          } else if (data.type === "square-oauth-error") {
+            settled = true;
+            cleanup();
+            localStorage.removeItem("bevpro_oauth_result");
+            reject(new Error(data.error || "OAuth failed"));
           }
         }
 
+        // Channel 1: postMessage (works if window.opener survived)
+        function handler(event: MessageEvent) {
+          if (event.data?.type?.startsWith("square-oauth-")) {
+            handleResult(event.data);
+          }
+        }
         window.addEventListener("message", handler);
 
-        // Also poll in case popup closes without message
+        // Channel 2: poll localStorage (primary — always works for same-origin callback)
+        // Also detect popup close, but give it a grace period to write localStorage first
+        let popupClosedAt: number | null = null;
         const pollInterval = setInterval(() => {
-          if (popup?.closed) {
-            clearInterval(pollInterval);
-            clearTimeout(timeout);
-            window.removeEventListener("message", handler);
-            reject(new Error("Popup closed without completing authorization"));
+          if (settled) return;
+
+          // Check localStorage for the OAuth result
+          const stored = localStorage.getItem("bevpro_oauth_result");
+          if (stored) {
+            try {
+              handleResult(JSON.parse(stored));
+              return;
+            } catch {}
           }
-        }, 500);
+
+          // If popup is closed, wait up to 2s for localStorage to be written
+          // (the callback page writes localStorage then closes after 1.5s)
+          if (popup.closed) {
+            if (!popupClosedAt) {
+              popupClosedAt = Date.now();
+            } else if (Date.now() - popupClosedAt > 2000) {
+              // Popup closed and no result appeared — user likely closed it manually
+              settled = true;
+              cleanup();
+              localStorage.removeItem("bevpro_oauth_result");
+              reject(new Error("Popup closed without completing authorization"));
+            }
+          }
+        }, 300);
       });
 
       // 4. Exchange tokenState for access token
@@ -185,12 +232,12 @@ export default function Dashboard() {
           </div>
 
           {auth.subscription?.status === "trialing" && (
-            <div className="border border-border bg-card px-4 py-2 flex items-center gap-3">
+            <div className="rounded-full border border-border bg-card px-4 py-2 flex items-center gap-3">
               <div className="w-2 h-2 bg-primary"></div>
               <span className="text-sm font-medium text-foreground">
                 Trial active &bull; {getTrialDaysLeft()} days left
               </span>
-              <Button variant="outline" size="sm" className="ml-2 h-8 rounded-none border-border">
+              <Button variant="outline" size="sm" className="ml-2 h-8 rounded-xl border-border">
                 Upgrade
               </Button>
             </div>
@@ -200,7 +247,7 @@ export default function Dashboard() {
         {/* ── Location Picker Modal ──────────────────────────────────── */}
         {showLocationPicker && locations.length > 0 && (
           <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-            <div className="bg-card border border-border max-w-md w-full p-8">
+            <div className="bg-card rounded-3xl border border-border max-w-md w-full p-8">
               <h2 className="text-xl font-bold mb-2">Select a Location</h2>
               <p className="text-sm text-muted-foreground mb-6">
                 Choose the Square location to connect with Bevpro.
@@ -211,7 +258,7 @@ export default function Dashboard() {
                     key={loc.id}
                     onClick={() => handleSelectLocation(loc)}
                     disabled={saveVenue.isPending}
-                    className="w-full text-left p-4 border border-border hover:border-primary hover:bg-primary/5 transition-colors flex items-start gap-3 disabled:opacity-50"
+                    className="w-full text-left p-4 rounded-2xl border border-border hover:border-primary hover:bg-primary/5 transition-colors flex items-start gap-3 disabled:opacity-50"
                   >
                     <MapPin className="w-5 h-5 mt-0.5 text-muted-foreground shrink-0" />
                     <div>
@@ -239,11 +286,11 @@ export default function Dashboard() {
         {/* ── Main Cards Grid ────────────────────────────────────────── */}
         <div className="grid md:grid-cols-2 gap-8">
           {/* Square Integration Card */}
-          <div className="bg-card border border-border p-10 flex flex-col">
+          <div className="bg-card rounded-3xl border border-border p-10 flex flex-col">
             <div className="flex items-center gap-5 mb-8">
-              <div className="w-12 h-12 bg-foreground flex items-center justify-center">
-                <div className="w-5 h-5 bg-foreground relative border-2 border-background">
-                  <div className="absolute inset-1 bg-background"></div>
+              <div className="w-12 h-12 bg-foreground rounded-xl flex items-center justify-center">
+                <div className="w-5 h-5 bg-foreground relative border-2 border-background rounded-sm">
+                  <div className="absolute inset-1 bg-background rounded-[1px]"></div>
                 </div>
               </div>
               <div>
@@ -285,7 +332,7 @@ export default function Dashboard() {
             {isSquareConnected ? (
               <Button
                 variant="outline"
-                className="w-full rounded-none"
+                className="w-full rounded-2xl"
                 onClick={() => handleDisconnect(primaryVenue!.id)}
                 disabled={deleteVenue.isPending}
               >
@@ -298,7 +345,7 @@ export default function Dashboard() {
               </Button>
             ) : (
               <Button
-                className="w-full h-12 rounded-none"
+                className="w-full h-12 rounded-2xl"
                 onClick={handleConnectSquare}
                 disabled={connecting}
               >
@@ -309,9 +356,9 @@ export default function Dashboard() {
           </div>
 
           {/* Voice Agent App Card */}
-          <div className="bg-card border border-border p-10 flex flex-col">
+          <div className="bg-card rounded-3xl border border-border p-10 flex flex-col">
             <div className="flex items-center gap-5 mb-8">
-              <div className="w-12 h-12 bg-primary flex items-center justify-center">
+              <div className="w-12 h-12 bg-primary rounded-xl flex items-center justify-center">
                 <LayoutDashboard className="w-6 h-6 text-white" />
               </div>
               <div>
@@ -335,7 +382,7 @@ export default function Dashboard() {
             >
               <Button
                 variant="default"
-                className="w-full h-12 text-base group rounded-none"
+                className="w-full h-12 text-base group rounded-2xl"
                 disabled={!isSquareConnected}
               >
                 Launch Voice Agent
@@ -347,7 +394,7 @@ export default function Dashboard() {
 
         {/* ── iOS App Download Card ──────────────────────────────────── */}
         <div className="mt-8">
-          <div className="bg-card border border-border p-10 flex flex-col md:flex-row items-center gap-8">
+          <div className="bg-card rounded-3xl border border-border p-10 flex flex-col md:flex-row items-center gap-8">
             <div className="w-16 h-16 bg-gradient-to-br from-primary to-purple-700 rounded-2xl flex items-center justify-center shrink-0">
               <Smartphone className="w-8 h-8 text-white" />
             </div>
@@ -359,7 +406,7 @@ export default function Dashboard() {
               </p>
             </div>
             <div className="flex flex-col gap-3 shrink-0">
-              <Button variant="default" className="h-12 px-8 rounded-none" disabled>
+              <Button variant="default" className="h-12 px-8 rounded-2xl" disabled>
                 <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z" />
                 </svg>

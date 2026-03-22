@@ -48,7 +48,7 @@ export default function Signup() {
         </div>
 
         {/* Right Side - Form */}
-        <div className="w-full bg-card border border-border p-10 md:p-12">
+        <div className="w-full bg-card rounded-3xl border border-border p-10 md:p-12 shadow-xl shadow-primary/5">
           <div className="flex justify-center mb-10 md:hidden">
             <Logo />
           </div>
@@ -67,7 +67,7 @@ export default function Signup() {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 required
-                className="rounded-none border-border focus-visible:ring-primary bg-background"
+                className="rounded-xl border-border focus-visible:ring-primary bg-background"
               />
             </div>
 
@@ -79,7 +79,7 @@ export default function Signup() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="rounded-none border-border focus-visible:ring-primary bg-background"
+                className="rounded-xl border-border focus-visible:ring-primary bg-background"
               />
             </div>
             
@@ -92,19 +92,19 @@ export default function Signup() {
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 minLength={8}
-                className="rounded-none border-border focus-visible:ring-primary bg-background"
+                className="rounded-xl border-border focus-visible:ring-primary bg-background"
               />
             </div>
 
             {signup.error && (
-              <div className="p-3 bg-destructive/10 border border-destructive/20 text-destructive text-sm">
+              <div className="p-3 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-sm">
                 {signup.error.message}
               </div>
             )}
 
             <Button 
               type="submit" 
-              className="w-full h-12 mt-6 rounded-none" 
+              className="w-full h-12 mt-6 rounded-2xl" 
               disabled={signup.isPending}
             >
               {signup.isPending ? "Creating account..." : "Start Free Trial"}
