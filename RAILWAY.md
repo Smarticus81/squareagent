@@ -37,6 +37,15 @@ The repository includes `railway.json`, so Railway will:
 - build the PWA with `BASE_PATH=/agent/`
 - start the bundled API server
 
+## Node Version
+
+This repo requires Node 22 on Railway.
+
+- Nixpacks will detect this from the root `package.json` `engines.node` field.
+- The root `.nvmrc` also pins the same version for local and CI builds.
+
+If your Railway service still shows Node 18 in the build logs, clear the previous deployment cache and redeploy.
+
 ## Production URLs
 
 - Dashboard: `/`
