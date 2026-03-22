@@ -2,6 +2,10 @@
   "name": "@workspace/square-voice-agent",
   "version": "0.0.0",
   "private": true,
+  "packageManager": "pnpm@9.15.9",
+  "engines": {
+    "node": "22"
+  },
   "main": "expo-router/entry",
   "scripts": {
     "dev": "pnpm exec expo start --port 8081",
