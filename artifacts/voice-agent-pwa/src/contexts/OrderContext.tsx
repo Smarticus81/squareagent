@@ -24,6 +24,8 @@ interface OrderContextType {
   removeItem: (lineItemId: string) => void;
   updateQuantity: (lineItemId: string, quantity: number) => void;
   clearOrder: () => void;
+  /** Mark the current order as submitted by the voice agent (Square was already called server-side). */
+  markVoiceOrderSubmitted: () => void;
   submitOrder: (accessToken: string, locationId: string) => Promise<{ success: boolean; orderId?: string; error?: string; warning?: string; paymentRecorded?: boolean }>;
   isSubmitting: boolean;
   submitError: string | null;
@@ -81,6 +83,15 @@ export function OrderProvider({ children }: { children: ReactNode }) {
     setSubmitWarning(null);
   }
 
+  /** Called when the voice agent has already submitted the order server-side; just updates UI state. */
+  function markVoiceOrderSubmitted() {
+    if (!currentOrder?.items.length) return;
+    const done: Order = { ...currentOrder, status: "completed" };
+    setCurrentOrder(null);
+    setLastSubmittedOrder(done);
+    setTimeout(() => setLastSubmittedOrder(null), 5000);
+  }
+
   async function submitOrder(accessToken: string, locationId: string) {
     if (!currentOrder?.items.length) return { success: false, error: "No items" };
     setIsSubmitting(true);
@@ -116,7 +127,7 @@ export function OrderProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <OrderContext.Provider value={{ currentOrder, lastSubmittedOrder, addItem, removeItem, updateQuantity, clearOrder, submitOrder, isSubmitting, submitError, submitWarning }}>
+    <OrderContext.Provider value={{ currentOrder, lastSubmittedOrder, addItem, removeItem, updateQuantity, clearOrder, markVoiceOrderSubmitted, submitOrder, isSubmitting, submitError, submitWarning }}>
       {children}
     </OrderContext.Provider>
   );

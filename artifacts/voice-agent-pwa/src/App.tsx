@@ -45,7 +45,7 @@ export default function App() {
 
   const {
     currentOrder, lastSubmittedOrder,
-    addItem, removeItem, updateQuantity, clearOrder, submitOrder, isSubmitting,
+    addItem, removeItem, updateQuantity, clearOrder, markVoiceOrderSubmitted, submitOrder, isSubmitting,
   } = useOrder();
 
   const { isConfigured, catalogItems, isLoadingCatalog, accessToken, locationId } = useSquare();
@@ -111,18 +111,18 @@ export default function App() {
           clearOrder();
           break;
         case "submit": {
-          const tok = tokenRef.current;
-          const loc = locRef.current;
-          const ord = orderRef.current;
-          if (!tok || !loc || !ord?.items.length) break;
-          submitOrder(tok, loc).then((r) => {
-            if (r.success) { setPanelTab("order"); setPanelOpen(true); }
-          });
+          // The server relay already called Square directly when submit_order tool fired.
+          // We only need to update local UI state (clear cart, show confirmation).
+          if (orderRef.current?.items.length) {
+            markVoiceOrderSubmitted();
+            setPanelTab("order");
+            setPanelOpen(true);
+          }
           break;
         }
       }
     }
-  }, [addItem, removeItem, clearOrder, submitOrder]);
+  }, [addItem, removeItem, clearOrder, markVoiceOrderSubmitted]);
 
   useEffect(() => { setToolHandler(handleCmds); }, [handleCmds, setToolHandler]);
 

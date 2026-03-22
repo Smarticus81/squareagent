@@ -141,6 +141,15 @@ interface OrderItem {
   price: number;
 }
 
+// Server-side order tracking — not dependent on client context_update timing
+interface SessionOrderItem {
+  catalogItemId: string;
+  variationId?: string;
+  name: string;
+  price: number;
+  quantity: number;
+}
+
 interface OrderCommand {
   action: "add" | "remove" | "clear" | "submit";
   item_id?: string;
@@ -182,6 +191,7 @@ async function executeTool(
   order: OrderItem[],
   squareToken: string,
   squareLocationId: string,
+  sessionOrder: SessionOrderItem[],
 ): Promise<{ result: string; command?: OrderCommand }> {
   switch (name) {
     case "add_item": {
@@ -189,6 +199,13 @@ async function executeTool(
       const qty = Number(args.quantity ?? 1);
       const match = findCatalogItem(catalog, itemName);
       if (match) {
+        // Track server-side so submit_order can fire immediately without waiting for client context_update
+        const existing = sessionOrder.find((i) => i.catalogItemId === match.id);
+        if (existing) {
+          existing.quantity += qty;
+        } else {
+          sessionOrder.push({ catalogItemId: match.id, variationId: match.variationId, name: match.name, price: match.price, quantity: qty });
+        }
         return {
           result: `Added ${qty}x ${match.name} ($${(match.price * qty).toFixed(2)}) to the order.`,
           command: { action: "add", item_id: match.id, item_name: match.name, quantity: qty, price: match.price },
@@ -201,6 +218,15 @@ async function executeTool(
     case "remove_item": {
       const itemName = String(args.item_name ?? "");
       const qty = Number(args.quantity ?? 1);
+      // Remove from server-side tracking
+      const n = itemName.toLowerCase();
+      const idx = sessionOrder.findIndex(
+        (i) => i.name.toLowerCase() === n || i.name.toLowerCase().includes(n) || n.includes(i.name.toLowerCase()),
+      );
+      if (idx >= 0) {
+        sessionOrder[idx].quantity -= qty;
+        if (sessionOrder[idx].quantity <= 0) sessionOrder.splice(idx, 1);
+      }
       return {
         result: `Removed ${qty}x ${itemName} from the order.`,
         command: { action: "remove", item_name: itemName, quantity: qty },
@@ -215,14 +241,76 @@ async function executeTool(
     }
 
     case "clear_order":
+      sessionOrder.splice(0, sessionOrder.length);
       return { result: "Order cleared.", command: { action: "clear" } };
 
     case "submit_order": {
-      const total = order.reduce((s, i) => s + i.price * i.quantity, 0);
-      return {
-        result: `Order submitted! Total: $${total.toFixed(2)}.`,
-        command: { action: "submit" },
-      };
+      if (sessionOrder.length === 0) {
+        return { result: "The order is empty — nothing to submit." };
+      }
+      if (!squareToken || !squareLocationId) {
+        return { result: "Square is not configured for this session — cannot submit." };
+      }
+      try {
+        const lineItems = sessionOrder.map((item) => ({
+          quantity: item.quantity.toString(),
+          catalog_object_id: item.variationId || item.catalogItemId,
+          ...(item.variationId
+            ? {}
+            : { base_price_money: { amount: Math.round(item.price * 100), currency: "USD" } }),
+        }));
+        const ticketRef = `VOICE-${Date.now()}`;
+        const orderRes = await fetch(`${SQUARE_BASE}/orders`, {
+          method: "POST",
+          headers: squareHeaders(squareToken),
+          body: JSON.stringify({
+            idempotency_key: `order-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            order: { location_id: squareLocationId, reference_id: ticketRef, line_items: lineItems },
+          }),
+        });
+        const orderData = await orderRes.json() as any;
+        if (!orderRes.ok) {
+          const errMsg = orderData.errors?.[0]?.detail || "Failed to create order";
+          console.error("[Realtime] Order failed:", JSON.stringify(orderData.errors));
+          return { result: `Order failed: ${errMsg}` };
+        }
+        const orderId = orderData.order?.id;
+        const orderTotal = orderData.order?.total_money?.amount ?? 0;
+        console.log(`[Realtime] Order created: ${orderId} | total: ${orderTotal}`);
+
+        // External payment so the order appears in Square's transaction history
+        const paymentRes = await fetch(`${SQUARE_BASE}/payments`, {
+          method: "POST",
+          headers: squareHeaders(squareToken),
+          body: JSON.stringify({
+            idempotency_key: `payment-${orderId}`,
+            source_id: "EXTERNAL",
+            amount_money: { amount: orderTotal, currency: "USD" },
+            order_id: orderId,
+            location_id: squareLocationId,
+            external_details: { type: "OTHER", source: "Pre-paid Event Package" },
+            note: "Voice order — pre-paid event package",
+          }),
+        });
+        const paymentData = await paymentRes.json() as any;
+        if (!paymentRes.ok) {
+          console.warn("[Realtime] Payment failed (order still recorded):", JSON.stringify(paymentData.errors));
+        } else {
+          console.log(`[Realtime] Payment created: ${paymentData.payment?.id}`);
+        }
+
+        // Clear session order — already submitted
+        sessionOrder.splice(0, sessionOrder.length);
+
+        const total = orderTotal / 100;
+        return {
+          result: `Order submitted! Total: $${total.toFixed(2)}.`,
+          command: { action: "submit" },
+        };
+      } catch (e: any) {
+        console.error("[Realtime] submit_order error:", e.message);
+        return { result: `Failed to submit order: ${e.message}` };
+      }
     }
 
     case "search_menu": {
@@ -387,6 +475,8 @@ export function attachRealtimeRelay(server: HttpServer): void {
     let order: OrderItem[] = [];
     let squareToken = "";
     let squareLocationId = "";
+    // Server-side order tracking — updated immediately when tools fire, no client round-trip
+    const sessionOrder: SessionOrderItem[] = [];
 
     const apiKey = process.env.OPENAI_API_KEY ?? process.env.AI_INTEGRATIONS_OPENAI_API_KEY ?? "";
 
@@ -438,7 +528,7 @@ export function attachRealtimeRelay(server: HttpServer): void {
 
         console.log(`[Realtime] Tool call: ${name}(${JSON.stringify(args)})`);
         try {
-          const { result, command } = await executeTool(name, args, catalog, order, squareToken, squareLocationId);
+          const { result, command } = await executeTool(name, args, catalog, order, squareToken, squareLocationId, sessionOrder);
           console.log(`[Realtime] Tool result: ${result}`);
 
           openaiWs.send(
