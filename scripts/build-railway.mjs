@@ -35,7 +35,7 @@ const steps = [
 for (const step of steps) {
   const result = spawnSync(step.command, step.args, {
     stdio: "inherit",
-    shell: true,
+    shell: process.platform === "win32",
     env: {
       ...process.env,
       ...step.env,

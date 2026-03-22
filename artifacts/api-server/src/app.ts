@@ -9,7 +9,19 @@ const workspaceRoot = process.cwd();
 const landingDist = path.resolve(workspaceRoot, "artifacts", "bevpro-landing", "dist", "public");
 const voiceAgentDist = path.resolve(workspaceRoot, "artifacts", "voice-agent-pwa", "dist");
 
-app.use(cors());
+// In production restrict CORS to the configured public origin.
+// In development allow all origins so Vite dev servers (ports 5173, 8081) work.
+const publicOrigin =
+  process.env.PUBLIC_BASE_URL ??
+  (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : null);
+
+app.use(
+  cors(
+    publicOrigin
+      ? { origin: publicOrigin, credentials: true }
+      : undefined,
+  ),
+);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 

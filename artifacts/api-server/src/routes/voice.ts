@@ -319,7 +319,7 @@ router.post(
 
       // First LLM call: speech-in, may return tool calls or direct audio
       const resp1 = await openai.chat.completions.create({
-        model: "gpt-audio-mini",
+        model: "gpt-4o-mini-audio-preview",
         modalities: ["text", "audio"],
         audio: { voice: "alloy", format: "wav" },
         messages: messagesRound1,
@@ -367,7 +367,7 @@ router.post(
         ];
 
         const resp2 = await openai.chat.completions.create({
-          model: "gpt-audio-mini",
+          model: "gpt-4o-mini-audio-preview",
           modalities: ["text", "audio"],
           audio: { voice: "alloy", format: "wav" },
           messages: messagesRound2,
