@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useRef, useCallback, type ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useRef, type ReactNode } from "react";
 import { getBaseUrl } from "@/lib/api";
 
 export interface SquareCatalogItem {
@@ -51,50 +51,50 @@ export function SquareProvider({ children }: { children: ReactNode }) {
   const [catalogItems, setCatalogItems] = useState<SquareCatalogItem[]>([]);
   const [isLoadingCatalog, setIsLoadingCatalog] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
-  const catalogLoadedForRef = useRef<string | null>(null);
-  const credentialsLoadedRef = useRef(false);
+  const [credentialsReady, setCredentialsReady] = useState(false);
 
+  // Load credentials once on mount
   useEffect(() => {
-    if (credentialsLoadedRef.current) return;
-    credentialsLoadedRef.current = true;
-    loadCredentials();
+    let cancelled = false;
+    (async () => {
+      const launch = getWebLaunchParams();
+      if (launch) {
+        try {
+          const res = await fetch(`${getBaseUrl()}api/venues/${launch.venueId}/credentials`, {
+            headers: { Authorization: `Bearer ${launch.authToken}` },
+          });
+          if (!cancelled && res.ok) {
+            const data = await res.json();
+            if (data.accessToken && data.locationId) {
+              setAccessToken(data.accessToken);
+              setLocationId(data.locationId);
+              localStorage.setItem(TOKEN_KEY, data.accessToken);
+              localStorage.setItem(LOC_KEY, data.locationId);
+              setCredentialsReady(true);
+              return;
+            }
+          }
+        } catch (e) {
+          console.warn("Failed to load venue credentials", e);
+        }
+      }
+      // Fallback to localStorage
+      if (!cancelled) {
+        const token = localStorage.getItem(TOKEN_KEY);
+        const locId = localStorage.getItem(LOC_KEY);
+        if (token) setAccessToken(token);
+        if (locId) setLocationId(locId);
+        setCredentialsReady(true);
+      }
+    })();
+    return () => { cancelled = true; };
   }, []);
 
+  // Load catalog when credentials are available
   useEffect(() => {
-    if (!accessToken || !locationId) return;
-    // Avoid re-fetching for the same token+location combo
-    const key = `${accessToken}:${locationId}`;
-    if (catalogLoadedForRef.current === key) return;
-    catalogLoadedForRef.current = key;
+    if (!credentialsReady || !accessToken || !locationId) return;
     loadCatalog();
-  }, [accessToken, locationId]);
-
-  async function loadCredentials() {
-    const launch = getWebLaunchParams();
-    if (launch) {
-      try {
-        const res = await fetch(`${getBaseUrl()}api/venues/${launch.venueId}/credentials`, {
-          headers: { Authorization: `Bearer ${launch.authToken}` },
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.accessToken && data.locationId) {
-            setAccessToken(data.accessToken);
-            setLocationId(data.locationId);
-            localStorage.setItem(TOKEN_KEY, data.accessToken);
-            localStorage.setItem(LOC_KEY, data.locationId);
-            return;
-          }
-        }
-      } catch (e) {
-        console.warn("Failed to load venue credentials", e);
-      }
-    }
-    const token = localStorage.getItem(TOKEN_KEY);
-    const locId = localStorage.getItem(LOC_KEY);
-    if (token) setAccessToken(token);
-    if (locId) setLocationId(locId);
-  }
+  }, [credentialsReady, accessToken, locationId]);
 
   async function fetchLocations(token: string): Promise<SquareLocation[]> {
     const res = await fetch(`${getBaseUrl()}api/square/locations`, { headers: { "x-square-token": token } });
@@ -129,18 +129,25 @@ export function SquareProvider({ children }: { children: ReactNode }) {
     const tok = overrideToken ?? accessToken;
     const loc = overrideLocationId ?? locationId;
     if (!tok || !loc) return 0;
-    if (loadingRef.current) return 0; // prevent concurrent loads
+    // Prevent overlapping fetches — but allow retries after failure
+    if (loadingRef.current) return 0;
     loadingRef.current = true;
     setIsLoadingCatalog(true);
     setCatalogError(null);
     try {
-      const res = await fetch(`${getBaseUrl()}api/square/catalog`, { headers: { "x-square-token": tok, "x-square-location": loc } });
-      if (!res.ok) throw new Error("Failed to load catalog");
+      const res = await fetch(`${getBaseUrl()}api/square/catalog`, {
+        headers: { "x-square-token": tok, "x-square-location": loc },
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error((errData as any).error || `Catalog load failed (${res.status})`);
+      }
       const data = await res.json();
       const items = data.items || [];
       setCatalogItems(items);
       return items.length;
     } catch (e: any) {
+      console.error("[Square] Catalog load error:", e.message);
       setCatalogError(e.message);
       return 0;
     } finally {

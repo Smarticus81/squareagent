@@ -57,7 +57,7 @@ export default function App() {
     addItem, removeItem, updateQuantity, clearOrder, markVoiceOrderSubmitted, submitOrder, isSubmitting,
   } = useOrder();
 
-  const { isConfigured, catalogItems, isLoadingCatalog, accessToken, locationId } = useSquare();
+  const { isConfigured, catalogItems, isLoadingCatalog, catalogError, accessToken, locationId } = useSquare();
 
   const [panelOpen, setPanelOpen] = useState(false);
   const [panelTab, setPanelTab] = useState<"order" | "menu" | "settings">("order");
@@ -295,6 +295,8 @@ export default function App() {
             <div className="interrupt-dot" onClick={interrupt} />
           )}
           {error && <div className="error-text">{error}</div>}
+          {isLoadingCatalog && <div className="state-label">LOADING MENU...</div>}
+          {catalogError && <div className="error-text">Menu: {catalogError}</div>}
         </div>
       </div>
 
