@@ -43,6 +43,7 @@ This repo requires Node 22 on Railway.
 
 - Nixpacks will detect this from the root `package.json` `engines.node` field.
 - The root `.nvmrc` also pins the same version for local and CI builds.
+- The root `nixpacks.toml` sets `NIXPACKS_NODE_VERSION=22` as an extra safeguard for Railway builds.
 
 If your Railway service still shows Node 18 in the build logs, clear the previous deployment cache and redeploy.
 
