@@ -207,9 +207,13 @@ export default function Dashboard() {
     return rightTs - leftTs;
   })[0] ?? null;
   const isSquareConnected = !!primaryVenue?.squareLocationId;
-  const voiceAgentBaseUrl = import.meta.env.PROD
-    ? `${window.location.origin}/agent/`
-    : `${window.location.protocol}//${window.location.hostname}:8081/`;
+  // Voice agent is served at /agent/ by the same Express server in production.
+  // Only use a separate port for local development (localhost/127.0.0.1).
+  const isLocalDev = !import.meta.env.PROD &&
+    (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+  const voiceAgentBaseUrl = isLocalDev
+    ? `${window.location.protocol}//${window.location.hostname}:8081/`
+    : `${window.location.origin}/agent/`;
 
   const getTrialDaysLeft = () => {
     if (!auth.subscription?.trialEndsAt) return 0;
