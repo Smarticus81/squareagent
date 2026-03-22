@@ -132,9 +132,10 @@ export function OrderProvider({ children }: { children: ReactNode }) {
     setSubmitError(null);
 
     try {
-      const baseUrl = process.env.EXPO_PUBLIC_DOMAIN
-        ? `https://${process.env.EXPO_PUBLIC_DOMAIN}/`
-        : "http://localhost:3000/";
+      const domain = process.env.EXPO_PUBLIC_DOMAIN;
+      const baseUrl = domain
+        ? `${domain.startsWith("localhost") ? "http" : "https"}://${domain}/`
+        : "http://localhost:8080/";
 
       const response = await fetch(`${baseUrl}api/square/orders`, {
         method: "POST",

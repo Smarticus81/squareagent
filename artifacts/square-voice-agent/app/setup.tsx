@@ -23,9 +23,10 @@ const WEB_TOP_INSET = 67;
 const WEB_BOTTOM_INSET = 34;
 
 function getBaseUrl() {
-  return process.env.EXPO_PUBLIC_DOMAIN
-    ? `https://${process.env.EXPO_PUBLIC_DOMAIN}/`
-    : "http://localhost:3000/";
+  const domain = process.env.EXPO_PUBLIC_DOMAIN;
+  if (!domain) return "http://localhost:8080/";
+  const protocol = domain.startsWith("localhost") ? "http" : "https";
+  return `${protocol}://${domain}/`;
 }
 
 export default function SetupScreen() {

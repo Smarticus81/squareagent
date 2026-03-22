@@ -19,8 +19,8 @@ export const SubscriptionSchema = z.object({
 export const AuthResponseSchema = z.object({
   token: z.string(),
   user: UserSchema,
-  subscription: SubscriptionSchema.optional(),
-  trialEndsAt: z.string().optional(),
+  subscription: SubscriptionSchema.nullable().optional(),
+  trialEndsAt: z.string().nullable().optional(),
 });
 
 export const MeResponseSchema = z.object({
@@ -54,8 +54,23 @@ export function useAuth() {
 
       const res = await fetch("/api/auth/me", { headers: getHeaders() });
       if (!res.ok) {
-        if (res.status === 401) clearToken();
-        throw new Error("Not authenticated");
+        let errorMessage = "Failed to load current user";
+
+        try {
+          const data = await res.json();
+          if (typeof data?.error === "string" && data.error) {
+            errorMessage = data.error;
+          }
+        } catch {
+          // Ignore JSON parse failures and fall back to the default message.
+        }
+
+        if (res.status === 401) {
+          clearToken();
+          throw new Error("Not authenticated");
+        }
+
+        throw new Error(errorMessage);
       }
       const data = await res.json();
       return MeResponseSchema.parse(data);

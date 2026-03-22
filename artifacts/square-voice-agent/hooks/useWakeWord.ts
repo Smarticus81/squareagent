@@ -116,6 +116,7 @@ export function useWakeWord({
           transcripts.push(result[j].transcript.toLowerCase().trim());
         }
         const combined = transcripts.join(" ");
+        console.log("[WakeWord] Transcript:", combined);
 
         if (stopPhrases.some((p) => combined.includes(p))) {
           console.log("[WakeWord] Stop phrase:", combined);

@@ -18,13 +18,22 @@ const router = Router();
 const JWT_SECRET = process.env.JWT_SECRET ?? "bevpro-dev-secret-change-in-production";
 const SESSION_DAYS = 30;
 
+function ensureAuthStore(res: Response): boolean {
+  if (db) return true;
+
+  res.status(503).json({
+    error: "Auth service unavailable. Set DATABASE_URL and initialize the database tables.",
+  });
+  return false;
+}
+
 function signToken(userId: number, sessionId: string): string {
   return jwt.sign({ sub: userId, sid: sessionId }, JWT_SECRET, { expiresIn: `${SESSION_DAYS}d` });
 }
 
 function verifyToken(token: string): { sub: number; sid: string } | null {
   try {
-    return jwt.verify(token, JWT_SECRET) as { sub: number; sid: string };
+    return jwt.verify(token, JWT_SECRET) as unknown as { sub: number; sid: string };
   } catch {
     return null;
   }
@@ -37,26 +46,35 @@ export function extractToken(req: Request): string | null {
 }
 
 export async function requireAuth(req: Request, res: Response, next: Function): Promise<void> {
+  if (!ensureAuthStore(res)) return;
+
   const token = extractToken(req);
   if (!token) { res.status(401).json({ error: "Not authenticated" }); return; }
 
   const payload = verifyToken(token);
   if (!payload) { res.status(401).json({ error: "Invalid or expired token" }); return; }
 
-  const [session] = await db.select().from(sessionsTable).where(eq(sessionsTable.id, payload.sid));
-  if (!session || session.expiresAt < new Date()) {
-    res.status(401).json({ error: "Session expired" }); return;
+  try {
+    const [session] = await db.select().from(sessionsTable).where(eq(sessionsTable.id, payload.sid));
+    if (!session || session.expiresAt < new Date()) {
+      res.status(401).json({ error: "Session expired" }); return;
+    }
+
+    const [user] = await db.select().from(usersTable).where(eq(usersTable.id, payload.sub));
+    if (!user) { res.status(401).json({ error: "User not found" }); return; }
+
+    (req as any).user = user;
+    next();
+  } catch (e: any) {
+    console.error("[Auth] Session lookup error:", e.message);
+    res.status(503).json({ error: "Auth service unavailable" });
   }
-
-  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, payload.sub));
-  if (!user) { res.status(401).json({ error: "User not found" }); return; }
-
-  (req as any).user = user;
-  next();
 }
 
 // POST /api/auth/signup
 router.post("/signup", async (req: Request, res: Response): Promise<void> => {
+  if (!ensureAuthStore(res)) return;
+
   const { email, password, name } = req.body ?? {};
   if (!email || !password || !name) {
     res.status(400).json({ error: "Email, password, and name are required" }); return;
@@ -103,6 +121,8 @@ router.post("/signup", async (req: Request, res: Response): Promise<void> => {
 
 // POST /api/auth/login
 router.post("/login", async (req: Request, res: Response): Promise<void> => {
+  if (!ensureAuthStore(res)) return;
+
   const { email, password } = req.body ?? {};
   if (!email || !password) { res.status(400).json({ error: "Email and password required" }); return; }
 
@@ -133,17 +153,33 @@ router.post("/login", async (req: Request, res: Response): Promise<void> => {
 
 // GET /api/auth/me
 router.get("/me", requireAuth as any, async (req: Request, res: Response): Promise<void> => {
+  if (!ensureAuthStore(res)) return;
+
   const user = (req as any).user;
-  const [subscription] = await db.select().from(subscriptionsTable).where(eq(subscriptionsTable.userId, user.id));
-  res.json({ user: { id: user.id, email: user.email, name: user.name }, subscription: subscription ?? null });
+
+  try {
+    const [subscription] = await db.select().from(subscriptionsTable).where(eq(subscriptionsTable.userId, user.id));
+    res.json({ user: { id: user.id, email: user.email, name: user.name }, subscription: subscription ?? null });
+  } catch (e: any) {
+    console.error("[Auth] Current user lookup error:", e.message);
+    res.status(503).json({ error: "Auth service unavailable" });
+  }
 });
 
 // POST /api/auth/logout
 router.post("/logout", requireAuth as any, async (req: Request, res: Response): Promise<void> => {
+  if (!ensureAuthStore(res)) return;
+
   const token = extractToken(req)!;
   const payload = verifyToken(token)!;
-  await db.delete(sessionsTable).where(eq(sessionsTable.id, payload.sid));
-  res.json({ ok: true });
+
+  try {
+    await db.delete(sessionsTable).where(eq(sessionsTable.id, payload.sid));
+    res.json({ ok: true });
+  } catch (e: any) {
+    console.error("[Auth] Logout error:", e.message);
+    res.status(503).json({ error: "Auth service unavailable" });
+  }
 });
 
 export default router;

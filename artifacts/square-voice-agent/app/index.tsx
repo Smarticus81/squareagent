@@ -461,10 +461,8 @@ export default function MainScreen() {
 
   async function handleOrbPress() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    if (Platform.OS === "web") {
-      if (wakeMode === "wake")    { exitWake(); return; }
-      if (wakeMode === "command") { disconnect(); return; }
-      if (isWakeWordSupported())  { enterWake(); return; }
+    if (Platform.OS === "web" && wakeMode === "wake") {
+      exitWake(); return;
     }
     if (isConnected || agentState === "connecting") disconnect();
     else await connect();

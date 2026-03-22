@@ -10,7 +10,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import { Server as HttpServer } from "http";
 
 const REALTIME_URL =
-  "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-12-17";
+  "wss://api.openai.com/v1/realtime?model=gpt-4o-mini-realtime-preview-2024-12-17";
 
 const SQUARE_BASE = "https://connect.squareup.com/v2";
 
@@ -355,6 +355,13 @@ Style:
 - If something goes wrong (Square error, etc.), say so briefly and suggest what to do.
 - Do not repeat the full order back unless the customer asks to hear it.
 
+Noise & environment:
+- You are in a noisy bar. IGNORE background chatter, music, and ambient noise.
+- Only respond to DIRECT commands or questions clearly addressed to you.
+- If you hear unintelligible or ambiguous audio, stay silent — do NOT guess or respond.
+- Never create orders based on overheard conversations or unclear speech.
+- If unsure what was said, ask "Sorry, what was that?" instead of guessing.
+
 Numbers & prices:
 - Say prices as natural speech ONLY — never read digits or symbols aloud.
 - $8 → "eight dollars". $8.50 → "eight fifty". $16 → "sixteen dollars". $34.50 → "thirty-four fifty".
@@ -404,14 +411,14 @@ export function attachRealtimeRelay(server: HttpServer): void {
             input_audio_transcription: { model: "whisper-1" },
             turn_detection: {
               type: "server_vad",
-              threshold: 0.35,
-              prefix_padding_ms: 200,
-              silence_duration_ms: 380,
+              threshold: 0.4,
+              prefix_padding_ms: 150,
+              silence_duration_ms: 200,
               create_response: true,
             },
             tools: TOOLS,
             tool_choice: "auto",
-            temperature: 0.7,
+            temperature: 0.6,
             instructions: buildInstructions(catalog, order),
           },
         })
@@ -459,6 +466,14 @@ export function attachRealtimeRelay(server: HttpServer): void {
 
     clientWs.on("message", (raw) => {
       const msg = raw.toString();
+
+      // Fast-path: audio data is the vast majority of messages.
+      // Relay directly without JSON.parse overhead.
+      if (msg.includes('"input_audio_buffer.append"') && !msg.includes('"x.context_update"')) {
+        if (openaiWs.readyState === WebSocket.OPEN) openaiWs.send(msg);
+        return;
+      }
+
       let event: Record<string, unknown>;
       try { event = JSON.parse(msg); } catch { return; }
 

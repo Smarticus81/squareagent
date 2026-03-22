@@ -6,6 +6,25 @@ const router: IRouter = Router();
 const SQUARE_BASE = "https://connect.squareup.com/v2";
 const SQUARE_OAUTH_BASE = "https://connect.squareup.com/oauth2";
 
+function getRedirectUri(): string {
+  const explicitOrigin = process.env.PUBLIC_BASE_URL
+    ?? process.env.PUBLIC_API_URL
+    ?? process.env.APP_URL;
+
+  if (explicitOrigin) {
+    return `${explicitOrigin.replace(/\/$/, "")}/api/square/oauth/callback`;
+  }
+
+  const railwayDomain = process.env.RAILWAY_PUBLIC_DOMAIN;
+  if (railwayDomain) {
+    return `https://${railwayDomain}/api/square/oauth/callback`;
+  }
+
+  const domain = process.env.REPLIT_DEV_DOMAIN ?? "localhost:8080";
+  const protocol = domain.startsWith("localhost") ? "http" : "https";
+  return `${protocol}://${domain}/api/square/oauth/callback`;
+}
+
 function squareHeaders(token: string) {
   return {
     "Authorization": `Bearer ${token}`,
@@ -40,7 +59,7 @@ router.get("/oauth/authorize", (req: Request, res: Response): void => {
   const state = crypto.randomUUID();
   pendingStates.set(state, { timestamp: Date.now() });
 
-  const redirectUri = `https://${process.env.REPLIT_DEV_DOMAIN}/api/square/oauth/callback`;
+  const redirectUri = getRedirectUri();
   const params = new URLSearchParams({
     client_id: appId,
     response_type: "code",
@@ -72,7 +91,7 @@ router.get("/oauth/callback", async (req: Request, res: Response): Promise<void>
 
   const appId = process.env.SQUARE_APPLICATION_ID;
   const appSecret = process.env.SQUARE_APPLICATION_SECRET;
-  const redirectUri = `https://${process.env.REPLIT_DEV_DOMAIN}/api/square/oauth/callback`;
+  const redirectUri = getRedirectUri();
 
   try {
     const tokenRes = await fetch(`${SQUARE_OAUTH_BASE}/token`, {
@@ -375,8 +394,11 @@ router.post("/orders", async (req: Request, res: Response): Promise<void> => {
     });
 
     const paymentData = await paymentRes.json() as any;
-    if (!paymentRes.ok) {
-      // Order was created but payment failed — still return success, log the issue
+    const paymentError = !paymentRes.ok
+      ? paymentData.errors?.[0]?.detail || "Order created but external payment could not be recorded"
+      : null;
+
+    if (paymentError) {
       console.warn("[Square] Payment failed (order still created):", JSON.stringify(paymentData.errors));
     } else {
       console.log("[Square] Payment created:", paymentData.payment?.id, "| status:", paymentData.payment?.status);
@@ -386,6 +408,9 @@ router.post("/orders", async (req: Request, res: Response): Promise<void> => {
       success: true,
       orderId,
       total: orderTotal / 100,
+      paymentRecorded: !paymentError,
+      paymentId: paymentData.payment?.id,
+      warning: paymentError,
     });
   } catch (e: any) {
     res.status(500).json({ error: e.message || "Failed to create order" });

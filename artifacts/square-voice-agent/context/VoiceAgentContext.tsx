@@ -64,6 +64,41 @@ interface VoiceAgentContextType {
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
+// AudioWorklet processor source (inlined to avoid bundler/static-file issues).
+// Runs on a dedicated audio thread. Accumulates 1440 samples (~60ms at 24kHz)
+// before posting an ArrayBuffer of Int16 PCM to the main thread.
+const WORKLET_SRC = `
+class PcmProcessor extends AudioWorkletProcessor {
+  constructor() {
+    super();
+    this._buf = new Float32Array(1440);
+    this._pos = 0;
+    this._active = true;
+    this.port.onmessage = (e) => { if (e.data === 'stop') this._active = false; };
+  }
+  process(inputs) {
+    if (!this._active) return false;
+    const ch = inputs[0] && inputs[0][0];
+    if (!ch) return true;
+    for (let i = 0; i < ch.length; i++) {
+      this._buf[this._pos++] = ch[i];
+      if (this._pos >= 1440) {
+        const pcm = new Int16Array(1440);
+        for (let j = 0; j < 1440; j++) {
+          const s = this._buf[j];
+          pcm[j] = s < 0 ? Math.max(-32768, s * 32768) : Math.min(32767, s * 32767);
+        }
+        this.port.postMessage(pcm.buffer, [pcm.buffer]);
+        this._buf = new Float32Array(1440);
+        this._pos = 0;
+      }
+    }
+    return true;
+  }
+}
+registerProcessor('pcm-processor', PcmProcessor);
+`;
+
 // Native VAD: fire after N silent frames at -35 dB
 const VAD_THRESHOLD_DB = -35;
 const SILENCE_FRAMES_TO_SEND = 14;
@@ -101,9 +136,14 @@ let _msgId = 0;
 const genId = () => `msg-${Date.now()}-${++_msgId}`;
 
 function getWsUrl(voice: string, speed: number): string {
-  const base = process.env.EXPO_PUBLIC_DOMAIN
-    ? `wss://${process.env.EXPO_PUBLIC_DOMAIN}/api/realtime`
-    : "ws://localhost:8080/api/realtime";
+  const domain = process.env.EXPO_PUBLIC_DOMAIN;
+  let base: string;
+  if (!domain) {
+    base = "ws://localhost:8080/api/realtime";
+  } else {
+    const protocol = domain.startsWith("localhost") ? "ws" : "wss";
+    base = `${protocol}://${domain}/api/realtime`;
+  }
   return `${base}?voice=${encodeURIComponent(voice)}&speed=${speed}`;
 }
 
@@ -118,8 +158,12 @@ function float32ToPcm16Base64(float32: Float32Array): string {
 
 function arrayBufferToBase64(buf: ArrayBuffer): string {
   const bytes = new Uint8Array(buf);
+  // Process in 8KB chunks to avoid call-stack limits on large buffers
+  const CHUNK = 8192;
   let binary = "";
-  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK) as unknown as number[]);
+  }
   return btoa(binary);
 }
 
@@ -187,7 +231,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
   // Web Audio refs
   const audioCtxRef = useRef<AudioContext | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
-  const processorRef = useRef<ScriptProcessorNode | null>(null);
+  const workletNodeRef = useRef<AudioWorkletNode | null>(null);
 
   // Web playback queue
   const pendingPcmChunks = useRef<string[]>([]);
@@ -259,6 +303,12 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
           break;
 
         case "input_audio_buffer.speech_started":
+          // Barge-in: if agent is speaking, cancel the response immediately
+          if (agentStateRef.current === "speaking") {
+            ws.current?.send(JSON.stringify({ type: "response.cancel" }));
+            // Stop any queued audio playback
+            nextPlayTime.current = 0;
+          }
           setAs("listening");
           break;
 
@@ -289,11 +339,6 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
           if (!chunk) break;
 
           if (Platform.OS === "web") {
-            // On first audio chunk, clear any mic input that accumulated while
-            // transitioning (prevents agent hearing its own playback via speaker)
-            if (agentStateRef.current !== "speaking") {
-              ws.current?.send(JSON.stringify({ type: "input_audio_buffer.clear" }));
-            }
             scheduleWebAudioChunk(chunk);
           } else {
             nativeAudioChunks.current.push(chunk);
@@ -314,8 +359,8 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
 
         case "response.done":
           if (Platform.OS === "web") {
-            // Clear any echo that may have leaked into the buffer during playback
-            ws.current?.send(JSON.stringify({ type: "input_audio_buffer.clear" }));
+            // Reset playback cursor so next response doesn't schedule into the future
+            nextPlayTime.current = 0;
             if (isRunning.current) setAs("listening");
           }
           break;
@@ -542,29 +587,47 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
           channelCount: 1,
           echoCancellation: true,
           noiseSuppression: true,
-          autoGainControl: false, // Prevent AGC from amplifying speaker echo during silence
+          autoGainControl: true,
         },
       });
       mediaStreamRef.current = stream;
 
       const source = ctx.createMediaStreamSource(stream);
-      const processor = ctx.createScriptProcessor(4096, 1, 1);
-      processorRef.current = processor;
 
-      processor.onaudioprocess = (e) => {
-        if (ws.current?.readyState !== WebSocket.OPEN) return;
-        // Do NOT send mic audio while the agent is speaking — prevents the agent
-        // from hearing its own output through the speakers (echo / self-interruption)
-        if (agentStateRef.current === "speaking") return;
-        const float32 = e.inputBuffer.getChannelData(0);
-        const b64 = float32ToPcm16Base64(float32);
-        ws.current.send(JSON.stringify({ type: "input_audio_buffer.append", audio: b64 }));
-      };
+      // Try AudioWorklet (low-latency, off-main-thread) with ScriptProcessor fallback
+      try {
+        const blob = new Blob([WORKLET_SRC], { type: "application/javascript" });
+        const url = URL.createObjectURL(blob);
+        await ctx.audioWorklet.addModule(url);
+        URL.revokeObjectURL(url);
+        const worklet = new AudioWorkletNode(ctx, "pcm-processor");
+        workletNodeRef.current = worklet;
 
-      source.connect(processor);
-      processor.connect(ctx.destination);
+        worklet.port.onmessage = (e: MessageEvent<ArrayBuffer>) => {
+          if (ws.current?.readyState !== WebSocket.OPEN) return;
+          const b64 = arrayBufferToBase64(e.data);
+          ws.current.send(JSON.stringify({ type: "input_audio_buffer.append", audio: b64 }));
+        };
 
-      console.log("[WebAudio] PCM16 streaming started at 24kHz");
+        source.connect(worklet);
+        worklet.connect(ctx.destination);
+        console.log("[WebAudio] AudioWorklet streaming at 24kHz (~60ms frames)");
+      } catch {
+        // Fallback: ScriptProcessorNode (older browsers)
+        console.warn("[WebAudio] AudioWorklet unavailable, falling back to ScriptProcessor");
+        const processor = ctx.createScriptProcessor(2048, 1, 1);
+
+        processor.onaudioprocess = (e) => {
+          if (ws.current?.readyState !== WebSocket.OPEN) return;
+          const float32 = e.inputBuffer.getChannelData(0);
+          const b64 = float32ToPcm16Base64(float32);
+          ws.current.send(JSON.stringify({ type: "input_audio_buffer.append", audio: b64 }));
+        };
+
+        source.connect(processor);
+        processor.connect(ctx.destination);
+        console.log("[WebAudio] ScriptProcessor streaming at 24kHz (~85ms frames)");
+      }
     } catch (e: any) {
       console.error("[WebAudio]", e?.message);
       setError("Mic access failed: " + (e?.message ?? "unknown"));
@@ -573,8 +636,12 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const stopWebAudio = useCallback(async () => {
-    processorRef.current?.disconnect();
-    processorRef.current = null;
+    // Stop worklet
+    if (workletNodeRef.current) {
+      workletNodeRef.current.port.postMessage("stop");
+      workletNodeRef.current.disconnect();
+      workletNodeRef.current = null;
+    }
     // Stop mic tracks FIRST so the hardware is released immediately
     mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
     mediaStreamRef.current = null;

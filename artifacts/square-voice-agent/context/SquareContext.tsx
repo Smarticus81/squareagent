@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Platform } from "react-native";
 
 export interface SquareCatalogItem {
   id: string;
@@ -42,9 +43,22 @@ const STORAGE_KEYS = {
 };
 
 function getBaseUrl() {
-  return process.env.EXPO_PUBLIC_DOMAIN
-    ? `https://${process.env.EXPO_PUBLIC_DOMAIN}/`
-    : "http://localhost:3000/";
+  const domain = process.env.EXPO_PUBLIC_DOMAIN;
+  if (!domain) return "http://localhost:8080/";
+  const protocol = domain.startsWith("localhost") ? "http" : "https";
+  return `${protocol}://${domain}/`;
+}
+
+/** Parse URL query params on web to detect venue=ID&token=JWT from dashboard launch */
+function getWebLaunchParams(): { venueId: string; authToken: string } | null {
+  if (Platform.OS !== "web") return null;
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const venueId = params.get("venue");
+    const authToken = params.get("token");
+    if (venueId && authToken) return { venueId, authToken };
+  } catch {}
+  return null;
 }
 
 export function SquareProvider({ children }: { children: ReactNode }) {
@@ -58,7 +72,7 @@ export function SquareProvider({ children }: { children: ReactNode }) {
   const [locationsError, setLocationsError] = useState<string | null>(null);
 
   useEffect(() => {
-    loadStoredCredentials();
+    loadCredentials();
   }, []);
 
   useEffect(() => {
@@ -67,7 +81,32 @@ export function SquareProvider({ children }: { children: ReactNode }) {
     }
   }, [accessToken, locationId]);
 
-  async function loadStoredCredentials() {
+  async function loadCredentials() {
+    // Check if launched from Bevpro dashboard with venue + auth token
+    const launchParams = getWebLaunchParams();
+    if (launchParams) {
+      try {
+        const baseUrl = getBaseUrl();
+        const res = await fetch(`${baseUrl}api/venues/${launchParams.venueId}/credentials`, {
+          headers: { Authorization: `Bearer ${launchParams.authToken}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.accessToken && data.locationId) {
+            setAccessToken(data.accessToken);
+            setLocationId(data.locationId);
+            // Also persist locally so setup screen shows as connected
+            await AsyncStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, data.accessToken);
+            await AsyncStorage.setItem(STORAGE_KEYS.LOCATION_ID, data.locationId);
+            return;
+          }
+        }
+      } catch (e) {
+        console.warn("Failed to load venue credentials from API, falling back to local storage", e);
+      }
+    }
+
+    // Fallback: load from local AsyncStorage
     try {
       const token = await AsyncStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
       const locId = await AsyncStorage.getItem(STORAGE_KEYS.LOCATION_ID);
