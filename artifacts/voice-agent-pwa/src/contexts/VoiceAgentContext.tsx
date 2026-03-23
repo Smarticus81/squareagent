@@ -3,7 +3,7 @@
  * Client connects directly to OpenAI via RTCPeerConnection. Server provides
  * ephemeral tokens and executes tool calls via REST.
  */
-import { createContext, useContext, useState, useRef, useCallback, type ReactNode } from "react";
+import { createContext, useContext, useState, useRef, useCallback, useEffect, type ReactNode } from "react";
 import { getVoicePrefs } from "@/lib/voice-prefs";
 import { getBaseUrl } from "@/lib/api";
 
