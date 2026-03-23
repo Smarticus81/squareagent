@@ -139,8 +139,8 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const workletNodeRef = useRef<AudioWorkletNode | null>(null);
   const nextPlayTime = useRef(0);
-  const playbackDrainTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const responseEnded = useRef(false);
+  // Track all active AudioBufferSourceNodes so we can stop them instantly on interrupt
+  const activeSources = useRef<AudioBufferSourceNode[]>([]);
 
   // ── Shared helpers ──────────────────────────────────────────────────────────
 
@@ -199,32 +199,22 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
     const start = Math.max(now, nextPlayTime.current);
     source.start(start);
     nextPlayTime.current = start + audioBuffer.duration;
+
+    // Track source for instant cancellation on interrupt
+    activeSources.current.push(source);
+    source.onended = () => {
+      activeSources.current = activeSources.current.filter((s) => s !== source);
+    };
   }, []);
 
-  // ── Drain guard: wait for scheduled audio to finish before un-muting mic ──
+  // ── Stop all playing audio immediately (for interrupts) ─────────────────────
 
-  const scheduleListeningAfterDrain = useCallback(() => {
-    if (playbackDrainTimer.current) clearTimeout(playbackDrainTimer.current);
-
-    const ctx = audioCtxRef.current;
-    if (!ctx) {
-      nextPlayTime.current = 0;
-      if (isRunning.current) { agentStateRef.current = "listening"; setAgentState("listening"); }
-      return;
+  const flushPlayback = useCallback(() => {
+    for (const src of activeSources.current) {
+      try { src.stop(); } catch { /* already stopped */ }
     }
-
-    const remaining = (nextPlayTime.current - ctx.currentTime) * 1000; // ms
-    // Add 300ms buffer after last audio chunk finishes to let echo decay
-    const delay = Math.max(0, remaining) + 300;
-
-    playbackDrainTimer.current = setTimeout(() => {
-      playbackDrainTimer.current = null;
-      nextPlayTime.current = 0;
-      if (isRunning.current && responseEnded.current) {
-        agentStateRef.current = "listening";
-        setAgentState("listening");
-      }
-    }, delay);
+    activeSources.current = [];
+    nextPlayTime.current = 0;
   }, []);
 
   // ── WebSocket event handler ─────────────────────────────────────────────────
@@ -242,13 +232,10 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
         break;
 
       case "input_audio_buffer.speech_started":
+        // User is speaking — immediately kill all agent audio and cancel response
         if (agentStateRef.current === "speaking") {
           ws.current?.send(JSON.stringify({ type: "response.cancel" }));
-          nextPlayTime.current = 0;
-          if (playbackDrainTimer.current) {
-            clearTimeout(playbackDrainTimer.current);
-            playbackDrainTimer.current = null;
-          }
+          flushPlayback();
         }
         setAs("listening");
         break;
@@ -278,19 +265,29 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
       case "response.audio.delta": {
         const chunk = String(event.delta ?? "");
         if (chunk) scheduleWebAudioChunk(chunk);
-        responseEnded.current = false;
-        if (playbackDrainTimer.current) {
-          clearTimeout(playbackDrainTimer.current);
-          playbackDrainTimer.current = null;
-        }
         setAs("speaking");
         break;
       }
 
       case "response.done":
-        responseEnded.current = true;
-        // Don't switch to listening immediately — wait for audio queue to drain
-        scheduleListeningAfterDrain();
+        // Audio chunks are still queued in Web Audio scheduler.
+        // Keep "speaking" visual state while audio plays, then go to "listening".
+        // If no active sources, transition immediately.
+        if (isRunning.current) {
+          if (activeSources.current.length === 0) {
+            setAs("listening");
+          } else {
+            // The last source's onended will transition us
+            const lastSource = activeSources.current[activeSources.current.length - 1];
+            const prevOnEnded = lastSource.onended;
+            lastSource.onended = (ev) => {
+              if (prevOnEnded && typeof prevOnEnded === "function") (prevOnEnded as (e: Event) => void)(ev!);
+              if (isRunning.current && agentStateRef.current === "speaking") {
+                setAs("listening");
+              }
+            };
+          }
+        }
         break;
 
       case "x.order_command": {
@@ -307,7 +304,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
         break;
       }
     }
-  }, [addMessage, sendContextUpdate, scheduleListeningAfterDrain, scheduleWebAudioChunk]);
+  }, [addMessage, sendContextUpdate, flushPlayback, scheduleWebAudioChunk]);
 
   // ── Connect ────────────────────────────────────────────────────────────────
 
@@ -376,9 +373,8 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
         workletNodeRef.current = worklet;
         worklet.port.onmessage = (e: MessageEvent<ArrayBuffer>) => {
           if (ws.current?.readyState !== WebSocket.OPEN) return;
-          // Mute mic while agent is speaking/thinking AND during drain buffer to prevent echo
-          const st = agentStateRef.current;
-          if (st === "speaking" || st === "thinking" || playbackDrainTimer.current) return;
+          // Always send mic audio — server-side VAD handles echo cancellation
+          // and interrupt detection. Never mute the mic.
           const b64 = arrayBufferToBase64(e.data);
           ws.current.send(JSON.stringify({ type: "input_audio_buffer.append", audio: b64 }));
         };
@@ -390,9 +386,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
         const processor = ctx.createScriptProcessor(2048, 1, 1);
         processor.onaudioprocess = (e) => {
           if (ws.current?.readyState !== WebSocket.OPEN) return;
-          // Mute mic while agent is speaking/thinking AND during drain buffer to prevent echo
-          const st = agentStateRef.current;
-          if (st === "speaking" || st === "thinking" || playbackDrainTimer.current) return;
+          // Always send mic audio — server-side VAD handles echo cancellation
           ws.current.send(JSON.stringify({ type: "input_audio_buffer.append", audio: float32ToPcm16Base64(e.inputBuffer.getChannelData(0)) }));
         };
         source.connect(processor);
@@ -406,10 +400,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const stopAudio = useCallback(() => {
-    if (playbackDrainTimer.current) {
-      clearTimeout(playbackDrainTimer.current);
-      playbackDrainTimer.current = null;
-    }
+    flushPlayback();
     if (workletNodeRef.current) {
       workletNodeRef.current.port.postMessage("stop");
       workletNodeRef.current.disconnect();
@@ -420,7 +411,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
     audioCtxRef.current?.close().catch(() => {});
     audioCtxRef.current = null;
     nextPlayTime.current = 0;
-  }, []);
+  }, [flushPlayback]);
 
   // ── Disconnect ─────────────────────────────────────────────────────────────
 
@@ -434,9 +425,10 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
   }, [stopAudio]);
 
   const interrupt = useCallback(() => {
+    flushPlayback();
     ws.current?.readyState === WebSocket.OPEN &&
       ws.current.send(JSON.stringify({ type: "response.cancel" }));
-  }, []);
+  }, [flushPlayback]);
 
   const clearConversation = useCallback(() => {
     setConversation([]);

@@ -244,9 +244,14 @@ export default function App() {
       setMode("command");
       connect();
     } else if (mode === "command") {
-      // Tapping orb in command mode: disconnect, go back to wake word
-      disconnect();
-      setMode("wake_word");
+      if (agentState === "speaking") {
+        // Tapping orb while agent is speaking: interrupt (don't disconnect)
+        interrupt();
+      } else {
+        // Tapping orb in command mode: disconnect, go back to wake word
+        disconnect();
+        setMode("wake_word");
+      }
     }
   }
 

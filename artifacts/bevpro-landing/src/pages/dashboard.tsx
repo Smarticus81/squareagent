@@ -34,9 +34,63 @@ export default function Dashboard() {
     }
   }, [isLoading, isFetching, auth, setLocation]);
 
+  // ── Handle OAuth redirect return (standalone PWA or redirect flow) ──────
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const oauthTs = params.get("oauth_ts");
+    const oauthError = params.get("oauth_error");
+
+    if (!oauthTs && !oauthError) return;
+
+    // Clean URL params
+    const url = new URL(window.location.href);
+    url.searchParams.delete("oauth_ts");
+    url.searchParams.delete("oauth_error");
+    window.history.replaceState({}, "", url.pathname + url.search);
+
+    if (oauthError) {
+      alert(`Square authorization failed: ${oauthError}`);
+      return;
+    }
+
+    if (oauthTs) {
+      (async () => {
+        setConnecting(true);
+        try {
+          const tokenRes = await fetch(`/api/square/oauth/token?ts=${encodeURIComponent(oauthTs)}`);
+          const tokenData = await tokenRes.json();
+          if (!tokenRes.ok) throw new Error(tokenData.error || "Failed to get token");
+
+          setOauthToken(tokenData.token);
+          setOauthMerchantId(tokenData.merchantId || null);
+
+          const locs = await fetchLocations.mutateAsync(tokenData.token);
+          setLocations(locs);
+          setShowLocationPicker(true);
+        } catch (e: any) {
+          console.error("Square OAuth redirect error:", e);
+          alert(e.message || "Failed to connect Square");
+        } finally {
+          setConnecting(false);
+        }
+      })();
+    }
+  }, [fetchLocations]);
+
   // ── Square OAuth popup flow ───────────────────────────────────────────────
 
   const handleConnectSquare = useCallback(async () => {
+    // Detect standalone/homescreen PWA — popup flow won't work there
+    const isStandalone = window.matchMedia("(display-mode: standalone)").matches
+      || (window.navigator as any).standalone;
+
+    if (isStandalone) {
+      // Full-page redirect flow — callback will redirect back with oauth_ts param
+      window.location.href = "/api/square/oauth/authorize?mode=redirect&return_url=/";
+      return;
+    }
+
     setConnecting(true);
     try {
       // 1. Get the OAuth URL from our API

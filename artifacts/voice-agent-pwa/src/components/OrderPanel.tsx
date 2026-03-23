@@ -169,7 +169,7 @@ function MenuTab({ onTabChange }: { onTabChange: (t: "order" | "menu" | "setting
 
 /* ── Settings Tab ──────────────────────────────────────────── */
 function SettingsTab() {
-  const { isConfigured } = useSquare();
+  const { isConfigured, clearCredentials, pendingOAuthToken, pendingLocations, completePendingOAuth, startOAuthRedirect } = useSquare();
   const [prefs, setPrefs] = useState(getVoicePrefs);
 
   const updateVoice = (v: string) => {
@@ -183,12 +183,45 @@ function SettingsTab() {
 
   return (
     <div style={{ padding: 16 }}>
-      <div className="settings-row">
+      {/* Square Connection — interactive */}
+      <div
+        className="settings-row"
+        style={{ cursor: "pointer" }}
+        onClick={() => {
+          if (isConfigured) {
+            if (confirm("Disconnect Square? Voice ordering will stop working.")) clearCredentials();
+          } else if (!pendingOAuthToken) {
+            startOAuthRedirect();
+          }
+        }}
+      >
         <Link size={16} />
-        <span className="settings-txt">Square Connection</span>
-        <span className="status-dot" style={{ background: isConfigured ? "#22C55E" : "#EF4444" }} />
+        <span className="settings-txt">
+          {pendingOAuthToken ? "Select Location" : isConfigured ? "Square Connected" : "Connect Square"}
+        </span>
+        <span className="status-dot" style={{ background: isConfigured ? "#22C55E" : pendingOAuthToken ? "#F59E0B" : "#EF4444" }} />
         <ChevronRight size={15} />
       </div>
+
+      {/* Location picker after OAuth redirect return */}
+      {pendingOAuthToken && pendingLocations.length > 0 && (
+        <div style={{ marginTop: 8 }}>
+          <div className="rec-label" style={{ marginBottom: 4 }}>PICK A LOCATION</div>
+          {pendingLocations.map((loc) => (
+            <div
+              key={loc.id}
+              className="cat-row"
+              onClick={() => completePendingOAuth(loc.id)}
+            >
+              <div style={{ flex: 1 }}>
+                <div className="cat-name">{loc.name}</div>
+                {loc.address && <div className="cat-cat">{loc.address}</div>}
+              </div>
+              <ChevronRight size={15} />
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="divider" style={{ marginTop: 16, marginBottom: 12 }} />
       <div className="rec-label">VOICE</div>

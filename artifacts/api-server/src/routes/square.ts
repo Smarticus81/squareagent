@@ -35,7 +35,7 @@ function squareHeaders(token: string) {
 
 // ── In-memory state stores (TTL: 10 min) ─────────────────────────────────────
 
-interface PendingState { timestamp: number }
+interface PendingState { timestamp: number; mode?: "redirect"; returnUrl?: string }
 interface PendingToken { token: string; merchantId: string; timestamp: number }
 
 const pendingStates = new Map<string, PendingState>();
@@ -51,13 +51,31 @@ setInterval(() => {
 // ── OAuth routes ──────────────────────────────────────────────────────────────
 
 // GET /api/square/oauth/authorize
-// Returns { url, state } — client opens url in a popup
+// Default: returns { url, state } for popup flow.
+// With ?mode=redirect&return_url=/path: redirects directly to Square OAuth,
+// and the callback will redirect back to return_url with ?oauth_ts=<claim key>.
 router.get("/oauth/authorize", (req: Request, res: Response): void => {
   const appId = process.env.SQUARE_APPLICATION_ID;
   if (!appId) { res.status(500).json({ error: "SQUARE_APPLICATION_ID not configured" }); return; }
 
+  const mode = req.query.mode as string | undefined;
+  const returnUrl = req.query.return_url as string | undefined;
+
+  // Validate return_url to prevent open redirect attacks
+  if (mode === "redirect") {
+    if (!returnUrl || !returnUrl.startsWith("/") || returnUrl.includes("://") || returnUrl.includes("//")) {
+      res.status(400).json({ error: "Invalid return_url — must be a relative path starting with /" });
+      return;
+    }
+  }
+
   const state = crypto.randomUUID();
-  pendingStates.set(state, { timestamp: Date.now() });
+  const pendingState: PendingState = { timestamp: Date.now() };
+  if (mode === "redirect" && returnUrl) {
+    pendingState.mode = "redirect";
+    pendingState.returnUrl = returnUrl;
+  }
+  pendingStates.set(state, pendingState);
 
   const redirectUri = getRedirectUri();
   const params = new URLSearchParams({
@@ -69,7 +87,15 @@ router.get("/oauth/authorize", (req: Request, res: Response): void => {
     session: "false",
   });
 
-  res.json({ url: `${SQUARE_OAUTH_BASE}/authorize?${params}`, state });
+  const oauthUrl = `${SQUARE_OAUTH_BASE}/authorize?${params}`;
+
+  if (mode === "redirect") {
+    // Full-page redirect — works in standalone PWA
+    res.redirect(oauthUrl);
+  } else {
+    // Popup mode — client opens URL in window.open()
+    res.json({ url: oauthUrl, state });
+  }
 });
 
 // GET /api/square/oauth/callback?code=...&state=...
@@ -78,13 +104,27 @@ router.get("/oauth/authorize", (req: Request, res: Response): void => {
 router.get("/oauth/callback", async (req: Request, res: Response): Promise<void> => {
   const { code, state, error } = req.query as Record<string, string>;
 
+  // Retrieve the pending state to check mode
+  const pendingOAuthState = state ? pendingStates.get(state) : undefined;
+  const isRedirectMode = pendingOAuthState?.mode === "redirect";
+  const returnUrl = pendingOAuthState?.returnUrl ?? "/";
+
   if (error) {
-    res.send(popupHtml(null, `Square authorization failed: ${error}`));
+    if (isRedirectMode) {
+      pendingStates.delete(state);
+      res.redirect(`${returnUrl}${returnUrl.includes("?") ? "&" : "?"}oauth_error=${encodeURIComponent(error)}`);
+    } else {
+      res.send(popupHtml(null, `Square authorization failed: ${error}`));
+    }
     return;
   }
 
-  if (!state || !pendingStates.has(state)) {
-    res.send(popupHtml(null, "Invalid or expired OAuth state. Please try again."));
+  if (!state || !pendingOAuthState) {
+    if (isRedirectMode) {
+      res.redirect(`${returnUrl}${returnUrl.includes("?") ? "&" : "?"}oauth_error=${encodeURIComponent("Invalid or expired OAuth state")}`);
+    } else {
+      res.send(popupHtml(null, "Invalid or expired OAuth state. Please try again."));
+    }
     return;
   }
   pendingStates.delete(state);
@@ -121,9 +161,18 @@ router.get("/oauth/callback", async (req: Request, res: Response): Promise<void>
       timestamp: Date.now(),
     });
 
-    res.send(popupHtml(ts, null));
+    if (isRedirectMode) {
+      // Redirect back to the app with claim key in URL
+      res.redirect(`${returnUrl}${returnUrl.includes("?") ? "&" : "?"}oauth_ts=${encodeURIComponent(ts)}`);
+    } else {
+      res.send(popupHtml(ts, null));
+    }
   } catch (e: any) {
-    res.send(popupHtml(null, e.message || "Unexpected error during token exchange"));
+    if (isRedirectMode) {
+      res.redirect(`${returnUrl}${returnUrl.includes("?") ? "&" : "?"}oauth_error=${encodeURIComponent(e.message || "Unexpected error")}`);
+    } else {
+      res.send(popupHtml(null, e.message || "Unexpected error during token exchange"));
+    }
   }
 });
 
