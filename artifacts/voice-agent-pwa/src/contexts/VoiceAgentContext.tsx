@@ -10,6 +10,7 @@ import { getBaseUrl } from "@/lib/api";
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export type AgentState = "disconnected" | "connecting" | "listening" | "thinking" | "speaking" | "error";
+export type AgentMode = "pos" | "inventory";
 
 export interface ConversationMessage {
   id: string;
@@ -30,6 +31,8 @@ export type CommandHandler = (commands: OrderCommand[]) => void;
 
 interface VoiceAgentContextType {
   agentState: AgentState;
+  agentMode: AgentMode;
+  setAgentMode: (mode: AgentMode) => void;
   isConnected: boolean;
   conversation: ConversationMessage[];
   partialTranscript: string;
@@ -55,6 +58,7 @@ const VoiceAgentContext = createContext<VoiceAgentContextType | null>(null);
 
 export function VoiceAgentProvider({ children }: { children: ReactNode }) {
   const [agentState, setAgentState] = useState<AgentState>("disconnected");
+  const [agentMode, setAgentMode] = useState<AgentMode>("pos");
   const [conversation, setConversation] = useState<ConversationMessage[]>([]);
   const [partialTranscript, setPartialTranscript] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -69,7 +73,11 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
   const squareLocationIdRef = useRef("");
   const isRunning = useRef(false);
   const agentStateRef = useRef<AgentState>("disconnected");
+  const agentModeRef = useRef<AgentMode>("pos");
   const sessionIdRef = useRef("");
+
+  // Keep mode ref in sync for stale-closure-proof reads
+  useEffect(() => { agentModeRef.current = agentMode; }, [agentMode]);
 
   // ── Shared helpers ──────────────────────────────────────────────────────────
 
@@ -155,7 +163,8 @@ Rules:
 
     try {
       const baseUrl = getBaseUrl();
-      const res = await fetch(`${baseUrl}api/realtime/tools`, {
+      const toolPath = agentModeRef.current === "inventory" ? "api/realtime-inventory/tools" : "api/realtime/tools";
+      const res = await fetch(`${baseUrl}${toolPath}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -294,8 +303,9 @@ Rules:
 
     try {
       // 1. Get ephemeral token from our server
-      console.log("[WebRTC] Requesting ephemeral token...");
-      const tokenRes = await fetch(`${baseUrl}api/realtime/session`, {
+      const sessionPath = agentModeRef.current === "inventory" ? "api/realtime-inventory/session" : "api/realtime/session";
+      console.log(`[WebRTC] Requesting ephemeral token (${agentModeRef.current} mode)...`);
+      const tokenRes = await fetch(`${baseUrl}${sessionPath}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -437,7 +447,7 @@ Rules:
 
   return (
     <VoiceAgentContext.Provider value={{
-      agentState, isConnected, conversation, partialTranscript, error,
+      agentState, agentMode, setAgentMode, isConnected, conversation, partialTranscript, error,
       connect, disconnect, clearConversation, setToolHandler, interrupt,
       setCatalog, setCurrentOrder, setSquareCredentials,
     }}>

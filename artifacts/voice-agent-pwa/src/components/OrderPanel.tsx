@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { X, Menu, Trash2, Loader, Link, ChevronRight } from "lucide-react";
 import { useOrder, type OrderLineItem } from "@/contexts/OrderContext";
 import { useSquare } from "@/contexts/SquareContext";
-import { useVoiceAgent } from "@/contexts/VoiceAgentContext";
+import { useVoiceAgent, type AgentMode } from "@/contexts/VoiceAgentContext";
 import { OrderCard } from "./OrderCard";
 import { getVoicePrefs, setVoicePref, setSpeedPref, VOICES, SPEEDS } from "@/lib/voice-prefs";
 
@@ -170,6 +170,7 @@ function MenuTab({ onTabChange }: { onTabChange: (t: "order" | "menu" | "setting
 /* ── Settings Tab ──────────────────────────────────────────── */
 function SettingsTab() {
   const { isConfigured, clearCredentials, pendingOAuthToken, pendingLocations, completePendingOAuth, startOAuthRedirect } = useSquare();
+  const { agentMode, setAgentMode, isConnected } = useVoiceAgent();
   const [prefs, setPrefs] = useState(getVoicePrefs);
 
   const updateVoice = (v: string) => {
@@ -222,6 +223,22 @@ function SettingsTab() {
           ))}
         </div>
       )}
+
+      <div className="divider" style={{ marginTop: 16, marginBottom: 12 }} />
+      <div className="rec-label">AGENT MODE</div>
+      <div className="speed-row">
+        {([{ id: "pos" as AgentMode, label: "POS" }, { id: "inventory" as AgentMode, label: "Inventory" }]).map((m) => (
+          <button
+            key={m.id}
+            className={`speed-chip${agentMode === m.id ? " active" : ""}`}
+            disabled={isConnected}
+            onClick={() => setAgentMode(m.id)}
+          >
+            {m.label}
+          </button>
+        ))}
+      </div>
+      {isConnected && <div className="empty-hint" style={{ fontSize: 11, marginTop: 4, opacity: 0.5 }}>disconnect to switch modes</div>}
 
       <div className="divider" style={{ marginTop: 16, marginBottom: 12 }} />
       <div className="rec-label">VOICE</div>

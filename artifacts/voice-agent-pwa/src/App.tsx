@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { Menu } from "lucide-react";
-import { useVoiceAgent, type AgentState, type OrderCommand, type ConversationMessage } from "@/contexts/VoiceAgentContext";
+import { useVoiceAgent, type AgentState, type AgentMode, type OrderCommand, type ConversationMessage } from "@/contexts/VoiceAgentContext";
 import { useOrder } from "@/contexts/OrderContext";
 import { useSquare } from "@/contexts/SquareContext";
 import { OrderPanel } from "@/components/OrderPanel";
@@ -62,7 +62,7 @@ function RailWaveform({ active }: { active: boolean }) {
 /* ── Main App ─────────────────────────────────────────────────── */
 export default function App() {
   const {
-    agentState, isConnected, conversation, partialTranscript, error,
+    agentState, agentMode, isConnected, conversation, partialTranscript, error,
     connect, disconnect, setToolHandler, interrupt,
     setCatalog, setCurrentOrder, setSquareCredentials,
   } = useVoiceAgent();
@@ -83,14 +83,15 @@ export default function App() {
 
   useEffect(() => { modeRef.current = mode; }, [mode]);
 
-  // Track order item count to play sounds on add
+  // Track order item count to play sounds on add (POS mode only)
   useEffect(() => {
+    if (agentMode !== "pos") return;
     const count = currentOrder?.items.length ?? 0;
     if (count > prevItemCountRef.current && prevItemCountRef.current >= 0) {
       soundItemAdd();
     }
     prevItemCountRef.current = count;
-  }, [currentOrder?.items.length]);
+  }, [currentOrder?.items.length, agentMode]);
 
   // Keep refs for stale-closure-proof callbacks
   const catalogRef = useRef(catalogItems);
@@ -298,9 +299,9 @@ export default function App() {
         </button>
         <div className="brand-row">
           <div className="brand-ring"><div className="brand-bead" /></div>
-          <span className="brand-word">BEVPRO</span>
+          <span className="brand-word">{agentMode === "inventory" ? "INVENTORY" : "BEVPRO"}</span>
         </div>
-        {orderCount > 0 ? (
+        {orderCount > 0 && agentMode === "pos" ? (
           <button className="order-badge" onClick={() => { setPanelTab("order"); setPanelOpen(true); }}>
             <span className="order-badge-num">{orderCount}</span>
           </button>
