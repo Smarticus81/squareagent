@@ -51,32 +51,37 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </main>
 
       {!isAuthPage && (
-        <footer className="border-t border-foreground/[0.06] py-12 mt-auto">
+        <footer className="border-t border-foreground/[0.04] py-16 mt-auto">
           <div className="max-w-5xl mx-auto px-6 lg:px-8">
-            <div className="flex flex-col md:flex-row justify-between items-start gap-8">
+            <div className="flex flex-col md:flex-row justify-between items-start gap-10">
               <div>
                 <Logo />
-                <p className="text-[13px] text-foreground/30 font-light mt-2 max-w-[260px]">
-                  Voice-powered ordering for bars and venues.
+                <p className="text-[13px] text-foreground/25 font-light mt-3 max-w-[280px] leading-relaxed">
+                  Voice-powered ordering for bars, venues, and events. Say the order — it's done.
                 </p>
-                <div className="flex items-center gap-1.5 mt-3 text-foreground/25">
-                  <span className="text-[11px] font-light">Built on</span>
+                <div className="flex items-center gap-2 mt-4 text-foreground/20">
+                  <span className="text-[11px] font-light tracking-wider">Built on</span>
                   <svg className="h-4 w-4" viewBox="0 0 64 64" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
                     <path d="M10 0C4.477 0 0 4.477 0 10v44c0 5.523 4.477 10 10 10h44c5.523 0 10-4.477 10-10V10c0-5.523-4.477-10-10-10H10zm30.5 16h-17C20.462 16 18 18.462 18 21.5v17c0 3.038 2.462 5.5 5.5 5.5h17c3.038 0 5.5-2.462 5.5-5.5v-17c0-3.038-2.462-5.5-5.5-5.5zM38 34a4 4 0 01-4 4H30a4 4 0 01-4-4v-4a4 4 0 014-4h4a4 4 0 014 4v4z" />
                   </svg>
-                  <span className="text-[11px] font-light">Square</span>
+                  <span className="text-[11px] font-light tracking-wider">Square</span>
                 </div>
               </div>
-              <div className="flex gap-12 text-[13px]">
-                <div className="space-y-2">
-                  <p className="text-foreground/20 font-medium text-[11px] tracking-[0.15em] uppercase">Product</p>
-                  <Link href="/signup" className="block text-foreground/40 hover:text-foreground transition-colors">Get Started</Link>
-                  <Link href="/login" className="block text-foreground/40 hover:text-foreground transition-colors">Sign In</Link>
+              <div className="flex gap-16 text-[13px]">
+                <div className="space-y-2.5">
+                  <p className="text-foreground/15 font-medium text-[10px] tracking-[0.2em] uppercase mb-3">Product</p>
+                  <Link href="/signup" className="block text-foreground/35 hover:text-foreground transition-colors font-light">Get Started</Link>
+                  <Link href="/login" className="block text-foreground/35 hover:text-foreground transition-colors font-light">Sign In</Link>
+                </div>
+                <div className="space-y-2.5">
+                  <p className="text-foreground/15 font-medium text-[10px] tracking-[0.2em] uppercase mb-3">Company</p>
+                  <span className="block text-foreground/35 font-light cursor-default">About</span>
+                  <span className="block text-foreground/35 font-light cursor-default">Contact</span>
                 </div>
               </div>
             </div>
-            <div className="mt-10 pt-6 border-t border-foreground/[0.04] flex flex-col sm:flex-row justify-between items-center gap-2">
-              <p className="text-[12px] text-foreground/25 font-light">
+            <div className="mt-12 pt-6 border-t border-foreground/[0.03] flex flex-col sm:flex-row justify-between items-center gap-2">
+              <p className="text-[11px] text-foreground/20 font-light tracking-wider">
                 &copy; {new Date().getFullYear()} Bevpro. All rights reserved.
               </p>
             </div>
