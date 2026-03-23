@@ -139,6 +139,8 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const workletNodeRef = useRef<AudioWorkletNode | null>(null);
   const nextPlayTime = useRef(0);
+  const playbackDrainTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const responseEnded = useRef(false);
 
   // ── Shared helpers ──────────────────────────────────────────────────────────
 
@@ -175,6 +177,56 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
 
   const setToolHandler = useCallback((h: CommandHandler) => { commandHandlerRef.current = h; }, []);
 
+  // ── Web Audio playback ──────────────────────────────────────────────────────
+
+  const scheduleWebAudioChunk = useCallback((base64Pcm: string) => {
+    const ctx = audioCtxRef.current;
+    if (!ctx) return;
+
+    const pcm16 = base64ToUint8Array(base64Pcm);
+    const int16 = new Int16Array(pcm16.buffer, pcm16.byteOffset, pcm16.length / 2);
+    const float32 = new Float32Array(int16.length);
+    for (let i = 0; i < int16.length; i++) float32[i] = int16[i] / 32768;
+
+    const audioBuffer = ctx.createBuffer(1, float32.length, 24000);
+    audioBuffer.getChannelData(0).set(float32);
+
+    const source = ctx.createBufferSource();
+    source.buffer = audioBuffer;
+    source.connect(ctx.destination);
+
+    const now = ctx.currentTime;
+    const start = Math.max(now, nextPlayTime.current);
+    source.start(start);
+    nextPlayTime.current = start + audioBuffer.duration;
+  }, []);
+
+  // ── Drain guard: wait for scheduled audio to finish before un-muting mic ──
+
+  const scheduleListeningAfterDrain = useCallback(() => {
+    if (playbackDrainTimer.current) clearTimeout(playbackDrainTimer.current);
+
+    const ctx = audioCtxRef.current;
+    if (!ctx) {
+      nextPlayTime.current = 0;
+      if (isRunning.current) { agentStateRef.current = "listening"; setAgentState("listening"); }
+      return;
+    }
+
+    const remaining = (nextPlayTime.current - ctx.currentTime) * 1000; // ms
+    // Add 300ms buffer after last audio chunk finishes to let echo decay
+    const delay = Math.max(0, remaining) + 300;
+
+    playbackDrainTimer.current = setTimeout(() => {
+      playbackDrainTimer.current = null;
+      nextPlayTime.current = 0;
+      if (isRunning.current && responseEnded.current) {
+        agentStateRef.current = "listening";
+        setAgentState("listening");
+      }
+    }, delay);
+  }, []);
+
   // ── WebSocket event handler ─────────────────────────────────────────────────
 
   const handleWsEvent = useCallback((raw: string) => {
@@ -193,6 +245,10 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
         if (agentStateRef.current === "speaking") {
           ws.current?.send(JSON.stringify({ type: "response.cancel" }));
           nextPlayTime.current = 0;
+          if (playbackDrainTimer.current) {
+            clearTimeout(playbackDrainTimer.current);
+            playbackDrainTimer.current = null;
+          }
         }
         setAs("listening");
         break;
@@ -222,13 +278,19 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
       case "response.audio.delta": {
         const chunk = String(event.delta ?? "");
         if (chunk) scheduleWebAudioChunk(chunk);
+        responseEnded.current = false;
+        if (playbackDrainTimer.current) {
+          clearTimeout(playbackDrainTimer.current);
+          playbackDrainTimer.current = null;
+        }
         setAs("speaking");
         break;
       }
 
       case "response.done":
-        nextPlayTime.current = 0;
-        if (isRunning.current) setAs("listening");
+        responseEnded.current = true;
+        // Don't switch to listening immediately — wait for audio queue to drain
+        scheduleListeningAfterDrain();
         break;
 
       case "x.order_command": {
@@ -245,31 +307,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
         break;
       }
     }
-  }, [addMessage, sendContextUpdate]);
-
-  // ── Web Audio playback ──────────────────────────────────────────────────────
-
-  const scheduleWebAudioChunk = useCallback((base64Pcm: string) => {
-    const ctx = audioCtxRef.current;
-    if (!ctx) return;
-
-    const pcm16 = base64ToUint8Array(base64Pcm);
-    const int16 = new Int16Array(pcm16.buffer, pcm16.byteOffset, pcm16.length / 2);
-    const float32 = new Float32Array(int16.length);
-    for (let i = 0; i < int16.length; i++) float32[i] = int16[i] / 32768;
-
-    const audioBuffer = ctx.createBuffer(1, float32.length, 24000);
-    audioBuffer.getChannelData(0).set(float32);
-
-    const source = ctx.createBufferSource();
-    source.buffer = audioBuffer;
-    source.connect(ctx.destination);
-
-    const now = ctx.currentTime;
-    const start = Math.max(now, nextPlayTime.current);
-    source.start(start);
-    nextPlayTime.current = start + audioBuffer.duration;
-  }, []);
+  }, [addMessage, sendContextUpdate, scheduleListeningAfterDrain, scheduleWebAudioChunk]);
 
   // ── Connect ────────────────────────────────────────────────────────────────
 
@@ -338,9 +376,9 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
         workletNodeRef.current = worklet;
         worklet.port.onmessage = (e: MessageEvent<ArrayBuffer>) => {
           if (ws.current?.readyState !== WebSocket.OPEN) return;
-          // Mute mic while agent is speaking or thinking to prevent echo feedback loop
+          // Mute mic while agent is speaking/thinking AND during drain buffer to prevent echo
           const st = agentStateRef.current;
-          if (st === "speaking" || st === "thinking") return;
+          if (st === "speaking" || st === "thinking" || playbackDrainTimer.current) return;
           const b64 = arrayBufferToBase64(e.data);
           ws.current.send(JSON.stringify({ type: "input_audio_buffer.append", audio: b64 }));
         };
@@ -352,9 +390,9 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
         const processor = ctx.createScriptProcessor(2048, 1, 1);
         processor.onaudioprocess = (e) => {
           if (ws.current?.readyState !== WebSocket.OPEN) return;
-          // Mute mic while agent is speaking or thinking to prevent echo feedback loop
+          // Mute mic while agent is speaking/thinking AND during drain buffer to prevent echo
           const st = agentStateRef.current;
-          if (st === "speaking" || st === "thinking") return;
+          if (st === "speaking" || st === "thinking" || playbackDrainTimer.current) return;
           ws.current.send(JSON.stringify({ type: "input_audio_buffer.append", audio: float32ToPcm16Base64(e.inputBuffer.getChannelData(0)) }));
         };
         source.connect(processor);
@@ -368,6 +406,10 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const stopAudio = useCallback(() => {
+    if (playbackDrainTimer.current) {
+      clearTimeout(playbackDrainTimer.current);
+      playbackDrainTimer.current = null;
+    }
     if (workletNodeRef.current) {
       workletNodeRef.current.port.postMessage("stop");
       workletNodeRef.current.disconnect();
