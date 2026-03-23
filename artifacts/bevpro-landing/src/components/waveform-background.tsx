@@ -30,7 +30,7 @@ export function WaveformBackground() {
           opacity: [0.2, 0.4, 0.2],
         }}
         transition={{ duration: 12, repeat: Infinity, ease: "easeInOut", delay: 2 }}
-        className="absolute bottom-1/4 right-1/4 w-[600px] h-[600px] rounded-full bg-[#A855F7]/10 blur-[150px] mix-blend-screen"
+        className="absolute bottom-1/4 right-1/4 w-[600px] h-[600px] rounded-full bg-foreground/[0.06] blur-[150px] mix-blend-screen"
       />
 
       {/* Subtle particulate waveform */}

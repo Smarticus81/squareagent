@@ -164,10 +164,10 @@ export function useWakeWord({
 
       if (e.error === "audio-capture") {
         captureFailsRef.current += 1;
-        const delay = Math.min(800 * captureFailsRef.current, 3000);
+        const delay = Math.min(600 * captureFailsRef.current, 3000);
         console.warn(`[WakeWord] audio-capture (attempt ${captureFailsRef.current}) — retry in ${delay}ms`);
         setIsListening(false);
-        if (captureFailsRef.current >= 6) {
+        if (captureFailsRef.current >= 10) {
           console.error("[WakeWord] audio-capture persistent — giving up");
           stop();
           return;

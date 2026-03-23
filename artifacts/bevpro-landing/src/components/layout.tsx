@@ -13,26 +13,26 @@ export function Layout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen flex flex-col relative selection:bg-foreground/10 selection:text-foreground">
       {!isAuthPage && (
-        <header className="fixed top-0 w-full z-50 bg-background/90 backdrop-blur-md">
-          <div className="max-w-6xl mx-auto px-6 lg:px-8 h-16 flex items-center justify-between">
+        <header className="fixed top-0 w-full z-50 bg-background/90 backdrop-blur-md border-b border-foreground/[0.04]">
+          <div className="max-w-5xl mx-auto px-6 lg:px-8 h-14 flex items-center justify-between">
             <Link href="/" className="hover:opacity-70 transition-opacity">
               <Logo />
             </Link>
 
-            <div className="flex items-center gap-6">
+            <div className="flex items-center gap-5">
               {!isLoading && (
                 auth?.user ? (
                   <>
-                    <Link href="/dashboard" className="text-[13px] font-medium text-foreground/60 hover:text-foreground transition-colors">
+                    <Link href="/dashboard" className="text-[13px] font-medium text-foreground/50 hover:text-foreground transition-colors">
                       Dashboard
                     </Link>
-                    <button className="text-[13px] text-foreground/40 hover:text-foreground transition-colors" onClick={() => logout.mutate()}>
+                    <button className="text-[13px] text-foreground/35 hover:text-foreground transition-colors" onClick={() => logout.mutate()}>
                       Sign Out
                     </button>
                   </>
                 ) : (
                   <>
-                    <Link href="/login" className="text-[13px] font-medium text-foreground/60 hover:text-foreground transition-colors hidden sm:block">
+                    <Link href="/login" className="text-[13px] font-medium text-foreground/50 hover:text-foreground transition-colors hidden sm:block">
                       Sign In
                     </Link>
                     <Link href="/signup" className="inline-block">
@@ -51,12 +51,28 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </main>
 
       {!isAuthPage && (
-        <footer className="py-10 mt-auto">
-          <div className="max-w-6xl mx-auto px-6 lg:px-8 flex flex-col md:flex-row justify-between items-center gap-4">
-            <Logo iconOnly className="opacity-30" />
-            <p className="text-[12px] text-foreground/30">
-              &copy; {new Date().getFullYear()} Bevpro
-            </p>
+        <footer className="border-t border-foreground/[0.06] py-12 mt-auto">
+          <div className="max-w-5xl mx-auto px-6 lg:px-8">
+            <div className="flex flex-col md:flex-row justify-between items-start gap-8">
+              <div>
+                <Logo />
+                <p className="text-[13px] text-foreground/30 font-light mt-2 max-w-[260px]">
+                  Voice-powered ordering for bars and venues, built on Square.
+                </p>
+              </div>
+              <div className="flex gap-12 text-[13px]">
+                <div className="space-y-2">
+                  <p className="text-foreground/20 font-medium text-[11px] tracking-[0.15em] uppercase">Product</p>
+                  <Link href="/signup" className="block text-foreground/40 hover:text-foreground transition-colors">Get Started</Link>
+                  <Link href="/login" className="block text-foreground/40 hover:text-foreground transition-colors">Sign In</Link>
+                </div>
+              </div>
+            </div>
+            <div className="mt-10 pt-6 border-t border-foreground/[0.04] flex flex-col sm:flex-row justify-between items-center gap-2">
+              <p className="text-[12px] text-foreground/25 font-light">
+                &copy; {new Date().getFullYear()} Bevpro. All rights reserved.
+              </p>
+            </div>
           </div>
         </footer>
       )}

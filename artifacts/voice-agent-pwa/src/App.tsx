@@ -179,9 +179,12 @@ export default function App() {
   }, [mode, agentState]);
 
   // Start/stop wake word based on mode
+  // When transitioning to wake_word after disconnect(), the browser needs time
+  // to fully release mic resources before SpeechRecognition can reacquire them.
   useEffect(() => {
     if (mode === "wake_word") {
-      startWakeWord();
+      const timer = setTimeout(() => startWakeWord(), 600);
+      return () => clearTimeout(timer);
     } else {
       stopWakeWord();
     }
