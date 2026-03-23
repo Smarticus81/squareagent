@@ -1,6 +1,5 @@
 import { createServer } from "http";
 import app from "./app";
-import { attachRealtimeRelay } from "./routes/realtime";
 import { pool } from "@workspace/db";
 
 async function main() {
@@ -28,7 +27,6 @@ async function main() {
   }
 
   const server = createServer(app);
-  attachRealtimeRelay(server);
 
   server.listen(port, () => {
     console.log(`Server listening on port ${port}`);

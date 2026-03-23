@@ -1,9 +1,11 @@
 /**
- * Voice Agent Context — Web-only, OpenAI Realtime API
- * WebSocket + Web Audio API (AudioWorklet for low-latency PCM16 streaming)
+ * Voice Agent Context — WebRTC direct connection to OpenAI Realtime API
+ * Client connects directly to OpenAI via RTCPeerConnection. Server provides
+ * ephemeral tokens and executes tool calls via REST.
  */
 import { createContext, useContext, useState, useRef, useCallback, type ReactNode } from "react";
 import { getVoicePrefs } from "@/lib/voice-prefs";
+import { getBaseUrl } from "@/lib/api";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -42,78 +44,10 @@ interface VoiceAgentContextType {
   setSquareCredentials: (token: string, locationId: string) => void;
 }
 
-// ── AudioWorklet source (inlined) ─────────────────────────────────────────────
-
-const WORKLET_SRC = `
-class PcmProcessor extends AudioWorkletProcessor {
-  constructor() {
-    super();
-    this._buf = new Float32Array(1440);
-    this._pos = 0;
-    this._active = true;
-    this.port.onmessage = (e) => { if (e.data === 'stop') this._active = false; };
-  }
-  process(inputs) {
-    if (!this._active) return false;
-    const ch = inputs[0] && inputs[0][0];
-    if (!ch) return true;
-    for (let i = 0; i < ch.length; i++) {
-      this._buf[this._pos++] = ch[i];
-      if (this._pos >= 1440) {
-        const pcm = new Int16Array(1440);
-        for (let j = 0; j < 1440; j++) {
-          const s = this._buf[j];
-          pcm[j] = s < 0 ? Math.max(-32768, s * 32768) : Math.min(32767, s * 32767);
-        }
-        this.port.postMessage(pcm.buffer, [pcm.buffer]);
-        this._buf = new Float32Array(1440);
-        this._pos = 0;
-      }
-    }
-    return true;
-  }
-}
-registerProcessor('pcm-processor', PcmProcessor);
-`;
-
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 let _msgId = 0;
 const genId = () => `msg-${Date.now()}-${++_msgId}`;
-
-function getWsUrl(voice: string, speed: number): string {
-  const loc = window.location;
-  const isLocal = loc.hostname === "localhost" || loc.hostname === "127.0.0.1";
-  const protocol = loc.protocol === "https:" ? "wss" : "ws";
-  // In dev, Vite proxies /api to port 8080
-  const base = `${protocol}://${loc.host}/api/realtime`;
-  return `${base}?voice=${encodeURIComponent(voice)}&speed=${speed}`;
-}
-
-function float32ToPcm16Base64(float32: Float32Array): string {
-  const pcm = new Int16Array(float32.length);
-  for (let i = 0; i < float32.length; i++) {
-    pcm[i] = Math.max(-32768, Math.min(32767, float32[i] * 32768));
-  }
-  return arrayBufferToBase64(pcm.buffer);
-}
-
-function arrayBufferToBase64(buf: ArrayBuffer): string {
-  const bytes = new Uint8Array(buf);
-  const CHUNK = 8192;
-  let binary = "";
-  for (let i = 0; i < bytes.length; i += CHUNK) {
-    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK) as unknown as number[]);
-  }
-  return btoa(binary);
-}
-
-function base64ToUint8Array(b64: string): Uint8Array {
-  const binary = atob(b64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return bytes;
-}
 
 // ── Context ───────────────────────────────────────────────────────────────────
 
@@ -125,7 +59,9 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
   const [partialTranscript, setPartialTranscript] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  const ws = useRef<WebSocket | null>(null);
+  const pcRef = useRef<RTCPeerConnection | null>(null);
+  const dcRef = useRef<RTCDataChannel | null>(null);
+  const audioElRef = useRef<HTMLAudioElement | null>(null);
   const commandHandlerRef = useRef<CommandHandler | null>(null);
   const catalogRef = useRef<unknown[]>([]);
   const currentOrderRef = useRef<unknown[]>([]);
@@ -133,14 +69,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
   const squareLocationIdRef = useRef("");
   const isRunning = useRef(false);
   const agentStateRef = useRef<AgentState>("disconnected");
-
-  // Web Audio refs
-  const audioCtxRef = useRef<AudioContext | null>(null);
-  const mediaStreamRef = useRef<MediaStream | null>(null);
-  const workletNodeRef = useRef<AudioWorkletNode | null>(null);
-  const nextPlayTime = useRef(0);
-  // Track all active AudioBufferSourceNodes so we can stop them instantly on interrupt
-  const activeSources = useRef<AudioBufferSourceNode[]>([]);
+  const sessionIdRef = useRef("");
 
   // ── Shared helpers ──────────────────────────────────────────────────────────
 
@@ -148,78 +77,133 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
     setConversation((prev) => [...prev, { id: genId(), role, content, timestamp: new Date() }]);
   }, []);
 
-  const sendContextUpdate = useCallback((overrides: Record<string, unknown> = {}) => {
-    ws.current?.send(JSON.stringify({
-      type: "x.context_update",
-      catalog: catalogRef.current,
-      order: currentOrderRef.current,
-      squareToken: squareTokenRef.current,
-      squareLocationId: squareLocationIdRef.current,
-      ...overrides,
-    }));
-  }, []);
+  const setToolHandler = useCallback((h: CommandHandler) => { commandHandlerRef.current = h; }, []);
 
   const setCatalog = useCallback((items: unknown[]) => {
     catalogRef.current = items;
-    sendContextUpdate({ catalog: items });
-  }, [sendContextUpdate]);
+    // Update instructions via data channel if connected
+    sendContextUpdate();
+  }, []);
 
   const setCurrentOrder = useCallback((order: unknown[]) => {
     currentOrderRef.current = order;
-    sendContextUpdate({ order });
-  }, [sendContextUpdate]);
+    sendContextUpdate();
+  }, []);
 
   const setSquareCredentials = useCallback((token: string, locationId: string) => {
     squareTokenRef.current = token;
     squareLocationIdRef.current = locationId;
-    sendContextUpdate({ squareToken: token, squareLocationId: locationId });
-  }, [sendContextUpdate]);
-
-  const setToolHandler = useCallback((h: CommandHandler) => { commandHandlerRef.current = h; }, []);
-
-  // ── Web Audio playback ──────────────────────────────────────────────────────
-
-  const scheduleWebAudioChunk = useCallback((base64Pcm: string) => {
-    const ctx = audioCtxRef.current;
-    if (!ctx) return;
-
-    const pcm16 = base64ToUint8Array(base64Pcm);
-    const int16 = new Int16Array(pcm16.buffer, pcm16.byteOffset, pcm16.length / 2);
-    const float32 = new Float32Array(int16.length);
-    for (let i = 0; i < int16.length; i++) float32[i] = int16[i] / 32768;
-
-    const audioBuffer = ctx.createBuffer(1, float32.length, 24000);
-    audioBuffer.getChannelData(0).set(float32);
-
-    const source = ctx.createBufferSource();
-    source.buffer = audioBuffer;
-    source.connect(ctx.destination);
-
-    const now = ctx.currentTime;
-    const start = Math.max(now, nextPlayTime.current);
-    source.start(start);
-    nextPlayTime.current = start + audioBuffer.duration;
-
-    // Track source for instant cancellation on interrupt
-    activeSources.current.push(source);
-    source.onended = () => {
-      activeSources.current = activeSources.current.filter((s) => s !== source);
-    };
   }, []);
 
-  // ── Stop all playing audio immediately (for interrupts) ─────────────────────
+  // ── Send context update to OpenAI via data channel ──────────────────────────
 
-  const flushPlayback = useCallback(() => {
-    for (const src of activeSources.current) {
-      try { src.stop(); } catch { /* already stopped */ }
+  const sendContextUpdate = useCallback(() => {
+    const dc = dcRef.current;
+    if (!dc || dc.readyState !== "open") return;
+
+    // Build updated instructions inline (same structure as server)
+    const catalog = catalogRef.current as Array<{ name: string; price: number }>;
+    const order = currentOrderRef.current as Array<{ quantity: number; item_name: string; price: number }>;
+
+    const catalogStr =
+      catalog.length > 0
+        ? catalog.map((c) => `  - ${c.name}: $${c.price.toFixed(2)}`).join("\n")
+        : "  (No catalog loaded — ask bartender to connect Square)";
+
+    const orderStr =
+      order.length > 0
+        ? order.map((i) => `  - ${i.quantity}x ${i.item_name} @ $${i.price.toFixed(2)}`).join("\n")
+        : "  (empty)";
+
+    const instructions = `You are BevPro, a bartender's voice assistant running on Square POS. You help the bartender ring up orders, check stock, and find menu info — fast and hands-free.
+
+Catalog:
+${catalogStr}
+
+Current order:
+${orderStr}
+
+Persona:
+- Professional, warm, efficient. You're a co-worker, not a customer-facing bot.
+- Speak like bar staff: short, punchy, no fluff. One or two sentences max.
+- Understand bartender slang: "86 it" = remove/out of stock, "ring it up" / "close it out" = submit, "tab it" = add to order, "what's on the ticket" = get order.
+
+Rules:
+- Add items only on clear intent ("two Fosters", "tab a Bud Light").
+- Never submit until they say so ("ring it up", "close it out", "that's it"). Confirm the total first.
+- If browsing or chatting, just talk — don't push items.
+- Menu questions: mention a few options, don't dump the whole list.
+- If something's not on the menu, suggest what's close.
+- Say prices naturally: "eight fifty" not "$8.50". Never say "dollar sign".
+- Noisy environment — ignore background chatter. Only respond to direct speech. If unclear, ask.`;
+
+    dc.send(JSON.stringify({
+      type: "session.update",
+      session: { instructions },
+    }));
+  }, []);
+
+  // ── Execute tool via server REST API ────────────────────────────────────────
+
+  const executeToolViaServer = useCallback(async (
+    toolName: string,
+    args: Record<string, unknown>,
+    callId: string,
+  ) => {
+    const dc = dcRef.current;
+    if (!dc || dc.readyState !== "open") return;
+
+    try {
+      const baseUrl = getBaseUrl();
+      const res = await fetch(`${baseUrl}api/realtime/tools`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          session_id: sessionIdRef.current,
+          tool_name: toolName,
+          arguments: args,
+          catalog: catalogRef.current,
+          order: currentOrderRef.current,
+          squareToken: squareTokenRef.current,
+          squareLocationId: squareLocationIdRef.current,
+        }),
+      });
+
+      const data = await res.json();
+      console.log(`[WebRTC] Tool result (${toolName}):`, data.result);
+
+      // Send tool output back to OpenAI via data channel
+      dc.send(JSON.stringify({
+        type: "conversation.item.create",
+        item: {
+          type: "function_call_output",
+          call_id: callId,
+          output: data.result ?? "Tool execution failed",
+        },
+      }));
+      dc.send(JSON.stringify({ type: "response.create" }));
+
+      // Handle order commands locally
+      if (data.command) {
+        commandHandlerRef.current?.([data.command]);
+      }
+    } catch (e: any) {
+      console.error(`[WebRTC] Tool exec error:`, e.message);
+      dc.send(JSON.stringify({
+        type: "conversation.item.create",
+        item: {
+          type: "function_call_output",
+          call_id: callId,
+          output: `Error: ${e.message}`,
+        },
+      }));
+      dc.send(JSON.stringify({ type: "response.create" }));
     }
-    activeSources.current = [];
-    nextPlayTime.current = 0;
   }, []);
 
-  // ── WebSocket event handler ─────────────────────────────────────────────────
+  // ── Data channel event handler ──────────────────────────────────────────────
 
-  const handleWsEvent = useCallback((raw: string) => {
+  const handleDcEvent = useCallback((raw: string) => {
     let event: Record<string, unknown>;
     try { event = JSON.parse(raw); } catch { return; }
 
@@ -228,14 +212,18 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
     switch (event.type) {
       case "session.created":
         setAs("listening");
+        sessionIdRef.current = String((event.session as any)?.id ?? Date.now());
         sendContextUpdate();
         break;
 
+      case "session.updated":
+        // Ack — no action needed
+        break;
+
       case "input_audio_buffer.speech_started":
-        // User is speaking — immediately kill all agent audio and cancel response
         if (agentStateRef.current === "speaking") {
-          ws.current?.send(JSON.stringify({ type: "response.cancel" }));
-          flushPlayback();
+          // Interrupt: cancel current response — WebRTC handles audio stop natively
+          dcRef.current?.send(JSON.stringify({ type: "response.cancel" }));
         }
         setAs("listening");
         break;
@@ -262,173 +250,182 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
         break;
       }
 
-      case "response.audio.delta": {
-        const chunk = String(event.delta ?? "");
-        if (chunk) scheduleWebAudioChunk(chunk);
+      case "response.audio.delta":
+        // Audio is handled natively via WebRTC media track — no manual scheduling.
+        // We just update state to "speaking".
         setAs("speaking");
         break;
-      }
 
       case "response.done":
-        // Audio chunks are still queued in Web Audio scheduler.
-        // Keep "speaking" visual state while audio plays, then go to "listening".
-        // If no active sources, transition immediately.
         if (isRunning.current) {
-          if (activeSources.current.length === 0) {
-            setAs("listening");
-          } else {
-            // The last source's onended will transition us
-            const lastSource = activeSources.current[activeSources.current.length - 1];
-            const prevOnEnded = lastSource.onended;
-            lastSource.onended = (ev) => {
-              if (prevOnEnded && typeof prevOnEnded === "function") (prevOnEnded as (e: Event) => void)(ev!);
-              if (isRunning.current && agentStateRef.current === "speaking") {
-                setAs("listening");
-              }
-            };
-          }
+          setAs("listening");
         }
         break;
 
-      case "x.order_command": {
-        const cmd = event.command as OrderCommand;
-        if (cmd) commandHandlerRef.current?.([cmd]);
+      case "response.function_call_arguments.done": {
+        const toolName = String(event.name ?? "");
+        let args: Record<string, unknown> = {};
+        try { args = JSON.parse(String(event.arguments ?? "{}")); } catch {}
+        const callId = String(event.call_id ?? "");
+        console.log(`[WebRTC] Tool call: ${toolName}(${JSON.stringify(args)})`);
+        executeToolViaServer(toolName, args, callId);
         break;
       }
 
       case "error": {
         const err = (event.error as Record<string, unknown>)?.message ?? event.message ?? "Realtime error";
-        console.error("[Realtime]", err);
+        console.error("[WebRTC]", err);
         setError(String(err));
         setAgentState("error");
         break;
       }
     }
-  }, [addMessage, sendContextUpdate, flushPlayback, scheduleWebAudioChunk]);
+  }, [addMessage, sendContextUpdate, executeToolViaServer]);
 
-  // ── Connect ────────────────────────────────────────────────────────────────
+  // ── Connect via WebRTC ─────────────────────────────────────────────────────
 
   const connect = useCallback(async () => {
     if (isRunning.current) return;
     setError(null);
     setAgentState("connecting");
 
-    try {
-      const ctx = new AudioContext({ sampleRate: 24000 });
-      await ctx.resume();
-      audioCtxRef.current = ctx;
-      nextPlayTime.current = 0;
-    } catch (e: any) {
-      setError("AudioContext failed: " + e?.message);
-      setAgentState("error");
-      return;
-    }
-
     const { voice, speed } = getVoicePrefs();
-    const wsUrl = getWsUrl(voice, speed);
-    console.log("[Realtime] Connecting to", wsUrl);
-    const socket = new WebSocket(wsUrl);
-    ws.current = socket;
+    const baseUrl = getBaseUrl();
 
-    socket.onopen = async () => {
-      console.log("[Realtime] WebSocket open");
-      isRunning.current = true;
-      await startMicStream();
-    };
-
-    socket.onmessage = (e) => handleWsEvent(e.data);
-
-    socket.onerror = () => {
-      setError("Connection failed");
-      setAgentState("error");
-      isRunning.current = false;
-    };
-
-    socket.onclose = () => {
-      isRunning.current = false;
-      stopAudio();
-      setAgentState((prev) => (prev === "error" ? "error" : "disconnected"));
-    };
-  }, [handleWsEvent]);
-
-  // ── Mic capture (AudioWorklet with ScriptProcessor fallback) ───────────────
-
-  const startMicStream = useCallback(async () => {
-    const ctx = audioCtxRef.current;
-    if (!ctx) return;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { sampleRate: 24000, channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      // 1. Get ephemeral token from our server
+      console.log("[WebRTC] Requesting ephemeral token...");
+      const tokenRes = await fetch(`${baseUrl}api/realtime/session`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          voice,
+          speed,
+          catalog: catalogRef.current,
+          order: currentOrderRef.current,
+        }),
       });
-      mediaStreamRef.current = stream;
-      const source = ctx.createMediaStreamSource(stream);
 
-      try {
-        const blob = new Blob([WORKLET_SRC], { type: "application/javascript" });
-        const url = URL.createObjectURL(blob);
-        await ctx.audioWorklet.addModule(url);
-        URL.revokeObjectURL(url);
-
-        const worklet = new AudioWorkletNode(ctx, "pcm-processor");
-        workletNodeRef.current = worklet;
-        worklet.port.onmessage = (e: MessageEvent<ArrayBuffer>) => {
-          if (ws.current?.readyState !== WebSocket.OPEN) return;
-          // Always send mic audio — server-side VAD handles echo cancellation
-          // and interrupt detection. Never mute the mic.
-          const b64 = arrayBufferToBase64(e.data);
-          ws.current.send(JSON.stringify({ type: "input_audio_buffer.append", audio: b64 }));
-        };
-        source.connect(worklet);
-        worklet.connect(ctx.destination);
-        console.log("[Audio] Worklet streaming at 24kHz (~60ms frames)");
-      } catch {
-        // Fallback: ScriptProcessorNode
-        const processor = ctx.createScriptProcessor(2048, 1, 1);
-        processor.onaudioprocess = (e) => {
-          if (ws.current?.readyState !== WebSocket.OPEN) return;
-          // Always send mic audio — server-side VAD handles echo cancellation
-          ws.current.send(JSON.stringify({ type: "input_audio_buffer.append", audio: float32ToPcm16Base64(e.inputBuffer.getChannelData(0)) }));
-        };
-        source.connect(processor);
-        processor.connect(ctx.destination);
-        console.log("[Audio] ScriptProcessor fallback at 24kHz (~85ms frames)");
+      if (!tokenRes.ok) {
+        const err = await tokenRes.json().catch(() => ({ error: "Failed to get session token" }));
+        throw new Error(err.error || "Failed to get session token");
       }
-    } catch (e: any) {
-      setError("Mic access failed: " + (e?.message ?? "unknown"));
-      setAgentState("error");
-    }
-  }, []);
 
-  const stopAudio = useCallback(() => {
-    flushPlayback();
-    if (workletNodeRef.current) {
-      workletNodeRef.current.port.postMessage("stop");
-      workletNodeRef.current.disconnect();
-      workletNodeRef.current = null;
+      const sessionData = await tokenRes.json();
+      const ephemeralKey = sessionData.client_secret?.value;
+      if (!ephemeralKey) throw new Error("No ephemeral key in session response");
+
+      console.log("[WebRTC] Got ephemeral token, creating peer connection...");
+
+      // 2. Create RTCPeerConnection
+      const pc = new RTCPeerConnection();
+      pcRef.current = pc;
+
+      // 3. Set up audio playback — remote audio track goes to an <audio> element
+      const audioEl = document.createElement("audio");
+      audioEl.autoplay = true;
+      audioElRef.current = audioEl;
+
+      pc.ontrack = (e) => {
+        console.log("[WebRTC] Got remote audio track");
+        audioEl.srcObject = e.streams[0];
+      };
+
+      // 4. Add local mic track
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+      stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+
+      // 5. Create data channel for events
+      const dc = pc.createDataChannel("oai-events");
+      dcRef.current = dc;
+
+      dc.onopen = () => {
+        console.log("[WebRTC] Data channel open");
+        isRunning.current = true;
+      };
+
+      dc.onmessage = (e) => handleDcEvent(e.data);
+
+      dc.onclose = () => {
+        console.log("[WebRTC] Data channel closed");
+        if (isRunning.current) {
+          isRunning.current = false;
+          setAgentState((prev) => (prev === "error" ? "error" : "disconnected"));
+        }
+      };
+
+      // 6. Create SDP offer
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+
+      // 7. Send offer to OpenAI, get SDP answer
+      const model = "gpt-4o-mini-realtime-preview-2024-12-17";
+      const sdpRes = await fetch(`https://api.openai.com/v1/realtime?model=${model}`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${ephemeralKey}`,
+          "Content-Type": "application/sdp",
+        },
+        body: offer.sdp,
+      });
+
+      if (!sdpRes.ok) {
+        const errText = await sdpRes.text();
+        throw new Error(`OpenAI SDP exchange failed: ${sdpRes.status} ${errText}`);
+      }
+
+      const answerSdp = await sdpRes.text();
+      await pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
+
+      console.log("[WebRTC] Connection established");
+    } catch (e: any) {
+      console.error("[WebRTC] Connect error:", e.message);
+      setError(e.message);
+      setAgentState("error");
+      // Cleanup on failure
+      pcRef.current?.close();
+      pcRef.current = null;
+      dcRef.current = null;
     }
-    mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
-    mediaStreamRef.current = null;
-    audioCtxRef.current?.close().catch(() => {});
-    audioCtxRef.current = null;
-    nextPlayTime.current = 0;
-  }, [flushPlayback]);
+  }, [handleDcEvent]);
 
   // ── Disconnect ─────────────────────────────────────────────────────────────
 
   const disconnect = useCallback(async () => {
     isRunning.current = false;
     agentStateRef.current = "disconnected";
-    stopAudio();
-    ws.current?.close();
-    ws.current = null;
+
+    // Stop all tracks
+    pcRef.current?.getSenders().forEach((sender) => {
+      sender.track?.stop();
+    });
+
+    dcRef.current?.close();
+    dcRef.current = null;
+
+    pcRef.current?.close();
+    pcRef.current = null;
+
+    if (audioElRef.current) {
+      audioElRef.current.srcObject = null;
+      audioElRef.current = null;
+    }
+
     setAgentState("disconnected");
-  }, [stopAudio]);
+  }, []);
 
   const interrupt = useCallback(() => {
-    flushPlayback();
-    ws.current?.readyState === WebSocket.OPEN &&
-      ws.current.send(JSON.stringify({ type: "response.cancel" }));
-  }, [flushPlayback]);
+    const dc = dcRef.current;
+    if (dc?.readyState === "open") {
+      dc.send(JSON.stringify({ type: "response.cancel" }));
+    }
+  }, []);
 
   const clearConversation = useCallback(() => {
     setConversation([]);

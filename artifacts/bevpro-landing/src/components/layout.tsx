@@ -57,8 +57,15 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <div>
                 <Logo />
                 <p className="text-[13px] text-foreground/30 font-light mt-2 max-w-[260px]">
-                  Voice-powered ordering for bars and venues, built on Square.
+                  Voice-powered ordering for bars and venues.
                 </p>
+                <div className="flex items-center gap-1.5 mt-3 text-foreground/25">
+                  <span className="text-[11px] font-light">Built on</span>
+                  <svg className="h-4 w-4" viewBox="0 0 64 64" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M10 0C4.477 0 0 4.477 0 10v44c0 5.523 4.477 10 10 10h44c5.523 0 10-4.477 10-10V10c0-5.523-4.477-10-10-10H10zm30.5 16h-17C20.462 16 18 18.462 18 21.5v17c0 3.038 2.462 5.5 5.5 5.5h17c3.038 0 5.5-2.462 5.5-5.5v-17c0-3.038-2.462-5.5-5.5-5.5zM38 34a4 4 0 01-4 4H30a4 4 0 01-4-4v-4a4 4 0 014-4h4a4 4 0 014 4v4z" />
+                  </svg>
+                  <span className="text-[11px] font-light">Square</span>
+                </div>
               </div>
               <div className="flex gap-12 text-[13px]">
                 <div className="space-y-2">

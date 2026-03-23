@@ -1,30 +1,33 @@
 /**
- * OpenAI Realtime API relay
- * Client WebSocket ↔ OpenAI Realtime WebSocket (wss://api.openai.com/v1/realtime)
- * - Relays all events bidirectionally
- * - Executes tool calls server-side, returns results to OpenAI + order commands to client
- * - Handles x.context_update custom events from client to keep catalog/order/credentials in session
+ * POS Agent — REST endpoints for WebRTC-based Realtime API
+ *
+ * POST /session  → Mint ephemeral OpenAI token, return tools + instructions
+ * POST /tools    → Execute a tool call server-side, return result + optional order command
+ *
+ * The client connects directly to OpenAI via WebRTC using the ephemeral token.
+ * Tool calls arrive on the data channel, the client POSTs here, then sends the
+ * result back to OpenAI via the data channel.
  */
 
-import { WebSocketServer, WebSocket } from "ws";
-import { Server as HttpServer } from "http";
+import { Router } from "express";
+import {
+  SQUARE_BASE,
+  squareHeaders,
+  findCatalogItem,
+  getInventoryCount,
+  type CatalogItem,
+  type OrderItem,
+  type SessionOrderItem,
+  type OrderCommand,
+} from "../lib/square-helpers";
 
-const REALTIME_URL =
-  "wss://api.openai.com/v1/realtime?model=gpt-4o-mini-realtime-preview-2024-12-17";
+const router = Router();
 
-const SQUARE_BASE = "https://connect.squareup.com/v2";
+const OPENAI_REALTIME_MODEL = "gpt-4o-mini-realtime-preview-2024-12-17";
 
-function squareHeaders(token: string) {
-  return {
-    "Authorization": `Bearer ${token}`,
-    "Content-Type": "application/json",
-    "Square-Version": "2024-12-18",
-  };
-}
+// ── Tool definitions (POS agent — bartender-facing) ───────────────────────────
 
-// ── Tool definitions (Realtime API format) ────────────────────────────────────
-
-const TOOLS = [
+const POS_TOOLS = [
   {
     type: "function",
     name: "add_item",
@@ -95,94 +98,9 @@ const TOOLS = [
       required: ["item_name"],
     },
   },
-  {
-    type: "function",
-    name: "adjust_inventory",
-    description: "Add or remove stock for an item. Use positive quantity to add stock (received delivery), negative to remove (used, damaged).",
-    parameters: {
-      type: "object",
-      properties: {
-        item_name: { type: "string", description: "Name of the item" },
-        quantity: { type: "number", description: "Amount to add (positive) or remove (negative)" },
-        reason: { type: "string", description: "Reason: received, used, damaged, correction, waste", default: "received" },
-      },
-      required: ["item_name", "quantity"],
-    },
-  },
-  {
-    type: "function",
-    name: "set_inventory",
-    description: "Set the absolute stock count for an item (e.g. after a physical count)",
-    parameters: {
-      type: "object",
-      properties: {
-        item_name: { type: "string", description: "Name of the item" },
-        quantity: { type: "number", description: "New absolute stock count" },
-      },
-      required: ["item_name", "quantity"],
-    },
-  },
 ];
 
-// ── Types ─────────────────────────────────────────────────────────────────────
-
-interface CatalogItem {
-  id: string;
-  variationId?: string;
-  name: string;
-  price: number;
-  category?: string;
-}
-
-interface OrderItem {
-  item_id?: string;
-  item_name: string;
-  quantity: number;
-  price: number;
-}
-
-// Server-side order tracking — not dependent on client context_update timing
-interface SessionOrderItem {
-  catalogItemId: string;
-  variationId?: string;
-  name: string;
-  price: number;
-  quantity: number;
-}
-
-interface OrderCommand {
-  action: "add" | "remove" | "clear" | "submit";
-  item_id?: string;
-  item_name?: string;
-  quantity?: number;
-  price?: number;
-}
-
-// ── Square Inventory helpers ──────────────────────────────────────────────────
-
-function findCatalogItem(catalog: CatalogItem[], name: string): CatalogItem | undefined {
-  return catalog.find((c) => c.name.toLowerCase() === name.toLowerCase())
-    ?? catalog.find((c) =>
-      c.name.toLowerCase().includes(name.toLowerCase()) ||
-      name.toLowerCase().includes(c.name.toLowerCase())
-    );
-}
-
-async function getInventoryCount(token: string, locationId: string, variationId: string): Promise<number> {
-  const res = await fetch(`${SQUARE_BASE}/inventory/counts/batch-retrieve`, {
-    method: "POST",
-    headers: squareHeaders(token),
-    body: JSON.stringify({
-      catalog_object_ids: [variationId],
-      location_ids: [locationId],
-    }),
-  });
-  const data = await res.json() as any;
-  const count = data.counts?.find((c: any) => c.catalog_object_id === variationId && c.state === "IN_STOCK");
-  return count ? parseFloat(count.quantity) : 0;
-}
-
-// ── Tool executor (async) ─────────────────────────────────────────────────────
+// ── Tool executor ─────────────────────────────────────────────────────────────
 
 async function executeTool(
   name: string,
@@ -336,96 +254,25 @@ async function executeTool(
       }
     }
 
-    case "adjust_inventory": {
-      const itemName = String(args.item_name ?? "");
-      const quantity = Number(args.quantity ?? 0);
-      const reason = String(args.reason ?? "received");
-      const match = findCatalogItem(catalog, itemName);
-      if (!match) return { result: `"${itemName}" not found in catalog.` };
-      if (!squareToken || !squareLocationId) return { result: "Square not connected — cannot adjust inventory." };
-      const variationId = match.variationId ?? match.id;
-      const isAdding = quantity > 0;
-      try {
-        const res = await fetch(`${SQUARE_BASE}/inventory/changes/batch-create`, {
-          method: "POST",
-          headers: squareHeaders(squareToken),
-          body: JSON.stringify({
-            idempotency_key: `inv-adj-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
-            changes: [{
-              type: "ADJUSTMENT",
-              adjustment: {
-                catalog_object_id: variationId,
-                location_id: squareLocationId,
-                from_state: isAdding ? "NONE" : "IN_STOCK",
-                to_state: isAdding ? "IN_STOCK" : "WASTE",
-                quantity: Math.abs(quantity).toString(),
-                occurred_at: new Date().toISOString(),
-              },
-            }],
-          }),
-        });
-        const data = await res.json() as any;
-        if (!res.ok) return { result: `Failed: ${data.errors?.[0]?.detail ?? "Unknown error"}` };
-        const action = isAdding ? `Added ${quantity}` : `Removed ${Math.abs(quantity)}`;
-        const newQty = await getInventoryCount(squareToken, squareLocationId, variationId);
-        return { result: `${action} ${match.name} (reason: ${reason}). Now ${newQty} in stock.` };
-      } catch (e: any) {
-        return { result: `Failed to adjust inventory: ${e.message}` };
-      }
-    }
-
-    case "set_inventory": {
-      const itemName = String(args.item_name ?? "");
-      const quantity = Number(args.quantity ?? 0);
-      const match = findCatalogItem(catalog, itemName);
-      if (!match) return { result: `"${itemName}" not found in catalog.` };
-      if (!squareToken || !squareLocationId) return { result: "Square not connected — cannot set inventory." };
-      const variationId = match.variationId ?? match.id;
-      try {
-        const res = await fetch(`${SQUARE_BASE}/inventory/changes/batch-create`, {
-          method: "POST",
-          headers: squareHeaders(squareToken),
-          body: JSON.stringify({
-            idempotency_key: `inv-set-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
-            changes: [{
-              type: "PHYSICAL_COUNT",
-              physical_count: {
-                catalog_object_id: variationId,
-                location_id: squareLocationId,
-                quantity: quantity.toString(),
-                state: "IN_STOCK",
-                occurred_at: new Date().toISOString(),
-              },
-            }],
-          }),
-        });
-        const data = await res.json() as any;
-        if (!res.ok) return { result: `Failed: ${data.errors?.[0]?.detail ?? "Unknown error"}` };
-        return { result: `${match.name} inventory set to ${quantity} in Square.` };
-      } catch (e: any) {
-        return { result: `Failed to set inventory: ${e.message}` };
-      }
-    }
-
     default:
       return { result: `Unknown tool: ${name}` };
   }
 }
 
-// ── System prompt ─────────────────────────────────────────────────────────────
+// ── System prompt (bartender's personal assistant) ────────────────────────────
 
 function buildInstructions(catalog: CatalogItem[], order: OrderItem[]): string {
   const catalogStr =
     catalog.length > 0
       ? catalog.map((c) => `  - ${c.name}: $${c.price.toFixed(2)}`).join("\n")
-      : "  (No catalog loaded — ask user to connect Square POS)";
+      : "  (No catalog loaded — ask bartender to connect Square)";
 
   const orderStr =
     order.length > 0
       ? order.map((i) => `  - ${i.quantity}x ${i.item_name} @ $${i.price.toFixed(2)}`).join("\n")
       : "  (empty)";
 
-  return `You are a bartender at an event bar (Square POS). Keep responses short — one or two sentences max.
+  return `You are BevPro, a bartender's voice assistant running on Square POS. You help the bartender ring up orders, check stock, and find menu info — fast and hands-free.
 
 Catalog:
 ${catalogStr}
@@ -433,159 +280,122 @@ ${catalogStr}
 Current order:
 ${orderStr}
 
+Persona:
+- Professional, warm, efficient. You're a co-worker, not a customer-facing bot.
+- Speak like bar staff: short, punchy, no fluff. One or two sentences max.
+- Understand bartender slang: "86 it" = remove/out of stock, "ring it up" / "close it out" = submit, "tab it" = add to order, "what's on the ticket" = get order.
+
 Rules:
-- Sound natural and warm. Short replies. No monologues.
-- Only add items when the customer clearly orders ("I'll have a Fosters", "two Bud Lights").
-- Never submit until they say so ("that's it", "ring it up", "I'm done"). Confirm briefly first.
-- If they're browsing or chatting, just talk — don't push.
-- Menu questions: mention a few highlights, don't list everything.
+- Add items only on clear intent ("two Fosters", "tab a Bud Light").
+- Never submit until they say so ("ring it up", "close it out", "that's it"). Confirm the total first.
+- If browsing or chatting, just talk — don't push items.
+- Menu questions: mention a few options, don't dump the whole list.
 - If something's not on the menu, suggest what's close.
-- Noisy environment — ignore background noise, only respond to direct speech. If unclear, ask.
-- Say prices naturally: "eight fifty" not "$8.50". Never say "dollar sign" or read digits.`;
+- Say prices naturally: "eight fifty" not "$8.50". Never say "dollar sign".
+- Noisy environment — ignore background chatter. Only respond to direct speech. If unclear, ask.`;
 }
 
-// ── Relay ─────────────────────────────────────────────────────────────────────
+// ── POST /session — Mint ephemeral OpenAI token ───────────────────────────────
 
-export function attachRealtimeRelay(server: HttpServer): void {
-  const wss = new WebSocketServer({ server, path: "/api/realtime" });
+router.post("/session", async (req, res) => {
+  const apiKey = process.env.OPENAI_API_KEY ?? process.env.AI_INTEGRATIONS_OPENAI_API_KEY ?? "";
+  if (!apiKey) {
+    res.status(500).json({ error: "OpenAI API key not configured" });
+    return;
+  }
 
-  wss.on("connection", (clientWs, req) => {
-    // Parse voice/speed preferences from query params
-    const rawUrl = req.url ?? "";
-    const qIdx = rawUrl.indexOf("?");
-    const params = new URLSearchParams(qIdx >= 0 ? rawUrl.slice(qIdx + 1) : "");
-    const sessionVoice = params.get("voice") ?? "ash";
-    const sessionSpeed = parseFloat(params.get("speed") ?? "0.9");
+  const { voice = "ash", speed = 0.9, catalog = [], order = [] } = req.body ?? {};
 
-    console.log(`[Realtime] Client connected (voice=${sessionVoice} speed=${sessionSpeed})`);
-    let catalog: CatalogItem[] = [];
-    let order: OrderItem[] = [];
-    let squareToken = "";
-    let squareLocationId = "";
-    // Server-side order tracking — updated immediately when tools fire, no client round-trip
-    const sessionOrder: SessionOrderItem[] = [];
-
-    const apiKey = process.env.OPENAI_API_KEY ?? process.env.AI_INTEGRATIONS_OPENAI_API_KEY ?? "";
-
-    const openaiWs = new WebSocket(REALTIME_URL, {
+  try {
+    const response = await fetch("https://api.openai.com/v1/realtime/sessions", {
+      method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
-        "OpenAI-Beta": "realtime=v1",
+        "Content-Type": "application/json",
       },
+      body: JSON.stringify({
+        model: OPENAI_REALTIME_MODEL,
+        modalities: ["text", "audio"],
+        voice,
+        instructions: buildInstructions(catalog, order),
+        tools: POS_TOOLS,
+        tool_choice: "auto",
+        input_audio_format: "pcm16",
+        output_audio_format: "pcm16",
+        input_audio_transcription: { model: "whisper-1" },
+        turn_detection: {
+          type: "server_vad",
+          threshold: 0.35,
+          prefix_padding_ms: 200,
+          silence_duration_ms: 400,
+          create_response: true,
+        },
+        temperature: 0.6,
+        speed,
+      }),
     });
 
-    openaiWs.on("open", () => {
-      console.log("[Realtime] Connected to OpenAI");
-      openaiWs.send(
-        JSON.stringify({
-          type: "session.update",
-          session: {
-            modalities: ["text", "audio"],
-            voice: sessionVoice,
-            speed: sessionSpeed,
-            input_audio_format: "pcm16",
-            output_audio_format: "pcm16",
-            input_audio_transcription: { model: "whisper-1" },
-            turn_detection: {
-              type: "server_vad",
-              threshold: 0.35,
-              prefix_padding_ms: 200,
-              silence_duration_ms: 400,
-              create_response: true,
-            },
-            tools: TOOLS,
-            tool_choice: "auto",
-            temperature: 0.6,
-            instructions: buildInstructions(catalog, order),
-          },
-        })
-      );
-    });
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error("[POS] Ephemeral token failed:", errText);
+      res.status(response.status).json({ error: "Failed to create session" });
+      return;
+    }
 
-    openaiWs.on("message", async (raw) => {
-      if (clientWs.readyState !== WebSocket.OPEN) return;
-      const msg = raw.toString();
-      let event: Record<string, unknown>;
-      try { event = JSON.parse(msg); } catch { return; }
+    const data = await response.json();
+    res.json(data);
+  } catch (e: any) {
+    console.error("[POS] Session error:", e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
 
-      if (event.type === "response.function_call_arguments.done") {
-        const name = String(event.name ?? "");
-        let args: Record<string, unknown> = {};
-        try { args = JSON.parse(String(event.arguments ?? "{}")); } catch {}
+// ── POST /tools — Execute a tool call ─────────────────────────────────────────
 
-        console.log(`[Realtime] Tool call: ${name}(${JSON.stringify(args)})`);
-        try {
-          const { result, command } = await executeTool(name, args, catalog, order, squareToken, squareLocationId, sessionOrder);
-          console.log(`[Realtime] Tool result: ${result}`);
+const sessionOrders = new Map<string, SessionOrderItem[]>();
 
-          openaiWs.send(
-            JSON.stringify({
-              type: "conversation.item.create",
-              item: {
-                type: "function_call_output",
-                call_id: event.call_id,
-                output: result,
-              },
-            })
-          );
-          openaiWs.send(JSON.stringify({ type: "response.create" }));
+router.post("/tools", async (req, res) => {
+  const {
+    session_id,
+    tool_name,
+    arguments: args = {},
+    catalog = [],
+    order = [],
+    squareToken = "",
+    squareLocationId = "",
+  } = req.body ?? {};
 
-          if (command) {
-            clientWs.send(JSON.stringify({ type: "x.order_command", command }));
-          }
-        } catch (e: any) {
-          console.error(`[Realtime] Tool error: ${e.message}`);
-        }
-      } else {
-        clientWs.send(msg);
-      }
-    });
+  if (!tool_name) {
+    res.status(400).json({ error: "tool_name is required" });
+    return;
+  }
 
-    clientWs.on("message", (raw) => {
-      const msg = raw.toString();
+  const sessionId = String(session_id || "default");
+  if (!sessionOrders.has(sessionId)) {
+    sessionOrders.set(sessionId, []);
+  }
+  const sessionOrder = sessionOrders.get(sessionId)!;
 
-      // Fast-path: audio data is the vast majority of messages.
-      // Relay directly without JSON.parse overhead.
-      if (msg.includes('"input_audio_buffer.append"') && !msg.includes('"x.context_update"')) {
-        if (openaiWs.readyState === WebSocket.OPEN) openaiWs.send(msg);
-        return;
-      }
+  try {
+    const { result, command } = await executeTool(
+      tool_name,
+      args,
+      catalog,
+      order,
+      squareToken,
+      squareLocationId,
+      sessionOrder,
+    );
 
-      let event: Record<string, unknown>;
-      try { event = JSON.parse(msg); } catch { return; }
+    if (sessionOrder.length === 0) {
+      sessionOrders.delete(sessionId);
+    }
 
-      if (event.type === "x.context_update") {
-        if (Array.isArray(event.catalog)) catalog = event.catalog as CatalogItem[];
-        if (Array.isArray(event.order)) order = event.order as OrderItem[];
-        if (typeof event.squareToken === "string") squareToken = event.squareToken;
-        if (typeof event.squareLocationId === "string") squareLocationId = event.squareLocationId;
-        if (openaiWs.readyState === WebSocket.OPEN) {
-          openaiWs.send(
-            JSON.stringify({
-              type: "session.update",
-              session: { instructions: buildInstructions(catalog, order) },
-            })
-          );
-        }
-      } else {
-        if (openaiWs.readyState === WebSocket.OPEN) {
-          openaiWs.send(msg);
-        }
-      }
-    });
+    res.json({ result, command: command ?? null });
+  } catch (e: any) {
+    console.error(`[POS] Tool error (${tool_name}):`, e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
 
-    clientWs.on("close", () => {
-      console.log("[Realtime] Client disconnected");
-      openaiWs.close();
-    });
-    openaiWs.on("close", () => {
-      if (clientWs.readyState === WebSocket.OPEN) clientWs.close();
-    });
-    openaiWs.on("error", (e) => {
-      console.error("[Realtime] OpenAI WS error:", e.message);
-      if (clientWs.readyState === WebSocket.OPEN) clientWs.close();
-    });
-  });
-
-  console.log("[Realtime] Relay attached at /api/realtime");
-}
+export default router;
