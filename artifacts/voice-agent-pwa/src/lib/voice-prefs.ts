@@ -14,16 +14,16 @@ export const VOICES = [
 ];
 
 export const SPEEDS = [
-  { id: 0.9, label: "Slow" },
-  { id: 1.0, label: "Normal" },
-  { id: 1.15, label: "Fast" },
-  { id: 1.3, label: "Fastest" },
+  { id: 0.8, label: "Slow" },
+  { id: 0.9, label: "Normal" },
+  { id: 1.0, label: "Fast" },
+  { id: 1.15, label: "Fastest" },
 ];
 
 const VOICE_KEY = "bevpro_voice";
 const SPEED_KEY = "bevpro_speed";
-const DEFAULT_VOICE = "echo";
-const DEFAULT_SPEED = 1.15;
+const DEFAULT_VOICE = "ash";
+const DEFAULT_SPEED = 0.9;
 const SUPPORTED = new Set(VOICES.map((v) => v.id));
 
 export function getVoicePrefs(): { voice: string; speed: number } {
