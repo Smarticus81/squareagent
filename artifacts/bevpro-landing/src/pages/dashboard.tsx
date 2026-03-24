@@ -521,7 +521,7 @@ export default function Dashboard() {
               {subStatus === "canceled" && "Subscription canceled"}
             </p>
 
-            {auth.subscription?.stripeCustomerId ? (
+            {auth.subscription?.status === "active" ? (
               <Button variant="outline" className="h-10 px-7 text-[13px]" onClick={handleManageSubscription}>
                 <Settings className="w-3.5 h-3.5 mr-2" />
                 Manage billing
