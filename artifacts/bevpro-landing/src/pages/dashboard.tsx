@@ -9,6 +9,10 @@ import {
   Trash2,
   MapPin,
   Loader2,
+  ShoppingCart,
+  Package,
+  Settings,
+  CreditCard,
 } from "lucide-react";
 
 export default function Dashboard() {
@@ -274,14 +278,44 @@ export default function Dashboard() {
     return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
   };
 
+  const plan = auth.subscription?.plan ?? "trial";
+  const subStatus = auth.subscription?.status ?? "trialing";
+  const trialExpired = subStatus === "trialing" && auth.subscription?.trialEndsAt && new Date(auth.subscription.trialEndsAt) < new Date();
+  const canUsePOS = !trialExpired && (plan === "trial" || plan === "pos_only" || plan === "complete") && (subStatus === "trialing" || subStatus === "active");
+  const canUseInventory = !trialExpired && (plan === "trial" || plan === "inventory_only" || plan === "complete") && (subStatus === "trialing" || subStatus === "active");
+
+  const handleManageSubscription = async () => {
+    try {
+      const token = localStorage.getItem("bevpro_token") || "";
+      const res = await fetch("/api/subscriptions/portal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("Failed to open billing portal");
+      const { url } = await res.json();
+      window.location.href = url;
+    } catch (e: any) {
+      alert(e.message || "Failed to open billing portal");
+    }
+  };
+
   return (
     <div className="flex-1 bg-background text-foreground">
       <div className="max-w-3xl w-full mx-auto px-6 py-12 pt-28">
         {/* Header */}
         <div className="mb-14">
-          <h1 className="text-2xl font-display font-medium tracking-tight text-foreground">
-            {auth.user.name.split(" ")[0]}
-          </h1>
+          <div className="flex items-center justify-between">
+            <h1 className="text-2xl font-display font-medium tracking-tight text-foreground">
+              {auth.user.name.split(" ")[0]}
+            </h1>
+            <button
+              onClick={() => setLocation("/account")}
+              className="text-[13px] text-foreground/35 hover:text-foreground transition-colors flex items-center gap-1.5"
+            >
+              <Settings className="w-3.5 h-3.5" />
+              Account
+            </button>
+          </div>
           <p className="text-foreground/40 font-light text-[14px] mt-1">Manage your venue and voice agent</p>
 
           {auth.subscription?.status === "trialing" && (
@@ -390,34 +424,115 @@ export default function Dashboard() {
             )}
           </div>
 
-          {/* Voice Agent */}
-          <div className="border border-foreground/8 p-8">
-            <p className="text-[12px] tracking-[0.15em] uppercase text-foreground/30 mb-2">Voice Agent</p>
+          {/* POS Voice Agent */}
+          <div className={`border p-8 ${canUsePOS ? "border-foreground/8" : "border-foreground/5 opacity-60"}`}>
+            <div className="flex items-start gap-3 mb-2">
+              <ShoppingCart className="w-4 h-4 mt-0.5 text-foreground/30 shrink-0" />
+              <p className="text-[12px] tracking-[0.15em] uppercase text-foreground/30">POS Agent</p>
+            </div>
             <p className="text-[14px] text-foreground/50 font-light mb-8 leading-relaxed max-w-lg">
-              {isSquareConnected
-                ? "Launch the voice interface your bartenders use during service."
-                : "Connect Square first to enable voice ordering."}
+              {!canUsePOS
+                ? (trialExpired ? "Trial expired. Subscribe to use voice ordering." : "Your plan doesn't include POS. Upgrade to enable it.")
+                : isSquareConnected
+                  ? "Bartender-facing voice ordering. Take orders, check stock, and process payments hands-free."
+                  : "Connect Square first to enable voice ordering."}
             </p>
 
             <Button
               className="h-10 px-7 text-[13px] group"
-              disabled={!isSquareConnected}
-              onClick={() => {
+              disabled={!isSquareConnected || !canUsePOS}
+              onClick={async () => {
                 if (!isSquareConnected || !primaryVenue) return;
-                const token = localStorage.getItem("bevpro_token") || "";
-                const url = `${voiceAgentBaseUrl}?venue=${primaryVenue.id}&token=${encodeURIComponent(token)}`;
-                const a = document.createElement("a");
-                a.href = url;
-                a.target = "_blank";
-                a.rel = "noopener noreferrer";
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
+                try {
+                  const token = localStorage.getItem("bevpro_token") || "";
+                  const res = await fetch("/api/auth/exchange/create", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                    body: JSON.stringify({ venueId: primaryVenue.id }),
+                  });
+                  if (!res.ok) throw new Error("Failed to create exchange code");
+                  const { code } = await res.json();
+                  const url = `${voiceAgentBaseUrl}pos?code=${encodeURIComponent(code)}`;
+                  window.open(url, "_blank", "noopener,noreferrer");
+                } catch (e) {
+                  console.error("Failed to launch POS agent:", e);
+                }
               }}
             >
-              Launch Voice Agent
+              {canUsePOS ? "Launch POS Agent" : "Upgrade to unlock"}
               <ExternalLink className="ml-2 w-3.5 h-3.5" />
             </Button>
+          </div>
+
+          {/* Inventory Agent */}
+          <div className={`border p-8 ${canUseInventory ? "border-foreground/8" : "border-foreground/5 opacity-60"}`}>
+            <div className="flex items-start gap-3 mb-2">
+              <Package className="w-4 h-4 mt-0.5 text-foreground/30 shrink-0" />
+              <p className="text-[12px] tracking-[0.15em] uppercase text-foreground/30">Inventory Agent</p>
+            </div>
+            <p className="text-[14px] text-foreground/50 font-light mb-8 leading-relaxed max-w-lg">
+              {!canUseInventory
+                ? (trialExpired ? "Trial expired. Subscribe to manage inventory." : "Your plan doesn't include Inventory. Upgrade to enable it.")
+                : isSquareConnected
+                  ? "Staff inventory management. Check stock levels, adjust counts, and get low-stock alerts by voice."
+                  : "Connect Square first to enable inventory management."}
+            </p>
+
+            <Button
+              className="h-10 px-7 text-[13px] group"
+              disabled={!isSquareConnected || !canUseInventory}
+              onClick={async () => {
+                if (!isSquareConnected || !primaryVenue) return;
+                try {
+                  const token = localStorage.getItem("bevpro_token") || "";
+                  const res = await fetch("/api/auth/exchange/create", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                    body: JSON.stringify({ venueId: primaryVenue.id }),
+                  });
+                  if (!res.ok) throw new Error("Failed to create exchange code");
+                  const { code } = await res.json();
+                  const url = `${voiceAgentBaseUrl}inventory?code=${encodeURIComponent(code)}`;
+                  window.open(url, "_blank", "noopener,noreferrer");
+                } catch (e) {
+                  console.error("Failed to launch Inventory agent:", e);
+                }
+              }}
+            >
+              {canUseInventory ? "Launch Inventory Agent" : "Upgrade to unlock"}
+              <ExternalLink className="ml-2 w-3.5 h-3.5" />
+            </Button>
+          </div>
+
+          {/* Subscription & Billing */}
+          <div className="border border-foreground/8 p-8">
+            <div className="flex items-start gap-3 mb-2">
+              <CreditCard className="w-4 h-4 mt-0.5 text-foreground/30 shrink-0" />
+              <p className="text-[12px] tracking-[0.15em] uppercase text-foreground/30">Subscription</p>
+            </div>
+            <p className="text-[14px] text-foreground/50 font-light mb-4 leading-relaxed">
+              {subStatus === "trialing" && !trialExpired && (
+                <>Free trial &middot; {getTrialDaysLeft()} days remaining</>
+              )}
+              {trialExpired && "Trial expired — subscribe to continue"}
+              {subStatus === "active" && (
+                <>{plan === "complete" ? "Complete" : plan === "pos_only" ? "POS Only" : plan === "inventory_only" ? "Inventory Only" : plan} plan &middot; Active</>
+              )}
+              {subStatus === "canceled" && "Subscription canceled"}
+            </p>
+
+            {auth.subscription?.stripeCustomerId ? (
+              <Button variant="outline" className="h-10 px-7 text-[13px]" onClick={handleManageSubscription}>
+                <Settings className="w-3.5 h-3.5 mr-2" />
+                Manage billing
+              </Button>
+            ) : (
+              <div className="flex gap-2 flex-wrap">
+                <Button className="h-10 px-6 text-[13px]" onClick={() => window.location.href = "/#pricing"}>
+                  View plans
+                </Button>
+              </div>
+            )}
           </div>
 
           {/* iOS App */}

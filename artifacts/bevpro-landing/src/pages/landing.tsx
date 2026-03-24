@@ -26,7 +26,7 @@ function WaveformBars({ count = 32, className = "" }: { count?: number; classNam
       {Array.from({ length: count }).map((_, i) => (
         <motion.div
           key={i}
-          className="w-[3px] rounded-full bg-foreground/[0.08]"
+          className="w-[3px] rounded-full bg-primary/30"
           animate={{
             height: [
               `${12 + Math.random() * 16}px`,
@@ -68,13 +68,13 @@ function BarRailMockup() {
   return (
     <div className="relative w-full max-w-[360px] mx-auto">
       {/* Phone frame */}
-      <div className="relative bg-foreground/[0.03] border border-foreground/[0.08] aspect-[9/16] overflow-hidden">
+      <div className="relative bg-secondary border border-border rounded-2xl aspect-[9/16] overflow-hidden">
         {/* Status bar */}
-        <div className="h-6 bg-foreground/[0.02] flex items-center justify-between px-4">
-          <span className="text-[8px] text-foreground/20">9:41</span>
+        <div className="h-6 bg-background/50 flex items-center justify-between px-4">
+          <span className="text-[8px] text-foreground/40">9:41</span>
           <div className="flex gap-1">
-            <div className="w-3 h-1.5 rounded-sm bg-foreground/10" />
-            <div className="w-3 h-1.5 rounded-sm bg-foreground/10" />
+            <div className="w-3 h-1.5 rounded-sm bg-foreground/20" />
+            <div className="w-3 h-1.5 rounded-sm bg-foreground/20" />
           </div>
         </div>
 
@@ -82,7 +82,7 @@ function BarRailMockup() {
         <div className="flex-1 flex flex-col justify-end px-6 pt-12 pb-4 gap-3">
           <motion.p
             initial={{ opacity: 0 }}
-            whileInView={{ opacity: 0.15 }}
+            whileInView={{ opacity: 0.3 }}
             transition={{ delay: 0.6, duration: 1 }}
             className="text-center text-[11px] text-foreground font-light"
           >
@@ -90,7 +90,7 @@ function BarRailMockup() {
           </motion.p>
           <motion.p
             initial={{ opacity: 0 }}
-            whileInView={{ opacity: 0.5 }}
+            whileInView={{ opacity: 0.7 }}
             transition={{ delay: 1.0, duration: 1 }}
             className="text-center text-[13px] text-foreground font-normal"
           >
@@ -104,7 +104,7 @@ function BarRailMockup() {
             initial={{ scaleX: 0.3, opacity: 0 }}
             whileInView={{ scaleX: 1, opacity: 1 }}
             transition={{ delay: 0.3, duration: 1.2, ease: [0.22, 1, 0.36, 1] }}
-            className="h-[3px] rounded-full bg-gradient-to-r from-transparent via-foreground/30 to-transparent"
+            className="h-[3px] rounded-full bg-gradient-to-r from-transparent via-primary/50 to-transparent"
           />
           <motion.div
             initial={{ opacity: 0 }}
@@ -112,12 +112,12 @@ function BarRailMockup() {
             transition={{ delay: 1.6, duration: 0.6 }}
             className="mt-3 flex items-center justify-between"
           >
-            <span className="text-[9px] tracking-[3px] text-foreground/25 uppercase">listening</span>
+            <span className="text-[9px] tracking-[3px] text-primary/50 uppercase">listening</span>
             <div className="flex gap-[2px]">
               {Array.from({ length: 8 }).map((_, i) => (
                 <motion.div
                   key={i}
-                  className="w-[2px] rounded-full bg-foreground/25"
+                  className="w-[2px] rounded-full bg-primary/40"
                   animate={{ height: [`${3}px`, `${6 + Math.random() * 10}px`, `${3}px`] }}
                   transition={{ duration: 0.8 + Math.random() * 0.6, repeat: Infinity, ease: "easeInOut", delay: i * 0.08 }}
                 />
@@ -147,7 +147,7 @@ export default function Landing() {
         className="relative min-h-[100vh] flex items-center justify-center overflow-hidden"
       >
         {/* Atmospheric gradient layers */}
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_0%,_hsl(var(--foreground)/0.04),_transparent_70%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_0%,_hsl(var(--primary)/0.15),_transparent_70%)]" />
         <div className="absolute bottom-0 left-0 right-0 h-48 bg-gradient-to-t from-background to-transparent" />
 
         {/* Subtle waveform background */}
@@ -165,15 +165,15 @@ export default function Landing() {
             <motion.div
               animate={{ scale: [1, 1.15, 1], opacity: [0.4, 0.7, 0.4] }}
               transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
-              className="w-2 h-2 rounded-full bg-foreground/40"
+              className="w-2 h-2 rounded-full bg-primary/60"
             />
-            <span className="text-[11px] font-medium tracking-[0.35em] uppercase text-foreground/30">
+            <span className="text-[11px] font-medium tracking-[0.35em] uppercase text-primary/70">
               Voice-Powered POS
             </span>
             <motion.div
               animate={{ scale: [1, 1.15, 1], opacity: [0.4, 0.7, 0.4] }}
               transition={{ duration: 3, repeat: Infinity, ease: "easeInOut", delay: 1.5 }}
-              className="w-2 h-2 rounded-full bg-foreground/40"
+              className="w-2 h-2 rounded-full bg-primary/60"
             />
           </motion.div>
 
@@ -183,14 +183,14 @@ export default function Landing() {
           >
             Your Bar,
             <br />
-            <span className="bg-clip-text text-transparent bg-gradient-to-r from-foreground via-foreground/80 to-foreground/50">
+            <span className="bg-clip-text text-transparent bg-gradient-to-r from-foreground via-primary to-primary/60">
               In Sync
             </span>
           </motion.h1>
 
           <motion.p
             initial="hidden" animate="visible" custom={1} variants={fadeUp}
-            className="mt-8 text-lg md:text-xl text-foreground/40 max-w-lg mx-auto font-light leading-relaxed"
+            className="mt-8 text-lg md:text-xl text-foreground/60 max-w-lg mx-auto font-light leading-relaxed"
           >
             A voice agent that works at the speed of your bar.
             Speak the order — it lands in Square&nbsp;instantly.
@@ -206,7 +206,7 @@ export default function Landing() {
                 <ArrowRight className="ml-2 w-4 h-4 group-hover:translate-x-1 transition-transform" />
               </Button>
             </Link>
-            <p className="mt-4 text-[12px] text-foreground/20 font-light">
+            <p className="mt-4 text-[12px] text-foreground/40 font-light">
               14 days free &middot; No credit card
             </p>
           </motion.div>
@@ -214,7 +214,7 @@ export default function Landing() {
       </motion.section>
 
       {/* ── Social proof bar ──────────────────────────────────── */}
-      <section className="py-16 border-y border-foreground/[0.04]">
+      <section className="py-16 border-y border-border">
         <div className="max-w-5xl mx-auto px-6">
           <motion.div
             initial="hidden" whileInView="visible" viewport={{ once: true }}
@@ -231,7 +231,7 @@ export default function Landing() {
                 <div className="text-3xl md:text-4xl font-display font-semibold tracking-tight text-foreground">
                   {stat.suffix === "%" ? "99.9%" : <Counter value={stat.value} suffix={stat.suffix} />}
                 </div>
-                <p className="text-[12px] text-foreground/30 font-light mt-1 tracking-wider uppercase">{stat.label}</p>
+                <p className="text-[12px] text-foreground/50 font-light mt-1 tracking-wider uppercase">{stat.label}</p>
               </motion.div>
             ))}
           </motion.div>
@@ -244,7 +244,7 @@ export default function Landing() {
           <div className="text-center mb-20">
             <motion.p
               initial="hidden" whileInView="visible" viewport={{ once: true }} custom={0} variants={fadeUp}
-              className="text-[11px] font-medium tracking-[0.3em] uppercase text-foreground/25 mb-4"
+              className="text-[11px] font-medium tracking-[0.3em] uppercase text-primary/60 mb-4"
             >
               How it works
             </motion.p>
@@ -256,7 +256,7 @@ export default function Landing() {
             </motion.h2>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-0 md:gap-0">
+          <div className="grid md:grid-cols-3 gap-4">
             {[
               {
                 n: "01",
@@ -267,7 +267,7 @@ export default function Landing() {
                     {Array.from({ length: 16 }).map((_, i) => (
                       <motion.div
                         key={i}
-                        className="w-[3px] rounded-full bg-foreground/15"
+                        className="w-[3px] rounded-full bg-primary/20"
                         animate={{ height: [`${6}px`, `${14 + Math.random() * 30}px`, `${6}px`] }}
                         transition={{ duration: 1.2 + Math.random(), repeat: Infinity, ease: "easeInOut", delay: i * 0.07 }}
                       />
@@ -285,9 +285,9 @@ export default function Landing() {
                       initial={{ width: 0 }}
                       whileInView={{ width: "80%" }}
                       transition={{ delay: 0.5, duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
-                      className="h-[2px] rounded-full bg-foreground/20"
+                      className="h-[2px] rounded-full bg-primary/30"
                     />
-                    <div className="flex items-center gap-3 text-[11px] text-foreground/30">
+                    <div className="flex items-center gap-3 text-[11px] text-foreground/50">
                       <span>4× Foster's</span>
                       <span className="w-0.5 h-0.5 rounded-full bg-foreground/15" />
                       <span>2× Amarula</span>
@@ -306,8 +306,8 @@ export default function Landing() {
                     transition={{ delay: 0.4, duration: 0.6 }}
                     className="mt-4 mb-2 flex items-center justify-center"
                   >
-                    <div className="w-10 h-10 border border-foreground/10 flex items-center justify-center">
-                      <svg className="w-5 h-5 text-foreground/30" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                    <div className="w-10 h-10 border border-border rounded-lg flex items-center justify-center">
+                      <svg className="w-5 h-5 text-primary/60" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
                       </svg>
                     </div>
@@ -319,14 +319,14 @@ export default function Landing() {
                 key={step.n}
                 initial="hidden" whileInView="visible" viewport={{ once: true, margin: "-60px" }}
                 custom={i} variants={fadeUp}
-                className="relative p-8 md:p-10 border border-foreground/[0.04] bg-foreground/[0.01] group hover:bg-foreground/[0.02] transition-colors"
+                className="relative p-8 md:p-10 border border-border rounded-xl bg-card group hover:bg-secondary transition-colors"
               >
                 <div className="flex items-center gap-3 mb-4">
-                  <span className="text-[40px] font-display font-semibold text-foreground/[0.06] leading-none">{step.n}</span>
+                  <span className="text-[40px] font-display font-semibold text-primary/20 leading-none">{step.n}</span>
                 </div>
                 {step.visual}
                 <h3 className="text-[18px] font-display font-medium text-foreground mt-4">{step.title}</h3>
-                <p className="text-[14px] text-foreground/40 font-light mt-2 leading-relaxed">{step.desc}</p>
+                <p className="text-[14px] text-foreground/60 font-light mt-2 leading-relaxed">{step.desc}</p>
               </motion.div>
             ))}
           </div>
@@ -334,12 +334,12 @@ export default function Landing() {
       </section>
 
       {/* ── Features — 3 large blocks ─────────────────────────── */}
-      <section className="py-24 lg:py-36 border-t border-foreground/[0.04]">
+      <section className="py-24 lg:py-36 border-t border-border">
         <div className="max-w-5xl mx-auto px-6">
           <div className="text-center mb-20">
             <motion.p
               initial="hidden" whileInView="visible" viewport={{ once: true }} custom={0} variants={fadeUp}
-              className="text-[11px] font-medium tracking-[0.3em] uppercase text-foreground/25 mb-4"
+              className="text-[11px] font-medium tracking-[0.3em] uppercase text-primary/60 mb-4"
             >
               Why Bevpro
             </motion.p>
@@ -354,23 +354,23 @@ export default function Landing() {
           {/* Feature 1: Fluid Voice */}
           <motion.div
             initial="hidden" whileInView="visible" viewport={{ once: true }} custom={0} variants={fadeUp}
-            className="grid md:grid-cols-2 gap-0 border border-foreground/[0.04] mb-4"
+            className="grid md:grid-cols-2 gap-0 border border-border rounded-xl overflow-hidden mb-4"
           >
             <div className="p-10 md:p-14 flex flex-col justify-center">
               <div className="flex items-center gap-3 mb-5">
-                <div className="w-10 h-10 border border-foreground/[0.08] flex items-center justify-center">
-                  <AudioLines className="w-5 h-5 text-foreground/30" strokeWidth={1.5} />
+                <div className="w-10 h-10 border border-border rounded-lg flex items-center justify-center">
+                  <AudioLines className="w-5 h-5 text-primary/60" strokeWidth={1.5} />
                 </div>
-                <span className="text-[11px] tracking-[0.2em] uppercase text-foreground/25 font-medium">Voice</span>
+                <span className="text-[11px] tracking-[0.2em] uppercase text-foreground/50 font-medium">Voice</span>
               </div>
               <h3 className="text-2xl md:text-3xl font-display font-semibold tracking-tight text-foreground leading-tight">
                 Fluid voice interaction
               </h3>
-              <p className="text-[15px] text-foreground/40 font-light mt-4 leading-relaxed max-w-sm">
+              <p className="text-[15px] text-foreground/60 font-light mt-4 leading-relaxed max-w-sm">
                 No rigid commands. Speak naturally — corrections, additions, bar slang. The agent adapts to your rhythm, not the other way around.
               </p>
             </div>
-            <div className="bg-foreground/[0.02] p-10 flex items-center justify-center min-h-[280px]">
+            <div className="bg-secondary p-10 flex items-center justify-center min-h-[280px]">
               <WaveformBars count={24} className="h-24" />
             </div>
           </motion.div>
@@ -378,14 +378,14 @@ export default function Landing() {
           {/* Feature 2: Square Integration */}
           <motion.div
             initial="hidden" whileInView="visible" viewport={{ once: true }} custom={1} variants={fadeUp}
-            className="grid md:grid-cols-2 gap-0 border border-foreground/[0.04] mb-4"
+            className="grid md:grid-cols-2 gap-0 border border-border rounded-xl overflow-hidden mb-4"
           >
-            <div className="bg-foreground/[0.02] p-10 flex items-center justify-center min-h-[280px] order-2 md:order-1">
+            <div className="bg-secondary p-10 flex items-center justify-center min-h-[280px] order-2 md:order-1">
               <div className="flex flex-col items-center gap-5">
-                <svg className="h-12 w-12 text-foreground/15" viewBox="0 0 64 64" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                <svg className="h-12 w-12 text-foreground/30" viewBox="0 0 64 64" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
                   <path d="M10 0C4.477 0 0 4.477 0 10v44c0 5.523 4.477 10 10 10h44c5.523 0 10-4.477 10-10V10c0-5.523-4.477-10-10-10H10zm30.5 16h-17C20.462 16 18 18.462 18 21.5v17c0 3.038 2.462 5.5 5.5 5.5h17c3.038 0 5.5-2.462 5.5-5.5v-17c0-3.038-2.462-5.5-5.5-5.5zM38 34a4 4 0 01-4 4H30a4 4 0 01-4-4v-4a4 4 0 014-4h4a4 4 0 014 4v4z" />
                 </svg>
-                <div className="flex items-center gap-2 text-[11px] text-foreground/20 tracking-wider uppercase">
+                <div className="flex items-center gap-2 text-[11px] text-foreground/40 tracking-wider uppercase">
                   <div className="w-1.5 h-1.5 rounded-full bg-green-500/60" />
                   <span>Connected</span>
                 </div>
@@ -393,15 +393,15 @@ export default function Landing() {
             </div>
             <div className="p-10 md:p-14 flex flex-col justify-center order-1 md:order-2">
               <div className="flex items-center gap-3 mb-5">
-                <div className="w-10 h-10 border border-foreground/[0.08] flex items-center justify-center">
-                  <Layers className="w-5 h-5 text-foreground/30" strokeWidth={1.5} />
+                <div className="w-10 h-10 border border-border rounded-lg flex items-center justify-center">
+                  <Layers className="w-5 h-5 text-primary/60" strokeWidth={1.5} />
                 </div>
-                <span className="text-[11px] tracking-[0.2em] uppercase text-foreground/25 font-medium">Integration</span>
+                <span className="text-[11px] tracking-[0.2em] uppercase text-foreground/50 font-medium">Integration</span>
               </div>
               <h3 className="text-2xl md:text-3xl font-display font-semibold tracking-tight text-foreground leading-tight">
                 Seamless Square sync
               </h3>
-              <p className="text-[15px] text-foreground/40 font-light mt-4 leading-relaxed max-w-sm">
+              <p className="text-[15px] text-foreground/60 font-light mt-4 leading-relaxed max-w-sm">
                 Real orders, real payments, real inventory counts. Everything flows into your Square dashboard — no middleware, no export.
               </p>
             </div>
@@ -410,40 +410,40 @@ export default function Landing() {
           {/* Feature 3: Dual Agent */}
           <motion.div
             initial="hidden" whileInView="visible" viewport={{ once: true }} custom={2} variants={fadeUp}
-            className="grid md:grid-cols-2 gap-0 border border-foreground/[0.04]"
+            className="grid md:grid-cols-2 gap-0 border border-border rounded-xl overflow-hidden"
           >
             <div className="p-10 md:p-14 flex flex-col justify-center">
               <div className="flex items-center gap-3 mb-5">
-                <div className="w-10 h-10 border border-foreground/[0.08] flex items-center justify-center">
-                  <Volume2 className="w-5 h-5 text-foreground/30" strokeWidth={1.5} />
+                <div className="w-10 h-10 border border-border rounded-lg flex items-center justify-center">
+                  <Volume2 className="w-5 h-5 text-primary/60" strokeWidth={1.5} />
                 </div>
-                <span className="text-[11px] tracking-[0.2em] uppercase text-foreground/25 font-medium">Intelligence</span>
+                <span className="text-[11px] tracking-[0.2em] uppercase text-foreground/50 font-medium">Intelligence</span>
               </div>
               <h3 className="text-2xl md:text-3xl font-display font-semibold tracking-tight text-foreground leading-tight">
                 Dual-agent system
               </h3>
-              <p className="text-[15px] text-foreground/40 font-light mt-4 leading-relaxed max-w-sm">
+              <p className="text-[15px] text-foreground/60 font-light mt-4 leading-relaxed max-w-sm">
                 One agent takes orders. Another manages inventory. Both work through voice, both sync with Square, both learn your catalog.
               </p>
             </div>
-            <div className="bg-foreground/[0.02] p-10 flex items-center justify-center min-h-[280px]">
+            <div className="bg-secondary p-10 flex items-center justify-center min-h-[280px]">
               <div className="flex flex-col items-center gap-6">
                 <div className="flex gap-8">
                   <div className="text-center">
-                    <div className="w-14 h-14 border border-foreground/[0.08] flex items-center justify-center mb-2">
-                      <Mic className="w-6 h-6 text-foreground/20" strokeWidth={1.5} />
+                    <div className="w-14 h-14 border border-border rounded-lg flex items-center justify-center mb-2">
+                      <Mic className="w-6 h-6 text-primary/40" strokeWidth={1.5} />
                     </div>
-                    <span className="text-[10px] text-foreground/20 tracking-wider uppercase">POS</span>
+                    <span className="text-[10px] text-foreground/50 tracking-wider uppercase">POS</span>
                   </div>
                   <div className="text-center">
-                    <div className="w-14 h-14 border border-foreground/[0.08] flex items-center justify-center mb-2">
-                      <Layers className="w-6 h-6 text-foreground/20" strokeWidth={1.5} />
+                    <div className="w-14 h-14 border border-border rounded-lg flex items-center justify-center mb-2">
+                      <Layers className="w-6 h-6 text-primary/40" strokeWidth={1.5} />
                     </div>
-                    <span className="text-[10px] text-foreground/20 tracking-wider uppercase">Inventory</span>
+                    <span className="text-[10px] text-foreground/50 tracking-wider uppercase">Inventory</span>
                   </div>
                 </div>
-                <div className="w-16 h-[1px] bg-foreground/[0.08]" />
-                <span className="text-[10px] text-foreground/15 tracking-wider">One voice. Two agents.</span>
+                <div className="w-16 h-[1px] bg-border" />
+                <span className="text-[10px] text-foreground/40 tracking-wider">One voice. Two agents.</span>
               </div>
             </div>
           </motion.div>
@@ -451,22 +451,22 @@ export default function Landing() {
       </section>
 
       {/* ── Product preview ────────────────────────────────────── */}
-      <section className="py-24 lg:py-36 border-t border-foreground/[0.04]">
+      <section className="py-24 lg:py-36 border-t border-border">
         <div className="max-w-5xl mx-auto px-6">
           <div className="grid md:grid-cols-2 gap-16 items-center">
             <motion.div
               initial="hidden" whileInView="visible" viewport={{ once: true }} custom={0} variants={fadeUp}
             >
-              <p className="text-[11px] font-medium tracking-[0.3em] uppercase text-foreground/25 mb-4">
+              <p className="text-[11px] font-medium tracking-[0.3em] uppercase text-primary/60 mb-4">
                 The Bar Rail
               </p>
               <h2 className="text-3xl md:text-4xl font-display font-semibold tracking-tight text-foreground leading-tight">
                 A UI that stays<br />out of your way
               </h2>
-              <p className="text-[15px] text-foreground/40 font-light mt-5 leading-relaxed">
+              <p className="text-[15px] text-foreground/60 font-light mt-5 leading-relaxed">
                 No dashboards. No complex menus. Just a thin, ambient rail at the bottom of your screen that pulses when listening, shimmers when thinking, and flows when speaking.
               </p>
-              <p className="text-[15px] text-foreground/40 font-light mt-4 leading-relaxed">
+              <p className="text-[15px] text-foreground/60 font-light mt-4 leading-relaxed">
                 It's the UI equivalent of a great bartender's shadow — always there, never in the way.
               </p>
             </motion.div>
@@ -480,7 +480,7 @@ export default function Landing() {
       </section>
 
       {/* ── Testimonials ──────────────────────────────────────── */}
-      <section className="py-24 lg:py-36 border-t border-foreground/[0.04]">
+      <section className="py-24 lg:py-36 border-t border-border">
         <div className="max-w-5xl mx-auto px-6">
           <div className="text-center mb-16">
             <motion.h2
@@ -516,14 +516,14 @@ export default function Landing() {
               <motion.div
                 key={t.name}
                 variants={fadeUp} custom={i}
-                className="p-8 border border-foreground/[0.04] bg-foreground/[0.01]"
+                className="p-8 border border-border rounded-xl bg-card"
               >
-                <p className="text-[14px] text-foreground/50 font-light leading-relaxed italic">
+                <p className="text-[14px] text-foreground/70 font-light leading-relaxed italic">
                   "{t.quote}"
                 </p>
                 <div className="mt-6">
-                  <p className="text-[13px] font-medium text-foreground/70">{t.name}</p>
-                  <p className="text-[12px] text-foreground/25 font-light">{t.venue}</p>
+                  <p className="text-[13px] font-medium text-foreground/80">{t.name}</p>
+                  <p className="text-[12px] text-foreground/50 font-light">{t.venue}</p>
                 </div>
               </motion.div>
             ))}
@@ -532,11 +532,11 @@ export default function Landing() {
       </section>
 
       {/* ── Pricing ───────────────────────────────────────────── */}
-      <section className="py-24 lg:py-36 border-t border-foreground/[0.04]">
-        <div className="max-w-lg mx-auto px-6 text-center">
+      <section className="py-24 lg:py-36 border-t border-border">
+        <div className="max-w-4xl mx-auto px-6 text-center">
           <motion.p
             initial="hidden" whileInView="visible" viewport={{ once: true }} custom={0} variants={fadeUp}
-            className="text-[11px] font-medium tracking-[0.3em] uppercase text-foreground/25 mb-4"
+            className="text-[11px] font-medium tracking-[0.3em] uppercase text-primary/60 mb-4"
           >
             Pricing
           </motion.p>
@@ -549,45 +549,76 @@ export default function Landing() {
 
           <motion.div
             initial="hidden" whileInView="visible" viewport={{ once: true }} custom={2} variants={fadeUp}
-            className="border border-foreground/[0.06] bg-foreground/[0.01] p-10 md:p-12"
+            className="grid md:grid-cols-3 gap-4"
           >
-            <div className="mb-2">
-              <span className="text-6xl font-display font-semibold tracking-tight text-foreground">$49</span>
-              <span className="text-foreground/25 font-light ml-1 text-lg">/mo</span>
+            {/* POS Only */}
+            <div className="border border-border rounded-xl bg-card p-8 md:p-10 flex flex-col">
+              <p className="text-[11px] tracking-[0.2em] uppercase text-foreground/50 font-medium mb-4">POS Agent</p>
+              <div className="mb-2">
+                <span className="text-5xl font-display font-semibold tracking-tight text-foreground">$29</span>
+                <span className="text-foreground/50 font-light ml-1 text-lg">/mo</span>
+              </div>
+              <p className="text-[13px] text-foreground/50 font-light mb-8">per venue</p>
+              <ul className="text-left space-y-3 mb-8 flex-1">
+                {["Unlimited voice orders", "Real-time Square sync", "Wake-word activation", "Any device with a mic"].map((f, i) => (
+                  <li key={i} className="text-[13px] text-foreground/60 font-light flex items-center gap-3">
+                    <span className="w-1.5 h-1.5 rounded-full bg-primary/40 shrink-0" />{f}
+                  </li>
+                ))}
+              </ul>
+              <Link href="/signup">
+                <Button variant="outline" size="lg" className="w-full h-11 text-[14px]">Start free trial</Button>
+              </Link>
             </div>
-            <p className="text-[13px] text-foreground/30 font-light mb-10">per venue &middot; unlimited orders</p>
 
-            <ul className="text-left space-y-4 mb-10 max-w-[280px] mx-auto">
-              {[
-                "Unlimited voice orders",
-                "POS + Inventory agents",
-                "Real-time Square sync",
-                "Wake-word activation",
-                "Any device with a mic",
-                "Priority support",
-              ].map((f, i) => (
-                <li key={i} className="text-[14px] text-foreground/50 font-light flex items-center gap-3">
-                  <span className="w-1 h-1 rounded-full bg-foreground/20 shrink-0" />
-                  {f}
-                </li>
-              ))}
-            </ul>
+            {/* Inventory Only */}
+            <div className="border border-border rounded-xl bg-card p-8 md:p-10 flex flex-col">
+              <p className="text-[11px] tracking-[0.2em] uppercase text-foreground/50 font-medium mb-4">Inventory Agent</p>
+              <div className="mb-2">
+                <span className="text-5xl font-display font-semibold tracking-tight text-foreground">$29</span>
+                <span className="text-foreground/50 font-light ml-1 text-lg">/mo</span>
+              </div>
+              <p className="text-[13px] text-foreground/50 font-light mb-8">per venue</p>
+              <ul className="text-left space-y-3 mb-8 flex-1">
+                {["Voice stock checks", "Inventory adjustments", "Low-stock alerts", "Delivery receiving"].map((f, i) => (
+                  <li key={i} className="text-[13px] text-foreground/60 font-light flex items-center gap-3">
+                    <span className="w-1.5 h-1.5 rounded-full bg-primary/40 shrink-0" />{f}
+                  </li>
+                ))}
+              </ul>
+              <Link href="/signup">
+                <Button variant="outline" size="lg" className="w-full h-11 text-[14px]">Start free trial</Button>
+              </Link>
+            </div>
 
-            <Link href="/signup">
-              <Button size="lg" className="w-full h-12 text-[15px]">
-                Start 14-day free trial
-              </Button>
-            </Link>
-            <p className="text-[12px] text-foreground/20 mt-3 font-light">
-              No credit card required
-            </p>
+            {/* Complete */}
+            <div className="border-2 border-primary/30 rounded-xl bg-card p-8 md:p-10 flex flex-col relative shadow-lg shadow-primary/10">
+              <span className="absolute -top-3 left-1/2 -translate-x-1/2 text-[10px] tracking-[0.15em] uppercase bg-primary text-primary-foreground px-3 py-1 rounded-full font-medium">Best value</span>
+              <p className="text-[11px] tracking-[0.2em] uppercase text-foreground/50 font-medium mb-4">Complete</p>
+              <div className="mb-2">
+                <span className="text-5xl font-display font-semibold tracking-tight text-foreground">$49</span>
+                <span className="text-foreground/50 font-light ml-1 text-lg">/mo</span>
+              </div>
+              <p className="text-[13px] text-foreground/50 font-light mb-8">per venue &middot; save $9/mo</p>
+              <ul className="text-left space-y-3 mb-8 flex-1">
+                {["Everything in POS Agent", "Everything in Inventory", "Priority support", "Early access to new features"].map((f, i) => (
+                  <li key={i} className="text-[13px] text-foreground/60 font-light flex items-center gap-3">
+                    <span className="w-1.5 h-1.5 rounded-full bg-primary/40 shrink-0" />{f}
+                  </li>
+                ))}
+              </ul>
+              <Link href="/signup">
+                <Button size="lg" className="w-full h-11 text-[14px]">Start free trial</Button>
+              </Link>
+            </div>
           </motion.div>
+          <p className="text-[12px] text-foreground/40 mt-4 font-light">14-day free trial &middot; No credit card required</p>
         </div>
       </section>
 
       {/* ── Final CTA ─────────────────────────────────────────── */}
-      <section className="py-28 lg:py-40 border-t border-foreground/[0.04] relative overflow-hidden">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_60%_40%_at_50%_100%,_hsl(var(--foreground)/0.03),_transparent_70%)]" />
+      <section className="py-28 lg:py-40 border-t border-border relative overflow-hidden">
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_60%_40%_at_50%_100%,_hsl(var(--primary)/0.1),_transparent_70%)]" />
         <div className="max-w-2xl mx-auto px-6 text-center relative z-10">
           <motion.h2
             initial="hidden" whileInView="visible" viewport={{ once: true }} custom={0} variants={fadeUp}
@@ -597,7 +628,7 @@ export default function Landing() {
           </motion.h2>
           <motion.p
             initial="hidden" whileInView="visible" viewport={{ once: true }} custom={1} variants={fadeUp}
-            className="text-foreground/35 font-light mb-10 max-w-md mx-auto text-lg"
+            className="text-foreground/60 font-light mb-10 max-w-md mx-auto text-lg"
           >
             Set up in under two minutes. Connect Square, speak your first order, and&nbsp;go.
           </motion.p>

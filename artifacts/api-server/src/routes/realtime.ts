@@ -10,6 +10,9 @@
  */
 
 import { Router } from "express";
+import { db, venuesTable } from "@workspace/db";
+import { eq, and } from "drizzle-orm";
+import { requireAuth, requirePlan } from "./auth";
 import {
   SQUARE_BASE,
   squareHeaders,
@@ -22,6 +25,16 @@ import {
 } from "../lib/square-helpers";
 
 const router = Router();
+
+/** Look up Square credentials from DB for the authenticated user's venue. */
+async function lookupVenueCredentials(userId: number, venueId: number) {
+  const [venue] = await db
+    .select()
+    .from(venuesTable)
+    .where(and(eq(venuesTable.id, venueId), eq(venuesTable.userId, userId)));
+  if (!venue) return null;
+  return { squareToken: venue.squareAccessToken ?? "", squareLocationId: venue.squareLocationId ?? "" };
+}
 
 const OPENAI_REALTIME_MODEL = "gpt-4o-mini-realtime-preview-2024-12-17";
 
@@ -297,14 +310,25 @@ Rules:
 
 // ── POST /session — Mint ephemeral OpenAI token ───────────────────────────────
 
-router.post("/session", async (req, res) => {
+router.post("/session", requireAuth as any, requirePlan("pos") as any, async (req: any, res: any) => {
   const apiKey = process.env.OPENAI_API_KEY ?? process.env.AI_INTEGRATIONS_OPENAI_API_KEY ?? "";
   if (!apiKey) {
     res.status(500).json({ error: "OpenAI API key not configured" });
     return;
   }
 
-  const { voice = "ash", speed = 0.9, catalog = [], order = [] } = req.body ?? {};
+  const { voice = "ash", speed = 0.9, catalog = [], order = [], venueId } = req.body ?? {};
+
+  // Look up credentials server-side if venueId provided
+  let squareToken = "";
+  let squareLocationId = "";
+  if (venueId) {
+    const creds = await lookupVenueCredentials(req.user.id, Number(venueId));
+    if (creds) {
+      squareToken = creds.squareToken;
+      squareLocationId = creds.squareLocationId;
+    }
+  }
 
   try {
     const response = await fetch("https://api.openai.com/v1/realtime/sessions", {
@@ -354,20 +378,30 @@ router.post("/session", async (req, res) => {
 
 const sessionOrders = new Map<string, SessionOrderItem[]>();
 
-router.post("/tools", async (req, res) => {
+router.post("/tools", requireAuth as any, requirePlan("pos") as any, async (req: any, res: any) => {
   const {
     session_id,
     tool_name,
     arguments: args = {},
     catalog = [],
     order = [],
-    squareToken = "",
-    squareLocationId = "",
+    venueId,
   } = req.body ?? {};
 
   if (!tool_name) {
     res.status(400).json({ error: "tool_name is required" });
     return;
+  }
+
+  // Server-side credential lookup
+  let squareToken = "";
+  let squareLocationId = "";
+  if (venueId) {
+    const creds = await lookupVenueCredentials(req.user.id, Number(venueId));
+    if (creds) {
+      squareToken = creds.squareToken;
+      squareLocationId = creds.squareLocationId;
+    }
   }
 
   const sessionId = String(session_id || "default");

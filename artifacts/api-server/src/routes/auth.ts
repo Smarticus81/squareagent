@@ -15,8 +15,16 @@ import { eq } from "drizzle-orm";
 
 const router = Router();
 
-const JWT_SECRET = process.env.JWT_SECRET ?? "bevpro-dev-secret-change-in-production";
+const DEFAULT_SECRET = "bevpro-dev-secret-change-in-production";
+export const JWT_SECRET = process.env.JWT_SECRET ?? DEFAULT_SECRET;
 const SESSION_DAYS = 30;
+
+/** Fail hard if running in production with the default secret */
+export function assertJwtSecret(): void {
+  if (JWT_SECRET === DEFAULT_SECRET && process.env.NODE_ENV === "production") {
+    throw new Error("FATAL: JWT_SECRET must be set in production. Server refusing to start.");
+  }
+}
 
 function ensureAuthStore(res: Response): boolean {
   if (db) return true;
@@ -63,12 +71,45 @@ export async function requireAuth(req: Request, res: Response, next: Function): 
     const [user] = await db.select().from(usersTable).where(eq(usersTable.id, payload.sub));
     if (!user) { res.status(401).json({ error: "User not found" }); return; }
 
+    // Attach subscription for downstream plan checks
+    const [subscription] = await db.select().from(subscriptionsTable).where(eq(subscriptionsTable.userId, user.id));
     (req as any).user = user;
+    (req as any).subscription = subscription ?? null;
     next();
   } catch (e: any) {
     console.error("[Auth] Session lookup error:", e.message);
     res.status(503).json({ error: "Auth service unavailable" });
   }
+}
+
+/** Middleware: require an active subscription (trial or paid) that covers the given agent. */
+export function requirePlan(...allowedAgents: ("pos" | "inventory")[]) {
+  return (req: Request, res: Response, next: Function): void => {
+    const sub = (req as any).subscription;
+    if (!sub) { res.status(403).json({ error: "No active subscription" }); return; }
+
+    // Check trial expiry
+    if (sub.status === "trialing") {
+      if (sub.trialEndsAt && new Date(sub.trialEndsAt) < new Date()) {
+        res.status(403).json({ error: "Trial expired. Please subscribe to continue." }); return;
+      }
+      // Trial grants access to both agents
+      next(); return;
+    }
+
+    // Active paid subscriptions
+    if (sub.status !== "active") {
+      res.status(403).json({ error: "Subscription inactive. Please update your payment." }); return;
+    }
+
+    // Plan-based gating
+    const plan = sub.plan as string;
+    if (plan === "complete") { next(); return; }
+    if (plan === "pos_only" && allowedAgents.includes("pos")) { next(); return; }
+    if (plan === "inventory_only" && allowedAgents.includes("inventory")) { next(); return; }
+
+    res.status(403).json({ error: "Your plan does not include this agent. Please upgrade." });
+  };
 }
 
 // POST /api/auth/signup
@@ -179,6 +220,101 @@ router.post("/logout", requireAuth as any, async (req: Request, res: Response): 
   } catch (e: any) {
     console.error("[Auth] Logout error:", e.message);
     res.status(503).json({ error: "Auth service unavailable" });
+  }
+});
+
+// ── Exchange codes: Replace long-lived JWT in URL with one-time short-lived codes ──
+
+const exchangeCodes = new Map<string, { token: string; venueId: string; expiresAt: number }>();
+
+// Cleanup stale codes every 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [code, entry] of exchangeCodes) {
+    if (entry.expiresAt < now) exchangeCodes.delete(code);
+  }
+}, 5 * 60_000);
+
+/** POST /api/auth/exchange/create — Authenticated. Returns a one-time code (valid 60s). */
+router.post("/exchange/create", requireAuth as any, async (req: Request, res: Response): Promise<void> => {
+  const token = extractToken(req)!;
+  const { venueId } = req.body ?? {};
+  if (!venueId) { res.status(400).json({ error: "venueId is required" }); return; }
+
+  const code = crypto.randomBytes(32).toString("hex");
+  exchangeCodes.set(code, { token, venueId: String(venueId), expiresAt: Date.now() + 60_000 });
+  res.json({ code });
+});
+
+/** POST /api/auth/exchange/redeem — Public. Exchanges a code for token + venueId. */
+router.post("/exchange/redeem", async (req: Request, res: Response): Promise<void> => {
+  const { code } = req.body ?? {};
+  if (!code) { res.status(400).json({ error: "code is required" }); return; }
+
+  const entry = exchangeCodes.get(code);
+  if (!entry || entry.expiresAt < Date.now()) {
+    exchangeCodes.delete(code);
+    res.status(400).json({ error: "Invalid or expired code" });
+    return;
+  }
+
+  exchangeCodes.delete(code); // One-time use
+  res.json({ token: entry.token, venueId: entry.venueId });
+});
+
+// ── Account management ────────────────────────────────────────────────────────
+
+/** PATCH /api/auth/profile — Update name/email */
+router.patch("/profile", requireAuth as any, async (req: Request, res: Response): Promise<void> => {
+  if (!ensureAuthStore(res)) return;
+  const user = (req as any).user;
+  const { name, email } = req.body ?? {};
+
+  const updates: Record<string, unknown> = {};
+  if (name && typeof name === "string") updates.name = name.trim();
+  if (email && typeof email === "string") {
+    const normalised = email.toLowerCase().trim();
+    if (normalised !== user.email) {
+      const [existing] = await db.select().from(usersTable).where(eq(usersTable.email, normalised));
+      if (existing) { res.status(409).json({ error: "Email already in use" }); return; }
+      updates.email = normalised;
+    }
+  }
+
+  if (Object.keys(updates).length === 0) { res.status(400).json({ error: "Nothing to update" }); return; }
+
+  try {
+    const [updated] = await db.update(usersTable).set(updates).where(eq(usersTable.id, user.id)).returning();
+    res.json({ user: { id: updated.id, email: updated.email, name: updated.name } });
+  } catch (e: any) {
+    console.error("[Auth] Profile update error:", e.message);
+    res.status(500).json({ error: "Failed to update profile" });
+  }
+});
+
+/** POST /api/auth/change-password */
+router.post("/change-password", requireAuth as any, async (req: Request, res: Response): Promise<void> => {
+  if (!ensureAuthStore(res)) return;
+  const user = (req as any).user;
+  const { currentPassword, newPassword } = req.body ?? {};
+
+  if (!currentPassword || !newPassword) {
+    res.status(400).json({ error: "currentPassword and newPassword are required" }); return;
+  }
+  if (newPassword.length < 8) {
+    res.status(400).json({ error: "New password must be at least 8 characters" }); return;
+  }
+
+  try {
+    const valid = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!valid) { res.status(403).json({ error: "Current password is incorrect" }); return; }
+
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+    await db.update(usersTable).set({ passwordHash }).where(eq(usersTable.id, user.id));
+    res.json({ ok: true });
+  } catch (e: any) {
+    console.error("[Auth] Password change error:", e.message);
+    res.status(500).json({ error: "Failed to change password" });
   }
 });
 

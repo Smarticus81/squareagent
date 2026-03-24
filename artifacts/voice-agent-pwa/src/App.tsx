@@ -5,10 +5,17 @@ import { useOrder } from "@/contexts/OrderContext";
 import { useSquare } from "@/contexts/SquareContext";
 import { OrderPanel } from "@/components/OrderPanel";
 import { useWakeWord, isWakeWordSupported } from "@/hooks/useWakeWord";
-import { soundWake, soundItemAdd, soundSubmit, soundError, soundSleep } from "@/lib/sounds";
+import { soundWake, soundChime, soundItemAdd, soundSubmit, soundError, soundSleep } from "@/lib/sounds";
 
 /* ── App modes ─────────────────────────────────────────────────── */
 type AppMode = "idle" | "wake_word" | "command" | "shutdown";
+
+/** Derive agent mode from the current URL path */
+function getAgentModeFromPath(): AgentMode {
+  const path = window.location.pathname.replace(/\/+$/, "").toLowerCase();
+  if (path.endsWith("/inventory")) return "inventory";
+  return "pos";
+}
 
 /* ── Rail state CSS class ────────────────────────────────────── */
 function railClass(state: AgentState, mode: AppMode, wakeWordActive: boolean): string {
@@ -62,9 +69,9 @@ function RailWaveform({ active }: { active: boolean }) {
 /* ── Main App ─────────────────────────────────────────────────── */
 export default function App() {
   const {
-    agentState, agentMode, isConnected, conversation, partialTranscript, error,
+    agentState, agentMode, setAgentMode, isConnected, conversation, partialTranscript, error,
     connect, disconnect, setToolHandler, interrupt,
-    setCatalog, setCurrentOrder, setSquareCredentials,
+    setCatalog, setCurrentOrder, setSquareCredentials, setAuthParams,
   } = useVoiceAgent();
 
   const {
@@ -80,6 +87,12 @@ export default function App() {
   const [micPermissionGranted, setMicPermissionGranted] = useState(false);
   const modeRef = useRef<AppMode>("idle");
   const prevItemCountRef = useRef(0);
+
+  // Set agent mode from URL path on mount
+  useEffect(() => {
+    const urlMode = getAgentModeFromPath();
+    if (urlMode !== agentMode) setAgentMode(urlMode);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { modeRef.current = mode; }, [mode]);
 
@@ -115,6 +128,14 @@ export default function App() {
     if (accessToken && locationId) setSquareCredentials(accessToken, locationId);
   }, [accessToken, locationId, setSquareCredentials]);
 
+  // Pass venueId + auth JWT to voice agent for server-side credential lookup
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const venueId = params.get("venue") || localStorage.getItem("bevpro_venue_id") || "";
+    const authToken = params.get("token") || localStorage.getItem("bevpro_token") || "";
+    if (venueId && authToken) setAuthParams(venueId, authToken);
+  }, [setAuthParams]);
+
   // Push current order to voice agent
   useEffect(() => {
     setCurrentOrder(
@@ -124,8 +145,14 @@ export default function App() {
     );
   }, [currentOrder, setCurrentOrder]);
 
-  // Handle voice order commands
+  // Handle voice order commands — only process in POS mode
+  const agentModeRef = useRef(agentMode);
+  useEffect(() => { agentModeRef.current = agentMode; }, [agentMode]);
+
   const handleCmds = useCallback((cmds: OrderCommand[]) => {
+    // Inventory mode does not process order commands
+    if (agentModeRef.current === "inventory") return;
+
     for (const cmd of cmds) {
       switch (cmd.action) {
         case "add": {
@@ -169,6 +196,7 @@ export default function App() {
   const onWakeWordDetected = useCallback(() => {
     console.log("[App] Wake word detected → entering command mode");
     soundWake();
+    setTimeout(() => soundChime(), 280);
     setMode("command");
     connect();
   }, [connect]);

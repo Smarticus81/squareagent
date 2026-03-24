@@ -13,7 +13,12 @@ if (!hasDatabaseConfig) {
 }
 
 export const pool = hasDatabaseConfig
-  ? new Pool({ connectionString: process.env.DATABASE_URL })
+  ? new Pool({
+      connectionString: process.env.DATABASE_URL,
+      max: 20,
+      idleTimeoutMillis: 30_000,
+      connectionTimeoutMillis: 5_000,
+    })
   : (null as any);
 export const db = pool ? drizzle(pool, { schema }) : (null as any);
 

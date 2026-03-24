@@ -1,8 +1,12 @@
 import { createServer } from "http";
 import app from "./app";
 import { pool } from "@workspace/db";
+import { assertJwtSecret } from "./routes/auth";
 
 async function main() {
+  // Fail immediately if JWT_SECRET is not set in production
+  assertJwtSecret();
+
   const rawPort = process.env["PORT"];
 
   if (!rawPort) {
@@ -31,6 +35,30 @@ async function main() {
   server.listen(port, () => {
     console.log(`Server listening on port ${port}`);
   });
+
+  // ── Graceful shutdown ─────────────────────────────────────────────
+  const shutdown = (signal: string) => {
+    console.log(`\n${signal} received — shutting down gracefully…`);
+    server.close(() => {
+      console.log("HTTP server closed.");
+      if (pool) {
+        pool.end().then(() => {
+          console.log("DB pool drained.");
+          process.exit(0);
+        });
+      } else {
+        process.exit(0);
+      }
+    });
+    // Force exit after 10s if draining stalls
+    setTimeout(() => {
+      console.error("Graceful shutdown timed out — forcing exit.");
+      process.exit(1);
+    }, 10_000).unref();
+  };
+
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT", () => shutdown("SIGINT"));
 }
 
 main().catch((error: any) => {

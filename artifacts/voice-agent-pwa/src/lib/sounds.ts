@@ -36,6 +36,13 @@ export function soundWake() {
   setTimeout(() => playTone(260, 0.14, "sine", 0.08), 100);
 }
 
+/** Bright ascending chime — wake word acknowledged, connecting */
+export function soundChime() {
+  playTone(660, 0.08, "sine", 0.09);
+  setTimeout(() => playTone(880, 0.08, "sine", 0.09), 70);
+  setTimeout(() => playTone(1320, 0.12, "sine", 0.07), 140);
+}
+
 /** Quick bright clink — item added to order */
 export function soundItemAdd() {
   playTone(880, 0.06, "sine", 0.08);

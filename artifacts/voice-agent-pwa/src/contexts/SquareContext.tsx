@@ -30,13 +30,6 @@ interface SquareContextType {
   loadCatalog: (overrideToken?: string, overrideLocationId?: string) => Promise<number>;
   fetchLocations: (token: string) => Promise<SquareLocation[]>;
   searchCatalog: (query: string) => SquareCatalogItem[];
-  /** Non-null when OAuth redirect returned with multiple locations to pick from */
-  pendingOAuthToken: string | null;
-  pendingLocations: SquareLocation[];
-  /** Call after user picks a location from the pending OAuth flow */
-  completePendingOAuth: (locId: string) => void;
-  /** Start a redirect-based OAuth flow (for standalone PWA) */
-  startOAuthRedirect: () => void;
 }
 
 const SquareContext = createContext<SquareContextType | null>(null);
@@ -46,9 +39,27 @@ const LOC_KEY = "square_location_id";
 
 function getWebLaunchParams(): { venueId: string; authToken: string } | null {
   const params = new URLSearchParams(window.location.search);
+  // Support both exchange code (new) and direct token (legacy/dev)
   const venueId = params.get("venue");
   const authToken = params.get("token");
-  return venueId && authToken ? { venueId, authToken } : null;
+  if (venueId && authToken) return { venueId, authToken };
+  return null;
+}
+
+/** Redeem a one-time exchange code to get token + venueId. */
+async function redeemExchangeCode(code: string): Promise<{ venueId: string; authToken: string } | null> {
+  try {
+    const res = await fetch(`${getBaseUrl()}api/auth/exchange/redeem`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.token && data.venueId ? { venueId: data.venueId, authToken: data.token } : null;
+  } catch {
+    return null;
+  }
 }
 
 export function SquareProvider({ children }: { children: ReactNode }) {
@@ -59,66 +70,31 @@ export function SquareProvider({ children }: { children: ReactNode }) {
   const [isLoadingCatalog, setIsLoadingCatalog] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [credentialsReady, setCredentialsReady] = useState(false);
-  const [pendingOAuthToken, setPendingOAuthToken] = useState<string | null>(null);
-  const [pendingLocations, setPendingLocations] = useState<SquareLocation[]>([]);
 
-  // Load credentials once on mount
+  // Load credentials once on mount:
+  // 1. If launched with ?code=EXCHANGE_CODE, redeem it first
+  // 2. If launched with ?venue=ID&token=JWT (legacy/dev), use directly
+  // 3. Otherwise fall back to localStorage
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      // Check for OAuth redirect return (oauth_ts param)
-      const urlParams = new URLSearchParams(window.location.search);
-      const oauthTs = urlParams.get("oauth_ts");
-      const oauthError = urlParams.get("oauth_error");
+      const params = new URLSearchParams(window.location.search);
+      const exchangeCode = params.get("code");
 
-      if (oauthTs || oauthError) {
-        // Clean URL params
-        const url = new URL(window.location.href);
-        url.searchParams.delete("oauth_ts");
-        url.searchParams.delete("oauth_error");
-        window.history.replaceState({}, "", url.pathname + url.search);
-      }
+      let launch: { venueId: string; authToken: string } | null = null;
 
-      if (oauthError) {
-        console.error("Square OAuth error:", oauthError);
-      }
-
-      if (oauthTs) {
-        try {
-          const tokenRes = await fetch(`${getBaseUrl()}api/square/oauth/token?ts=${encodeURIComponent(oauthTs)}`);
-          const tokenData = await tokenRes.json();
-          if (tokenRes.ok && tokenData.token) {
-            // Fetch locations to determine if we need a picker
-            const locRes = await fetch(`${getBaseUrl()}api/square/locations`, {
-              headers: { "x-square-token": tokenData.token },
-            });
-            const locData = await locRes.json();
-            const locs: SquareLocation[] = (locData.locations || []).map((l: any) => ({
-              id: l.id, name: l.name,
-              address: [l.address?.address_line_1, l.address?.locality, l.address?.administrative_district_level_1].filter(Boolean).join(", "),
-            }));
-
-            if (!cancelled) {
-              if (locs.length === 1) {
-                // Auto-select the single location
-                setAccessToken(tokenData.token);
-                setLocationId(locs[0].id);
-                localStorage.setItem(TOKEN_KEY, tokenData.token);
-                localStorage.setItem(LOC_KEY, locs[0].id);
-              } else if (locs.length > 1) {
-                // Multiple locations — show picker
-                setPendingOAuthToken(tokenData.token);
-                setPendingLocations(locs);
-              }
-            }
-          }
-        } catch (e) {
-          console.warn("Failed to claim OAuth token", e);
+      if (exchangeCode) {
+        launch = await redeemExchangeCode(exchangeCode);
+        // Clean the code from URL to prevent re-use attempts
+        if (launch) {
+          const url = new URL(window.location.href);
+          url.searchParams.delete("code");
+          window.history.replaceState({}, "", url.toString());
         }
       }
 
-      // Standard credential loading
-      const launch = getWebLaunchParams();
+      if (!launch) launch = getWebLaunchParams();
+
       if (launch) {
         try {
           const res = await fetch(`${getBaseUrl()}api/venues/${launch.venueId}/credentials`, {
@@ -131,6 +107,9 @@ export function SquareProvider({ children }: { children: ReactNode }) {
               setLocationId(data.locationId);
               localStorage.setItem(TOKEN_KEY, data.accessToken);
               localStorage.setItem(LOC_KEY, data.locationId);
+              // Store auth params for voice agent session auth
+              localStorage.setItem("bevpro_venue_id", launch.venueId);
+              localStorage.setItem("bevpro_token", launch.authToken);
               setCredentialsReady(true);
               return;
             }
@@ -225,24 +204,11 @@ export function SquareProvider({ children }: { children: ReactNode }) {
 
   const isConfigured = !!(accessToken && locationId);
 
-  function completePendingOAuth(locId: string) {
-    if (!pendingOAuthToken) return;
-    setCredentials(pendingOAuthToken, locId);
-    setPendingOAuthToken(null);
-    setPendingLocations([]);
-  }
-
-  function startOAuthRedirect() {
-    // Use redirect mode — works in standalone PWA and regular browser
-    window.location.href = `${getBaseUrl()}api/square/oauth/authorize?mode=redirect&return_url=/agent/`;
-  }
-
   return (
     <SquareContext.Provider value={{
       accessToken, locationId, locations, catalogItems, isConfigured,
       isLoadingCatalog, catalogError, setCredentials, clearCredentials,
       loadCatalog, fetchLocations, searchCatalog,
-      pendingOAuthToken, pendingLocations, completePendingOAuth, startOAuthRedirect,
     }}>
       {children}
     </SquareContext.Provider>

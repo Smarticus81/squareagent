@@ -45,6 +45,7 @@ interface VoiceAgentContextType {
   setCatalog: (items: unknown[]) => void;
   setCurrentOrder: (order: unknown[]) => void;
   setSquareCredentials: (token: string, locationId: string) => void;
+  setAuthParams: (venueId: string, authToken: string) => void;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -71,6 +72,8 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
   const currentOrderRef = useRef<unknown[]>([]);
   const squareTokenRef = useRef("");
   const squareLocationIdRef = useRef("");
+  const venueIdRef = useRef("");
+  const authTokenRef = useRef("");
   const isRunning = useRef(false);
   const agentStateRef = useRef<AgentState>("disconnected");
   const agentModeRef = useRef<AgentMode>("pos");
@@ -103,27 +106,54 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
     squareLocationIdRef.current = locationId;
   }, []);
 
+  /** Store venueId + auth JWT so realtime calls go through server-side credential lookup. */
+  const setAuthParams = useCallback((venueId: string, authToken: string) => {
+    venueIdRef.current = venueId;
+    authTokenRef.current = authToken;
+  }, []);
+
   // ── Send context update to OpenAI via data channel ──────────────────────────
 
   const sendContextUpdate = useCallback(() => {
     const dc = dcRef.current;
     if (!dc || dc.readyState !== "open") return;
 
-    // Build updated instructions inline (same structure as server)
-    const catalog = catalogRef.current as Array<{ name: string; price: number }>;
-    const order = currentOrderRef.current as Array<{ quantity: number; item_name: string; price: number }>;
+    const catalog = catalogRef.current as Array<{ name: string; price: number; category?: string }>;
+    const mode = agentModeRef.current;
 
     const catalogStr =
       catalog.length > 0
-        ? catalog.map((c) => `  - ${c.name}: $${c.price.toFixed(2)}`).join("\n")
-        : "  (No catalog loaded — ask bartender to connect Square)";
+        ? catalog.map((c) => `  - ${c.name}: $${c.price.toFixed(2)}${c.category ? ` (${c.category})` : ""}`).join("\n")
+        : "  (No catalog loaded — connect Square first)";
 
-    const orderStr =
-      order.length > 0
-        ? order.map((i) => `  - ${i.quantity}x ${i.item_name} @ $${i.price.toFixed(2)}`).join("\n")
-        : "  (empty)";
+    let instructions: string;
 
-    const instructions = `You are BevPro, a bartender's voice assistant running on Square POS. You help the bartender ring up orders, check stock, and find menu info — fast and hands-free.
+    if (mode === "inventory") {
+      instructions = `You are BevPro Inventory, a voice assistant for managing bar and venue inventory on Square. You help staff count stock, receive deliveries, flag low items, and keep inventory accurate.
+
+Catalog:
+${catalogStr}
+
+Persona:
+- Professional, efficient, detail-oriented. You're an inventory specialist.
+- Short, precise responses. Read back numbers clearly.
+- Understand bar inventory terms: "we got a case of" = add 24, "86'd" = out of stock, "count" = check levels.
+
+Rules:
+- Always confirm quantities before making changes: "Adjusting Bud Light up 24, that right?"
+- For bulk operations, summarize what you'll do before executing.
+- Low stock alerts: proactively mention if an item drops below 5 units after an adjustment.
+- Say numbers clearly: "twenty-four" not "24".
+- You do NOT take orders or process payments. If asked to add items to an order or submit an order, explain that this is the inventory agent and suggest using the POS agent instead.
+- Noisy environment — only respond to direct speech. If unclear, ask.`;
+    } else {
+      const order = currentOrderRef.current as Array<{ quantity: number; item_name: string; price: number }>;
+      const orderStr =
+        order.length > 0
+          ? order.map((i) => `  - ${i.quantity}x ${i.item_name} @ $${i.price.toFixed(2)}`).join("\n")
+          : "  (empty)";
+
+      instructions = `You are BevPro, a bartender's voice assistant running on Square POS. You help the bartender ring up orders, check stock, and find menu info — fast and hands-free.
 
 Catalog:
 ${catalogStr}
@@ -143,7 +173,9 @@ Rules:
 - Menu questions: mention a few options, don't dump the whole list.
 - If something's not on the menu, suggest what's close.
 - Say prices naturally: "eight fifty" not "$8.50". Never say "dollar sign".
+- You do NOT manage inventory. If asked to adjust stock or count inventory, explain that this is the POS agent and suggest using the inventory agent instead.
 - Noisy environment — ignore background chatter. Only respond to direct speech. If unclear, ask.`;
+    }
 
     dc.send(JSON.stringify({
       type: "session.update",
@@ -164,17 +196,19 @@ Rules:
     try {
       const baseUrl = getBaseUrl();
       const toolPath = agentModeRef.current === "inventory" ? "api/realtime-inventory/tools" : "api/realtime/tools";
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (authTokenRef.current) headers["Authorization"] = `Bearer ${authTokenRef.current}`;
+
       const res = await fetch(`${baseUrl}${toolPath}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({
           session_id: sessionIdRef.current,
           tool_name: toolName,
           arguments: args,
           catalog: catalogRef.current,
           order: currentOrderRef.current,
-          squareToken: squareTokenRef.current,
-          squareLocationId: squareLocationIdRef.current,
+          venueId: venueIdRef.current || undefined,
         }),
       });
 
@@ -305,14 +339,18 @@ Rules:
       // 1. Get ephemeral token from our server
       const sessionPath = agentModeRef.current === "inventory" ? "api/realtime-inventory/session" : "api/realtime/session";
       console.log(`[WebRTC] Requesting ephemeral token (${agentModeRef.current} mode)...`);
+      const sessionHeaders: Record<string, string> = { "Content-Type": "application/json" };
+      if (authTokenRef.current) sessionHeaders["Authorization"] = `Bearer ${authTokenRef.current}`;
+
       const tokenRes = await fetch(`${baseUrl}${sessionPath}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: sessionHeaders,
         body: JSON.stringify({
           voice,
           speed,
           catalog: catalogRef.current,
           order: currentOrderRef.current,
+          venueId: venueIdRef.current || undefined,
         }),
       });
 
@@ -449,7 +487,7 @@ Rules:
     <VoiceAgentContext.Provider value={{
       agentState, agentMode, setAgentMode, isConnected, conversation, partialTranscript, error,
       connect, disconnect, clearConversation, setToolHandler, interrupt,
-      setCatalog, setCurrentOrder, setSquareCredentials,
+      setCatalog, setCurrentOrder, setSquareCredentials, setAuthParams,
     }}>
       {children}
     </VoiceAgentContext.Provider>

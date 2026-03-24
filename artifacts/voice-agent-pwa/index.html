@@ -1,10 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <meta name="theme-color" content="#08081C" media="(prefers-color-scheme: dark)" />
-  <meta name="theme-color" content="#EEF0FF" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#FAFAF8" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="BevPro" />
@@ -17,6 +16,13 @@
 </head>
 <body>
   <div id="root"></div>
+  <script>
+    // Apply persisted theme before React renders to avoid flash
+    (function() {
+      var t = localStorage.getItem("bevpro_theme");
+      if (t === "dark" || t === "light") document.documentElement.setAttribute("data-theme", t);
+    })();
+  </script>
   <script type="module" src="/src/main.tsx"></script>
 </body>
 </html>

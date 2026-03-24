@@ -2,7 +2,7 @@
 
 :root {
   --font: 'Inter', -apple-system, sans-serif;
-  color-scheme: light dark;
+  color-scheme: light;
 }
 
 html, body, #root {
@@ -66,8 +66,7 @@ html, body, #root {
 }
 
 /* ── Dark theme ──────────────────────────────────────────────── */
-@media (prefers-color-scheme: dark) {
-  :root {
+html[data-theme="dark"] {
     --bg: #0A0A0A;
     --bg-grad: linear-gradient(180deg, #0A0A0A 0%, #0E0E0E 100%);
     --logo-text: rgba(240,240,240,0.52);
@@ -114,7 +113,6 @@ html, body, #root {
     --rail-thinking: rgba(200,180,240,0.40);
     --rail-error: rgba(252,100,100,0.55);
     --rail-bar: rgba(240,240,240,0.10);
-  }
 }
 
 /* ── Layout ──────────────────────────────────────────────────── */
@@ -342,7 +340,7 @@ html, body, #root {
   background: rgba(15,15,15,0.03); border-radius: 0; padding: 14px 16px;
   border: 1px solid var(--divider);
 }
-@media (prefers-color-scheme: dark) { .order-card { background: rgba(240,240,240,0.03); } }
+html[data-theme="dark"] .order-card { background: rgba(240,240,240,0.03); }
 .order-card-info { flex: 1; margin-right: 12px; }
 .order-card-name { font-weight: 600; font-size: 15px; color: var(--row-name); margin-bottom: 3px; }
 .order-card-unit { font-weight: 400; font-size: 12px; color: var(--row-qty); }
@@ -355,7 +353,7 @@ html, body, #root {
   display: flex; align-items: center; justify-content: center; cursor: pointer;
   color: var(--row-name); font-family: var(--font);
 }
-@media (prefers-color-scheme: dark) { .ctrl-btn { background: rgba(240,240,240,0.04); } }
+html[data-theme="dark"] .ctrl-btn { background: rgba(240,240,240,0.04); }
 .ctrl-qty { font-weight: 600; font-size: 14px; color: var(--row-name); min-width: 22px; text-align: center; }
 .ctrl-remove { background: rgba(220,50,50,0.08); border-color: rgba(220,50,50,0.2); color: var(--clear-icon); }
 

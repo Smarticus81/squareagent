@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { X, Menu, Trash2, Loader, Link, ChevronRight } from "lucide-react";
+import { X, Menu, Trash2, Loader, Link, ChevronRight, Sun, Moon } from "lucide-react";
 import { useOrder, type OrderLineItem } from "@/contexts/OrderContext";
 import { useSquare } from "@/contexts/SquareContext";
 import { useVoiceAgent, type AgentMode } from "@/contexts/VoiceAgentContext";
@@ -21,19 +21,38 @@ export function OrderPanel({ open, tab, onTabChange, onClose }: Props) {
       <div className="panel-backdrop" onClick={onClose} />
       <div className="panel">
         <div className="panel-handle" />
-        <nav className="panel-nav">
-          {(["order", "menu", "settings"] as const).map((t) => (
-            <button key={t} className={`panel-nav-btn${tab === t ? " active" : ""}`} onClick={() => onTabChange(t)}>
-              {t}
-            </button>
-          ))}
-          <button className="panel-nav-close" onClick={onClose}><X size={16} /></button>
-        </nav>
-        <div className="panel-body">
-          {tab === "order" && <OrderTab onTabChange={onTabChange} />}
-          {tab === "menu" && <MenuTab onTabChange={onTabChange} />}
-          {tab === "settings" && <SettingsTab />}
-        </div>
+        <PanelContent tab={tab} onTabChange={onTabChange} onClose={onClose} />
+      </div>
+    </>
+  );
+}
+
+/* ── Panel nav + body, gated by agent mode ────────────────── */
+function PanelContent({ tab, onTabChange, onClose }: { tab: "order" | "menu" | "settings"; onTabChange: (t: "order" | "menu" | "settings") => void; onClose: () => void }) {
+  const { agentMode } = useVoiceAgent();
+  const isInventory = agentMode === "inventory";
+  // Inventory mode: only show menu + settings (no order tab)
+  const tabs = isInventory
+    ? (["menu", "settings"] as const)
+    : (["order", "menu", "settings"] as const);
+
+  // If current tab is "order" in inventory mode, redirect to menu
+  const activeTab = (isInventory && tab === "order") ? "menu" : tab;
+
+  return (
+    <>
+      <nav className="panel-nav">
+        {tabs.map((t) => (
+          <button key={t} className={`panel-nav-btn${activeTab === t ? " active" : ""}`} onClick={() => onTabChange(t)}>
+            {t}
+          </button>
+        ))}
+        <button className="panel-nav-close" onClick={onClose}><X size={16} /></button>
+      </nav>
+      <div className="panel-body">
+        {activeTab === "order" && !isInventory && <OrderTab onTabChange={onTabChange} />}
+        {activeTab === "menu" && <MenuTab onTabChange={onTabChange} />}
+        {activeTab === "settings" && <SettingsTab />}
       </div>
     </>
   );
@@ -169,9 +188,17 @@ function MenuTab({ onTabChange }: { onTabChange: (t: "order" | "menu" | "setting
 
 /* ── Settings Tab ──────────────────────────────────────────── */
 function SettingsTab() {
-  const { isConfigured, clearCredentials, pendingOAuthToken, pendingLocations, completePendingOAuth, startOAuthRedirect } = useSquare();
+  const { isConfigured, clearCredentials } = useSquare();
   const { agentMode, setAgentMode, isConnected } = useVoiceAgent();
   const [prefs, setPrefs] = useState(getVoicePrefs);
+  const [theme, setTheme] = useState(() => document.documentElement.getAttribute("data-theme") || "light");
+
+  const toggleTheme = () => {
+    const next = theme === "dark" ? "light" : "dark";
+    document.documentElement.setAttribute("data-theme", next);
+    localStorage.setItem("bevpro_theme", next);
+    setTheme(next);
+  };
 
   const updateVoice = (v: string) => {
     setVoicePref(v);
@@ -184,45 +211,23 @@ function SettingsTab() {
 
   return (
     <div style={{ padding: 16 }}>
-      {/* Square Connection — interactive */}
+      {/* Square Connection — status display */}
       <div
         className="settings-row"
-        style={{ cursor: "pointer" }}
+        style={{ cursor: isConfigured ? "pointer" : "default" }}
         onClick={() => {
           if (isConfigured) {
             if (confirm("Disconnect Square? Voice ordering will stop working.")) clearCredentials();
-          } else if (!pendingOAuthToken) {
-            startOAuthRedirect();
           }
         }}
       >
         <Link size={16} />
         <span className="settings-txt">
-          {pendingOAuthToken ? "Select Location" : isConfigured ? "Square Connected" : "Connect Square"}
+          {isConfigured ? "Square Connected" : "Not Connected — launch from dashboard"}
         </span>
-        <span className="status-dot" style={{ background: isConfigured ? "#22C55E" : pendingOAuthToken ? "#F59E0B" : "#EF4444" }} />
-        <ChevronRight size={15} />
+        <span className="status-dot" style={{ background: isConfigured ? "#22C55E" : "#EF4444" }} />
+        {isConfigured && <ChevronRight size={15} />}
       </div>
-
-      {/* Location picker after OAuth redirect return */}
-      {pendingOAuthToken && pendingLocations.length > 0 && (
-        <div style={{ marginTop: 8 }}>
-          <div className="rec-label" style={{ marginBottom: 4 }}>PICK A LOCATION</div>
-          {pendingLocations.map((loc) => (
-            <div
-              key={loc.id}
-              className="cat-row"
-              onClick={() => completePendingOAuth(loc.id)}
-            >
-              <div style={{ flex: 1 }}>
-                <div className="cat-name">{loc.name}</div>
-                {loc.address && <div className="cat-cat">{loc.address}</div>}
-              </div>
-              <ChevronRight size={15} />
-            </div>
-          ))}
-        </div>
-      )}
 
       <div className="divider" style={{ marginTop: 16, marginBottom: 12 }} />
       <div className="rec-label">AGENT MODE</div>
@@ -232,7 +237,13 @@ function SettingsTab() {
             key={m.id}
             className={`speed-chip${agentMode === m.id ? " active" : ""}`}
             disabled={isConnected}
-            onClick={() => setAgentMode(m.id)}
+            onClick={() => {
+              setAgentMode(m.id);
+              // Navigate to the correct URL path for this mode
+              const base = window.location.pathname.replace(/\/(pos|inventory)\/?$/i, "").replace(/\/+$/, "");
+              const newPath = `${base}/${m.id}${window.location.search}`;
+              window.history.replaceState({}, "", newPath);
+            }}
           >
             {m.label}
           </button>
@@ -267,6 +278,25 @@ function SettingsTab() {
             {s.label}
           </button>
         ))}
+      </div>
+
+      <div className="divider" style={{ marginTop: 16, marginBottom: 12 }} />
+      <div className="rec-label">APPEARANCE</div>
+      <div className="speed-row">
+        <button
+          className={`speed-chip${theme === "light" ? " active" : ""}`}
+          onClick={toggleTheme}
+          style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
+        >
+          <Sun size={13} /> Light
+        </button>
+        <button
+          className={`speed-chip${theme === "dark" ? " active" : ""}`}
+          onClick={toggleTheme}
+          style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
+        >
+          <Moon size={13} /> Dark
+        </button>
       </div>
     </div>
   );

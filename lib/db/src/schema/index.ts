@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -30,7 +30,9 @@ export const venuesTable = pgTable("venues", {
   connectedAt: timestamp("connected_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
+}, (table) => [
+  index("venues_user_id_idx").on(table.userId),
+]);
 
 export const insertVenueSchema = createInsertSchema(venuesTable).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertVenue = z.infer<typeof insertVenueSchema>;
@@ -50,7 +52,9 @@ export const subscriptionsTable = pgTable("subscriptions", {
   cancelAt: timestamp("cancel_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
+}, (table) => [
+  index("subscriptions_user_id_idx").on(table.userId),
+]);
 
 export const insertSubscriptionSchema = createInsertSchema(subscriptionsTable).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertSubscription = z.infer<typeof insertSubscriptionSchema>;
@@ -63,6 +67,8 @@ export const sessionsTable = pgTable("sessions", {
   userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
   expiresAt: timestamp("expires_at").notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (table) => [
+  index("sessions_user_id_idx").on(table.userId),
+]);
 
 export type Session = typeof sessionsTable.$inferSelect;

@@ -37,46 +37,79 @@
   --font-sans: 'Inter', sans-serif;
   --font-display: 'Outfit', sans-serif;
 
-  --radius-sm: 0;
-  --radius-md: 0;
-  --radius-lg: 0;
-  --radius-xl: 0;
-  --radius-2xl: 0;
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --radius-2xl: 1.5rem;
 }
 
 :root {
-  /* Ultra-minimalist Light Theme */
-  --background: 60 14% 98%; /* #FAFAF8 */
+  /* Light Theme inspired by Linear.app */
+  --background: 0 0% 100%; /* #FFFFFF */
   --foreground: 0 0% 6%; /* #0F0F0F */
   
-  --card: 0 0% 100%; /* #FFFFFF */
+  --card: 0 0% 100%;
   --card-foreground: 0 0% 6%;
-  --card-border: 0 0% 90%;
+  --card-border: 0 0% 89.8%; /* #E5E5E5 */
   
   --popover: 0 0% 100%;
   --popover-foreground: 0 0% 6%;
-  --popover-border: 0 0% 90%;
+  --popover-border: 0 0% 89.8%;
   
-  --primary: 0 0% 9%; /* Near-black */
+  --primary: 242 74% 65%; /* #5E56E6 */
   --primary-foreground: 0 0% 100%;
   
-  --secondary: 0 0% 96%;
-  --secondary-foreground: 0 0% 6%;
+  --secondary: 0 0% 96.1%; /* #F5F5F5 */
+  --secondary-foreground: 0 0% 38.8%; /* #636363 */
   
-  --muted: 0 0% 96%;
+  --muted: 0 0% 96.1%;
   --muted-foreground: 0 0% 40%;
   
-  --accent: 0 0% 9%;
+  --accent: 242 74% 65%;
   --accent-foreground: 0 0% 100%;
   
   --destructive: 0 84% 60%;
   --destructive-foreground: 0 0% 100%;
 
-  --border: 0 0% 90%;
-  --input: 0 0% 90%;
-  --ring: 0 0% 9%;
+  --border: 0 0% 89.8%;
+  --input: 0 0% 89.8%;
+  --ring: 242 74% 65%;
   
-  --radius: 0rem;
+  --radius: 0.5rem;
+}
+
+.dark {
+  /* Dark Theme inspired by Linear.app */
+  --background: 0 0% 5.1%; /* #0D0D0D */
+  --foreground: 0 0% 98%; /* #FAFAFA */
+
+  --card: 0 0% 5.1%;
+  --card-foreground: 0 0% 98%;
+  --card-border: 0 0% 20%; /* #333333 */
+
+  --popover: 0 0% 5.1%;
+  --popover-foreground: 0 0% 98%;
+  --popover-border: 0 0% 20%;
+
+  --primary: 242 74% 65%;
+  --primary-foreground: 0 0% 100%;
+
+  --secondary: 0 0% 14.9%; /* #262626 */
+  --secondary-foreground: 0 0% 62.7%; /* #A0A0A0 */
+
+  --muted: 0 0% 14.9%;
+  --muted-foreground: 0 0% 62.7%;
+
+  --accent: 242 74% 65%;
+  --accent-foreground: 0 0% 100%;
+
+  --destructive: 0 63% 31%;
+  --destructive-foreground: 0 0% 98%;
+
+  --border: 0 0% 20%;
+  --input: 0 0% 20%;
+  --ring: 242 74% 65%;
 }
 
 @layer base {
