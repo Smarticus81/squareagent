@@ -79,7 +79,7 @@ export default function App() {
     addItem, removeItem, updateQuantity, clearOrder, markVoiceOrderSubmitted, submitOrder, isSubmitting,
   } = useOrder();
 
-  const { isConfigured, catalogItems, isLoadingCatalog, catalogError, accessToken, locationId } = useSquare();
+  const { isConfigured, catalogItems, isLoadingCatalog, catalogError, accessToken, locationId, venueId: sqVenueId, authToken: sqAuthToken } = useSquare();
 
   const [panelOpen, setPanelOpen] = useState(false);
   const [panelTab, setPanelTab] = useState<"order" | "menu" | "settings">("order");
@@ -130,11 +130,10 @@ export default function App() {
 
   // Pass venueId + auth JWT to voice agent for server-side credential lookup
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const venueId = params.get("venue") || localStorage.getItem("bevpro_venue_id") || "";
-    const authToken = params.get("token") || localStorage.getItem("bevpro_token") || "";
+    const venueId = sqVenueId || "";
+    const authToken = sqAuthToken || "";
     if (venueId && authToken) setAuthParams(venueId, authToken);
-  }, [setAuthParams]);
+  }, [sqVenueId, sqAuthToken, setAuthParams]);
 
   // Push current order to voice agent
   useEffect(() => {

@@ -330,6 +330,13 @@ Rules:
   const connect = useCallback(async () => {
     if (isRunning.current) return;
     setError(null);
+
+    if (!authTokenRef.current) {
+      setError("Not authenticated. Please launch from the BevPro dashboard.");
+      setAgentState("error");
+      return;
+    }
+
     setAgentState("connecting");
 
     const { voice, speed } = getVoicePrefs();

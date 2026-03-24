@@ -20,6 +20,8 @@ export interface SquareLocation {
 interface SquareContextType {
   accessToken: string | null;
   locationId: string | null;
+  venueId: string | null;
+  authToken: string | null;
   locations: SquareLocation[];
   catalogItems: SquareCatalogItem[];
   isConfigured: boolean;
@@ -70,6 +72,8 @@ export function SquareProvider({ children }: { children: ReactNode }) {
   const [isLoadingCatalog, setIsLoadingCatalog] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [credentialsReady, setCredentialsReady] = useState(false);
+  const [venueId, setVenueId] = useState<string | null>(localStorage.getItem("bevpro_venue_id"));
+  const [authToken, setAuthToken] = useState<string | null>(localStorage.getItem("bevpro_token"));
 
   // Load credentials once on mount:
   // 1. If launched with ?code=EXCHANGE_CODE, redeem it first
@@ -85,12 +89,10 @@ export function SquareProvider({ children }: { children: ReactNode }) {
 
       if (exchangeCode) {
         launch = await redeemExchangeCode(exchangeCode);
-        // Clean the code from URL to prevent re-use attempts
-        if (launch) {
-          const url = new URL(window.location.href);
-          url.searchParams.delete("code");
-          window.history.replaceState({}, "", url.toString());
-        }
+        // Always clean the code from URL to prevent stale re-use attempts
+        const url = new URL(window.location.href);
+        url.searchParams.delete("code");
+        window.history.replaceState({}, "", url.toString());
       }
 
       if (!launch) launch = getWebLaunchParams();
@@ -110,6 +112,8 @@ export function SquareProvider({ children }: { children: ReactNode }) {
               // Store auth params for voice agent session auth
               localStorage.setItem("bevpro_venue_id", launch.venueId);
               localStorage.setItem("bevpro_token", launch.authToken);
+              setVenueId(launch.venueId);
+              setAuthToken(launch.authToken);
               setCredentialsReady(true);
               return;
             }
@@ -206,7 +210,7 @@ export function SquareProvider({ children }: { children: ReactNode }) {
 
   return (
     <SquareContext.Provider value={{
-      accessToken, locationId, locations, catalogItems, isConfigured,
+      accessToken, locationId, venueId, authToken, locations, catalogItems, isConfigured,
       isLoadingCatalog, catalogError, setCredentials, clearCredentials,
       loadCatalog, fetchLocations, searchCatalog,
     }}>

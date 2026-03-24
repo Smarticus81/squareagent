@@ -242,7 +242,7 @@ router.post("/exchange/create", requireAuth as any, async (req: Request, res: Re
   if (!venueId) { res.status(400).json({ error: "venueId is required" }); return; }
 
   const code = crypto.randomBytes(32).toString("hex");
-  exchangeCodes.set(code, { token, venueId: String(venueId), expiresAt: Date.now() + 60_000 });
+  exchangeCodes.set(code, { token, venueId: String(venueId), expiresAt: Date.now() + 5 * 60_000 });
   res.json({ code });
 });
 
