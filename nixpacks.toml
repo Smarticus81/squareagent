@@ -2,4 +2,14 @@
 NIXPACKS_NODE_VERSION = "22"
 
 [phases.setup]
+nixPkgs = ["...", "openssl"]
 aptPkgs = ["ffmpeg"]
+
+[phases.install]
+cmds = ["npm i -g pnpm@9", "pnpm install --frozen-lockfile"]
+
+[phases.build]
+cmds = ["pnpm run build:railway"]
+
+[start]
+cmd = "pnpm run start:railway"
