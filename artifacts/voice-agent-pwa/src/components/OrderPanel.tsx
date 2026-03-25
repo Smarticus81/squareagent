@@ -217,92 +217,93 @@ function SettingsTab() {
   };
 
   return (
-    <div style={{ padding: 16 }}>
-      {/* Square Connection — status + reconnect */}
+    <div style={{ padding: "12px 16px" }}>
+      {/* Square Connection — compact status row */}
       <div
         className="settings-row"
-        style={{ cursor: isConfigured ? "pointer" : "default" }}
+        style={{ cursor: isConfigured ? "pointer" : "default", borderBottom: "none", padding: "10px 10px" }}
         onClick={() => {
           if (isConfigured) {
             if (confirm("Disconnect Square? Voice ordering will stop working.")) clearCredentials();
           }
         }}
       >
-        <Link size={16} />
-        <span className="settings-txt">
+        <Link size={15} />
+        <span className="settings-txt" style={{ fontSize: 14 }}>
           {isConfigured ? "Square Connected" : "Square Not Connected"}
         </span>
         <span className="status-dot" style={{ background: isConfigured ? "#22C55E" : "#EF4444" }} />
-        {isConfigured && <ChevronRight size={15} />}
+        {isConfigured && <ChevronRight size={14} />}
       </div>
 
-      {/* Reconnect controls when not connected */}
+      {/* Reconnect controls — compact */}
       {!isConfigured && (
-        <div style={{ padding: "8px 0 0", display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ padding: "4px 10px 8px", display: "flex", flexDirection: "column", gap: 6 }}>
           {connectionError && (
-            <div className="error-text" style={{ fontSize: 12 }}>{connectionError}</div>
+            <div className="error-text" style={{ fontSize: 12, textAlign: "left", padding: 0 }}>{connectionError}</div>
           )}
-          <button
-            className="reconnect-btn"
-            disabled={isReconnecting}
-            onClick={async (e) => {
-              e.stopPropagation();
-              const ok = await refreshCredentials();
-              if (ok) {
-                // Credentials refreshed — catalog will auto-load
-              }
-            }}
-            style={{
-              display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-              padding: "10px 16px", borderRadius: 6,
-              background: "hsl(var(--primary) / 0.15)", color: "hsl(var(--primary))",
-              border: "1px solid hsl(var(--primary) / 0.25)",
-              fontSize: 13, fontWeight: 500, cursor: isReconnecting ? "wait" : "pointer",
-              opacity: isReconnecting ? 0.6 : 1,
-            }}
-          >
-            {isReconnecting ? <Loader size={14} className="spin" /> : <RefreshCw size={14} />}
-            {isReconnecting ? "Reconnecting..." : "Reconnect Square"}
-          </button>
-          <a
-            href={getDashboardUrl()}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{
-              display: "block", textAlign: "center",
-              fontSize: 12, color: "hsl(var(--foreground) / 0.4)",
-              textDecoration: "underline", padding: "4px 0",
-            }}
-          >
-            Open dashboard to manage connection
-          </a>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <button
+              disabled={isReconnecting}
+              onClick={async (e) => {
+                e.stopPropagation();
+                await refreshCredentials();
+              }}
+              style={{
+                display: "flex", alignItems: "center", gap: 5,
+                padding: "8px 14px", borderRadius: 20,
+                background: "rgba(34,197,94,0.12)", color: "#22C55E",
+                border: "1px solid rgba(34,197,94,0.25)",
+                fontSize: 13, fontWeight: 500, cursor: isReconnecting ? "wait" : "pointer",
+                opacity: isReconnecting ? 0.6 : 1, fontFamily: "var(--font)",
+              }}
+            >
+              {isReconnecting ? <Loader size={13} className="spin" /> : <RefreshCw size={13} />}
+              {isReconnecting ? "Reconnecting…" : "Reconnect"}
+            </button>
+            <a
+              href={getDashboardUrl()}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ fontSize: 12, color: "var(--link)", textDecoration: "underline" }}
+            >
+              Dashboard ↗
+            </a>
+          </div>
         </div>
       )}
 
-      <div className="divider" style={{ marginTop: 16, marginBottom: 12 }} />
-      <div className="rec-label">AGENT MODE</div>
-      <div className="speed-row">
-        {([{ id: "pos" as AgentMode, label: "POS" }, { id: "inventory" as AgentMode, label: "Inventory" }]).map((m) => (
-          <button
-            key={m.id}
-            className={`speed-chip${agentMode === m.id ? " active" : ""}`}
-            disabled={isConnected}
-            onClick={() => {
-              setAgentMode(m.id);
-              // Navigate to the correct URL path for this mode
-              const base = window.location.pathname.replace(/\/(pos|inventory)\/?$/i, "").replace(/\/+$/, "");
-              const newPath = `${base}/${m.id}${window.location.search}`;
-              window.history.replaceState({}, "", newPath);
-            }}
-          >
-            {m.label}
-          </button>
-        ))}
-      </div>
-      {isConnected && <div className="empty-hint" style={{ fontSize: 11, marginTop: 4, opacity: 0.5 }}>disconnect to switch modes</div>}
+      <div className="divider" style={{ margin: "8px 0" }} />
 
-      <div className="divider" style={{ marginTop: 16, marginBottom: 12 }} />
-      <div className="rec-label">VOICE</div>
+      {/* Agent Mode */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "2px 0 6px" }}>
+        <span className="rec-label" style={{ margin: 0, whiteSpace: "nowrap" }}>MODE</span>
+        <div className="speed-row" style={{ flex: 1, padding: 0 }}>
+          {([{ id: "pos" as AgentMode, label: "POS" }, { id: "inventory" as AgentMode, label: "Inventory" }]).map((m) => (
+            <button
+              key={m.id}
+              className={`speed-chip${agentMode === m.id ? " active" : ""}`}
+              disabled={isConnected}
+              onClick={() => {
+                setAgentMode(m.id);
+                const base = window.location.pathname.replace(/\/(pos|inventory)\/?$/i, "").replace(/\/+$/, "");
+                const newPath = `${base}/${m.id}${window.location.search}`;
+                window.history.replaceState({}, "", newPath);
+              }}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      {isConnected && <div className="empty-hint" style={{ fontSize: 11, opacity: 0.5, padding: "0 0 4px" }}>disconnect to switch modes</div>}
+
+      <div className="divider" style={{ margin: "8px 0" }} />
+
+      {/* Voice — horizontal scrollable strip */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "2px 0 4px" }}>
+        <span className="rec-label" style={{ margin: 0, whiteSpace: "nowrap" }}>VOICE</span>
+      </div>
       <div className="voice-grid">
         {VOICES.map((v) => (
           <button
@@ -311,42 +312,47 @@ function SettingsTab() {
             onClick={() => updateVoice(v.id)}
           >
             <div className="voice-chip-name">{v.label}</div>
-            <div className="voice-chip-desc">{v.desc}</div>
           </button>
         ))}
       </div>
 
-      <div className="divider" style={{ marginTop: 12, marginBottom: 12 }} />
-      <div className="rec-label">SPEED</div>
-      <div className="speed-row">
-        {SPEEDS.map((s) => (
+      {/* Speed — inline with label */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 0 4px" }}>
+        <span className="rec-label" style={{ margin: 0, whiteSpace: "nowrap" }}>SPEED</span>
+        <div className="speed-row" style={{ flex: 1, padding: 0 }}>
+          {SPEEDS.map((s) => (
+            <button
+              key={s.label}
+              className={`speed-chip${prefs.speed === s.id ? " active" : ""}`}
+              onClick={() => updateSpeed(s.id)}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="divider" style={{ margin: "8px 0" }} />
+
+      {/* Appearance — compact toggle */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "2px 0 6px" }}>
+        <span className="rec-label" style={{ margin: 0, whiteSpace: "nowrap" }}>THEME</span>
+        <div className="speed-row" style={{ flex: 1, padding: 0 }}>
           <button
-            key={s.label}
-            className={`speed-chip${prefs.speed === s.id ? " active" : ""}`}
-            onClick={() => updateSpeed(s.id)}
+            className={`speed-chip${theme === "light" ? " active" : ""}`}
+            onClick={toggleTheme}
+            style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}
           >
-            {s.label}
+            <Sun size={13} /> Light
           </button>
-        ))}
-      </div>
-
-      <div className="divider" style={{ marginTop: 16, marginBottom: 12 }} />
-      <div className="rec-label">APPEARANCE</div>
-      <div className="speed-row">
-        <button
-          className={`speed-chip${theme === "light" ? " active" : ""}`}
-          onClick={toggleTheme}
-          style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
-        >
-          <Sun size={13} /> Light
-        </button>
-        <button
-          className={`speed-chip${theme === "dark" ? " active" : ""}`}
-          onClick={toggleTheme}
-          style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
-        >
-          <Moon size={13} /> Dark
-        </button>
+          <button
+            className={`speed-chip${theme === "dark" ? " active" : ""}`}
+            onClick={toggleTheme}
+            style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}
+          >
+            <Moon size={13} /> Dark
+          </button>
+        </div>
       </div>
     </div>
   );

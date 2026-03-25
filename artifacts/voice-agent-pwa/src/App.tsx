@@ -337,6 +337,13 @@ export default function App() {
 
       {/* ── Conversation area ────────────────────────────────── */}
       <div className="content">
+        {/* Subtle BevPro watermark */}
+        <div className="watermark">
+          <svg width="140" height="140" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg" opacity="0.045">
+            <rect width="512" height="512" rx="102" fill="currentColor" />
+            <text x="50%" y="54%" dominantBaseline="middle" textAnchor="middle" fill="var(--bg)" fontFamily="sans-serif" fontSize="205" fontWeight="700">B</text>
+          </svg>
+        </div>
         <div className="convo-area">
           {msgs.map((m, i) => (
             <GhostLine key={m.id} msg={m} rank={msgs.length - 1 - i} />
