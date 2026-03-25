@@ -27,8 +27,11 @@ interface SquareContextType {
   isConfigured: boolean;
   isLoadingCatalog: boolean;
   catalogError: string | null;
+  connectionError: string | null;
+  isReconnecting: boolean;
   setCredentials: (token: string, locationId: string) => void;
   clearCredentials: () => void;
+  refreshCredentials: () => Promise<boolean>;
   loadCatalog: (overrideToken?: string, overrideLocationId?: string) => Promise<number>;
   fetchLocations: (token: string) => Promise<SquareLocation[]>;
   searchCatalog: (query: string) => SquareCatalogItem[];
@@ -71,6 +74,8 @@ export function SquareProvider({ children }: { children: ReactNode }) {
   const [catalogItems, setCatalogItems] = useState<SquareCatalogItem[]>([]);
   const [isLoadingCatalog, setIsLoadingCatalog] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [isReconnecting, setIsReconnecting] = useState(false);
   const [credentialsReady, setCredentialsReady] = useState(false);
   const [venueId, setVenueId] = useState<string | null>(localStorage.getItem("bevpro_venue_id"));
   const [authToken, setAuthToken] = useState<string | null>(localStorage.getItem("bevpro_token"));
@@ -165,6 +170,56 @@ export function SquareProvider({ children }: { children: ReactNode }) {
     setAccessToken(null);
     setLocationId(null);
     setCatalogItems([]);
+    setConnectionError(null);
+  }
+
+  /** Re-fetch Square credentials from the server using stored venueId + authToken. */
+  async function refreshCredentials(): Promise<boolean> {
+    const vid = venueId || localStorage.getItem("bevpro_venue_id");
+    const tok = authToken || localStorage.getItem("bevpro_token");
+    if (!vid || !tok) {
+      setConnectionError("No saved session. Open the dashboard to reconnect Square.");
+      return false;
+    }
+
+    setIsReconnecting(true);
+    setConnectionError(null);
+
+    try {
+      const res = await fetch(`${getBaseUrl()}api/venues/${vid}/credentials`, {
+        headers: { Authorization: `Bearer ${tok}` },
+      });
+
+      if (res.status === 401) {
+        setConnectionError("Session expired. Open the dashboard and relaunch the agent.");
+        return false;
+      }
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        setConnectionError((errData as any).error || `Reconnection failed (${res.status})`);
+        return false;
+      }
+
+      const data = await res.json();
+      if (data.accessToken && data.locationId) {
+        setAccessToken(data.accessToken);
+        setLocationId(data.locationId);
+        localStorage.setItem(TOKEN_KEY, data.accessToken);
+        localStorage.setItem(LOC_KEY, data.locationId);
+        setCatalogError(null);
+        setConnectionError(null);
+        return true;
+      }
+
+      setConnectionError("Square connection not found. Reconnect from the dashboard.");
+      return false;
+    } catch (e: any) {
+      setConnectionError("Network error. Check your connection and try again.");
+      return false;
+    } finally {
+      setIsReconnecting(false);
+    }
   }
 
   const loadingRef = useRef(false);
@@ -183,12 +238,23 @@ export function SquareProvider({ children }: { children: ReactNode }) {
         headers: { "x-square-token": tok, "x-square-location": loc },
       });
       if (!res.ok) {
+        // If Square token expired, try refreshing credentials automatically
+        if (res.status === 401 || res.status === 403) {
+          loadingRef.current = false;
+          const refreshed = await refreshCredentials();
+          if (refreshed) {
+            // Retry with new credentials
+            return loadCatalog();
+          }
+          throw new Error("Square connection expired. Tap reconnect to fix.");
+        }
         const errData = await res.json().catch(() => ({}));
         throw new Error((errData as any).error || `Catalog load failed (${res.status})`);
       }
       const data = await res.json();
       const items = data.items || [];
       setCatalogItems(items);
+      setConnectionError(null);
       return items.length;
     } catch (e: any) {
       console.error("[Square] Catalog load error:", e.message);
@@ -211,7 +277,8 @@ export function SquareProvider({ children }: { children: ReactNode }) {
   return (
     <SquareContext.Provider value={{
       accessToken, locationId, venueId, authToken, locations, catalogItems, isConfigured,
-      isLoadingCatalog, catalogError, setCredentials, clearCredentials,
+      isLoadingCatalog, catalogError, connectionError, isReconnecting,
+      setCredentials, clearCredentials, refreshCredentials,
       loadCatalog, fetchLocations, searchCatalog,
     }}>
       {children}

@@ -14,6 +14,9 @@ import {
   Settings,
   CreditCard,
   LogOut,
+  Smartphone,
+  Share,
+  PlusSquare,
 } from "lucide-react";
 
 export default function Dashboard() {
@@ -546,13 +549,59 @@ export default function Dashboard() {
             )}
           </div>
 
-          {/* iOS App */}
+          {/* Add to Home Screen */}
           <div className="border border-foreground/8 p-8">
-            <p className="text-[12px] tracking-[0.15em] uppercase text-foreground/30 mb-2">iOS App</p>
+            <div className="flex items-start gap-3 mb-2">
+              <Smartphone className="w-4 h-4 mt-0.5 text-foreground/30 shrink-0" />
+              <p className="text-[12px] tracking-[0.15em] uppercase text-foreground/30">Install App</p>
+            </div>
             <p className="text-[14px] text-foreground/50 font-light mb-6 leading-relaxed max-w-lg">
-              Native app for iPad and iPhone. Sign in and your Square connection syncs automatically.
+              Add the voice agent to your home screen for instant access — works like a native app, no App Store needed.
             </p>
-            <p className="text-[12px] text-foreground/25 tracking-wide">Coming soon</p>
+
+            <div className="space-y-4">
+              <div>
+                <p className="text-[12px] tracking-[0.1em] uppercase text-foreground/30 mb-3 font-medium">iPhone &amp; iPad (Safari)</p>
+                <ol className="space-y-2.5 text-[13px] text-foreground/50 font-light">
+                  <li className="flex items-start gap-2.5">
+                    <span className="w-5 h-5 rounded-full border border-foreground/10 flex items-center justify-center text-[10px] text-foreground/40 shrink-0 mt-0.5">1</span>
+                    <span>Launch the POS or Inventory agent above</span>
+                  </li>
+                  <li className="flex items-start gap-2.5">
+                    <span className="w-5 h-5 rounded-full border border-foreground/10 flex items-center justify-center text-[10px] text-foreground/40 shrink-0 mt-0.5">2</span>
+                    <span>Tap the <Share className="inline w-3.5 h-3.5 -mt-0.5" /> Share button in Safari</span>
+                  </li>
+                  <li className="flex items-start gap-2.5">
+                    <span className="w-5 h-5 rounded-full border border-foreground/10 flex items-center justify-center text-[10px] text-foreground/40 shrink-0 mt-0.5">3</span>
+                    <span>Tap <strong>Add to Home Screen</strong> <PlusSquare className="inline w-3.5 h-3.5 -mt-0.5" /></span>
+                  </li>
+                  <li className="flex items-start gap-2.5">
+                    <span className="w-5 h-5 rounded-full border border-foreground/10 flex items-center justify-center text-[10px] text-foreground/40 shrink-0 mt-0.5">4</span>
+                    <span>Open the app from your home screen — it runs fullscreen</span>
+                  </li>
+                </ol>
+              </div>
+
+              <div className="border-t border-foreground/5 pt-4">
+                <p className="text-[12px] tracking-[0.1em] uppercase text-foreground/30 mb-3 font-medium">Android (Chrome)</p>
+                <ol className="space-y-2.5 text-[13px] text-foreground/50 font-light">
+                  <li className="flex items-start gap-2.5">
+                    <span className="w-5 h-5 rounded-full border border-foreground/10 flex items-center justify-center text-[10px] text-foreground/40 shrink-0 mt-0.5">1</span>
+                    <span>Launch the agent, then tap the <strong>&#8942;</strong> menu in Chrome</span>
+                  </li>
+                  <li className="flex items-start gap-2.5">
+                    <span className="w-5 h-5 rounded-full border border-foreground/10 flex items-center justify-center text-[10px] text-foreground/40 shrink-0 mt-0.5">2</span>
+                    <span>Tap <strong>Add to Home screen</strong> or <strong>Install app</strong></span>
+                  </li>
+                </ol>
+              </div>
+
+              <div className="border-t border-foreground/5 pt-4">
+                <p className="text-[12px] text-foreground/35 font-light leading-relaxed">
+                  If the connection to Square expires, open the app and tap the menu → Settings → <strong>Reconnect Square</strong>. No need to come back to the dashboard.
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       </div>

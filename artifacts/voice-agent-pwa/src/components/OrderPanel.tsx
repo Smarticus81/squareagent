@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { X, Menu, Trash2, Loader, Link, ChevronRight, Sun, Moon } from "lucide-react";
+import { X, Menu, Trash2, Loader, Link, ChevronRight, Sun, Moon, RefreshCw } from "lucide-react";
 import { useOrder, type OrderLineItem } from "@/contexts/OrderContext";
 import { useSquare } from "@/contexts/SquareContext";
 import { useVoiceAgent, type AgentMode } from "@/contexts/VoiceAgentContext";
@@ -163,6 +163,7 @@ function MenuTab({ onTabChange }: { onTabChange: (t: "order" | "menu" | "setting
     return (
       <div className="empty-panel">
         <span className="empty-txt">square not connected</span>
+        <span className="empty-hint">open settings to reconnect</span>
       </div>
     );
   }
@@ -188,10 +189,16 @@ function MenuTab({ onTabChange }: { onTabChange: (t: "order" | "menu" | "setting
 
 /* ── Settings Tab ──────────────────────────────────────────── */
 function SettingsTab() {
-  const { isConfigured, clearCredentials } = useSquare();
+  const { isConfigured, clearCredentials, connectionError, isReconnecting, refreshCredentials } = useSquare();
   const { agentMode, setAgentMode, isConnected } = useVoiceAgent();
   const [prefs, setPrefs] = useState(getVoicePrefs);
   const [theme, setTheme] = useState(() => document.documentElement.getAttribute("data-theme") || "light");
+
+  // Dashboard lives at the root of the same origin (without /agent/)
+  const getDashboardUrl = () => {
+    const origin = window.location.origin;
+    return `${origin}/dashboard`;
+  };
 
   const toggleTheme = () => {
     const next = theme === "dark" ? "light" : "dark";
@@ -211,7 +218,7 @@ function SettingsTab() {
 
   return (
     <div style={{ padding: 16 }}>
-      {/* Square Connection — status display */}
+      {/* Square Connection — status + reconnect */}
       <div
         className="settings-row"
         style={{ cursor: isConfigured ? "pointer" : "default" }}
@@ -223,11 +230,54 @@ function SettingsTab() {
       >
         <Link size={16} />
         <span className="settings-txt">
-          {isConfigured ? "Square Connected" : "Not Connected — launch from dashboard"}
+          {isConfigured ? "Square Connected" : "Square Not Connected"}
         </span>
         <span className="status-dot" style={{ background: isConfigured ? "#22C55E" : "#EF4444" }} />
         {isConfigured && <ChevronRight size={15} />}
       </div>
+
+      {/* Reconnect controls when not connected */}
+      {!isConfigured && (
+        <div style={{ padding: "8px 0 0", display: "flex", flexDirection: "column", gap: 8 }}>
+          {connectionError && (
+            <div className="error-text" style={{ fontSize: 12 }}>{connectionError}</div>
+          )}
+          <button
+            className="reconnect-btn"
+            disabled={isReconnecting}
+            onClick={async (e) => {
+              e.stopPropagation();
+              const ok = await refreshCredentials();
+              if (ok) {
+                // Credentials refreshed — catalog will auto-load
+              }
+            }}
+            style={{
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+              padding: "10px 16px", borderRadius: 6,
+              background: "hsl(var(--primary) / 0.15)", color: "hsl(var(--primary))",
+              border: "1px solid hsl(var(--primary) / 0.25)",
+              fontSize: 13, fontWeight: 500, cursor: isReconnecting ? "wait" : "pointer",
+              opacity: isReconnecting ? 0.6 : 1,
+            }}
+          >
+            {isReconnecting ? <Loader size={14} className="spin" /> : <RefreshCw size={14} />}
+            {isReconnecting ? "Reconnecting..." : "Reconnect Square"}
+          </button>
+          <a
+            href={getDashboardUrl()}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              display: "block", textAlign: "center",
+              fontSize: 12, color: "hsl(var(--foreground) / 0.4)",
+              textDecoration: "underline", padding: "4px 0",
+            }}
+          >
+            Open dashboard to manage connection
+          </a>
+        </div>
+      )}
 
       <div className="divider" style={{ marginTop: 16, marginBottom: 12 }} />
       <div className="rec-label">AGENT MODE</div>
