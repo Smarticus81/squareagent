@@ -72,3 +72,15 @@ export const sessionsTable = pgTable("sessions", {
 ]);
 
 export type Session = typeof sessionsTable.$inferSelect;
+
+// ── Exchange Codes ────────────────────────────────────────────────────────────
+
+export const exchangeCodesTable = pgTable("exchange_codes", {
+  code: text("code").primaryKey(),
+  token: text("token").notNull(),
+  venueId: text("venue_id").notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type ExchangeCode = typeof exchangeCodesTable.$inferSelect;

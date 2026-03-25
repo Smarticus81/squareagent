@@ -10,8 +10,8 @@ import { Router, Request, Response } from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
-import { db, usersTable, sessionsTable, subscriptionsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { db, usersTable, sessionsTable, subscriptionsTable, exchangeCodesTable } from "@workspace/db";
+import { eq, lt } from "drizzle-orm";
 
 const router = Router();
 
@@ -224,42 +224,67 @@ router.post("/logout", requireAuth as any, async (req: Request, res: Response): 
 });
 
 // ── Exchange codes: Replace long-lived JWT in URL with one-time short-lived codes ──
+// Codes are persisted in the database so they survive server restarts / deploys.
 
-const exchangeCodes = new Map<string, { token: string; venueId: string; expiresAt: number }>();
-
-// Cleanup stale codes every 5 minutes
-setInterval(() => {
-  const now = Date.now();
-  for (const [code, entry] of exchangeCodes) {
-    if (entry.expiresAt < now) exchangeCodes.delete(code);
+// Cleanup expired codes every 5 minutes
+setInterval(async () => {
+  if (!db) return;
+  try {
+    await db.delete(exchangeCodesTable).where(lt(exchangeCodesTable.expiresAt, new Date()));
+  } catch (e: any) {
+    console.error("[Exchange] Cleanup error:", e.message);
   }
 }, 5 * 60_000);
 
-/** POST /api/auth/exchange/create — Authenticated. Returns a one-time code (valid 60s). */
+/** POST /api/auth/exchange/create — Authenticated. Returns a one-time code (valid 5 min). */
 router.post("/exchange/create", requireAuth as any, async (req: Request, res: Response): Promise<void> => {
+  if (!ensureAuthStore(res)) return;
+
   const token = extractToken(req)!;
   const { venueId } = req.body ?? {};
   if (!venueId) { res.status(400).json({ error: "venueId is required" }); return; }
 
   const code = crypto.randomBytes(32).toString("hex");
-  exchangeCodes.set(code, { token, venueId: String(venueId), expiresAt: Date.now() + 5 * 60_000 });
-  res.json({ code });
+  const expiresAt = new Date(Date.now() + 5 * 60_000);
+
+  try {
+    await db.insert(exchangeCodesTable).values({
+      code,
+      token,
+      venueId: String(venueId),
+      expiresAt,
+    });
+    res.json({ code });
+  } catch (e: any) {
+    console.error("[Exchange] Create error:", e.message);
+    res.status(500).json({ error: "Failed to create exchange code" });
+  }
 });
 
 /** POST /api/auth/exchange/redeem — Public. Exchanges a code for token + venueId. */
 router.post("/exchange/redeem", async (req: Request, res: Response): Promise<void> => {
+  if (!ensureAuthStore(res)) return;
+
   const { code } = req.body ?? {};
   if (!code) { res.status(400).json({ error: "code is required" }); return; }
 
-  const entry = exchangeCodes.get(code);
-  if (!entry || entry.expiresAt < Date.now()) {
-    exchangeCodes.delete(code);
-    res.status(400).json({ error: "Invalid or expired code" });
-    return;
-  }
+  try {
+    const [entry] = await db.select().from(exchangeCodesTable).where(eq(exchangeCodesTable.code, code));
 
-  exchangeCodes.delete(code); // One-time use
-  res.json({ token: entry.token, venueId: entry.venueId });
+    if (!entry || entry.expiresAt < new Date()) {
+      // Clean up expired entry if it exists
+      if (entry) await db.delete(exchangeCodesTable).where(eq(exchangeCodesTable.code, code));
+      res.status(400).json({ error: "Invalid or expired code" });
+      return;
+    }
+
+    // Delete immediately — one-time use
+    await db.delete(exchangeCodesTable).where(eq(exchangeCodesTable.code, code));
+    res.json({ token: entry.token, venueId: entry.venueId });
+  } catch (e: any) {
+    console.error("[Exchange] Redeem error:", e.message);
+    res.status(500).json({ error: "Failed to redeem exchange code" });
+  }
 });
 
 // ── Account management ────────────────────────────────────────────────────────
