@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { useLocation } from "wouter";
-import { useAuth } from "@/hooks/use-auth";
+import { useAuth, useLogout } from "@/hooks/use-auth";
 import { useVenues, useSaveVenue, useDeleteVenue, useSquareLocations, type SquareLocation } from "@/hooks/use-venues";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,11 +13,13 @@ import {
   Package,
   Settings,
   CreditCard,
+  LogOut,
 } from "lucide-react";
 
 export default function Dashboard() {
   const [, setLocation] = useLocation();
   const { data: auth, isLoading, error, isFetching } = useAuth();
+  const logout = useLogout();
   const { data: venues, isLoading: venuesLoading } = useVenues();
   const saveVenue = useSaveVenue();
   const deleteVenue = useDeleteVenue();
@@ -308,13 +310,22 @@ export default function Dashboard() {
             <h1 className="text-2xl font-display font-medium tracking-tight text-foreground">
               {auth.user.name.split(" ")[0]}
             </h1>
-            <button
-              onClick={() => setLocation("/account")}
-              className="text-[13px] text-foreground/35 hover:text-foreground transition-colors flex items-center gap-1.5"
-            >
-              <Settings className="w-3.5 h-3.5" />
-              Account
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setLocation("/account")}
+                className="text-[13px] text-foreground/35 hover:text-foreground transition-colors flex items-center gap-1.5"
+              >
+                <Settings className="w-3.5 h-3.5" />
+                Account
+              </button>
+              <button
+                onClick={() => logout.mutate()}
+                className="text-[13px] font-medium flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[#E8A020]/10 text-[#E8A020] hover:bg-[#E8A020]/20 transition-colors"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                Sign Out
+              </button>
+            </div>
           </div>
           <p className="text-foreground/40 font-light text-[14px] mt-1">Manage your venue and voice agent</p>
 

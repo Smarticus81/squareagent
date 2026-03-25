@@ -2,6 +2,7 @@ import { Link, useLocation } from "wouter";
 import { Logo } from "./logo";
 import { Button } from "./ui/button";
 import { useAuth, useLogout } from "@/hooks/use-auth";
+import { LogOut } from "lucide-react";
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
@@ -26,7 +27,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     <Link href="/dashboard" className="text-[13px] font-medium text-foreground/60 hover:text-foreground transition-colors">
                       Dashboard
                     </Link>
-                    <button className="text-[13px] text-foreground/50 hover:text-foreground transition-colors" onClick={() => logout.mutate()}>
+                    <button
+                      className="text-[13px] font-medium flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[#E8A020]/10 text-[#E8A020] hover:bg-[#E8A020]/20 transition-colors"
+                      onClick={() => logout.mutate()}
+                    >
+                      <LogOut className="w-3.5 h-3.5" />
                       Sign Out
                     </button>
                   </>
