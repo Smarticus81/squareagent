@@ -224,29 +224,22 @@ router.post("/logout", requireAuth as any, async (req: Request, res: Response): 
 });
 
 // ── Exchange codes: Replace long-lived JWT in URL with one-time short-lived codes ──
-// Primary: persisted in the database so they survive server restarts / deploys.
-// Fallback: in-memory Map if DB operations fail.
-
-const exchangeCodesFallback = new Map<string, { token: string; venueId: string; expiresAt: number }>();
+// Codes are persisted in the database so they survive server restarts / deploys.
 
 // Cleanup expired codes every 5 minutes
 setInterval(async () => {
-  // Clean in-memory fallback
-  const now = Date.now();
-  for (const [code, entry] of exchangeCodesFallback) {
-    if (entry.expiresAt < now) exchangeCodesFallback.delete(code);
-  }
-  // Clean DB
   if (!db) return;
   try {
     await db.delete(exchangeCodesTable).where(lt(exchangeCodesTable.expiresAt, new Date()));
   } catch (e: any) {
-    console.error("[Exchange] DB cleanup error:", e.message);
+    console.error("[Exchange] Cleanup error:", e.message);
   }
 }, 5 * 60_000);
 
 /** POST /api/auth/exchange/create — Authenticated. Returns a one-time code (valid 5 min). */
 router.post("/exchange/create", requireAuth as any, async (req: Request, res: Response): Promise<void> => {
+  if (!ensureAuthStore(res)) return;
+
   const token = extractToken(req)!;
   const { venueId } = req.body ?? {};
   if (!venueId) { res.status(400).json({ error: "venueId is required" }); return; }
@@ -254,59 +247,43 @@ router.post("/exchange/create", requireAuth as any, async (req: Request, res: Re
   const code = crypto.randomBytes(32).toString("hex");
   const expiresAt = new Date(Date.now() + 5 * 60_000);
 
-  // Try DB first, fall back to in-memory
-  if (db) {
-    try {
-      await db.insert(exchangeCodesTable).values({
-        code,
-        token,
-        venueId: String(venueId),
-        expiresAt,
-      });
-      res.json({ code });
-      return;
-    } catch (e: any) {
-      console.warn("[Exchange] DB insert failed, using in-memory fallback:", e.message);
-    }
+  try {
+    await db.insert(exchangeCodesTable).values({
+      code,
+      token,
+      venueId: String(venueId),
+      expiresAt,
+    });
+    res.json({ code });
+  } catch (e: any) {
+    console.error("[Exchange] Failed to create code:", e.message);
+    res.status(503).json({ error: "Exchange service temporarily unavailable. Please try again." });
   }
-
-  exchangeCodesFallback.set(code, { token, venueId: String(venueId), expiresAt: expiresAt.getTime() });
-  res.json({ code });
 });
 
 /** POST /api/auth/exchange/redeem — Public. Exchanges a code for token + venueId. */
 router.post("/exchange/redeem", async (req: Request, res: Response): Promise<void> => {
+  if (!ensureAuthStore(res)) return;
+
   const { code } = req.body ?? {};
   if (!code) { res.status(400).json({ error: "code is required" }); return; }
 
-  // Try DB first
-  if (db) {
-    try {
-      const [entry] = await db.select().from(exchangeCodesTable).where(eq(exchangeCodesTable.code, code));
-      if (entry) {
-        await db.delete(exchangeCodesTable).where(eq(exchangeCodesTable.code, code));
-        if (entry.expiresAt >= new Date()) {
-          res.json({ token: entry.token, venueId: entry.venueId });
-          return;
-        }
-        res.status(400).json({ error: "Invalid or expired code" });
-        return;
-      }
-    } catch (e: any) {
-      console.warn("[Exchange] DB lookup failed, checking in-memory fallback:", e.message);
+  try {
+    const [entry] = await db.select().from(exchangeCodesTable).where(eq(exchangeCodesTable.code, code));
+
+    if (!entry || entry.expiresAt < new Date()) {
+      if (entry) await db.delete(exchangeCodesTable).where(eq(exchangeCodesTable.code, code));
+      res.status(400).json({ error: "Invalid or expired code" });
+      return;
     }
-  }
 
-  // Fallback to in-memory
-  const entry = exchangeCodesFallback.get(code);
-  if (!entry || entry.expiresAt < Date.now()) {
-    exchangeCodesFallback.delete(code);
-    res.status(400).json({ error: "Invalid or expired code" });
-    return;
+    // Delete immediately — one-time use
+    await db.delete(exchangeCodesTable).where(eq(exchangeCodesTable.code, code));
+    res.json({ token: entry.token, venueId: entry.venueId });
+  } catch (e: any) {
+    console.error("[Exchange] Failed to redeem code:", e.message);
+    res.status(503).json({ error: "Exchange service temporarily unavailable. Please try again." });
   }
-
-  exchangeCodesFallback.delete(code);
-  res.json({ token: entry.token, venueId: entry.venueId });
 });
 
 // ── Account management ────────────────────────────────────────────────────────
