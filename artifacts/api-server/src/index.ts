@@ -28,6 +28,22 @@ async function main() {
       console.error(error.message);
       throw new Error("Configured DATABASE_URL is unreachable. Fix database connectivity before starting the API.");
     }
+
+    // Auto-create exchange_codes table if it doesn't exist
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS exchange_codes (
+          code TEXT PRIMARY KEY,
+          token TEXT NOT NULL,
+          venue_id TEXT NOT NULL,
+          expires_at TIMESTAMP NOT NULL,
+          created_at TIMESTAMP NOT NULL DEFAULT NOW()
+        )
+      `);
+      console.log("exchange_codes table OK");
+    } catch (e: any) {
+      console.error("Failed to ensure exchange_codes table:", e.message);
+    }
   }
 
   const server = createServer(app);
