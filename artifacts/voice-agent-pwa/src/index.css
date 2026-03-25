@@ -130,9 +130,8 @@ html[data-theme="dark"] {
 }
 .hamburger { padding: 4px; cursor: pointer; color: var(--hamburger); background: none; border: none; }
 .brand-row { display: flex; align-items: center; justify-content: center; gap: 8px; }
-.brand-ring { width: 14px; height: 14px; border-radius: 50%; border: 1px solid var(--logo-border); position: relative; }
-.brand-bead { position: absolute; right: -1px; top: 1px; width: 5px; height: 5px; border-radius: 50%; background: var(--logo-border); }
-.brand-word { font-weight: 300; font-size: 13px; letter-spacing: 5px; color: var(--logo-text); margin-left: 2px; }
+.brand-text { font-weight: 700; font-size: 16px; letter-spacing: -0.3px; }
+.brand-mode { font-weight: 300; font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: var(--state-text); margin-left: 6px; }
 .order-badge {
   min-width: 24px; height: 24px; border-radius: 8px; border: 0.5px solid var(--badge-border);
   display: flex; align-items: center; justify-content: center; padding: 0 6px; cursor: pointer;

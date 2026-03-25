@@ -325,8 +325,19 @@ export default function App() {
           <Menu size={18} />
         </button>
         <div className="brand-row">
-          <div className="brand-ring"><div className="brand-bead" /></div>
-          <span className="brand-word">{agentMode === "inventory" ? "INVENTORY" : "BEVPRO"}</span>
+          <svg width="24" height="24" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="18" cy="18" r="17" fill="#E8A020"/>
+            <rect x="5.5" y="13" width="3" height="10" rx="1.5" fill="#140b05"/>
+            <rect x="11" y="10" width="3" height="16" rx="1.5" fill="#140b05"/>
+            <rect x="16.5" y="7" width="3" height="22" rx="1.5" fill="#140b05"/>
+            <rect x="22" y="10" width="3" height="16" rx="1.5" fill="#140b05"/>
+            <rect x="27.5" y="13" width="3" height="10" rx="1.5" fill="#140b05"/>
+          </svg>
+          <span className="brand-text">
+            <span style={{ color: "var(--msg-agent)" }}>Bev</span>
+            <span style={{ color: "#E8A020", fontStyle: "italic" }}>Pro</span>
+            {agentMode === "inventory" && <span className="brand-mode">inventory</span>}
+          </span>
         </div>
         {orderCount > 0 && agentMode === "pos" ? (
           <button className="order-badge" onClick={() => { setPanelTab("order"); setPanelOpen(true); }}>
@@ -339,9 +350,13 @@ export default function App() {
       <div className="content">
         {/* Subtle BevPro watermark */}
         <div className="watermark">
-          <svg width="140" height="140" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg" opacity="0.045">
-            <rect width="512" height="512" rx="102" fill="currentColor" />
-            <text x="50%" y="54%" dominantBaseline="middle" textAnchor="middle" fill="var(--bg)" fontFamily="sans-serif" fontSize="205" fontWeight="700">B</text>
+          <svg width="120" height="120" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="18" cy="18" r="17" fill="#E8A020" opacity="0.07"/>
+            <rect x="5.5" y="13" width="3" height="10" rx="1.5" fill="#E8A020" opacity="0.09"/>
+            <rect x="11" y="10" width="3" height="16" rx="1.5" fill="#E8A020" opacity="0.09"/>
+            <rect x="16.5" y="7" width="3" height="22" rx="1.5" fill="#E8A020" opacity="0.09"/>
+            <rect x="22" y="10" width="3" height="16" rx="1.5" fill="#E8A020" opacity="0.09"/>
+            <rect x="27.5" y="13" width="3" height="10" rx="1.5" fill="#E8A020" opacity="0.09"/>
           </svg>
         </div>
         <div className="convo-area">
