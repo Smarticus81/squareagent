@@ -27,6 +27,7 @@
       "infoPlist": {
         "NSMicrophoneUsageDescription": "Bevpro uses your microphone to take drink orders by voice.",
         "NSSpeechRecognitionUsageDescription": "Bevpro uses speech recognition for the voice ordering wake-word feature.",
+        "ITSAppUsesNonExemptEncryption": false,
         "UIBackgroundModes": [
           "audio"
         ]
