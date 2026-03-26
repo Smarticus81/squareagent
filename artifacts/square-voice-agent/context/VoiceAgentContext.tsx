@@ -140,7 +140,7 @@ const RECORDING_OPTIONS: Audio.RecordingOptions = {
 let _msgId = 0;
 const genId = () => `msg-${Date.now()}-${++_msgId}`;
 
-function getWsUrl(voice: string, speed: number): string {
+function getWsUrl(voice: string, speed: number, authToken?: string, venueId?: string): string {
   const domain = process.env.EXPO_PUBLIC_DOMAIN;
   let base: string;
   if (!domain) {
@@ -149,7 +149,12 @@ function getWsUrl(voice: string, speed: number): string {
     const protocol = domain.startsWith("localhost") ? "ws" : "wss";
     base = `${protocol}://${domain}/api/realtime`;
   }
-  return `${base}?voice=${encodeURIComponent(voice)}&speed=${speed}`;
+  const params = new URLSearchParams();
+  params.set("voice", voice);
+  params.set("speed", String(speed));
+  if (authToken) params.set("token", authToken);
+  if (venueId) params.set("venueId", venueId);
+  return `${base}?${params.toString()}`;
 }
 
 // Float32 PCM → Int16 PCM → base64
@@ -531,6 +536,13 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
   const connect = useCallback(async () => {
     if (isRunning.current) return;
     setError(null);
+
+    if (!authTokenRef.current) {
+      setError("Not authenticated. Please log in with your BevPro account.");
+      setAgentState("error");
+      return;
+    }
+
     setAgentState("connecting");
 
     if (Platform.OS !== "web") {
@@ -555,7 +567,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
     }
 
     const { voice, speed } = await getVoicePrefs();
-    const wsUrl = getWsUrl(voice, speed);
+    const wsUrl = getWsUrl(voice, speed, authTokenRef.current, venueIdRef.current || undefined);
     console.log("[Realtime] Connecting to", wsUrl);
     const socket = new WebSocket(wsUrl);
     ws.current = socket;

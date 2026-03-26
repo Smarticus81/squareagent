@@ -32,12 +32,24 @@ interface SquareContextType {
   locationsError: string | null;
   connectionError: string | null;
   isReconnecting: boolean;
+  /** BevPro account info (email/name) after login */
+  userInfo: { id: number; email: string; name: string } | null;
+  /** List of venues for the logged-in user */
+  venues: { id: number; name: string; squareLocationName?: string; connectedAt?: string }[];
   setCredentials: (token: string, locationId: string) => Promise<void>;
   clearCredentials: () => Promise<void>;
   refreshCredentials: () => Promise<boolean>;
   loadCatalog: (overrideToken?: string, overrideLocationId?: string) => Promise<number>;
   fetchLocations: (token: string) => Promise<SquareLocation[]>;
   searchCatalog: (query: string) => SquareCatalogItem[];
+  /** Login with BevPro email + password. Returns error string or null on success. */
+  login: (email: string, password: string) => Promise<string | null>;
+  /** Signup with BevPro name + email + password. Returns error string or null on success. */
+  signup: (name: string, email: string, password: string) => Promise<string | null>;
+  /** Logout and clear all stored credentials */
+  logout: () => Promise<void>;
+  /** Select a venue from the user's list — loads Square credentials from server */
+  selectVenue: (venueId: number) => Promise<string | null>;
 }
 
 const SquareContext = createContext<SquareContextType | null>(null);
@@ -89,6 +101,8 @@ export function SquareProvider({ children }: { children: ReactNode }) {
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [credentialsReady, setCredentialsReady] = useState(false);
   const loadingRef = useRef(false);
+  const [userInfo, setUserInfo] = useState<{ id: number; email: string; name: string } | null>(null);
+  const [venues, setVenues] = useState<{ id: number; name: string; squareLocationName?: string; connectedAt?: string }[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -344,6 +358,138 @@ export function SquareProvider({ children }: { children: ReactNode }) {
 
   const isConfigured = !!(accessToken && locationId);
 
+  // ── BevPro Account Auth (native login/signup) ──────────────────────────────
+
+  /** Fetch the user's venues list from the API */
+  async function loadVenues(tok: string): Promise<void> {
+    try {
+      const baseUrl = getBaseUrl();
+      const res = await fetch(`${baseUrl}api/venues`, {
+        headers: { Authorization: `Bearer ${tok}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setVenues(data.venues ?? []);
+      }
+    } catch (e) {
+      console.warn("Failed to load venues", e);
+    }
+  }
+
+  async function login(email: string, password: string): Promise<string | null> {
+    try {
+      const baseUrl = getBaseUrl();
+      const res = await fetch(`${baseUrl}api/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) return data.error || "Login failed";
+
+      await AsyncStorage.setItem(STORAGE_KEYS.AUTH_TOKEN, data.token);
+      setAuthToken(data.token);
+      setUserInfo(data.user);
+
+      // Load venues for this user
+      await loadVenues(data.token);
+
+      return null;
+    } catch (e: any) {
+      return e.message || "Network error";
+    }
+  }
+
+  async function signup(name: string, email: string, password: string): Promise<string | null> {
+    try {
+      const baseUrl = getBaseUrl();
+      const res = await fetch(`${baseUrl}api/auth/signup`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, email, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) return data.error || "Signup failed";
+
+      await AsyncStorage.setItem(STORAGE_KEYS.AUTH_TOKEN, data.token);
+      setAuthToken(data.token);
+      setUserInfo(data.user);
+
+      // New user has no venues yet
+      setVenues([]);
+
+      return null;
+    } catch (e: any) {
+      return e.message || "Network error";
+    }
+  }
+
+  async function logout(): Promise<void> {
+    const tok = authToken || (await AsyncStorage.getItem(STORAGE_KEYS.AUTH_TOKEN));
+    if (tok) {
+      try {
+        const baseUrl = getBaseUrl();
+        await fetch(`${baseUrl}api/auth/logout`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${tok}` },
+        });
+      } catch {}
+    }
+    await clearCredentials();
+    setUserInfo(null);
+    setVenues([]);
+  }
+
+  /** Select a venue → load Square credentials from server and store locally */
+  async function selectVenue(vid: number): Promise<string | null> {
+    const tok = authToken || (await AsyncStorage.getItem(STORAGE_KEYS.AUTH_TOKEN));
+    if (!tok) return "Not logged in";
+
+    try {
+      const baseUrl = getBaseUrl();
+      const res = await fetch(`${baseUrl}api/venues/${vid}/credentials`, {
+        headers: { Authorization: `Bearer ${tok}` },
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        return (data as any).error || "Failed to load venue";
+      }
+      const data = await res.json();
+      if (data.accessToken && data.locationId) {
+        setAccessToken(data.accessToken);
+        setLocationId(data.locationId);
+        setVenueId(String(vid));
+        await AsyncStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, data.accessToken);
+        await AsyncStorage.setItem(STORAGE_KEYS.LOCATION_ID, data.locationId);
+        await AsyncStorage.setItem(STORAGE_KEYS.VENUE_ID, String(vid));
+        setConnectionError(null);
+        return null;
+      }
+      return "Venue not connected to Square";
+    } catch (e: any) {
+      return e.message || "Network error";
+    }
+  }
+
+  // On mount, also try to restore user session and load venues
+  useEffect(() => {
+    (async () => {
+      const tok = await AsyncStorage.getItem(STORAGE_KEYS.AUTH_TOKEN);
+      if (!tok) return;
+      try {
+        const baseUrl = getBaseUrl();
+        const res = await fetch(`${baseUrl}api/auth/me`, {
+          headers: { Authorization: `Bearer ${tok}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setUserInfo(data.user);
+          await loadVenues(tok);
+        }
+      } catch {}
+    })();
+  }, []);
+
   return (
     <SquareContext.Provider
       value={{
@@ -360,12 +506,18 @@ export function SquareProvider({ children }: { children: ReactNode }) {
         locationsError,
         connectionError,
         isReconnecting,
+        userInfo,
+        venues,
         setCredentials,
         clearCredentials,
         refreshCredentials,
         loadCatalog,
         fetchLocations,
         searchCatalog,
+        login,
+        signup,
+        logout,
+        selectVenue,
       }}
     >
       {children}

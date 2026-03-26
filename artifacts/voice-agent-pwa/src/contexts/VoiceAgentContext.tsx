@@ -332,7 +332,7 @@ Rules:
     setError(null);
 
     if (!authTokenRef.current) {
-      setError("Not authenticated. Please launch from the BevPro dashboard.");
+      setError("Not authenticated. Please open the BevPro dashboard, select your venue, and launch the voice agent from there.");
       setAgentState("error");
       return;
     }

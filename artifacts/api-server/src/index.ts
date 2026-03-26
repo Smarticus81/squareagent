@@ -2,6 +2,7 @@ import { createServer } from "http";
 import app from "./app";
 import { pool } from "@workspace/db";
 import { assertJwtSecret } from "./routes/auth";
+import { attachWebSocketRelay } from "./routes/ws-relay";
 
 async function main() {
   // Fail immediately if JWT_SECRET is not set in production
@@ -47,6 +48,9 @@ async function main() {
   }
 
   const server = createServer(app);
+
+  // Attach WebSocket relay for native voice agent connections
+  attachWebSocketRelay(server);
 
   server.listen(port, () => {
     console.log(`Server listening on port ${port}`);

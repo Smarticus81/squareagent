@@ -22,13 +22,6 @@ import { useVoicePrefs, VOICES, SPEEDS } from "@/hooks/useVoicePrefs";
 const WEB_TOP_INSET = 67;
 const WEB_BOTTOM_INSET = 34;
 
-function getBaseUrl() {
-  const domain = process.env.EXPO_PUBLIC_DOMAIN;
-  if (!domain) return "http://localhost:8080/";
-  const protocol = domain.startsWith("localhost") ? "http" : "https";
-  return `${protocol}://${domain}/`;
-}
-
 export default function SetupScreen() {
   const insets = useSafeAreaInsets();
   const {
@@ -45,20 +38,29 @@ export default function SetupScreen() {
     fetchLocations,
     isLoadingLocations,
     locationsError,
+    authToken,
+    userInfo,
+    venues,
+    login,
+    signup,
+    logout,
+    selectVenue,
   } = useSquare();
 
-  const [token, setToken] = useState(accessToken || "");
-  const [fetchedLocations, setFetchedLocations] = useState<SquareLocation[]>(savedLocations || []);
-  const [selectedLocation, setSelectedLocation] = useState<SquareLocation | null>(
-    locationId && savedLocations.length
-      ? savedLocations.find((l) => l.id === locationId) ?? null
-      : null
-  );
   const { voice, speed, setVoice, setSpeed } = useVoicePrefs();
 
-  const [isConnecting, setIsConnecting] = useState(false);
-  const [isOAuthLoading, setIsOAuthLoading] = useState(false);
-  const [showManual, setShowManual] = useState(false);
+  // Auth form state
+  const [authMode, setAuthMode] = useState<"login" | "signup">("login");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [name, setName] = useState("");
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+
+  // Venue selection state
+  const [venueLoading, setVenueLoading] = useState(false);
+  const [venueError, setVenueError] = useState<string | null>(null);
+
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
   const [orderCheck, setOrderCheck] = useState<{
     loading: boolean;
@@ -68,119 +70,76 @@ export default function SetupScreen() {
 
   const topPad = Platform.OS === "web" ? WEB_TOP_INSET : insets.top;
   const bottomPad = Platform.OS === "web" ? WEB_BOTTOM_INSET : insets.bottom;
-  const hasFetched = fetchedLocations.length > 0;
 
-  // ── OAuth popup flow (web only) ─────────────────────────────────────────────
+  const isLoggedIn = !!authToken && !!userInfo;
 
-  async function handleOAuthConnect() {
-    setIsOAuthLoading(true);
-    setResult(null);
+  // ── Login / Signup ──────────────────────────────────────────────────────────
+
+  async function handleAuth() {
+    setAuthError(null);
+    if (authMode === "signup" && !name.trim()) {
+      setAuthError("Name is required");
+      return;
+    }
+    if (!email.trim() || !password.trim()) {
+      setAuthError("Email and password are required");
+      return;
+    }
+    if (authMode === "signup" && password.length < 8) {
+      setAuthError("Password must be at least 8 characters");
+      return;
+    }
+
+    setAuthLoading(true);
     try {
-      const baseUrl = getBaseUrl();
-      const res = await fetch(`${baseUrl}api/square/oauth/authorize`);
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: "Failed to start OAuth" }));
-        throw new Error(err.error || "Failed to start OAuth");
+      const err = authMode === "login"
+        ? await login(email.trim(), password)
+        : await signup(name.trim(), email.trim(), password);
+      if (err) {
+        setAuthError(err);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      } else {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
-      const { url } = await res.json();
-
-      const popup = window.open(url, "squareOAuth", "width=600,height=700,left=200,top=100");
-      if (!popup) {
-        throw new Error("Popup was blocked. Please allow popups for this site and try again.");
-      }
-
-      await new Promise<void>((resolve, reject) => {
-        const timeout = setTimeout(() => {
-          window.removeEventListener("message", handler);
-          reject(new Error("Authorization timed out. Please try again."));
-        }, 5 * 60 * 1000);
-
-        async function handler(event: MessageEvent) {
-          const data = event.data;
-          if (data?.type === "square-oauth-success") {
-            clearTimeout(timeout);
-            window.removeEventListener("message", handler);
-            try {
-              const tokenRes = await fetch(`${baseUrl}api/square/oauth/token?ts=${data.tokenState}`);
-              if (!tokenRes.ok) throw new Error("Failed to retrieve access token");
-              const { token: oauthToken } = await tokenRes.json();
-              const locs = await fetchLocations(oauthToken);
-              setToken(oauthToken);
-              setFetchedLocations(locs);
-              if (locs.length === 1) {
-                setSelectedLocation(locs[0]);
-              }
-              resolve();
-            } catch (e: any) {
-              reject(e);
-            }
-          } else if (data?.type === "square-oauth-error") {
-            clearTimeout(timeout);
-            window.removeEventListener("message", handler);
-            reject(new Error(data.error || "Authorization was denied"));
-          }
-        }
-        window.addEventListener("message", handler);
-      });
-    } catch (e: any) {
-      setResult({ success: false, message: e.message || "OAuth failed" });
     } finally {
-      setIsOAuthLoading(false);
+      setAuthLoading(false);
     }
   }
 
-  // ── Manual token flow ───────────────────────────────────────────────────────
+  // ── Venue selection ─────────────────────────────────────────────────────────
 
-  async function handleFetchLocations() {
-    if (!token.trim()) {
-      setResult({ success: false, message: "Paste your Access Token first" });
-      return;
-    }
-    setResult(null);
-    setSelectedLocation(null);
+  async function handleSelectVenue(venueId: number) {
+    setVenueError(null);
+    setVenueLoading(true);
     try {
-      const locs = await fetchLocations(token.trim());
-      setFetchedLocations(locs);
-      if (locs.length === 1) setSelectedLocation(locs[0]);
-    } catch (e: any) {
-      setResult({ success: false, message: e.message || "Could not fetch locations" });
-    }
-  }
-
-  async function handleConnect() {
-    if (!token.trim()) {
-      setResult({ success: false, message: "Enter your access token" });
-      return;
-    }
-    if (!selectedLocation) {
-      setResult({ success: false, message: "Choose a location" });
-      return;
-    }
-    setIsConnecting(true);
-    setResult(null);
-    try {
-      await setCredentials(token.trim(), selectedLocation.id);
-      const count = await loadCatalog(token.trim(), selectedLocation.id);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setResult({
-        success: true,
-        message: `Connected to "${selectedLocation.name}"! Loaded ${count} catalog item${count !== 1 ? "s" : ""}.`,
-      });
-    } catch (e: any) {
-      setResult({ success: false, message: e.message || "Connection failed" });
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      const err = await selectVenue(venueId);
+      if (err) {
+        setVenueError(err);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      } else {
+        // Auto-load catalog
+        await loadCatalog();
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setResult({ success: true, message: "Connected! Catalog loaded." });
+      }
     } finally {
-      setIsConnecting(false);
+      setVenueLoading(false);
     }
   }
 
   async function handleDisconnect() {
     await clearCredentials();
-    setToken("");
-    setFetchedLocations([]);
-    setSelectedLocation(null);
     setResult(null);
-    setShowManual(false);
+    setOrderCheck(null);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+  }
+
+  async function handleLogout() {
+    await logout();
+    setEmail("");
+    setPassword("");
+    setName("");
+    setResult(null);
     setOrderCheck(null);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
   }
@@ -189,8 +148,10 @@ export default function SetupScreen() {
     if (!accessToken || !locationId) return;
     setOrderCheck({ loading: true });
     try {
-      const base = getBaseUrl();
-      const res = await fetch(`${base}api/square/orders/recent`, {
+      const domain = process.env.EXPO_PUBLIC_DOMAIN;
+      const protocol = domain?.startsWith("localhost") ? "http" : "https";
+      const baseUrl = domain ? `${protocol}://${domain}/` : "http://localhost:8080/";
+      const res = await fetch(`${baseUrl}api/square/orders/recent`, {
         headers: {
           "x-square-token": accessToken,
           "x-square-location": locationId,
@@ -214,7 +175,7 @@ export default function SetupScreen() {
         <Pressable onPress={() => router.back()} style={styles.backBtn}>
           <Feather name="arrow-left" size={22} color={Colors.dark.text} />
         </Pressable>
-        <Text style={styles.headerTitle}>Square Setup</Text>
+        <Text style={styles.headerTitle}>Setup</Text>
         <View style={{ width: 40 }} />
       </View>
 
@@ -229,158 +190,151 @@ export default function SetupScreen() {
           <View style={[styles.statusDot, { backgroundColor: isConfigured ? Colors.dark.accent : Colors.dark.textMuted }]} />
           <Text style={styles.statusLabel}>
             {isConfigured
-              ? `Connected — ${savedLocations.find(l => l.id === locationId)?.name ?? locationId}`
-              : "Not connected"}
+              ? `Connected${userInfo ? ` — ${userInfo.email}` : ""}`
+              : isLoggedIn
+                ? `Logged in as ${userInfo?.email ?? "user"}`
+                : "Not signed in"}
           </Text>
         </Animated.View>
 
-        {!isConfigured ? (
-          <>
-            {/* Primary: OAuth Button (web) or manual (native) */}
-            {Platform.OS === "web" && !showManual ? (
-              <Animated.View entering={FadeInDown.delay(60).duration(300)} style={styles.oauthSection}>
-                <Text style={styles.oauthTitle}>Connect your Square account</Text>
-                <Text style={styles.oauthSub}>
-                  Sign in with Square to automatically load your catalog and start taking voice orders.
-                </Text>
-                <Pressable
-                  onPress={handleOAuthConnect}
-                  disabled={isOAuthLoading}
-                  style={[styles.oauthBtn, { opacity: isOAuthLoading ? 0.7 : 1 }]}
-                >
-                  {isOAuthLoading ? (
-                    <ActivityIndicator size="small" color="#fff" />
-                  ) : (
-                    <>
-                      <Feather name="link" size={18} color="#fff" />
-                      <Text style={styles.oauthBtnText}>Connect with Square</Text>
-                    </>
-                  )}
-                </Pressable>
+        {/* ── Not logged in: Login / Signup form ──────────────────── */}
+        {!isLoggedIn ? (
+          <Animated.View entering={FadeInDown.delay(60).duration(300)} style={styles.authSection}>
+            <Text style={styles.authTitle}>
+              {authMode === "login" ? "Sign in to BevPro" : "Create your BevPro account"}
+            </Text>
+            <Text style={styles.authSub}>
+              {authMode === "login"
+                ? "Log in with the account you created on the BevPro dashboard."
+                : "Create an account to get started with voice-powered ordering."}
+            </Text>
 
-                <Pressable onPress={() => setShowManual(true)} style={styles.manualToggle}>
-                  <Text style={styles.manualToggleText}>Use access token instead</Text>
-                </Pressable>
-              </Animated.View>
-            ) : (
-              /* Manual token flow */
-              <Animated.View entering={FadeInDown.delay(60).duration(300)}>
-                {Platform.OS === "web" && (
-                  <Pressable onPress={() => setShowManual(false)} style={styles.backToOAuth}>
-                    <Feather name="arrow-left" size={14} color={Colors.dark.accent} />
-                    <Text style={styles.backToOAuthText}>Back to Sign in with Square</Text>
-                  </Pressable>
-                )}
-                <View style={styles.stepHeader}>
-                  <View style={styles.stepBadge}><Text style={styles.stepNum}>1</Text></View>
-                  <Text style={styles.stepTitle}>Access Token</Text>
-                </View>
-                <Text style={styles.stepHint}>
-                  Find at <Text style={styles.link}>developer.squareup.com</Text> → your app → Credentials
-                </Text>
-                <TextInput
-                  style={styles.input}
-                  value={token}
-                  onChangeText={(t) => { setToken(t); setFetchedLocations([]); setSelectedLocation(null); }}
-                  placeholder="EAAAxxxxxxxxxxxxxxx..."
-                  placeholderTextColor={Colors.dark.textMuted}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  secureTextEntry
-                  returnKeyType="done"
-                />
-                <Pressable
-                  onPress={handleFetchLocations}
-                  disabled={isLoadingLocations}
-                  style={[styles.fetchBtn, { opacity: isLoadingLocations ? 0.6 : 1 }]}
-                >
-                  {isLoadingLocations ? (
-                    <ActivityIndicator size="small" color={Colors.dark.accent} />
-                  ) : (
-                    <Feather name="map-pin" size={15} color={Colors.dark.accent} />
-                  )}
-                  <Text style={styles.fetchBtnText}>
-                    {isLoadingLocations ? "Fetching…" : "Fetch My Locations"}
-                  </Text>
-                </Pressable>
-              </Animated.View>
+            {authMode === "signup" && (
+              <TextInput
+                style={styles.input}
+                value={name}
+                onChangeText={setName}
+                placeholder="Your name"
+                placeholderTextColor={Colors.dark.textMuted}
+                autoCapitalize="words"
+                autoCorrect={false}
+                returnKeyType="next"
+              />
             )}
 
-            {/* Step 2: Pick Location (shown after OAuth or manual fetch) */}
-            {hasFetched && (
-              <Animated.View entering={FadeInDown.duration(250)}>
-                <View style={styles.stepHeader}>
-                  <View style={styles.stepBadge}><Text style={styles.stepNum}>{Platform.OS === "web" && !showManual ? "1" : "2"}</Text></View>
-                  <Text style={styles.stepTitle}>Choose a Location</Text>
-                </View>
-                <Text style={styles.stepHint}>Tap the location you want to ring up orders at</Text>
-                <View style={styles.locationList}>
-                  {fetchedLocations.map((loc) => {
-                    const active = selectedLocation?.id === loc.id;
-                    return (
-                      <Pressable
-                        key={loc.id}
-                        onPress={() => { setSelectedLocation(loc); setResult(null); Haptics.selectionAsync(); }}
-                        style={[styles.locationRow, active && styles.locationRowActive]}
-                      >
-                        <View style={styles.locationLeft}>
-                          <Text style={[styles.locationName, active && styles.locationNameActive]}>{loc.name}</Text>
-                          {loc.address ? <Text style={styles.locationAddr}>{loc.address}</Text> : null}
-                        </View>
-                        <View style={[styles.locationCheck, active && styles.locationCheckActive]}>
-                          {active && <Feather name="check" size={13} color={Colors.dark.background} />}
-                        </View>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              </Animated.View>
-            )}
+            <TextInput
+              style={styles.input}
+              value={email}
+              onChangeText={setEmail}
+              placeholder="Email address"
+              placeholderTextColor={Colors.dark.textMuted}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="email-address"
+              returnKeyType="next"
+            />
 
-            {/* Errors */}
-            {locationsError && !hasFetched && (
+            <TextInput
+              style={styles.input}
+              value={password}
+              onChangeText={setPassword}
+              placeholder="Password"
+              placeholderTextColor={Colors.dark.textMuted}
+              autoCapitalize="none"
+              autoCorrect={false}
+              secureTextEntry
+              returnKeyType="done"
+              onSubmitEditing={handleAuth}
+            />
+
+            {authError && (
               <View style={[styles.resultCard, styles.resultError]}>
                 <Feather name="alert-circle" size={16} color={Colors.dark.danger} />
-                <Text style={[styles.resultText, { color: Colors.dark.danger }]}>{locationsError}</Text>
+                <Text style={[styles.resultText, { color: Colors.dark.danger }]}>{authError}</Text>
               </View>
             )}
 
-            {result && (
-              <Animated.View
-                entering={FadeInDown.duration(200)}
-                style={[styles.resultCard, result.success ? styles.resultSuccess : styles.resultError]}
-              >
-                <Feather
-                  name={result.success ? "check-circle" : "alert-circle"}
-                  size={16}
-                  color={result.success ? Colors.dark.accent : Colors.dark.danger}
-                />
-                <Text style={[styles.resultText, { color: result.success ? Colors.dark.accent : Colors.dark.danger }]}>
-                  {result.message}
+            <Pressable
+              onPress={handleAuth}
+              disabled={authLoading}
+              style={[styles.connectBtn, { opacity: authLoading ? 0.7 : 1 }]}
+            >
+              {authLoading ? (
+                <ActivityIndicator size="small" color={Colors.dark.background} />
+              ) : (
+                <>
+                  <Feather name="log-in" size={18} color={Colors.dark.background} />
+                  <Text style={styles.connectBtnText}>
+                    {authMode === "login" ? "Sign In" : "Create Account"}
+                  </Text>
+                </>
+              )}
+            </Pressable>
+
+            <Pressable
+              onPress={() => { setAuthMode(authMode === "login" ? "signup" : "login"); setAuthError(null); }}
+              style={styles.switchAuth}
+            >
+              <Text style={styles.switchAuthText}>
+                {authMode === "login"
+                  ? "Don't have an account? Sign up"
+                  : "Already have an account? Sign in"}
+              </Text>
+            </Pressable>
+          </Animated.View>
+
+        /* ── Logged in but no venue selected ─────────────────────── */
+        ) : !isConfigured ? (
+          <Animated.View entering={FadeInDown.delay(60).duration(300)}>
+            {venues.length > 0 ? (
+              <>
+                <Text style={styles.authTitle}>Select your venue</Text>
+                <Text style={styles.authSub}>Choose the venue you want to use with the voice agent.</Text>
+
+                <View style={styles.locationList}>
+                  {venues.map((v) => (
+                    <Pressable
+                      key={v.id}
+                      onPress={() => handleSelectVenue(v.id)}
+                      disabled={venueLoading}
+                      style={[styles.locationRow, { opacity: venueLoading ? 0.6 : 1 }]}
+                    >
+                      <View style={styles.locationLeft}>
+                        <Text style={styles.locationName}>{v.name}</Text>
+                        {v.squareLocationName && (
+                          <Text style={styles.locationAddr}>{v.squareLocationName}</Text>
+                        )}
+                      </View>
+                      <Feather name="chevron-right" size={18} color={Colors.dark.textMuted} />
+                    </Pressable>
+                  ))}
+                </View>
+
+                {venueError && (
+                  <View style={[styles.resultCard, styles.resultError]}>
+                    <Feather name="alert-circle" size={16} color={Colors.dark.danger} />
+                    <Text style={[styles.resultText, { color: Colors.dark.danger }]}>{venueError}</Text>
+                  </View>
+                )}
+              </>
+            ) : (
+              <View style={styles.noVenuesCard}>
+                <Feather name="map-pin" size={24} color={Colors.dark.textMuted} />
+                <Text style={styles.noVenuesTitle}>No venues found</Text>
+                <Text style={styles.noVenuesText}>
+                  Connect your Square account from the BevPro dashboard first, then come back here.
                 </Text>
-              </Animated.View>
+              </View>
             )}
 
-            {/* Connect Button (after location picked) */}
-            {hasFetched && (
-              <Pressable
-                onPress={handleConnect}
-                disabled={isConnecting || !selectedLocation}
-                style={[styles.connectBtn, { opacity: (isConnecting || !selectedLocation) ? 0.6 : 1 }]}
-              >
-                {isConnecting ? (
-                  <ActivityIndicator size="small" color={Colors.dark.background} />
-                ) : (
-                  <>
-                    <Feather name="check" size={18} color={Colors.dark.background} />
-                    <Text style={styles.connectBtnText}>Save & Connect</Text>
-                  </>
-                )}
-              </Pressable>
-            )}
-          </>
+            <Pressable onPress={handleLogout} style={styles.disconnectBtn}>
+              <Feather name="log-out" size={16} color={Colors.dark.danger} />
+              <Text style={styles.disconnectText}>Sign out</Text>
+            </Pressable>
+          </Animated.View>
+
+        /* ── Connected — show status + controls ──────────────────── */
         ) : (
-          /* Already connected — show stats */
           <>
             {result && (
               <Animated.View
@@ -461,18 +415,15 @@ export default function SetupScreen() {
 
             <Pressable onPress={handleDisconnect} style={styles.disconnectBtn}>
               <Feather name="link-2" size={16} color={Colors.dark.danger} />
-              <Text style={styles.disconnectText}>Disconnect</Text>
+              <Text style={styles.disconnectText}>Switch venue</Text>
+            </Pressable>
+
+            <Pressable onPress={handleLogout} style={styles.disconnectBtn}>
+              <Feather name="log-out" size={16} color={Colors.dark.danger} />
+              <Text style={styles.disconnectText}>Sign out</Text>
             </Pressable>
           </>
         )}
-
-        {/* Info card */}
-        <Animated.View entering={FadeInDown.delay(240).duration(300)} style={styles.sandboxCard}>
-          <Feather name="shield" size={16} color={Colors.dark.warning} />
-          <Text style={styles.sandboxText}>
-            Orders submitted here go directly to your live Square account. Use your Sandbox credentials from developer.squareup.com to test without real transactions.
-          </Text>
-        </Animated.View>
 
         {/* ── Voice Settings ───────────────────────────────────────────── */}
         <Animated.View entering={FadeInDown.delay(280).duration(300)} style={styles.voiceSection}>
@@ -543,30 +494,21 @@ const styles = StyleSheet.create({
   statusDot: { width: 8, height: 8, borderRadius: 4 },
   statusLabel: { fontFamily: "Inter_500Medium", fontSize: 14, color: Colors.dark.text, flex: 1 },
 
-  // OAuth section
-  oauthSection: { gap: 12 },
-  oauthTitle: { fontFamily: "Inter_600SemiBold", fontSize: 18, color: Colors.dark.text },
-  oauthSub: { fontFamily: "Inter_400Regular", fontSize: 13, color: Colors.dark.textSecondary, lineHeight: 19 },
-  oauthBtn: {
-    height: 52, borderRadius: 14, backgroundColor: "#00A04A",
-    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10,
-  },
-  oauthBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 16, color: "#fff" },
-  manualToggle: { alignItems: "center", paddingVertical: 8 },
-  manualToggleText: { fontFamily: "Inter_400Regular", fontSize: 13, color: Colors.dark.textSecondary },
-  backToOAuth: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 12 },
-  backToOAuthText: { fontFamily: "Inter_500Medium", fontSize: 13, color: Colors.dark.accent },
+  // Auth section (login/signup)
+  authSection: { gap: 12 },
+  authTitle: { fontFamily: "Inter_600SemiBold", fontSize: 18, color: Colors.dark.text },
+  authSub: { fontFamily: "Inter_400Regular", fontSize: 13, color: Colors.dark.textSecondary, lineHeight: 19 },
+  switchAuth: { alignItems: "center", paddingVertical: 8 },
+  switchAuthText: { fontFamily: "Inter_400Regular", fontSize: 13, color: Colors.dark.accent },
 
-  // Manual steps
-  stepHeader: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 6 },
-  stepBadge: {
-    width: 24, height: 24, borderRadius: 12,
-    backgroundColor: Colors.dark.accent, alignItems: "center", justifyContent: "center",
+  // No venues state
+  noVenuesCard: {
+    alignItems: "center", gap: 8, paddingVertical: 32, paddingHorizontal: 20,
+    backgroundColor: Colors.dark.surface, borderRadius: 16,
+    borderWidth: 1, borderColor: Colors.dark.surfaceBorder,
   },
-  stepNum: { fontFamily: "Inter_700Bold", fontSize: 12, color: Colors.dark.background },
-  stepTitle: { fontFamily: "Inter_600SemiBold", fontSize: 15, color: Colors.dark.text },
-  stepHint: { fontFamily: "Inter_400Regular", fontSize: 12, color: Colors.dark.textSecondary, marginBottom: 10, lineHeight: 17 },
-  link: { color: Colors.dark.accent },
+  noVenuesTitle: { fontFamily: "Inter_600SemiBold", fontSize: 16, color: Colors.dark.text },
+  noVenuesText: { fontFamily: "Inter_400Regular", fontSize: 13, color: Colors.dark.textSecondary, textAlign: "center", lineHeight: 19 },
   input: {
     backgroundColor: Colors.dark.surface, borderRadius: 12,
     paddingHorizontal: 16, height: 50,
