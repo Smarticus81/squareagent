@@ -89,12 +89,14 @@ router.get("/oauth/authorize", (req: Request, res: Response): void => {
 
   const oauthUrl = `${SQUARE_OAUTH_BASE}/authorize?${params}`;
 
+  console.log(`[Square OAuth] authorize → redirect_uri=${redirectUri}`);
+
   if (mode === "redirect") {
     // Full-page redirect — works in standalone PWA
     res.redirect(oauthUrl);
   } else {
     // Popup mode — client opens URL in window.open()
-    res.json({ url: oauthUrl, state });
+    res.json({ url: oauthUrl, state, redirect_uri: redirectUri });
   }
 });
 
@@ -102,6 +104,7 @@ router.get("/oauth/authorize", (req: Request, res: Response): void => {
 // Square redirects here after user authorizes. Exchanges code for token,
 // stores it temporarily, then serves a page that postMessages to the opener.
 router.get("/oauth/callback", async (req: Request, res: Response): Promise<void> => {
+  console.log(`[Square OAuth] callback hit — code=${!!req.query.code} state=${!!req.query.state} error=${req.query.error || 'none'}`);
   const { code, state, error } = req.query as Record<string, string>;
 
   // Retrieve the pending state to check mode

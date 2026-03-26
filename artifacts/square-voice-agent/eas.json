@@ -43,8 +43,8 @@
   "submit": {
     "production": {
       "ios": {
-        "ascApiKeyId": "REPLACE_BEFORE_SUBMIT",
-        "ascApiKeyIssuerId": "REPLACE_BEFORE_SUBMIT"
+        "appleId": "terence127@yahoo.com",
+        "appleTeamId": "L4AV9F235M"
       }
     }
   }
