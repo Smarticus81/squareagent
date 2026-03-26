@@ -10,7 +10,6 @@ import {
   MapPin,
   Loader2,
   ShoppingCart,
-  Package,
   Settings,
   CreditCard,
   LogOut,
@@ -170,8 +169,7 @@ export default function Dashboard() {
   const plan = auth.subscription?.plan ?? "trial";
   const subStatus = auth.subscription?.status ?? "trialing";
   const trialExpired = subStatus === "trialing" && auth.subscription?.trialEndsAt && new Date(auth.subscription.trialEndsAt) < new Date();
-  const canUsePOS = !trialExpired && (plan === "trial" || plan === "pos_only" || plan === "complete") && (subStatus === "trialing" || subStatus === "active");
-  const canUseInventory = !trialExpired && (plan === "trial" || plan === "inventory_only" || plan === "complete") && (subStatus === "trialing" || subStatus === "active");
+  const canUseAgent = !trialExpired && (subStatus === "trialing" || subStatus === "active");
 
   const handleManageSubscription = async () => {
     try {
@@ -322,23 +320,23 @@ export default function Dashboard() {
             )}
           </div>
 
-          {/* POS Voice Agent */}
-          <div className={`border p-8 ${canUsePOS ? "border-foreground/8" : "border-foreground/5 opacity-60"}`}>
+          {/* Voice Assistant */}
+          <div className={`border p-8 ${canUseAgent ? "border-foreground/8" : "border-foreground/5 opacity-60"}`}>
             <div className="flex items-start gap-3 mb-2">
               <ShoppingCart className="w-4 h-4 mt-0.5 text-foreground/30 shrink-0" />
-              <p className="text-[12px] tracking-[0.15em] uppercase text-foreground/30">POS Agent</p>
+              <p className="text-[12px] tracking-[0.15em] uppercase text-foreground/30">Voice Assistant</p>
             </div>
             <p className="text-[14px] text-foreground/50 font-light mb-8 leading-relaxed max-w-lg">
-              {!canUsePOS
-                ? (trialExpired ? "Trial expired. Subscribe to use voice ordering." : "Your plan doesn't include POS. Upgrade to enable it.")
+              {!canUseAgent
+                ? (trialExpired ? "Trial expired. Subscribe to continue." : "Subscribe to enable your voice assistant.")
                 : isSquareConnected
-                  ? "Bartender-facing voice ordering. Take orders, check stock, and process payments hands-free."
-                  : "Connect Square first to enable voice ordering."}
+                  ? "Voice-powered POS and inventory management. Take orders, check stock, adjust counts, and more — all hands-free."
+                  : "Connect Square first to enable your voice assistant."}
             </p>
 
             <Button
               className="h-10 px-7 text-[13px] group"
-              disabled={!isSquareConnected || !canUsePOS}
+              disabled={!isSquareConnected || !canUseAgent}
               onClick={async () => {
                 if (!isSquareConnected || !primaryVenue) return;
                 try {
@@ -350,54 +348,14 @@ export default function Dashboard() {
                   });
                   if (!res.ok) throw new Error("Failed to create exchange code");
                   const { code } = await res.json();
-                  const url = `${voiceAgentBaseUrl}pos?code=${encodeURIComponent(code)}`;
+                  const url = `${voiceAgentBaseUrl}?code=${encodeURIComponent(code)}`;
                   window.open(url, "_blank", "noopener,noreferrer");
                 } catch (e) {
-                  console.error("Failed to launch POS agent:", e);
+                  console.error("Failed to launch assistant:", e);
                 }
               }}
             >
-              {canUsePOS ? "Launch POS Agent" : "Upgrade to unlock"}
-              <ExternalLink className="ml-2 w-3.5 h-3.5" />
-            </Button>
-          </div>
-
-          {/* Inventory Agent */}
-          <div className={`border p-8 ${canUseInventory ? "border-foreground/8" : "border-foreground/5 opacity-60"}`}>
-            <div className="flex items-start gap-3 mb-2">
-              <Package className="w-4 h-4 mt-0.5 text-foreground/30 shrink-0" />
-              <p className="text-[12px] tracking-[0.15em] uppercase text-foreground/30">Inventory Agent</p>
-            </div>
-            <p className="text-[14px] text-foreground/50 font-light mb-8 leading-relaxed max-w-lg">
-              {!canUseInventory
-                ? (trialExpired ? "Trial expired. Subscribe to manage inventory." : "Your plan doesn't include Inventory. Upgrade to enable it.")
-                : isSquareConnected
-                  ? "Staff inventory management. Check stock levels, adjust counts, and get low-stock alerts by voice."
-                  : "Connect Square first to enable inventory management."}
-            </p>
-
-            <Button
-              className="h-10 px-7 text-[13px] group"
-              disabled={!isSquareConnected || !canUseInventory}
-              onClick={async () => {
-                if (!isSquareConnected || !primaryVenue) return;
-                try {
-                  const token = localStorage.getItem("bevpro_token") || "";
-                  const res = await fetch("/api/auth/exchange/create", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-                    body: JSON.stringify({ venueId: primaryVenue.id }),
-                  });
-                  if (!res.ok) throw new Error("Failed to create exchange code");
-                  const { code } = await res.json();
-                  const url = `${voiceAgentBaseUrl}inventory?code=${encodeURIComponent(code)}`;
-                  window.open(url, "_blank", "noopener,noreferrer");
-                } catch (e) {
-                  console.error("Failed to launch Inventory agent:", e);
-                }
-              }}
-            >
-              {canUseInventory ? "Launch Inventory Agent" : "Upgrade to unlock"}
+              {canUseAgent ? "Launch your Assistant" : "Upgrade to unlock"}
               <ExternalLink className="ml-2 w-3.5 h-3.5" />
             </Button>
           </div>
@@ -414,7 +372,7 @@ export default function Dashboard() {
               )}
               {trialExpired && "Trial expired — subscribe to continue"}
               {subStatus === "active" && (
-                <>{plan === "complete" ? "Complete" : plan === "pos_only" ? "POS Only" : plan === "inventory_only" ? "Inventory Only" : plan} plan &middot; Active</>
+                <>{plan === "complete" ? "Complete" : plan} plan &middot; Active</>
               )}
               {subStatus === "canceled" && "Subscription canceled"}
             </p>
@@ -449,7 +407,7 @@ export default function Dashboard() {
                 <ol className="space-y-2.5 text-[13px] text-foreground/50 font-light">
                   <li className="flex items-start gap-2.5">
                     <span className="w-5 h-5 rounded-full border border-foreground/10 flex items-center justify-center text-[10px] text-foreground/40 shrink-0 mt-0.5">1</span>
-                    <span>Launch the POS or Inventory agent above</span>
+                    <span>Launch your assistant above</span>
                   </li>
                   <li className="flex items-start gap-2.5">
                     <span className="w-5 h-5 rounded-full border border-foreground/10 flex items-center justify-center text-[10px] text-foreground/40 shrink-0 mt-0.5">2</span>

@@ -168,7 +168,7 @@ export default function Landing() {
               className="w-2 h-2 rounded-full bg-primary/60"
             />
             <span className="text-[11px] font-medium tracking-[0.35em] uppercase text-primary/70">
-              Voice-Powered POS
+              Voice-Powered Assistant
             </span>
             <motion.div
               animate={{ scale: [1, 1.15, 1], opacity: [0.4, 0.7, 0.4] }}
@@ -407,7 +407,7 @@ export default function Landing() {
             </div>
           </motion.div>
 
-          {/* Feature 3: Dual Agent */}
+          {/* Feature 3: Unified Agent */}
           <motion.div
             initial="hidden" whileInView="visible" viewport={{ once: true }} custom={2} variants={fadeUp}
             className="grid md:grid-cols-2 gap-0 border border-border rounded-xl overflow-hidden"
@@ -420,30 +420,22 @@ export default function Landing() {
                 <span className="text-[11px] tracking-[0.2em] uppercase text-foreground/50 font-medium">Intelligence</span>
               </div>
               <h3 className="text-2xl md:text-3xl font-display font-semibold tracking-tight text-foreground leading-tight">
-                Dual-agent system
+                All-in-one assistant
               </h3>
               <p className="text-[15px] text-foreground/60 font-light mt-4 leading-relaxed max-w-sm">
-                One agent takes orders. Another manages inventory. Both work through voice, both sync with Square, both learn your catalog.
+                One voice assistant handles everything — take orders, check stock, adjust inventory, and process payments. All synced with Square.
               </p>
             </div>
             <div className="bg-secondary p-10 flex items-center justify-center min-h-[280px]">
               <div className="flex flex-col items-center gap-6">
-                <div className="flex gap-8">
-                  <div className="text-center">
-                    <div className="w-14 h-14 border border-border rounded-lg flex items-center justify-center mb-2">
-                      <Mic className="w-6 h-6 text-primary/40" strokeWidth={1.5} />
-                    </div>
-                    <span className="text-[10px] text-foreground/50 tracking-wider uppercase">POS</span>
+                <div className="text-center">
+                  <div className="w-14 h-14 border border-border rounded-lg flex items-center justify-center mb-2">
+                    <Mic className="w-6 h-6 text-primary/40" strokeWidth={1.5} />
                   </div>
-                  <div className="text-center">
-                    <div className="w-14 h-14 border border-border rounded-lg flex items-center justify-center mb-2">
-                      <Layers className="w-6 h-6 text-primary/40" strokeWidth={1.5} />
-                    </div>
-                    <span className="text-[10px] text-foreground/50 tracking-wider uppercase">Inventory</span>
-                  </div>
+                  <span className="text-[10px] text-foreground/50 tracking-wider uppercase">Assistant</span>
                 </div>
                 <div className="w-16 h-[1px] bg-border" />
-                <span className="text-[10px] text-foreground/40 tracking-wider">One voice. Two agents.</span>
+                <span className="text-[10px] text-foreground/40 tracking-wider">One voice. Everything handled.</span>
               </div>
             </div>
           </motion.div>
@@ -503,7 +495,7 @@ export default function Landing() {
                 venue: "The Copper Fox, Austin",
               },
               {
-                quote: "The dual-agent thing is real. I check stock levels by voice between rushes. It's like having an extra manager.",
+                quote: "I check stock levels by voice between rushes. It's like having an extra manager on shift.",
                 name: "Sarah K.",
                 venue: "Nightcap Lounge, Miami",
               },
@@ -551,9 +543,9 @@ export default function Landing() {
             initial="hidden" whileInView="visible" viewport={{ once: true }} custom={2} variants={fadeUp}
             className="grid md:grid-cols-3 gap-4"
           >
-            {/* POS Only */}
+            {/* Standard */}
             <div className="border border-border rounded-xl bg-card p-8 md:p-10 flex flex-col">
-              <p className="text-[11px] tracking-[0.2em] uppercase text-foreground/50 font-medium mb-4">POS Agent</p>
+              <p className="text-[11px] tracking-[0.2em] uppercase text-foreground/50 font-medium mb-4">Standard</p>
               <div className="mb-2">
                 <span className="text-5xl font-display font-semibold tracking-tight text-foreground">$29</span>
                 <span className="text-foreground/50 font-light ml-1 text-lg">/mo</span>
@@ -571,37 +563,17 @@ export default function Landing() {
               </Link>
             </div>
 
-            {/* Inventory Only */}
-            <div className="border border-border rounded-xl bg-card p-8 md:p-10 flex flex-col">
-              <p className="text-[11px] tracking-[0.2em] uppercase text-foreground/50 font-medium mb-4">Inventory Agent</p>
-              <div className="mb-2">
-                <span className="text-5xl font-display font-semibold tracking-tight text-foreground">$29</span>
-                <span className="text-foreground/50 font-light ml-1 text-lg">/mo</span>
-              </div>
-              <p className="text-[13px] text-foreground/50 font-light mb-8">per venue</p>
-              <ul className="text-left space-y-3 mb-8 flex-1">
-                {["Voice stock checks", "Inventory adjustments", "Low-stock alerts", "Delivery receiving"].map((f, i) => (
-                  <li key={i} className="text-[13px] text-foreground/60 font-light flex items-center gap-3">
-                    <span className="w-1.5 h-1.5 rounded-full bg-primary/40 shrink-0" />{f}
-                  </li>
-                ))}
-              </ul>
-              <Link href="/signup">
-                <Button variant="outline" size="lg" className="w-full h-11 text-[14px]">Start free trial</Button>
-              </Link>
-            </div>
-
-            {/* Complete */}
+            {/* Plus */}
             <div className="border-2 border-primary/30 rounded-xl bg-card p-8 md:p-10 flex flex-col relative shadow-lg shadow-primary/10">
-              <span className="absolute -top-3 left-1/2 -translate-x-1/2 text-[10px] tracking-[0.15em] uppercase bg-primary text-primary-foreground px-3 py-1 rounded-full font-medium">Best value</span>
-              <p className="text-[11px] tracking-[0.2em] uppercase text-foreground/50 font-medium mb-4">Complete</p>
+              <span className="absolute -top-3 left-1/2 -translate-x-1/2 text-[10px] tracking-[0.15em] uppercase bg-primary text-primary-foreground px-3 py-1 rounded-full font-medium">Popular</span>
+              <p className="text-[11px] tracking-[0.2em] uppercase text-foreground/50 font-medium mb-4">Plus</p>
               <div className="mb-2">
                 <span className="text-5xl font-display font-semibold tracking-tight text-foreground">$49</span>
                 <span className="text-foreground/50 font-light ml-1 text-lg">/mo</span>
               </div>
-              <p className="text-[13px] text-foreground/50 font-light mb-8">per venue &middot; save $9/mo</p>
+              <p className="text-[13px] text-foreground/50 font-light mb-8">per venue</p>
               <ul className="text-left space-y-3 mb-8 flex-1">
-                {["Everything in POS Agent", "Everything in Inventory", "Priority support", "Early access to new features"].map((f, i) => (
+                {["Everything in Standard", "Inventory management", "Low-stock alerts", "Priority support", "Early access to new features"].map((f, i) => (
                   <li key={i} className="text-[13px] text-foreground/60 font-light flex items-center gap-3">
                     <span className="w-1.5 h-1.5 rounded-full bg-primary/40 shrink-0" />{f}
                   </li>
@@ -609,6 +581,25 @@ export default function Landing() {
               </ul>
               <Link href="/signup">
                 <Button size="lg" className="w-full h-11 text-[14px]">Start free trial</Button>
+              </Link>
+            </div>
+
+            {/* Enterprise */}
+            <div className="border border-border rounded-xl bg-card p-8 md:p-10 flex flex-col">
+              <p className="text-[11px] tracking-[0.2em] uppercase text-foreground/50 font-medium mb-4">Enterprise</p>
+              <div className="mb-2">
+                <span className="text-5xl font-display font-semibold tracking-tight text-foreground">Custom</span>
+              </div>
+              <p className="text-[13px] text-foreground/50 font-light mb-8">multi-venue pricing</p>
+              <ul className="text-left space-y-3 mb-8 flex-1">
+                {["Everything in Plus", "Multi-venue management", "Dedicated support", "Custom integrations"].map((f, i) => (
+                  <li key={i} className="text-[13px] text-foreground/60 font-light flex items-center gap-3">
+                    <span className="w-1.5 h-1.5 rounded-full bg-primary/40 shrink-0" />{f}
+                  </li>
+                ))}
+              </ul>
+              <Link href="/signup">
+                <Button variant="outline" size="lg" className="w-full h-11 text-[14px]">Contact us</Button>
               </Link>
             </div>
           </motion.div>

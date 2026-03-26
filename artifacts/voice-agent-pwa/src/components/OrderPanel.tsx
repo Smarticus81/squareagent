@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { X, Menu, Trash2, Loader, Link, ChevronRight, Sun, Moon, RefreshCw } from "lucide-react";
 import { useOrder, type OrderLineItem } from "@/contexts/OrderContext";
 import { useSquare } from "@/contexts/SquareContext";
-import { useVoiceAgent, type AgentMode } from "@/contexts/VoiceAgentContext";
+
 import { OrderCard } from "./OrderCard";
 import { getVoicePrefs, setVoicePref, setSpeedPref, VOICES, SPEEDS } from "@/lib/voice-prefs";
 
@@ -27,32 +27,24 @@ export function OrderPanel({ open, tab, onTabChange, onClose }: Props) {
   );
 }
 
-/* ── Panel nav + body, gated by agent mode ────────────────── */
+/* ── Panel nav + body ─────────────────────────────────────── */
 function PanelContent({ tab, onTabChange, onClose }: { tab: "order" | "menu" | "settings"; onTabChange: (t: "order" | "menu" | "settings") => void; onClose: () => void }) {
-  const { agentMode } = useVoiceAgent();
-  const isInventory = agentMode === "inventory";
-  // Inventory mode: only show menu + settings (no order tab)
-  const tabs = isInventory
-    ? (["menu", "settings"] as const)
-    : (["order", "menu", "settings"] as const);
-
-  // If current tab is "order" in inventory mode, redirect to menu
-  const activeTab = (isInventory && tab === "order") ? "menu" : tab;
+  const tabs = ["order", "menu", "settings"] as const;
 
   return (
     <>
       <nav className="panel-nav">
         {tabs.map((t) => (
-          <button key={t} className={`panel-nav-btn${activeTab === t ? " active" : ""}`} onClick={() => onTabChange(t)}>
+          <button key={t} className={`panel-nav-btn${tab === t ? " active" : ""}`} onClick={() => onTabChange(t)}>
             {t}
           </button>
         ))}
         <button className="panel-nav-close" onClick={onClose}><X size={16} /></button>
       </nav>
       <div className="panel-body">
-        {activeTab === "order" && !isInventory && <OrderTab onTabChange={onTabChange} />}
-        {activeTab === "menu" && <MenuTab onTabChange={onTabChange} />}
-        {activeTab === "settings" && <SettingsTab />}
+        {tab === "order" && <OrderTab onTabChange={onTabChange} />}
+        {tab === "menu" && <MenuTab onTabChange={onTabChange} />}
+        {tab === "settings" && <SettingsTab />}
       </div>
     </>
   );
@@ -190,7 +182,7 @@ function MenuTab({ onTabChange }: { onTabChange: (t: "order" | "menu" | "setting
 /* ── Settings Tab ──────────────────────────────────────────── */
 function SettingsTab() {
   const { isConfigured, clearCredentials, connectionError, isReconnecting, refreshCredentials } = useSquare();
-  const { agentMode, setAgentMode, isConnected } = useVoiceAgent();
+
   const [prefs, setPrefs] = useState(getVoicePrefs);
   const [theme, setTheme] = useState(() => document.documentElement.getAttribute("data-theme") || "light");
 
@@ -275,30 +267,7 @@ function SettingsTab() {
 
       <div className="divider" style={{ margin: "8px 0" }} />
 
-      {/* Agent Mode */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "2px 0 6px" }}>
-        <span className="rec-label" style={{ margin: 0, whiteSpace: "nowrap" }}>MODE</span>
-        <div className="speed-row" style={{ flex: 1, padding: 0 }}>
-          {([{ id: "pos" as AgentMode, label: "POS" }, { id: "inventory" as AgentMode, label: "Inventory" }]).map((m) => (
-            <button
-              key={m.id}
-              className={`speed-chip${agentMode === m.id ? " active" : ""}`}
-              disabled={isConnected}
-              onClick={() => {
-                setAgentMode(m.id);
-                const base = window.location.pathname.replace(/\/(pos|inventory)\/?$/i, "").replace(/\/+$/, "");
-                const newPath = `${base}/${m.id}${window.location.search}`;
-                window.history.replaceState({}, "", newPath);
-              }}
-            >
-              {m.label}
-            </button>
-          ))}
-        </div>
-      </div>
-      {isConnected && <div className="empty-hint" style={{ fontSize: 11, opacity: 0.5, padding: "0 0 4px" }}>disconnect to switch modes</div>}
 
-      <div className="divider" style={{ margin: "8px 0" }} />
 
       {/* Voice — horizontal scrollable strip */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "2px 0 4px" }}>

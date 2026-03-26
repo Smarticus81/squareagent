@@ -47,24 +47,19 @@ async function authenticateToken(token: string): Promise<{ userId: number; subsc
   }
 }
 
-function checkPlan(subscription: any, agent: "pos" | "inventory"): string | null {
+function checkPlan(subscription: any): string | null {
   if (!subscription) return "No active subscription";
 
   if (subscription.status === "trialing") {
     if (subscription.trialEndsAt && new Date(subscription.trialEndsAt) < new Date()) {
       return "Trial expired. Please subscribe to continue.";
     }
-    return null; // Trial grants access to both
+    return null;
   }
 
   if (subscription.status !== "active") return "Subscription inactive";
 
-  const plan = subscription.plan as string;
-  if (plan === "complete") return null;
-  if (plan === "pos_only" && agent === "pos") return null;
-  if (plan === "inventory_only" && agent === "inventory") return null;
-
-  return "Your plan does not include this agent";
+  return null;
 }
 
 async function lookupVenueCredentials(userId: number, venueId: number) {
@@ -76,9 +71,10 @@ async function lookupVenueCredentials(userId: number, venueId: number) {
   return { squareToken: venue.squareAccessToken ?? "", squareLocationId: venue.squareLocationId ?? "" };
 }
 
-// ── POS tool definitions (same as realtime.ts) ───────────────────────────────
+// ── Unified tool definitions (same as realtime.ts) ───────────────────────────
 
-const POS_TOOLS = [
+const TOOLS = [
+  // POS tools
   {
     type: "function",
     name: "add_item",
@@ -140,11 +136,94 @@ const POS_TOOLS = [
   {
     type: "function",
     name: "check_inventory",
-    description: "Check the current stock level of an item in Square inventory",
+    description: "Check the current stock level of a specific item",
     parameters: {
       type: "object",
       properties: {
         item_name: { type: "string", description: "Name of the item to check" },
+      },
+      required: ["item_name"],
+    },
+  },
+  // Inventory tools
+  {
+    type: "function",
+    name: "check_all_inventory",
+    description: "Get stock levels for all items in the catalog",
+    parameters: { type: "object", properties: {} },
+  },
+  {
+    type: "function",
+    name: "adjust_inventory",
+    description: "Add or remove stock. Positive quantity = add (delivery received), negative = remove (used, damaged, waste).",
+    parameters: {
+      type: "object",
+      properties: {
+        item_name: { type: "string", description: "Name of the item" },
+        quantity: { type: "number", description: "Amount to add (positive) or remove (negative)" },
+        reason: { type: "string", description: "Reason: received, used, damaged, correction, waste", default: "received" },
+      },
+      required: ["item_name", "quantity"],
+    },
+  },
+  {
+    type: "function",
+    name: "set_inventory",
+    description: "Set the absolute stock count for an item (e.g. after a physical count)",
+    parameters: {
+      type: "object",
+      properties: {
+        item_name: { type: "string", description: "Name of the item" },
+        quantity: { type: "number", description: "New absolute stock count" },
+      },
+      required: ["item_name", "quantity"],
+    },
+  },
+  {
+    type: "function",
+    name: "transfer_inventory",
+    description: "Transfer stock of an item from one location to another",
+    parameters: {
+      type: "object",
+      properties: {
+        item_name: { type: "string", description: "Name of the item" },
+        quantity: { type: "number", description: "Quantity to transfer" },
+        to_location_id: { type: "string", description: "Destination Square location ID" },
+      },
+      required: ["item_name", "quantity", "to_location_id"],
+    },
+  },
+  {
+    type: "function",
+    name: "get_inventory_changes",
+    description: "Get recent inventory changes/history for a specific item",
+    parameters: {
+      type: "object",
+      properties: {
+        item_name: { type: "string", description: "Name of the item" },
+      },
+      required: ["item_name"],
+    },
+  },
+  {
+    type: "function",
+    name: "low_stock_report",
+    description: "Get items that are low in stock (below a threshold)",
+    parameters: {
+      type: "object",
+      properties: {
+        threshold: { type: "number", description: "Stock level threshold (default 5)", default: 5 },
+      },
+    },
+  },
+  {
+    type: "function",
+    name: "get_item_details",
+    description: "Get full details for a specific item including variations, pricing, and category",
+    parameters: {
+      type: "object",
+      properties: {
+        item_name: { type: "string", description: "Name of the item" },
       },
       required: ["item_name"],
     },
@@ -274,6 +353,160 @@ async function executeTool(
         return { result: `Failed to check inventory: ${e.message}` };
       }
     }
+    case "check_all_inventory": {
+      if (!squareToken || !squareLocationId) return { result: "Square not connected." };
+      if (catalog.length === 0) return { result: "No catalog items loaded." };
+      try {
+        const ids = catalog.map((c) => c.variationId ?? c.id);
+        const res = await fetch(`${SQUARE_BASE}/inventory/counts/batch-retrieve`, {
+          method: "POST",
+          headers: squareHeaders(squareToken),
+          body: JSON.stringify({ catalog_object_ids: ids, location_ids: [squareLocationId] }),
+        });
+        const data = (await res.json()) as any;
+        const counts = data.counts ?? [];
+        const lines = catalog.map((c) => {
+          const vid = c.variationId ?? c.id;
+          const count = counts.find((ct: any) => ct.catalog_object_id === vid && ct.state === "IN_STOCK");
+          const qty = count ? parseFloat(count.quantity) : 0;
+          return `${c.name}: ${qty}`;
+        });
+        return { result: `Inventory:\n${lines.join("\n")}` };
+      } catch (e: any) {
+        return { result: `Failed to check inventory: ${e.message}` };
+      }
+    }
+    case "adjust_inventory": {
+      const itemName = String(args.item_name ?? "");
+      const quantity = Number(args.quantity ?? 0);
+      const reason = String(args.reason ?? "received");
+      const match = findCatalogItem(catalog, itemName);
+      if (!match) return { result: `"${itemName}" not found in catalog.` };
+      if (!squareToken || !squareLocationId) return { result: "Square not connected." };
+      const variationId = match.variationId ?? match.id;
+      const isAdding = quantity > 0;
+      try {
+        const res = await fetch(`${SQUARE_BASE}/inventory/changes/batch-create`, {
+          method: "POST",
+          headers: squareHeaders(squareToken),
+          body: JSON.stringify({
+            idempotency_key: `inv-adj-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+            changes: [{ type: "ADJUSTMENT", adjustment: { catalog_object_id: variationId, location_id: squareLocationId, from_state: isAdding ? "NONE" : "IN_STOCK", to_state: isAdding ? "IN_STOCK" : "WASTE", quantity: Math.abs(quantity).toString(), occurred_at: new Date().toISOString() } }],
+          }),
+        });
+        const data = (await res.json()) as any;
+        if (!res.ok) return { result: `Failed: ${data.errors?.[0]?.detail ?? "Unknown error"}` };
+        const action = isAdding ? `Added ${quantity}` : `Removed ${Math.abs(quantity)}`;
+        const newQty = await getInventoryCount(squareToken, squareLocationId, variationId);
+        return { result: `${action} ${match.name} (reason: ${reason}). Now ${newQty} in stock.` };
+      } catch (e: any) {
+        return { result: `Failed to adjust inventory: ${e.message}` };
+      }
+    }
+    case "set_inventory": {
+      const itemName = String(args.item_name ?? "");
+      const quantity = Number(args.quantity ?? 0);
+      const match = findCatalogItem(catalog, itemName);
+      if (!match) return { result: `"${itemName}" not found in catalog.` };
+      if (!squareToken || !squareLocationId) return { result: "Square not connected." };
+      const variationId = match.variationId ?? match.id;
+      try {
+        const res = await fetch(`${SQUARE_BASE}/inventory/changes/batch-create`, {
+          method: "POST",
+          headers: squareHeaders(squareToken),
+          body: JSON.stringify({
+            idempotency_key: `inv-set-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+            changes: [{ type: "PHYSICAL_COUNT", physical_count: { catalog_object_id: variationId, location_id: squareLocationId, quantity: quantity.toString(), state: "IN_STOCK", occurred_at: new Date().toISOString() } }],
+          }),
+        });
+        const data = (await res.json()) as any;
+        if (!res.ok) return { result: `Failed: ${data.errors?.[0]?.detail ?? "Unknown error"}` };
+        return { result: `${match.name} inventory set to ${quantity}.` };
+      } catch (e: any) {
+        return { result: `Failed to set inventory: ${e.message}` };
+      }
+    }
+    case "transfer_inventory": {
+      const itemName = String(args.item_name ?? "");
+      const quantity = Number(args.quantity ?? 0);
+      const toLocationId = String(args.to_location_id ?? "");
+      const match = findCatalogItem(catalog, itemName);
+      if (!match) return { result: `"${itemName}" not found in catalog.` };
+      if (!squareToken || !squareLocationId) return { result: "Square not connected." };
+      if (!toLocationId) return { result: "Destination location ID is required." };
+      const variationId = match.variationId ?? match.id;
+      try {
+        const res = await fetch(`${SQUARE_BASE}/inventory/changes/batch-create`, {
+          method: "POST",
+          headers: squareHeaders(squareToken),
+          body: JSON.stringify({
+            idempotency_key: `inv-xfer-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+            changes: [{ type: "TRANSFER", transfer: { catalog_object_id: variationId, from_location_id: squareLocationId, to_location_id: toLocationId, quantity: quantity.toString(), occurred_at: new Date().toISOString() } }],
+          }),
+        });
+        const data = (await res.json()) as any;
+        if (!res.ok) return { result: `Failed: ${data.errors?.[0]?.detail ?? "Unknown error"}` };
+        return { result: `Transferred ${quantity}x ${match.name} to location ${toLocationId}.` };
+      } catch (e: any) {
+        return { result: `Failed to transfer: ${e.message}` };
+      }
+    }
+    case "get_inventory_changes": {
+      const itemName = String(args.item_name ?? "");
+      const match = findCatalogItem(catalog, itemName);
+      if (!match) return { result: `"${itemName}" not found in catalog.` };
+      if (!squareToken || !squareLocationId) return { result: "Square not connected." };
+      const variationId = match.variationId ?? match.id;
+      try {
+        const res = await fetch(`${SQUARE_BASE}/inventory/changes?catalog_object_id=${variationId}&location_ids=${squareLocationId}`, { headers: squareHeaders(squareToken) });
+        const data = (await res.json()) as any;
+        const changes = (data.changes ?? []).slice(0, 10);
+        if (changes.length === 0) return { result: `No recent changes for ${match.name}.` };
+        const lines = changes.map((ch: any) => {
+          const adj = ch.adjustment || ch.physical_count || ch.transfer;
+          const type = ch.type ?? "UNKNOWN";
+          const qty = adj?.quantity ?? "?";
+          const at = adj?.occurred_at ? new Date(adj.occurred_at).toLocaleDateString() : "?";
+          return `${type}: ${qty} on ${at}`;
+        });
+        return { result: `Recent changes for ${match.name}:\n${lines.join("\n")}` };
+      } catch (e: any) {
+        return { result: `Failed to get changes: ${e.message}` };
+      }
+    }
+    case "low_stock_report": {
+      if (!squareToken || !squareLocationId) return { result: "Square not connected." };
+      if (catalog.length === 0) return { result: "No catalog items loaded." };
+      const threshold = Number(args.threshold ?? 5);
+      try {
+        const ids = catalog.map((c) => c.variationId ?? c.id);
+        const res = await fetch(`${SQUARE_BASE}/inventory/counts/batch-retrieve`, {
+          method: "POST",
+          headers: squareHeaders(squareToken),
+          body: JSON.stringify({ catalog_object_ids: ids, location_ids: [squareLocationId] }),
+        });
+        const data = (await res.json()) as any;
+        const counts = data.counts ?? [];
+        const low: string[] = [];
+        for (const c of catalog) {
+          const vid = c.variationId ?? c.id;
+          const count = counts.find((ct: any) => ct.catalog_object_id === vid && ct.state === "IN_STOCK");
+          const qty = count ? parseFloat(count.quantity) : 0;
+          if (qty <= threshold) low.push(`${c.name}: ${qty}`);
+        }
+        if (low.length === 0) return { result: `All items are above ${threshold} units.` };
+        return { result: `Low stock (≤${threshold}):\n${low.join("\n")}` };
+      } catch (e: any) {
+        return { result: `Failed to generate report: ${e.message}` };
+      }
+    }
+    case "get_item_details": {
+      const itemName = String(args.item_name ?? "");
+      const match = findCatalogItem(catalog, itemName);
+      if (!match) return { result: `"${itemName}" not found in catalog.` };
+      const details = [`Name: ${match.name}`, `Price: $${match.price.toFixed(2)}`, `Category: ${match.category ?? "none"}`, `Catalog ID: ${match.id}`, match.variationId ? `Variation ID: ${match.variationId}` : null].filter(Boolean).join("\n");
+      return { result: details };
+    }
     default:
       return { result: `Unknown tool: ${name}` };
   }
@@ -284,15 +517,15 @@ async function executeTool(
 function buildInstructions(catalog: CatalogItem[], order: OrderItem[]): string {
   const catalogStr =
     catalog.length > 0
-      ? catalog.map((c) => `  - ${c.name}: $${c.price.toFixed(2)}`).join("\n")
-      : "  (No catalog loaded — ask bartender to connect Square)";
+      ? catalog.map((c) => `  - ${c.name}: $${c.price.toFixed(2)}${c.category ? ` (${c.category})` : ""}`).join("\n")
+      : "  (No catalog loaded — ask user to connect Square)";
 
   const orderStr =
     order.length > 0
       ? order.map((i) => `  - ${i.quantity}x ${i.item_name} @ $${i.price.toFixed(2)}`).join("\n")
       : "  (empty)";
 
-  return `You are BevPro, a bartender's voice assistant running on Square POS. You help the bartender ring up orders, check stock, and find menu info — fast and hands-free.
+  return `You are BevPro, a voice assistant for bars and venues running on Square. You handle ordering (POS), inventory management, and menu lookups — all in one.
 
 Catalog:
 ${catalogStr}
@@ -304,14 +537,23 @@ Persona:
 - Professional, warm, efficient. You're a co-worker, not a customer-facing bot.
 - Speak like bar staff: short, punchy, no fluff. One or two sentences max.
 - Understand bartender slang: "86 it" = remove/out of stock, "ring it up" / "close it out" = submit, "tab it" = add to order, "what's on the ticket" = get order.
+- Understand inventory terms: "we got a case of" = add 24, "count" = check levels.
 
-Rules:
+POS Rules:
 - Add items only on clear intent ("two Fosters", "tab a Bud Light").
 - Never submit until they say so ("ring it up", "close it out", "that's it"). Confirm the total first.
 - If browsing or chatting, just talk — don't push items.
 - Menu questions: mention a few options, don't dump the whole list.
 - If something's not on the menu, suggest what's close.
 - Say prices naturally: "eight fifty" not "$8.50". Never say "dollar sign".
+
+Inventory Rules:
+- Always confirm quantities before making changes: "Adjusting Bud Light up 24, that right?"
+- For bulk operations, summarize what you'll do before executing.
+- Low stock alerts: proactively mention if an item drops below 5 units after an adjustment.
+- Say numbers clearly: "twenty-four" not "24".
+
+General:
 - Noisy environment — ignore background chatter. Only respond to direct speech. If unclear, ask.`;
 }
 
@@ -347,7 +589,7 @@ export function attachWebSocketRelay(server: Server): void {
     }
 
     // Check subscription plan
-    const planError = checkPlan(auth.subscription, "pos");
+    const planError = checkPlan(auth.subscription);
     if (planError) {
       socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
       socket.destroy();
@@ -418,7 +660,7 @@ export function attachWebSocketRelay(server: Server): void {
           modalities: ["text", "audio"],
           voice: "ash",
           instructions: buildInstructions(catalog, order),
-          tools: POS_TOOLS,
+          tools: TOOLS,
           tool_choice: "auto",
           input_audio_format: "pcm16",
           output_audio_format: "pcm16",

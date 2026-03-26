@@ -82,8 +82,8 @@ export async function requireAuth(req: Request, res: Response, next: Function): 
   }
 }
 
-/** Middleware: require an active subscription (trial or paid) that covers the given agent. */
-export function requirePlan(...allowedAgents: ("pos" | "inventory")[]) {
+/** Middleware: require an active subscription (trial or paid). */
+export function requirePlan() {
   return (req: Request, res: Response, next: Function): void => {
     const sub = (req as any).subscription;
     if (!sub) { res.status(403).json({ error: "No active subscription" }); return; }
@@ -93,22 +93,15 @@ export function requirePlan(...allowedAgents: ("pos" | "inventory")[]) {
       if (sub.trialEndsAt && new Date(sub.trialEndsAt) < new Date()) {
         res.status(403).json({ error: "Trial expired. Please subscribe to continue." }); return;
       }
-      // Trial grants access to both agents
       next(); return;
     }
 
-    // Active paid subscriptions
+    // Active paid subscriptions — any plan gets the unified agent
     if (sub.status !== "active") {
       res.status(403).json({ error: "Subscription inactive. Please update your payment." }); return;
     }
 
-    // Plan-based gating
-    const plan = sub.plan as string;
-    if (plan === "complete") { next(); return; }
-    if (plan === "pos_only" && allowedAgents.includes("pos")) { next(); return; }
-    if (plan === "inventory_only" && allowedAgents.includes("inventory")) { next(); return; }
-
-    res.status(403).json({ error: "Your plan does not include this agent. Please upgrade." });
+    next();
   };
 }
 

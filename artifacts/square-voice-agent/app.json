@@ -67,6 +67,14 @@
           "cameraPermission": false,
           "microphonePermission": "Allow Bevpro to access your microphone for voice ordering."
         }
+      ],
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Allow Bevpro to access your microphone for voice ordering.",
+          "speechRecognitionPermission": "Allow Bevpro to use speech recognition for the wake-word feature.",
+          "androidSpeechServicePackages": ["com.google.android.googlequicksearchbox"]
+        }
       ]
     ],
     "experiments": {

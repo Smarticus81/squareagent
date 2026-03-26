@@ -5,7 +5,6 @@ import squareRouter from "./square";
 import authRouter from "./auth";
 import venuesRouter from "./venues";
 import realtimeRouter from "./realtime";
-import realtimeInventoryRouter from "./realtime-inventory";
 import subscriptionsRouter from "./subscriptions";
 
 const router: IRouter = Router();
@@ -16,7 +15,6 @@ router.use("/voice", voiceRouter);
 router.use("/square", squareRouter);
 router.use("/venues", venuesRouter);
 router.use("/realtime", realtimeRouter);
-router.use("/realtime-inventory", realtimeInventoryRouter);
 router.use("/subscriptions", subscriptionsRouter);
 
 export default router;

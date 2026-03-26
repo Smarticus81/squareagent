@@ -64,14 +64,6 @@ app.use("/api/realtime", rateLimit({
   message: { error: "Rate limit exceeded. Please wait before starting a new session." },
 }));
 
-app.use("/api/realtime-inventory", rateLimit({
-  windowMs: 60 * 1000,
-  max: 30,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: "Rate limit exceeded. Please wait before starting a new session." },
-}));
-
 app.use("/api", router);
 
 if (existsSync(voiceAgentDist)) {

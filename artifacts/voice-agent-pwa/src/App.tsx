@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { Menu } from "lucide-react";
-import { useVoiceAgent, type AgentState, type AgentMode, type OrderCommand, type ConversationMessage } from "@/contexts/VoiceAgentContext";
+import { useVoiceAgent, type AgentState, type OrderCommand, type ConversationMessage } from "@/contexts/VoiceAgentContext";
 import { useOrder } from "@/contexts/OrderContext";
 import { useSquare } from "@/contexts/SquareContext";
 import { OrderPanel } from "@/components/OrderPanel";
@@ -10,12 +10,6 @@ import { soundWake, soundChime, soundItemAdd, soundSubmit, soundError, soundSlee
 /* ── App modes ─────────────────────────────────────────────────── */
 type AppMode = "idle" | "wake_word" | "command" | "shutdown";
 
-/** Derive agent mode from the current URL path */
-function getAgentModeFromPath(): AgentMode {
-  const path = window.location.pathname.replace(/\/+$/, "").toLowerCase();
-  if (path.endsWith("/inventory")) return "inventory";
-  return "pos";
-}
 
 /* ── Rail state CSS class ────────────────────────────────────── */
 function railClass(state: AgentState, mode: AppMode, wakeWordActive: boolean): string {
@@ -69,7 +63,7 @@ function RailWaveform({ active }: { active: boolean }) {
 /* ── Main App ─────────────────────────────────────────────────── */
 export default function App() {
   const {
-    agentState, agentMode, setAgentMode, isConnected, conversation, partialTranscript, error,
+    agentState, isConnected, conversation, partialTranscript, error,
     connect, disconnect, setToolHandler, interrupt,
     setCatalog, setCurrentOrder, setSquareCredentials, setAuthParams,
   } = useVoiceAgent();
@@ -88,23 +82,16 @@ export default function App() {
   const modeRef = useRef<AppMode>("idle");
   const prevItemCountRef = useRef(0);
 
-  // Set agent mode from URL path on mount
-  useEffect(() => {
-    const urlMode = getAgentModeFromPath();
-    if (urlMode !== agentMode) setAgentMode(urlMode);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
   useEffect(() => { modeRef.current = mode; }, [mode]);
 
-  // Track order item count to play sounds on add (POS mode only)
+  // Track order item count to play sounds on add
   useEffect(() => {
-    if (agentMode !== "pos") return;
     const count = currentOrder?.items.length ?? 0;
     if (count > prevItemCountRef.current && prevItemCountRef.current >= 0) {
       soundItemAdd();
     }
     prevItemCountRef.current = count;
-  }, [currentOrder?.items.length, agentMode]);
+  }, [currentOrder?.items.length]);
 
   // Keep refs for stale-closure-proof callbacks
   const catalogRef = useRef(catalogItems);
@@ -144,14 +131,8 @@ export default function App() {
     );
   }, [currentOrder, setCurrentOrder]);
 
-  // Handle voice order commands — only process in POS mode
-  const agentModeRef = useRef(agentMode);
-  useEffect(() => { agentModeRef.current = agentMode; }, [agentMode]);
-
+  // Handle voice order commands
   const handleCmds = useCallback((cmds: OrderCommand[]) => {
-    // Inventory mode does not process order commands
-    if (agentModeRef.current === "inventory") return;
-
     for (const cmd of cmds) {
       switch (cmd.action) {
         case "add": {
@@ -336,10 +317,9 @@ export default function App() {
           <span className="brand-text">
             <span style={{ color: "var(--msg-agent)" }}>Bev</span>
             <span style={{ color: "#E8A020", fontStyle: "italic" }}>Pro</span>
-            {agentMode === "inventory" && <span className="brand-mode">inventory</span>}
           </span>
         </div>
-        {orderCount > 0 && agentMode === "pos" ? (
+        {orderCount > 0 ? (
           <button className="order-badge" onClick={() => { setPanelTab("order"); setPanelOpen(true); }}>
             <span className="order-badge-num">{orderCount}</span>
           </button>

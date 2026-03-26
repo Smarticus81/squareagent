@@ -17,7 +17,7 @@ import Animated, {
 } from "react-native-reanimated";
 
 import { useWakeWord, TERMINATE_PHRASES, isWakeWordSupported } from "@/hooks/useWakeWord";
-import { useVoiceAgent, ConversationMessage, AgentState, AgentMode, OrderCommand } from "@/context/VoiceAgentContext";
+import { useVoiceAgent, ConversationMessage, AgentState, OrderCommand } from "@/context/VoiceAgentContext";
 import { useOrder } from "@/context/OrderContext";
 import { useSquare } from "@/context/SquareContext";
 import { useVoicePrefs, VOICES, SPEEDS } from "@/hooks/useVoicePrefs";
@@ -351,7 +351,7 @@ export default function MainScreen() {
   const bottomPad = Platform.OS === "web" ? WEB_BOT  : insets.bottom;
 
   const {
-    agentState, agentMode, setAgentMode, isConnected, conversation, partialTranscript, error,
+    agentState, isConnected, conversation, partialTranscript, error,
     connect, disconnect, setToolHandler, interrupt,
     setCatalog, setCurrentOrder, setSquareCredentials, setAuthParams,
   } = useVoiceAgent();
@@ -389,13 +389,13 @@ export default function MainScreen() {
   const exitWake  = useCallback(async () => { stopWakeWord(); await disconnect(); setWakeMode("idle"); }, [stopWakeWord, disconnect]);
 
   useEffect(() => {
-    if (Platform.OS !== "web" || wakeModeRef.current !== "command" || isConnected) return;
+    if (wakeModeRef.current !== "command" || isConnected) return;
     const ti = setTimeout(() => { if (wakeModeRef.current !== "command") return; setWakeMode("wake"); startWakeWord(); }, 350);
     return () => clearTimeout(ti);
   }, [isConnected, startWakeWord]);
 
   useEffect(() => {
-    if (Platform.OS !== "web" || wakeMode !== "command") return;
+    if (wakeMode !== "command") return;
     const last = [...conversation].reverse().find((m) => m.role === "user");
     if (!last) return;
     if (TERMINATE_PHRASES.some((p) => last.content.toLowerCase().includes(p))) {
@@ -467,7 +467,7 @@ export default function MainScreen() {
 
   async function handleOrbPress() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    if (Platform.OS === "web" && wakeMode === "wake") {
+    if (wakeMode === "wake") {
       exitWake(); return;
     }
     if (isConnected || agentState === "connecting") disconnect();
@@ -567,6 +567,22 @@ export default function MainScreen() {
         <Pressable onPress={() => setPanelOpen(true)} hitSlop={22} style={s.hamburger}>
           <Feather name="menu" size={18} color={t.hamburger} />
         </Pressable>
+
+        {/* Wake-word toggle */}
+        {isWakeWordSupported() && agentState === "disconnected" ? (
+          <Pressable
+            onPress={() => (wakeMode === "idle" ? enterWake() : exitWake())}
+            hitSlop={22}
+            style={s.wakeBtn}
+          >
+            <Feather
+              name={wakeMode === "idle" ? "mic" : "mic-off"}
+              size={18}
+              color={wakeMode === "idle" ? t.hamburger : "#E8A020"}
+            />
+          </Pressable>
+        ) : null}
+
         <View style={{ flex: 1 }} />
         {orderCount > 0 ? (
           <Pressable onPress={() => { setPanelTab("order"); setPanelOpen(true); }} hitSlop={22}>
@@ -728,31 +744,6 @@ export default function MainScreen() {
                 </View>
               )}
 
-              {/* Agent mode */}
-              <View style={[s.settingsRow, { borderBottomColor: t.divider }]}>
-                <Feather name="layers" size={16} color={t.settingsIcon} />
-                <Text style={[s.settingsRowTxt, { color: t.settingsTxt }]}>Mode</Text>
-                <View style={{ flexDirection: "row", gap: 6 }}>
-                  {(["pos", "inventory"] as const).map((mode) => (
-                    <Pressable key={mode}
-                      onPress={() => setAgentMode(mode)}
-                      style={{
-                        paddingVertical: 4, paddingHorizontal: 10, borderRadius: 10,
-                        backgroundColor: agentMode === mode
-                          ? (isDark ? "rgba(200,180,255,0.14)" : "rgba(30,10,80,0.08)")
-                          : "transparent",
-                        borderWidth: agentMode === mode ? 0.5 : 0,
-                        borderColor: isDark ? "rgba(200,180,255,0.24)" : "rgba(30,10,80,0.16)",
-                      }}>
-                      <Text style={{
-                        fontFamily: agentMode === mode ? "Inter_400Regular" : "Inter_300Light",
-                        fontSize: 12, color: agentMode === mode ? t.navActive : t.navText,
-                      }}>{mode === "pos" ? "POS" : "Inventory"}</Text>
-                    </Pressable>
-                  ))}
-                </View>
-              </View>
-
               {/* Voice */}
               <View style={[s.settingsRow, { borderBottomColor: t.divider, flexDirection: "column", alignItems: "flex-start", gap: 8 }]}>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
@@ -870,6 +861,7 @@ const s = StyleSheet.create({
     paddingHorizontal: 30, paddingTop: 8,
   },
   hamburger:    { padding: 4 },
+  wakeBtn:      { padding: 4, marginLeft: 16 },
   orderBadge:   { minWidth: 22, height: 22, borderRadius: 11, borderWidth: 0.5, alignItems: "center", justifyContent: "center", paddingHorizontal: 5 },
   orderBadgeNum:{ fontFamily: "Inter_500Medium", fontSize: 11 },
 

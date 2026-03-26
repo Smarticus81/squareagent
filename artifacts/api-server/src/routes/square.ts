@@ -477,4 +477,124 @@ router.post("/orders", async (req: Request, res: Response): Promise<void> => {
   }
 });
 
+// ── Square Terminal / Device endpoints ────────────────────────────────────────
+
+// GET /api/square/devices — list paired Square Terminal devices at the location
+router.get("/devices", async (req: Request, res: Response): Promise<void> => {
+  const token = req.headers["x-square-token"] as string;
+  const locationId = req.headers["x-square-location"] as string;
+  if (!token) { res.status(401).json({ error: "Missing Square access token" }); return; }
+
+  try {
+    // List all devices associated with the merchant
+    const url = new URL(`${SQUARE_BASE}/devices`);
+    if (locationId) {
+      // Filter to devices at this location via query param
+      url.searchParams.set("location_id", locationId);
+    }
+    const response = await fetch(url.toString(), {
+      headers: squareHeaders(token),
+    });
+    const data = await response.json() as any;
+
+    if (!response.ok) {
+      res.status(response.status).json({ error: data.errors?.[0]?.detail || "Failed to list devices" });
+      return;
+    }
+
+    const devices = (data.devices || []).map((dev: any) => ({
+      id: dev.id,
+      name: dev.name || dev.attributes?.name || "Square Terminal",
+      type: dev.attributes?.type || "TERMINAL",
+      status: dev.status?.category || "UNKNOWN",
+      locationId: dev.location_id,
+      serialNumber: dev.attributes?.serial_number,
+    }));
+
+    console.log(`[Square] Devices listed: ${devices.length}`);
+    res.json({ devices });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message || "Failed to list devices" });
+  }
+});
+
+// POST /api/square/terminal/checkout — push a checkout to a Terminal device
+router.post("/terminal/checkout", async (req: Request, res: Response): Promise<void> => {
+  const token = req.headers["x-square-token"] as string;
+  const locationId = req.headers["x-square-location"] as string;
+  if (!token) { res.status(401).json({ error: "Missing Square access token" }); return; }
+  if (!locationId) { res.status(400).json({ error: "Missing location ID" }); return; }
+
+  const { deviceId, orderId, amountCents, note } = req.body;
+  if (!deviceId) { res.status(400).json({ error: "deviceId is required" }); return; }
+  if (!amountCents && !orderId) { res.status(400).json({ error: "orderId or amountCents required" }); return; }
+
+  try {
+    const checkoutBody: Record<string, unknown> = {
+      amount_money: { amount: amountCents || 0, currency: "USD" },
+      device_options: {
+        device_id: deviceId,
+        skip_receipt_screen: false,
+        collect_signature: false,
+      },
+      reference_id: `VOICE-TERMINAL-${Date.now()}`,
+      note: note || "Voice order — tap/insert/swipe card",
+    };
+    if (orderId) checkoutBody.order_id = orderId;
+
+    const response = await fetch(`${SQUARE_BASE}/terminals/checkouts`, {
+      method: "POST",
+      headers: squareHeaders(token),
+      body: JSON.stringify({
+        idempotency_key: `terminal-${orderId || Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+        checkout: checkoutBody,
+      }),
+    });
+    const data = await response.json() as any;
+
+    if (!response.ok) {
+      res.status(response.status).json({ error: data.errors?.[0]?.detail || "Terminal checkout failed" });
+      return;
+    }
+
+    console.log(`[Square] Terminal checkout created: ${data.checkout?.id} → device ${deviceId}`);
+    res.json({
+      success: true,
+      checkoutId: data.checkout?.id,
+      status: data.checkout?.status,
+      deviceId,
+    });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message || "Terminal checkout failed" });
+  }
+});
+
+// GET /api/square/terminal/checkout/:id — check status of a terminal checkout
+router.get("/terminal/checkout/:id", async (req: Request, res: Response): Promise<void> => {
+  const token = req.headers["x-square-token"] as string;
+  if (!token) { res.status(401).json({ error: "Missing Square access token" }); return; }
+
+  try {
+    const response = await fetch(`${SQUARE_BASE}/terminals/checkouts/${req.params.id}`, {
+      headers: squareHeaders(token),
+    });
+    const data = await response.json() as any;
+
+    if (!response.ok) {
+      res.status(response.status).json({ error: data.errors?.[0]?.detail || "Failed to get checkout" });
+      return;
+    }
+
+    res.json({
+      checkoutId: data.checkout?.id,
+      status: data.checkout?.status,
+      orderId: data.checkout?.order_id,
+      paymentIds: data.checkout?.payment_ids,
+      amountMoney: data.checkout?.amount_money,
+    });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message || "Failed to get checkout status" });
+  }
+});
+
 export default router;

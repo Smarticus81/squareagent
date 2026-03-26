@@ -6,7 +6,6 @@
  * rec.start() succeeded until the browser confirms it.
  */
 import { useRef, useCallback, useState } from "react";
-import { Platform } from "react-native";
 
 export const WAKE_WORDS = ["hey bar", "hey bars", "a bar", "okay bar", "hey bev", "bevpro"];
 export const STOP_PHRASES = ["shut down", "stop listening", "shut it down", "turn off"];
@@ -17,7 +16,7 @@ export const TERMINATE_PHRASES = [
 ];
 
 function getSR(): any {
-  if (Platform.OS !== "web" || typeof window === "undefined") return null;
+  if (typeof window === "undefined") return null;
   return (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition || null;
 }
 

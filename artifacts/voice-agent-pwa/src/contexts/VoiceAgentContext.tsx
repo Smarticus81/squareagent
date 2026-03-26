@@ -10,7 +10,6 @@ import { getBaseUrl } from "@/lib/api";
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export type AgentState = "disconnected" | "connecting" | "listening" | "thinking" | "speaking" | "error";
-export type AgentMode = "pos" | "inventory";
 
 export interface ConversationMessage {
   id: string;
@@ -25,14 +24,13 @@ export interface OrderCommand {
   item_name?: string;
   quantity?: number;
   price?: number;
+  squareOrderId?: string;
 }
 
 export type CommandHandler = (commands: OrderCommand[]) => void;
 
 interface VoiceAgentContextType {
   agentState: AgentState;
-  agentMode: AgentMode;
-  setAgentMode: (mode: AgentMode) => void;
   isConnected: boolean;
   conversation: ConversationMessage[];
   partialTranscript: string;
@@ -59,7 +57,6 @@ const VoiceAgentContext = createContext<VoiceAgentContextType | null>(null);
 
 export function VoiceAgentProvider({ children }: { children: ReactNode }) {
   const [agentState, setAgentState] = useState<AgentState>("disconnected");
-  const [agentMode, setAgentMode] = useState<AgentMode>("pos");
   const [conversation, setConversation] = useState<ConversationMessage[]>([]);
   const [partialTranscript, setPartialTranscript] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -76,11 +73,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
   const authTokenRef = useRef("");
   const isRunning = useRef(false);
   const agentStateRef = useRef<AgentState>("disconnected");
-  const agentModeRef = useRef<AgentMode>("pos");
   const sessionIdRef = useRef("");
-
-  // Keep mode ref in sync for stale-closure-proof reads
-  useEffect(() => { agentModeRef.current = agentMode; }, [agentMode]);
 
   // ── Shared helpers ──────────────────────────────────────────────────────────
 
@@ -119,41 +112,19 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
     if (!dc || dc.readyState !== "open") return;
 
     const catalog = catalogRef.current as Array<{ name: string; price: number; category?: string }>;
-    const mode = agentModeRef.current;
 
     const catalogStr =
       catalog.length > 0
         ? catalog.map((c) => `  - ${c.name}: $${c.price.toFixed(2)}${c.category ? ` (${c.category})` : ""}`).join("\n")
         : "  (No catalog loaded — connect Square first)";
 
-    let instructions: string;
+    const order = currentOrderRef.current as Array<{ quantity: number; item_name: string; price: number }>;
+    const orderStr =
+      order.length > 0
+        ? order.map((i) => `  - ${i.quantity}x ${i.item_name} @ $${i.price.toFixed(2)}`).join("\n")
+        : "  (empty)";
 
-    if (mode === "inventory") {
-      instructions = `You are BevPro Inventory, a voice assistant for managing bar and venue inventory on Square. You help staff count stock, receive deliveries, flag low items, and keep inventory accurate.
-
-Catalog:
-${catalogStr}
-
-Persona:
-- Professional, efficient, detail-oriented. You're an inventory specialist.
-- Short, precise responses. Read back numbers clearly.
-- Understand bar inventory terms: "we got a case of" = add 24, "86'd" = out of stock, "count" = check levels.
-
-Rules:
-- Always confirm quantities before making changes: "Adjusting Bud Light up 24, that right?"
-- For bulk operations, summarize what you'll do before executing.
-- Low stock alerts: proactively mention if an item drops below 5 units after an adjustment.
-- Say numbers clearly: "twenty-four" not "24".
-- You do NOT take orders or process payments. If asked to add items to an order or submit an order, explain that this is the inventory agent and suggest using the POS agent instead.
-- Noisy environment — only respond to direct speech. If unclear, ask.`;
-    } else {
-      const order = currentOrderRef.current as Array<{ quantity: number; item_name: string; price: number }>;
-      const orderStr =
-        order.length > 0
-          ? order.map((i) => `  - ${i.quantity}x ${i.item_name} @ $${i.price.toFixed(2)}`).join("\n")
-          : "  (empty)";
-
-      instructions = `You are BevPro, a bartender's voice assistant running on Square POS. You help the bartender ring up orders, check stock, and find menu info — fast and hands-free.
+    const instructions = `You are BevPro, a voice assistant for bars and venues running on Square. You handle ordering (POS), inventory management, and menu lookups — all in one.
 
 Catalog:
 ${catalogStr}
@@ -165,17 +136,24 @@ Persona:
 - Professional, warm, efficient. You're a co-worker, not a customer-facing bot.
 - Speak like bar staff: short, punchy, no fluff. One or two sentences max.
 - Understand bartender slang: "86 it" = remove/out of stock, "ring it up" / "close it out" = submit, "tab it" = add to order, "what's on the ticket" = get order.
+- Understand inventory terms: "we got a case of" = add 24, "count" = check levels.
 
-Rules:
+POS Rules:
 - Add items only on clear intent ("two Fosters", "tab a Bud Light").
 - Never submit until they say so ("ring it up", "close it out", "that's it"). Confirm the total first.
 - If browsing or chatting, just talk — don't push items.
 - Menu questions: mention a few options, don't dump the whole list.
 - If something's not on the menu, suggest what's close.
 - Say prices naturally: "eight fifty" not "$8.50". Never say "dollar sign".
-- You do NOT manage inventory. If asked to adjust stock or count inventory, explain that this is the POS agent and suggest using the inventory agent instead.
+
+Inventory Rules:
+- Always confirm quantities before making changes: "Adjusting Bud Light up 24, that right?"
+- For bulk operations, summarize what you'll do before executing.
+- Low stock alerts: proactively mention if an item drops below 5 units after an adjustment.
+- Say numbers clearly: "twenty-four" not "24".
+
+General:
 - Noisy environment — ignore background chatter. Only respond to direct speech. If unclear, ask.`;
-    }
 
     dc.send(JSON.stringify({
       type: "session.update",
@@ -195,7 +173,7 @@ Rules:
 
     try {
       const baseUrl = getBaseUrl();
-      const toolPath = agentModeRef.current === "inventory" ? "api/realtime-inventory/tools" : "api/realtime/tools";
+      const toolPath = "api/realtime/tools";
       const headers: Record<string, string> = { "Content-Type": "application/json" };
       if (authTokenRef.current) headers["Authorization"] = `Bearer ${authTokenRef.current}`;
 
@@ -344,8 +322,8 @@ Rules:
 
     try {
       // 1. Get ephemeral token from our server
-      const sessionPath = agentModeRef.current === "inventory" ? "api/realtime-inventory/session" : "api/realtime/session";
-      console.log(`[WebRTC] Requesting ephemeral token (${agentModeRef.current} mode)...`);
+      const sessionPath = "api/realtime/session";
+      console.log(`[WebRTC] Requesting ephemeral token...`);
       const sessionHeaders: Record<string, string> = { "Content-Type": "application/json" };
       if (authTokenRef.current) sessionHeaders["Authorization"] = `Bearer ${authTokenRef.current}`;
 
@@ -492,7 +470,7 @@ Rules:
 
   return (
     <VoiceAgentContext.Provider value={{
-      agentState, agentMode, setAgentMode, isConnected, conversation, partialTranscript, error,
+      agentState, isConnected, conversation, partialTranscript, error,
       connect, disconnect, clearConversation, setToolHandler, interrupt,
       setCatalog, setCurrentOrder, setSquareCredentials, setAuthParams,
     }}>
