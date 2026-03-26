@@ -15,17 +15,17 @@ export const VOICES = [
 ];
 
 export const SPEEDS = [
+  { id: 0.8,  label: "Slower" },
   { id: 0.9,  label: "Slow" },
   { id: 1.0,  label: "Normal" },
   { id: 1.15, label: "Fast" },
-  { id: 1.3,  label: "Fastest" },
 ];
 
 const VOICE_KEY = "bevpro_voice";
 const SPEED_KEY = "bevpro_speed";
 
-export const DEFAULT_VOICE = "echo";
-export const DEFAULT_SPEED = 1.15;
+export const DEFAULT_VOICE = "ash";
+export const DEFAULT_SPEED = 0.9;
 
 const SUPPORTED_IDS = new Set(VOICES.map((v) => v.id));
 

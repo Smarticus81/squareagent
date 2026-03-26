@@ -5,7 +5,7 @@ import {
   View, Text, StyleSheet, Pressable, Platform,
   FlatList, Modal, ActivityIndicator, Linking, useColorScheme,
 } from "react-native";
-import Svg, { Circle, Defs, LinearGradient as SvgGrad, Stop } from "react-native-svg";
+import Svg, { Circle, Rect, Defs, LinearGradient as SvgGrad, Stop, ClipPath } from "react-native-svg";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
@@ -17,9 +17,10 @@ import Animated, {
 } from "react-native-reanimated";
 
 import { useWakeWord, TERMINATE_PHRASES, isWakeWordSupported } from "@/hooks/useWakeWord";
-import { useVoiceAgent, ConversationMessage, AgentState, OrderCommand } from "@/context/VoiceAgentContext";
+import { useVoiceAgent, ConversationMessage, AgentState, AgentMode, OrderCommand } from "@/context/VoiceAgentContext";
 import { useOrder } from "@/context/OrderContext";
 import { useSquare } from "@/context/SquareContext";
+import { useVoicePrefs, VOICES, SPEEDS } from "@/hooks/useVoicePrefs";
 import { OrderCard } from "@/components/OrderCard";
 
 const WEB_TOP = 67;
@@ -350,9 +351,9 @@ export default function MainScreen() {
   const bottomPad = Platform.OS === "web" ? WEB_BOT  : insets.bottom;
 
   const {
-    agentState, isConnected, conversation, partialTranscript, error,
+    agentState, agentMode, setAgentMode, isConnected, conversation, partialTranscript, error,
     connect, disconnect, setToolHandler, interrupt,
-    setCatalog, setCurrentOrder, setSquareCredentials,
+    setCatalog, setCurrentOrder, setSquareCredentials, setAuthParams,
   } = useVoiceAgent();
 
   const {
@@ -360,7 +361,9 @@ export default function MainScreen() {
     addItem, removeItem, updateQuantity, clearOrder, submitOrder, isSubmitting,
   } = useOrder();
 
-  const { isConfigured, catalogItems, isLoadingCatalog, accessToken, locationId } = useSquare();
+  const { isConfigured, catalogItems, isLoadingCatalog, accessToken, locationId, venueId, authToken,
+    connectionError, isReconnecting, refreshCredentials } = useSquare();
+  const { voice, speed, setVoice, setSpeed, loaded: voicePrefsLoaded } = useVoicePrefs();
   const [panelOpen, setPanelOpen] = useState(false);
   const [panelTab,  setPanelTab]  = useState<"order" | "menu" | "settings">("order");
 
@@ -406,6 +409,9 @@ export default function MainScreen() {
   }, [catalogItems, setCatalog]);
 
   useEffect(() => { if (accessToken && locationId) setSquareCredentials(accessToken, locationId); }, [accessToken, locationId, setSquareCredentials]);
+
+  // Forward auth params so voice agent can authenticate server-side tool calls
+  useEffect(() => { if (venueId && authToken) setAuthParams(venueId, authToken); }, [venueId, authToken, setAuthParams]);
 
   useEffect(() => {
     setCurrentOrder((currentOrder?.items ?? []).map((i) => ({ name: i.catalogItem.name, price: i.catalogItem.price, quantity: i.quantity })));
@@ -519,9 +525,20 @@ export default function MainScreen() {
         {/* Brand + state label below orb */}
         <View style={s.belowOrb}>
           <View style={s.brandRow}>
-            <View style={[s.brandRing, { borderColor: t.logoBorder }]} />
-            <View style={[s.brandBead, { backgroundColor: t.logoBead }]} />
-            <Text style={[s.brandWord, { color: t.logoText }]}>BEVPRO</Text>
+            {/* Waveform logo icon */}
+            <Svg width={22} height={22} viewBox="0 0 32 32">
+              <ClipPath id="logoClip"><Circle cx={16} cy={16} r={16} /></ClipPath>
+              <Circle cx={16} cy={16} r={16} fill="#E8A020" />
+              <Rect x={7}  y={12} width={2.6} height={8}  rx={1.3} fill="#140b05" clipPath="url(#logoClip)" />
+              <Rect x={11.5} y={9} width={2.6} height={14} rx={1.3} fill="#140b05" clipPath="url(#logoClip)" />
+              <Rect x={16} y={7}  width={2.6} height={18} rx={1.3} fill="#140b05" clipPath="url(#logoClip)" />
+              <Rect x={20.5} y={9} width={2.6} height={14} rx={1.3} fill="#140b05" clipPath="url(#logoClip)" />
+              <Rect x={25} y={12} width={2.6} height={8}  rx={1.3} fill="#140b05" clipPath="url(#logoClip)" />
+            </Svg>
+            <View style={s.brandWords}>
+              <Text style={[s.brandBev, { color: t.logoText }]}>Bev</Text>
+              <Text style={[s.brandPro, { color: "#E8A020" }]}>Pro</Text>
+            </View>
           </View>
           <View style={{ height: 10 }} />
           {stateLabel ? (
@@ -689,6 +706,7 @@ export default function MainScreen() {
           {/* Settings tab */}
           {panelTab === "settings" && (
             <View style={s.settingsPanel}>
+              {/* Square connection */}
               <Pressable style={[s.settingsRow, { borderBottomColor: t.divider }]}
                 onPress={() => { setPanelOpen(false); router.push("/setup"); }}>
                 <Feather name="link" size={16} color={t.settingsIcon} />
@@ -696,6 +714,94 @@ export default function MainScreen() {
                 <View style={[s.statusDot, { backgroundColor: isConfigured ? "#22C55E" : "#EF4444" }]} />
                 <Feather name="chevron-right" size={15} color={t.chevron} />
               </Pressable>
+
+              {/* Reconnect */}
+              {connectionError && (
+                <View style={[s.settingsRow, { borderBottomColor: t.divider, flexDirection: "column", alignItems: "flex-start", gap: 6 }]}>
+                  <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: t.errorText }}>{connectionError}</Text>
+                  <Pressable onPress={refreshCredentials} disabled={isReconnecting}
+                    style={{ paddingVertical: 6, paddingHorizontal: 14, borderRadius: 12, backgroundColor: isDark ? "rgba(200,180,255,0.1)" : "rgba(30,10,80,0.06)" }}>
+                    <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: t.link }}>
+                      {isReconnecting ? "Reconnecting..." : "Reconnect Square"}
+                    </Text>
+                  </Pressable>
+                </View>
+              )}
+
+              {/* Agent mode */}
+              <View style={[s.settingsRow, { borderBottomColor: t.divider }]}>
+                <Feather name="layers" size={16} color={t.settingsIcon} />
+                <Text style={[s.settingsRowTxt, { color: t.settingsTxt }]}>Mode</Text>
+                <View style={{ flexDirection: "row", gap: 6 }}>
+                  {(["pos", "inventory"] as const).map((mode) => (
+                    <Pressable key={mode}
+                      onPress={() => setAgentMode(mode)}
+                      style={{
+                        paddingVertical: 4, paddingHorizontal: 10, borderRadius: 10,
+                        backgroundColor: agentMode === mode
+                          ? (isDark ? "rgba(200,180,255,0.14)" : "rgba(30,10,80,0.08)")
+                          : "transparent",
+                        borderWidth: agentMode === mode ? 0.5 : 0,
+                        borderColor: isDark ? "rgba(200,180,255,0.24)" : "rgba(30,10,80,0.16)",
+                      }}>
+                      <Text style={{
+                        fontFamily: agentMode === mode ? "Inter_400Regular" : "Inter_300Light",
+                        fontSize: 12, color: agentMode === mode ? t.navActive : t.navText,
+                      }}>{mode === "pos" ? "POS" : "Inventory"}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+
+              {/* Voice */}
+              <View style={[s.settingsRow, { borderBottomColor: t.divider, flexDirection: "column", alignItems: "flex-start", gap: 8 }]}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                  <Feather name="mic" size={16} color={t.settingsIcon} />
+                  <Text style={[s.settingsRowTxt, { color: t.settingsTxt }]}>Voice</Text>
+                </View>
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, paddingLeft: 28 }}>
+                  {VOICES.map((v) => (
+                    <Pressable key={v.id} onPress={() => setVoice(v.id)}
+                      style={{
+                        paddingVertical: 3, paddingHorizontal: 8, borderRadius: 8,
+                        backgroundColor: voice === v.id
+                          ? (isDark ? "rgba(200,180,255,0.14)" : "rgba(30,10,80,0.08)")
+                          : "transparent",
+                        borderWidth: voice === v.id ? 0.5 : 0,
+                        borderColor: isDark ? "rgba(200,180,255,0.24)" : "rgba(30,10,80,0.16)",
+                      }}>
+                      <Text style={{
+                        fontFamily: voice === v.id ? "Inter_400Regular" : "Inter_300Light",
+                        fontSize: 11, color: voice === v.id ? t.navActive : t.navText,
+                      }}>{v.label}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+
+              {/* Speed */}
+              <View style={[s.settingsRow, { borderBottomColor: t.divider }]}>
+                <Feather name="zap" size={16} color={t.settingsIcon} />
+                <Text style={[s.settingsRowTxt, { color: t.settingsTxt }]}>Speed</Text>
+                <View style={{ flexDirection: "row", gap: 6 }}>
+                  {SPEEDS.map((sp) => (
+                    <Pressable key={sp.id} onPress={() => setSpeed(sp.id)}
+                      style={{
+                        paddingVertical: 3, paddingHorizontal: 8, borderRadius: 8,
+                        backgroundColor: speed === sp.id
+                          ? (isDark ? "rgba(200,180,255,0.14)" : "rgba(30,10,80,0.08)")
+                          : "transparent",
+                        borderWidth: speed === sp.id ? 0.5 : 0,
+                        borderColor: isDark ? "rgba(200,180,255,0.24)" : "rgba(30,10,80,0.16)",
+                      }}>
+                      <Text style={{
+                        fontFamily: speed === sp.id ? "Inter_400Regular" : "Inter_300Light",
+                        fontSize: 11, color: speed === sp.id ? t.navActive : t.navText,
+                      }}>{sp.label}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
             </View>
           )}
         </View>
@@ -734,16 +840,12 @@ const s = StyleSheet.create({
   // Below orb
   belowOrb: { alignItems: "center", paddingTop: 22 },
   brandRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  brandRing: {
-    width: 14, height: 14, borderRadius: 7, borderWidth: 1,
+  brandWords: { flexDirection: "row", alignItems: "baseline" },
+  brandBev: {
+    fontFamily: "Inter_300Light", fontSize: 13, letterSpacing: 1.5,
   },
-  brandBead: {
-    position: "absolute", left: 9, top: 1,
-    width: 5, height: 5, borderRadius: 2.5,
-  },
-  brandWord: {
-    fontFamily: "Inter_300Light", fontSize: 11, letterSpacing: 5,
-    marginLeft: 2,
+  brandPro: {
+    fontFamily: "Inter_500Medium", fontSize: 13, letterSpacing: 1.5, fontStyle: "italic",
   },
   stateLabel: {
     fontFamily: "Inter_300Light", fontSize: 9, letterSpacing: 3.5, textAlign: "center",

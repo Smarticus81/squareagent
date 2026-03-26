@@ -28,6 +28,8 @@ export type AgentState =
   | "speaking"
   | "error";
 
+export type AgentMode = "pos" | "inventory";
+
 export interface ConversationMessage {
   id: string;
   role: "user" | "agent";
@@ -48,6 +50,8 @@ export type ToolHandler = CommandHandler;
 
 interface VoiceAgentContextType {
   agentState: AgentState;
+  agentMode: AgentMode;
+  setAgentMode: (mode: AgentMode) => void;
   isConnected: boolean;
   conversation: ConversationMessage[];
   partialTranscript: string;
@@ -60,6 +64,7 @@ interface VoiceAgentContextType {
   setCatalog: (items: unknown[]) => void;
   setCurrentOrder: (order: unknown[]) => void;
   setSquareCredentials: (token: string, locationId: string) => void;
+  setAuthParams: (venueId: string, authToken: string) => void;
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -212,6 +217,7 @@ const VoiceAgentContext = createContext<VoiceAgentContextType | null>(null);
 
 export function VoiceAgentProvider({ children }: { children: ReactNode }) {
   const [agentState, setAgentState] = useState<AgentState>("disconnected");
+  const [agentMode, setAgentMode] = useState<AgentMode>("pos");
   const [conversation, setConversation] = useState<ConversationMessage[]>([]);
   const [partialTranscript, setPartialTranscript] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -222,7 +228,10 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
   const currentOrderRef = useRef<unknown[]>([]);
   const squareTokenRef = useRef<string>("");
   const squareLocationIdRef = useRef<string>("");
+  const venueIdRef = useRef<string>("");
+  const authTokenRef = useRef<string>("");
   const isRunning = useRef(false);
+  const agentModeRef = useRef<AgentMode>("pos");
 
   // Ref that mirrors agentState — readable from the audio processor callback
   // without stale closure issues
@@ -262,6 +271,8 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
       order: currentOrderRef.current,
       squareToken: squareTokenRef.current,
       squareLocationId: squareLocationIdRef.current,
+      venueId: venueIdRef.current || undefined,
+      mode: agentModeRef.current,
       ...overrides,
     }));
   }, []);
@@ -281,6 +292,12 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
     squareLocationIdRef.current = locationId;
     sendContextUpdate({ squareToken: token, squareLocationId: locationId });
   }, [sendContextUpdate]);
+
+  /** Store venueId + auth JWT so realtime calls go through server-side credential lookup. */
+  const setAuthParams = useCallback((venueId: string, authToken: string) => {
+    venueIdRef.current = venueId;
+    authTokenRef.current = authToken;
+  }, []);
 
   const setToolHandler = useCallback((h: CommandHandler) => {
     commandHandlerRef.current = h;
@@ -695,6 +712,8 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
     <VoiceAgentContext.Provider
       value={{
         agentState,
+        agentMode,
+        setAgentMode: (mode: AgentMode) => { agentModeRef.current = mode; setAgentMode(mode); },
         isConnected,
         conversation,
         partialTranscript,
@@ -707,6 +726,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
         setCatalog,
         setCurrentOrder,
         setSquareCredentials,
+        setAuthParams,
       }}
     >
       {children}
