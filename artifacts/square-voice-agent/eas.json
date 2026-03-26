@@ -15,7 +15,7 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_DOMAIN": ""
+        "EXPO_PUBLIC_DOMAIN": "workspaceapi-server-production-2c14.up.railway.app"
       }
     },
     "preview": {
@@ -27,7 +27,7 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_DOMAIN": ""
+        "EXPO_PUBLIC_DOMAIN": "workspaceapi-server-production-2c14.up.railway.app"
       }
     },
     "production": {
@@ -36,16 +36,15 @@
         "image": "latest"
       },
       "env": {
-        "EXPO_PUBLIC_DOMAIN": ""
+        "EXPO_PUBLIC_DOMAIN": "workspaceapi-server-production-2c14.up.railway.app"
       }
     }
   },
   "submit": {
     "production": {
       "ios": {
-        "appleId": "",
-        "ascAppId": "",
-        "appleTeamId": ""
+        "ascApiKeyId": "REPLACE_BEFORE_SUBMIT",
+        "ascApiKeyIssuerId": "REPLACE_BEFORE_SUBMIT"
       }
     }
   }
