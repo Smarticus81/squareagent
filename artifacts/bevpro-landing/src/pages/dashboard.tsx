@@ -96,7 +96,7 @@ export default function Dashboard() {
 
     if (isStandalone) {
       // Full-page redirect flow — callback will redirect back with oauth_ts param
-      window.location.href = "/api/square/oauth/authorize?mode=redirect&return_url=/";
+      window.location.href = "/api/square/oauth/authorize?mode=redirect&return_url=/dashboard";
       return;
     }
 
@@ -113,7 +113,11 @@ export default function Dashboard() {
       const top = window.screenY + (window.innerHeight - h) / 2;
       const popup = window.open(url, "square-oauth", `width=${w},height=${h},left=${left},top=${top}`);
 
-      if (!popup) throw new Error("Popup was blocked. Please allow popups for this site and try again.");
+      if (!popup) {
+        // Popup blocked — fall back to full-page redirect
+        window.location.href = "/api/square/oauth/authorize?mode=redirect&return_url=/dashboard";
+        return;
+      }
 
       // Clear any stale OAuth result from a previous attempt
       localStorage.removeItem("bevpro_oauth_result");
@@ -180,11 +184,11 @@ export default function Dashboard() {
             if (!popupClosedAt) {
               popupClosedAt = Date.now();
             } else if (Date.now() - popupClosedAt > 2000) {
-              // Popup closed and no result appeared — user likely closed it manually
+              // Popup closed and no result appeared — fall back to redirect flow
               settled = true;
               cleanup();
               localStorage.removeItem("bevpro_oauth_result");
-              reject(new Error("Popup closed without completing authorization"));
+              reject(new Error("popup_closed"));
             }
           }
         }, 300);
@@ -204,6 +208,11 @@ export default function Dashboard() {
       setShowLocationPicker(true);
     } catch (e: any) {
       console.error("Square OAuth error:", e);
+      if (e.message === "popup_closed") {
+        // Popup closed without result — auto-retry with full-page redirect flow
+        window.location.href = "/api/square/oauth/authorize?mode=redirect&return_url=/dashboard";
+        return;
+      }
       alert(e.message || "Failed to connect Square");
     } finally {
       setConnecting(false);
