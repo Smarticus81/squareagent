@@ -60,6 +60,13 @@
         {
           "microphonePermission": "Allow Bevpro to access your microphone for voice ordering."
         }
+      ],
+      [
+        "@config-plugins/react-native-webrtc",
+        {
+          "cameraPermission": false,
+          "microphonePermission": "Allow Bevpro to access your microphone for voice ordering."
+        }
       ]
     ],
     "experiments": {
