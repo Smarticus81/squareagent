@@ -168,6 +168,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
   const commandHandlerRef = useRef<CommandHandler | null>(null);
   const catalogRef = useRef<unknown[]>([]);
   const currentOrderRef = useRef<unknown[]>([]);
+  const sessionIdRef = useRef<string>("");
   const squareTokenRef = useRef<string>("");
   const squareLocationIdRef = useRef<string>("");
   const venueIdRef = useRef<string>("");
@@ -263,6 +264,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
         method: "POST",
         headers,
         body: JSON.stringify({
+          session_id: sessionIdRef.current || undefined,
           tool_name: toolName,
           arguments: args,
           catalog: catalogRef.current,
@@ -300,6 +302,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
 
       switch (event.type) {
         case "session.created":
+          sessionIdRef.current = (event as any).session?.id || `native-${Date.now()}`;
           setAs("listening");
           sendContextUpdate();
           break;
@@ -376,6 +379,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
 
       switch (event.type) {
         case "session.created":
+          sessionIdRef.current = (event as any).session?.id || `web-${Date.now()}`;
           setAs("listening");
           sendContextUpdate();
           break;

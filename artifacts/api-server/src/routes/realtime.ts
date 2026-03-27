@@ -29,6 +29,7 @@ import {
   type SessionOrderItem,
   type OrderCommand,
   type LiveSession,
+  type SyncResult,
 } from "../lib/square-helpers";
 
 const router = Router();
@@ -237,9 +238,12 @@ async function executeTool(
           sessionOrder.push({ catalogItemId: match.id, variationId: match.variationId, name: match.name, price: match.price, quantity: qty });
         }
         // ── Live POS sync: push change to Square immediately ──────────────
-        await syncLiveOrderToSquare(session, squareToken, squareLocationId);
+        const sync = await syncLiveOrderToSquare(session, squareToken, squareLocationId);
+        const posStatus = sync.ok && session.squareOrderId
+          ? " Showing on POS."
+          : sync.error ? ` (POS sync issue: ${sync.error})` : "";
         return {
-          result: `Added ${qty}x ${match.name} ($${(match.price * qty).toFixed(2)}) to the order.${session.squareOrderId ? " Showing on POS." : ""}`,
+          result: `Added ${qty}x ${match.name} ($${(match.price * qty).toFixed(2)}) to the order.${posStatus}`,
           command: { action: "add", item_id: match.id, item_name: match.name, quantity: qty, price: match.price, squareOrderId: session.squareOrderId },
         };
       }
@@ -259,9 +263,10 @@ async function executeTool(
         if (sessionOrder[idx].quantity <= 0) sessionOrder.splice(idx, 1);
       }
       // ── Live POS sync: update Square order ──────────────────────────────
-      await syncLiveOrderToSquare(session, squareToken, squareLocationId);
+      const sync = await syncLiveOrderToSquare(session, squareToken, squareLocationId);
+      const posStatus = sync.ok && session.squareOrderId ? " POS updated." : sync.error ? ` (POS sync issue: ${sync.error})` : "";
       return {
-        result: `Removed ${qty}x ${itemName} from the order.${session.squareOrderId ? " POS updated." : ""}`,
+        result: `Removed ${qty}x ${itemName} from the order.${posStatus}`,
         command: { action: "remove", item_name: itemName, quantity: qty, squareOrderId: session.squareOrderId },
       };
     }
@@ -379,7 +384,10 @@ async function executeTool(
       }
       // Ensure we have a live order in Square first
       if (!session.squareOrderId) {
-        await syncLiveOrderToSquare(session, squareToken, squareLocationId);
+        const sync = await syncLiveOrderToSquare(session, squareToken, squareLocationId);
+        if (!sync.ok) {
+          return { result: `Could not create the order in Square: ${sync.error}. Try submitting instead.` };
+        }
       }
       if (!session.squareOrderId) {
         return { result: "Could not create the order in Square. Try submitting instead." };
@@ -822,6 +830,54 @@ router.post("/tools", requireAuth as any, requirePlan() as any, async (req: any,
     console.error(`[Realtime] Tool error (${tool_name}):`, e.message);
     res.status(500).json({ error: e.message });
   }
+});
+
+// ── POST /test-sync — Diagnostic: test Square order creation ──────────────────
+router.post("/test-sync", requireAuth as any, async (req: any, res: any) => {
+  const { venueId } = req.body ?? {};
+  if (!venueId) {
+    res.status(400).json({ error: "venueId is required" });
+    return;
+  }
+
+  const creds = await lookupVenueCredentials(req.user.id, Number(venueId));
+  if (!creds) {
+    res.json({ ok: false, error: "Venue not found or not owned by user" });
+    return;
+  }
+  if (!creds.squareToken) {
+    res.json({ ok: false, error: "No Square access token — reconnect Square OAuth" });
+    return;
+  }
+  if (!creds.squareLocationId) {
+    res.json({ ok: false, error: "No Square location ID — complete setup" });
+    return;
+  }
+
+  // Try creating a test order, then cancel it
+  const testSession: LiveSession = {
+    items: [{
+      catalogItemId: "test",
+      name: "Sync Test",
+      price: 0.01,
+      quantity: 1,
+    }],
+  };
+
+  const sync = await syncLiveOrderToSquare(testSession, creds.squareToken, creds.squareLocationId);
+  if (!sync.ok) {
+    res.json({ ok: false, error: sync.error, step: "create_order" });
+    return;
+  }
+
+  // Cancel the test order
+  await cancelLiveOrder(testSession, creds.squareToken, creds.squareLocationId);
+
+  res.json({
+    ok: true,
+    message: "Square order sync is working. Test order created and canceled.",
+    testOrderId: sync.squareOrderId,
+  });
 });
 
 export default router;

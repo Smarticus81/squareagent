@@ -91,18 +91,27 @@ export interface LiveSession {
   referenceId?: string;            // e.g. VOICE-LIVE-1234567890
 }
 
+export interface SyncResult {
+  ok: boolean;
+  error?: string;
+  squareOrderId?: string;
+}
+
 /**
  * Sync the current session items to Square as a live open order.
  * Creates the order on first call, updates on subsequent calls.
- * Best-effort: failures are logged but don't break the voice flow.
+ * Returns status so callers can surface errors.
  */
 export async function syncLiveOrderToSquare(
   session: LiveSession,
   squareToken: string,
   locationId: string,
-): Promise<void> {
-  if (!squareToken || !locationId) return;
-  if (session.items.length === 0 && !session.squareOrderId) return;
+): Promise<SyncResult> {
+  if (!squareToken || !locationId) {
+    console.warn("[LiveSync] Skipped — missing credentials", { hasToken: !!squareToken, hasLocation: !!locationId });
+    return { ok: false, error: "Square credentials not configured for this venue" };
+  }
+  if (session.items.length === 0 && !session.squareOrderId) return { ok: true };
 
   const lineItems = session.items.map((item) => ({
     quantity: item.quantity.toString(),
@@ -131,8 +140,9 @@ export async function syncLiveOrderToSquare(
       });
       const data = (await res.json()) as any;
       if (!res.ok) {
-        console.error("[LiveSync] Create order failed:", JSON.stringify(data.errors));
-        return;
+        const errMsg = data.errors?.[0]?.detail || JSON.stringify(data.errors);
+        console.error("[LiveSync] Create order failed:", errMsg);
+        return { ok: false, error: `Create order failed: ${errMsg}` };
       }
       session.squareOrderId = data.order.id;
       session.squareOrderVersion = data.order.version;
@@ -155,8 +165,9 @@ export async function syncLiveOrderToSquare(
       });
       const data = (await res.json()) as any;
       if (!res.ok) {
-        console.error("[LiveSync] Update order failed:", JSON.stringify(data.errors));
-        return;
+        const errMsg = data.errors?.[0]?.detail || JSON.stringify(data.errors);
+        console.error("[LiveSync] Update order failed:", errMsg);
+        return { ok: false, error: `Update order failed: ${errMsg}` };
       }
       session.squareOrderVersion = data.order.version;
       session.squareOrderTotal = data.order.total_money?.amount ?? 0;
@@ -176,15 +187,18 @@ export async function syncLiveOrderToSquare(
       });
       const data = (await res.json()) as any;
       if (!res.ok) {
-        console.error("[LiveSync] Clear items failed:", JSON.stringify(data.errors));
-        return;
+        const errMsg = data.errors?.[0]?.detail || JSON.stringify(data.errors);
+        console.error("[LiveSync] Clear items failed:", errMsg);
+        return { ok: false, error: `Clear items failed: ${errMsg}` };
       }
       session.squareOrderVersion = data.order.version;
       session.squareOrderTotal = 0;
       console.log(`[LiveSync] Order emptied: ${session.squareOrderId} v${data.order.version}`);
     }
+    return { ok: true, squareOrderId: session.squareOrderId };
   } catch (e: any) {
     console.error("[LiveSync] Sync error:", e.message);
+    return { ok: false, error: `Sync error: ${e.message}` };
   }
 }
 
