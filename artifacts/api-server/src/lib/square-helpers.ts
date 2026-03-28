@@ -325,3 +325,221 @@ export async function pushToTerminal(
     return { error: e.message };
   }
 }
+
+// ── Extended Square API helpers ────────────────────────────────────────────────
+// These power the comprehensive BevPro voice agent.
+
+/** Create a new catalog item (with one variation). */
+export async function createCatalogItem(
+  squareToken: string,
+  locationId: string,
+  name: string,
+  priceCents: number,
+  category?: string,
+): Promise<{ ok: boolean; itemId?: string; error?: string }> {
+  const idempotencyKey = `create-item-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  const itemId = `#item-${Date.now()}`;
+  const varId = `#var-${Date.now()}`;
+  try {
+    const res = await fetch(`${SQUARE_BASE}/catalog/object`, {
+      method: "POST",
+      headers: squareHeaders(squareToken),
+      body: JSON.stringify({
+        idempotency_key: idempotencyKey,
+        object: {
+          type: "ITEM",
+          id: itemId,
+          present_at_all_locations: true,
+          item_data: {
+            name,
+            variations: [
+              {
+                type: "ITEM_VARIATION",
+                id: varId,
+                present_at_all_locations: true,
+                item_variation_data: {
+                  name: "Regular",
+                  pricing_type: "FIXED_PRICING",
+                  price_money: { amount: priceCents, currency: "USD" },
+                },
+              },
+            ],
+          },
+        },
+      }),
+    });
+    const data = (await res.json()) as any;
+    if (!res.ok) return { ok: false, error: data.errors?.[0]?.detail || "Failed to create item" };
+    return { ok: true, itemId: data.catalog_object?.id };
+  } catch (e: any) {
+    return { ok: false, error: e.message };
+  }
+}
+
+/** Update an existing catalog item's name or price. */
+export async function updateCatalogItem(
+  squareToken: string,
+  catalogObjectId: string,
+  updates: { name?: string; priceCents?: number },
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    // Fetch current object first
+    const getRes = await fetch(`${SQUARE_BASE}/catalog/object/${catalogObjectId}`, {
+      headers: squareHeaders(squareToken),
+    });
+    const getData = (await getRes.json()) as any;
+    if (!getRes.ok) return { ok: false, error: getData.errors?.[0]?.detail || "Item not found" };
+
+    const obj = getData.object;
+    if (updates.name) obj.item_data.name = updates.name;
+    if (updates.priceCents !== undefined && obj.item_data.variations?.[0]) {
+      obj.item_data.variations[0].item_variation_data.price_money = {
+        amount: updates.priceCents,
+        currency: "USD",
+      };
+    }
+
+    const res = await fetch(`${SQUARE_BASE}/catalog/object`, {
+      method: "POST",
+      headers: squareHeaders(squareToken),
+      body: JSON.stringify({
+        idempotency_key: `update-item-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        object: obj,
+      }),
+    });
+    const data = (await res.json()) as any;
+    if (!res.ok) return { ok: false, error: data.errors?.[0]?.detail || "Failed to update" };
+    return { ok: true };
+  } catch (e: any) {
+    return { ok: false, error: e.message };
+  }
+}
+
+/** Delete a catalog item. */
+export async function deleteCatalogItem(
+  squareToken: string,
+  catalogObjectId: string,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const res = await fetch(`${SQUARE_BASE}/catalog/object/${catalogObjectId}`, {
+      method: "DELETE",
+      headers: squareHeaders(squareToken),
+    });
+    if (!res.ok) {
+      const data = (await res.json()) as any;
+      return { ok: false, error: data.errors?.[0]?.detail || "Failed to delete" };
+    }
+    return { ok: true };
+  } catch (e: any) {
+    return { ok: false, error: e.message };
+  }
+}
+
+/** List recent orders with summary. */
+export async function listRecentOrders(
+  squareToken: string,
+  locationId: string,
+  limit = 20,
+): Promise<{ ok: boolean; orders?: any[]; error?: string }> {
+  try {
+    const res = await fetch(`${SQUARE_BASE}/orders/search`, {
+      method: "POST",
+      headers: squareHeaders(squareToken),
+      body: JSON.stringify({
+        location_ids: [locationId],
+        query: {
+          sort: { sort_field: "CREATED_AT", sort_order: "DESC" },
+        },
+        limit,
+      }),
+    });
+    const data = (await res.json()) as any;
+    if (!res.ok) return { ok: false, error: data.errors?.[0]?.detail || "Failed to list orders" };
+    return { ok: true, orders: data.orders ?? [] };
+  } catch (e: any) {
+    return { ok: false, error: e.message };
+  }
+}
+
+/** Get sales summary for a date range. */
+export async function getSalesSummary(
+  squareToken: string,
+  locationId: string,
+  startDate: string,
+  endDate: string,
+): Promise<{ ok: boolean; summary?: { totalOrders: number; totalRevenue: number; avgOrder: number; topItems: Array<{ name: string; qty: number; revenue: number }> }; error?: string }> {
+  try {
+    const res = await fetch(`${SQUARE_BASE}/orders/search`, {
+      method: "POST",
+      headers: squareHeaders(squareToken),
+      body: JSON.stringify({
+        location_ids: [locationId],
+        query: {
+          filter: {
+            date_time_filter: {
+              created_at: { start_at: startDate, end_at: endDate },
+            },
+            state_filter: { states: ["COMPLETED"] },
+          },
+          sort: { sort_field: "CREATED_AT", sort_order: "DESC" },
+        },
+        limit: 500,
+      }),
+    });
+    const data = (await res.json()) as any;
+    if (!res.ok) return { ok: false, error: data.errors?.[0]?.detail || "Failed to query orders" };
+
+    const orders = data.orders ?? [];
+    let totalRevenue = 0;
+    const itemCounts = new Map<string, { qty: number; revenue: number }>();
+
+    for (const order of orders) {
+      totalRevenue += (order.total_money?.amount ?? 0);
+      for (const li of order.line_items ?? []) {
+        const name = li.name ?? "Unknown";
+        const qty = parseInt(li.quantity ?? "0");
+        const rev = li.total_money?.amount ?? 0;
+        const existing = itemCounts.get(name) ?? { qty: 0, revenue: 0 };
+        itemCounts.set(name, { qty: existing.qty + qty, revenue: existing.revenue + rev });
+      }
+    }
+
+    const topItems = [...itemCounts.entries()]
+      .sort((a, b) => b[1].revenue - a[1].revenue)
+      .slice(0, 10)
+      .map(([name, { qty, revenue }]) => ({ name, qty, revenue: revenue / 100 }));
+
+    return {
+      ok: true,
+      summary: {
+        totalOrders: orders.length,
+        totalRevenue: totalRevenue / 100,
+        avgOrder: orders.length > 0 ? (totalRevenue / 100) / orders.length : 0,
+        topItems,
+      },
+    };
+  } catch (e: any) {
+    return { ok: false, error: e.message };
+  }
+}
+
+/** List all Square locations for the merchant. */
+export async function listLocations(
+  squareToken: string,
+): Promise<{ ok: boolean; locations?: Array<{ id: string; name: string; status: string }>; error?: string }> {
+  try {
+    const res = await fetch(`${SQUARE_BASE}/locations`, {
+      headers: squareHeaders(squareToken),
+    });
+    const data = (await res.json()) as any;
+    if (!res.ok) return { ok: false, error: data.errors?.[0]?.detail || "Failed to list locations" };
+    const locations = (data.locations ?? []).map((l: any) => ({
+      id: l.id,
+      name: l.name,
+      status: l.status,
+    }));
+    return { ok: true, locations };
+  } catch (e: any) {
+    return { ok: false, error: e.message };
+  }
+}

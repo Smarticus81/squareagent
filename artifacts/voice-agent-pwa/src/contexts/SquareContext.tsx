@@ -17,6 +17,7 @@ export interface SquareLocation {
   address?: string;
 }
 
+
 interface SquareContextType {
   accessToken: string | null;
   locationId: string | null;

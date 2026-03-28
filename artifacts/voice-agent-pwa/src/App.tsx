@@ -315,8 +315,10 @@ export default function App() {
             <rect x="27.5" y="13" width="3" height="10" rx="1.5" fill="#140b05"/>
           </svg>
           <span className="brand-text">
-            <span style={{ color: "var(--msg-agent)" }}>Bev</span>
-            <span style={{ color: "#E8A020", fontStyle: "italic" }}>Pro</span>
+              <>
+                <span style={{ color: "var(--msg-agent)" }}>Bev</span>
+                <span style={{ color: "#E8A020", fontStyle: "italic" }}>Pro</span>
+              </>
           </span>
         </div>
         {orderCount > 0 ? (
@@ -328,7 +330,7 @@ export default function App() {
 
       {/* ── Conversation area ────────────────────────────────── */}
       <div className="content">
-        {/* Subtle BevPro watermark */}
+        {/* Subtle watermark */}
         <div className="watermark">
           <svg width="120" height="120" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
             <circle cx="18" cy="18" r="17" fill="#E8A020" opacity="0.07"/>
