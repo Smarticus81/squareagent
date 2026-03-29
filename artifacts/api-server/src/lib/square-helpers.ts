@@ -89,6 +89,7 @@ export interface LiveSession {
   squareOrderVersion?: number;
   squareOrderTotal?: number;       // cents
   referenceId?: string;            // e.g. VOICE-LIVE-1234567890
+  lineItemUids?: string[];         // Track Square UIDs for proper UpdateOrder
 }
 
 export interface SyncResult {
@@ -148,9 +149,11 @@ export async function syncLiveOrderToSquare(
       session.squareOrderVersion = data.order.version;
       session.squareOrderTotal = data.order.total_money?.amount ?? 0;
       session.referenceId = refId;
-      console.log(`[LiveSync] Order created: ${data.order.id} v${data.order.version} | $${((session.squareOrderTotal ?? 0) / 100).toFixed(2)} | ref=${refId}`);
+      session.lineItemUids = (data.order.line_items || []).map((li: any) => li.uid);
+      console.log(`[LiveSync] Order created: ${data.order.id} v${data.order.version} | $${((session.squareOrderTotal ?? 0) / 100).toFixed(2)} | ref=${refId} | uids=${session.lineItemUids?.length ?? 0}`);
     } else if (session.items.length > 0) {
-      // ── UPDATE existing order — clear old line items, set new ones ──────
+      // ── UPDATE existing order — clear old line items by UID, set new ones ──
+      const uidsToRemove = (session.lineItemUids || []).map((uid) => `line_items[${uid}]`);
       const res = await fetch(`${SQUARE_BASE}/orders/${session.squareOrderId}`, {
         method: "PUT",
         headers: squareHeaders(squareToken),
@@ -160,7 +163,7 @@ export async function syncLiveOrderToSquare(
             version: session.squareOrderVersion,
             line_items: lineItems,
           },
-          fields_to_clear: ["line_items"],
+          ...(uidsToRemove.length > 0 ? { fields_to_clear: uidsToRemove } : {}),
         }),
       });
       const data = (await res.json()) as any;
@@ -171,9 +174,17 @@ export async function syncLiveOrderToSquare(
       }
       session.squareOrderVersion = data.order.version;
       session.squareOrderTotal = data.order.total_money?.amount ?? 0;
-      console.log(`[LiveSync] Order updated: ${session.squareOrderId} v${data.order.version} | $${((session.squareOrderTotal ?? 0) / 100).toFixed(2)}`);
+      session.lineItemUids = (data.order.line_items || []).map((li: any) => li.uid);
+      console.log(`[LiveSync] Order updated: ${session.squareOrderId} v${data.order.version} | $${((session.squareOrderTotal ?? 0) / 100).toFixed(2)} | uids=${session.lineItemUids?.length ?? 0}`);
     } else {
-      // Items were all removed — update order to empty (keeps it open but empty)
+      // Items were all removed — clear remaining line items from the order
+      const uidsToRemove = (session.lineItemUids || []).map((uid) => `line_items[${uid}]`);
+      if (uidsToRemove.length === 0) {
+        // Nothing to clear — order already has no items
+        session.squareOrderTotal = 0;
+        console.log(`[LiveSync] Order already empty: ${session.squareOrderId}`);
+        return { ok: true, squareOrderId: session.squareOrderId };
+      }
       const res = await fetch(`${SQUARE_BASE}/orders/${session.squareOrderId}`, {
         method: "PUT",
         headers: squareHeaders(squareToken),
@@ -182,7 +193,7 @@ export async function syncLiveOrderToSquare(
             location_id: locationId,
             version: session.squareOrderVersion,
           },
-          fields_to_clear: ["line_items"],
+          fields_to_clear: uidsToRemove,
         }),
       });
       const data = (await res.json()) as any;
@@ -193,6 +204,7 @@ export async function syncLiveOrderToSquare(
       }
       session.squareOrderVersion = data.order.version;
       session.squareOrderTotal = 0;
+      session.lineItemUids = [];
       console.log(`[LiveSync] Order emptied: ${session.squareOrderId} v${data.order.version}`);
     }
     return { ok: true, squareOrderId: session.squareOrderId };
@@ -239,6 +251,7 @@ export async function cancelLiveOrder(
   session.squareOrderVersion = undefined;
   session.squareOrderTotal = undefined;
   session.referenceId = undefined;
+  session.lineItemUids = undefined;
 }
 
 /**

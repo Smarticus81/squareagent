@@ -159,6 +159,7 @@ async function submitOrder(_args: Record<string, unknown>, ctx: ToolContext): Pr
       session.squareOrderVersion = undefined;
       session.squareOrderTotal = undefined;
       session.referenceId = undefined;
+      session.lineItemUids = undefined;
       return {
         result: `Order submitted! Total: $${total.toFixed(2)}.${error ? ` Warning: ${error}` : ""}`,
         command: { action: "submit", squareOrderId: orderId },

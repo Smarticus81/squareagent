@@ -10,6 +10,7 @@ import Login from "@/pages/login";
 import Signup from "@/pages/signup";
 import Dashboard from "@/pages/dashboard";
 import AccountSettings from "@/pages/account-settings";
+import Capabilities from "@/pages/capabilities";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient({
@@ -30,6 +31,7 @@ function Router() {
         <Route path="/signup" component={Signup} />
         <Route path="/dashboard" component={Dashboard} />
         <Route path="/account" component={AccountSettings} />
+        <Route path="/capabilities" component={Capabilities} />
         <Route component={NotFound} />
       </Switch>
     </Layout>

@@ -21,6 +21,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
             </Link>
 
             <div className="flex items-center gap-5">
+              <Link href="/capabilities" className="text-[13px] font-medium text-foreground/60 hover:text-foreground transition-colors hidden sm:block">
+                Capabilities
+              </Link>
               {!isLoading && (
                 auth?.user ? (
                   <>
@@ -77,6 +80,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   <p className="text-foreground/30 font-medium text-[10px] tracking-[0.2em] uppercase mb-3">Product</p>
                   <Link href="/signup" className="block text-foreground/50 hover:text-foreground transition-colors font-light">Get Started</Link>
                   <Link href="/login" className="block text-foreground/50 hover:text-foreground transition-colors font-light">Sign In</Link>
+                  <Link href="/capabilities" className="block text-foreground/50 hover:text-foreground transition-colors font-light">Capabilities</Link>
                 </div>
                 <div className="space-y-2.5">
                   <p className="text-foreground/30 font-medium text-[10px] tracking-[0.2em] uppercase mb-3">Company</p>

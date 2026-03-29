@@ -81,7 +81,7 @@ router.get("/oauth/authorize", (req: Request, res: Response): void => {
   const params = new URLSearchParams({
     client_id: appId,
     response_type: "code",
-    scope: "MERCHANT_PROFILE_READ ITEMS_READ ORDERS_WRITE ORDERS_READ PAYMENTS_WRITE INVENTORY_READ INVENTORY_WRITE",
+    scope: "MERCHANT_PROFILE_READ ITEMS_READ ITEMS_WRITE ORDERS_WRITE ORDERS_READ PAYMENTS_READ PAYMENTS_WRITE INVENTORY_READ INVENTORY_WRITE CUSTOMERS_READ CUSTOMERS_WRITE EMPLOYEES_READ TIMECARDS_READ TIMECARDS_WRITE DEVICE_CREDENTIAL_MANAGEMENT",
     state,
     redirect_uri: redirectUri,
     session: "false",
