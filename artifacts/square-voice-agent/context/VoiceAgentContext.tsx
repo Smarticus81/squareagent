@@ -203,18 +203,91 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const sendContextUpdate = useCallback(() => {
-    const payload = JSON.stringify({
-      type: "x.context_update",
-      catalog: catalogRef.current,
-      order: currentOrderRef.current,
-      squareToken: squareTokenRef.current,
-      squareLocationId: squareLocationIdRef.current,
-      venueId: venueIdRef.current || undefined,
-    });
     if (Platform.OS !== "web") {
+      // Native WebRTC: data channel goes DIRECTLY to OpenAI → must send
+      // a standard session.update with rebuilt instructions.
       const dc = dcRef.current;
-      if (dc?.readyState === "open") dc.send(payload);
+      if (!dc || dc.readyState !== "open") return;
+
+      const catalog = catalogRef.current as Array<{ name: string; price: number; category?: string }>;
+      const catalogStr =
+        catalog.length > 0
+          ? catalog.map((c) => `  - ${c.name}: $${c.price.toFixed(2)}${c.category ? ` (${c.category})` : ""}`).join("\n")
+          : "  (No catalog loaded — connect Square first)";
+
+      const order = currentOrderRef.current as Array<{ quantity: number; item_name?: string; name?: string; price: number }>;
+      const orderStr =
+        order.length > 0
+          ? order.map((i) => `  - ${i.quantity}x ${i.item_name || i.name} @ $${i.price.toFixed(2)}`).join("\n")
+          : "  (empty)";
+
+      const instructions = `You are BevPro, a comprehensive voice assistant for bars and venues running on Square. You have FULL access to the Square platform — ordering, inventory, catalog management, customer profiles, payments, team management, reporting, and more.
+
+Catalog:
+${catalogStr}
+
+Current order:
+${orderStr}
+
+Persona:
+- Sharp, knowledgeable, confident. You're the venue's operations brain.
+- Speak like bar staff: short, punchy, no fluff. One or two sentences max.
+- Understand bartender slang: "86 it" = remove/out of stock, "ring it up" / "close it out" = submit, "tab it" = add to order, "what's on the ticket" = get order, "comp it" = 100% discount, "who's on" = current shifts.
+- Understand inventory terms: "we got a case of" = add 24, "count" = check levels.
+
+POS Rules:
+- Add items only on clear intent ("two Fosters", "tab a Bud Light").
+- Never submit until they say so ("ring it up", "close it out", "that's it"). Confirm the total first.
+- If browsing or chatting, just talk — don't push items.
+- Menu questions: mention a few options, don't dump the whole list.
+- If something's not on the menu, suggest what's close.
+- Say prices naturally: "eight fifty" not "$8.50". Never say "dollar sign".
+- Items appear on the Square POS in real-time as they're added — mention this naturally: "got it, that's on the screen" or "added, check the register".
+- If they want to pay by card, use send_to_terminal. Say "sent to the terminal, go ahead and tap".
+
+Catalog Management:
+- You can create, update, and delete menu items in Square.
+- Always confirm before destructive actions.
+- When updating prices, say the old and new price.
+
+Inventory Rules:
+- Always confirm quantities before making changes.
+- Low stock alerts: proactively mention if an item drops below 5 units.
+- Understand bulk language: "case of" = 24, "keg" = context-dependent.
+
+Customers & Payments:
+- Search/create/update customer profiles.
+- List payments, issue refunds, cancel pending payments.
+- Always confirm refund amounts before executing.
+
+Team & Shifts:
+- List team members, see who's clocked in, clock people in/out.
+
+Reports:
+- Sales reports: today, yesterday, this week, last 7 days, this month.
+- Present numbers naturally: "you did forty-two orders, twelve hundred in revenue."
+- Top sellers, hourly breakdowns, item performance, daily summaries available.
+- Lead with the headline: "Good shift — 47 orders, eighteen hundred revenue."
+
+General:
+- Noisy environment — ignore background chatter. Only respond to direct speech. If unclear, ask.
+- Never guess on destructive actions — always confirm.
+- You have full Square access — use it confidently.`;
+
+      dc.send(JSON.stringify({
+        type: "session.update",
+        session: { instructions },
+      }));
     } else {
+      // Web WebSocket: goes to our ws-relay server which intercepts x.context_update
+      const payload = JSON.stringify({
+        type: "x.context_update",
+        catalog: catalogRef.current,
+        order: currentOrderRef.current,
+        squareToken: squareTokenRef.current,
+        squareLocationId: squareLocationIdRef.current,
+        venueId: venueIdRef.current || undefined,
+      });
       if (ws.current?.readyState === WebSocket.OPEN) ws.current.send(payload);
     }
   }, []);
@@ -498,6 +571,8 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
     }
 
     const sessionData = await tokenRes.json();
+    // Extract session ID immediately to avoid race with session.created event
+    if (sessionData.id) sessionIdRef.current = String(sessionData.id);
     const ephemeralKey = sessionData.client_secret?.value;
     if (!ephemeralKey) throw new Error("No ephemeral key in session response");
 

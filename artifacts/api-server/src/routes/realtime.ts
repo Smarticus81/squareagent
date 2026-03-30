@@ -208,7 +208,7 @@ router.post("/tools", requireAuth as any, requirePlan() as any, async (req: any,
     }
   }
 
-  const sessionId = String(session_id || "default");
+  const sessionId = String(session_id || `rt-${req.user.id}-${Date.now()}`);
   if (!sessionOrders.has(sessionId)) {
     sessionOrders.set(sessionId, { items: [] });
   }

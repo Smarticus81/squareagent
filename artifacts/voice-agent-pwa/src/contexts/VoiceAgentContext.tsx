@@ -260,7 +260,7 @@ General:
     switch (event.type) {
       case "session.created":
         setAs("listening");
-        sessionIdRef.current = String((event.session as any)?.id ?? Date.now());
+        if (!sessionIdRef.current) sessionIdRef.current = String((event.session as any)?.id ?? Date.now());
         sendContextUpdate();
         break;
 
@@ -372,6 +372,8 @@ General:
       }
 
       const sessionData = await tokenRes.json();
+      // Extract session ID immediately to avoid race with session.created event
+      if (sessionData.id) sessionIdRef.current = String(sessionData.id);
       const ephemeralKey = sessionData.client_secret?.value;
       if (!ephemeralKey) throw new Error("No ephemeral key in session response");
 
