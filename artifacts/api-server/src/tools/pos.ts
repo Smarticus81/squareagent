@@ -232,9 +232,24 @@ async function sendToTerminal(_args: Record<string, unknown>, ctx: ToolContext):
   try {
     const devRes = await fetch(`${SQUARE_BASE}/devices?location_id=${squareLocationId}`, { headers: squareHeaders(squareToken) });
     const devData = (await devRes.json()) as any;
-    const devices = devData.devices ?? [];
-    if (devices.length === 0) return { result: "No Square Terminal devices found at this location. The order is live on the POS — complete it from there." };
-    const device = devices[0];
+    const allDevices = devData.devices ?? [];
+    // Square Terminal hardware supports Terminal Checkout API; iPads/POS devices do not
+    const terminals = allDevices.filter((d: any) => (d.attributes?.type ?? d.type ?? "").toUpperCase() === "TERMINAL");
+    const posDevices = allDevices.filter((d: any) => {
+      const t = (d.attributes?.type ?? d.type ?? "").toUpperCase();
+      return t !== "TERMINAL";
+    });
+
+    if (terminals.length === 0) {
+      const total = ((session.squareOrderTotal ?? 0) / 100).toFixed(2);
+      if (posDevices.length > 0) {
+        return { result: `Your location has an iPad/POS but no Square Terminal hardware. The order ($${total}) is already live on your iPad POS as an open ticket — just tap it there to take payment.` };
+      }
+      // No devices at all — order is still live on any POS signed into this location
+      return { result: `No Square Terminal devices found at this location. The order ($${total}) is live on the POS — open the ticket on your iPad to complete payment.` };
+    }
+
+    const device = terminals[0];
     const { checkoutId, error } = await pushToTerminal(squareToken, squareLocationId, device.id, session.squareOrderId, session.squareOrderTotal ?? 0);
     if (error) return { result: `Couldn't send to terminal: ${error}. The order is still open on the POS.` };
     return {

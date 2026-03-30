@@ -504,15 +504,17 @@ router.get("/devices", async (req: Request, res: Response): Promise<void> => {
 
     const devices = (data.devices || []).map((dev: any) => ({
       id: dev.id,
-      name: dev.name || dev.attributes?.name || "Square Terminal",
-      type: dev.attributes?.type || "TERMINAL",
+      name: dev.name || dev.attributes?.name || "Unknown Device",
+      type: dev.attributes?.type || "UNKNOWN",
       status: dev.status?.category || "UNKNOWN",
       locationId: dev.location_id,
       serialNumber: dev.attributes?.serial_number,
     }));
 
-    console.log(`[Square] Devices listed: ${devices.length}`);
-    res.json({ devices });
+    const terminals = devices.filter((d: any) => d.type === "TERMINAL");
+    const posDevices = devices.filter((d: any) => d.type !== "TERMINAL");
+    console.log(`[Square] Devices listed: ${devices.length} (${terminals.length} terminals, ${posDevices.length} POS/other)`);
+    res.json({ devices, terminals, posDevices });
   } catch (e: any) {
     res.status(500).json({ error: e.message || "Failed to list devices" });
   }
