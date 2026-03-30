@@ -197,18 +197,22 @@ router.post("/tools", requireAuth as any, requirePlan() as any, async (req: any,
     return;
   }
 
+  if (!venueId) {
+    res.status(400).json({ error: "venueId is required" });
+    return;
+  }
+
   // Server-side credential lookup
   let squareToken = "";
   let squareLocationId = "";
-  if (venueId) {
-    const creds = await lookupVenueCredentials(req.user.id, Number(venueId));
-    if (creds) {
-      squareToken = creds.squareToken;
-      squareLocationId = creds.squareLocationId;
-    }
+  const creds = await lookupVenueCredentials(req.user.id, Number(venueId));
+  if (creds) {
+    squareToken = creds.squareToken;
+    squareLocationId = creds.squareLocationId;
   }
 
-  const sessionId = String(session_id || `rt-${req.user.id}-${Date.now()}`);
+  // Use a stable fallback so multiple tool calls in one conversation share the same session
+  const sessionId = String(session_id || `rt-${req.user.id}-${venueId}`);
   if (!sessionOrders.has(sessionId)) {
     sessionOrders.set(sessionId, { items: [] });
   }

@@ -116,10 +116,13 @@ export async function syncLiveOrderToSquare(
 
   const lineItems = session.items.map((item) => ({
     quantity: item.quantity.toString(),
-    catalog_object_id: item.variationId || item.catalogItemId,
+    // Square requires a variation ID for catalog items; fall back to ad-hoc pricing
     ...(item.variationId
-      ? {}
-      : { base_price_money: { amount: Math.round(item.price * 100), currency: "USD" } }),
+      ? { catalog_object_id: item.variationId }
+      : {
+          name: item.name,
+          base_price_money: { amount: Math.round(item.price * 100), currency: "USD" },
+        }),
   }));
 
   try {
