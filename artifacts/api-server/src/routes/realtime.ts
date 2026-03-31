@@ -247,22 +247,49 @@ router.post("/test-sync", requireAuth as any, async (req: any, res: any) => {
 
   const creds = await lookupVenueCredentials(req.user.id, Number(venueId));
   if (!creds) {
-    res.json({ ok: false, error: "Venue not found or not owned by user" });
+    res.json({ ok: false, error: "Venue not found or not owned by user", step: "lookup" });
     return;
   }
   if (!creds.squareToken) {
-    res.json({ ok: false, error: "No Square access token — reconnect Square OAuth" });
+    res.json({ ok: false, error: "No Square access token — reconnect Square OAuth", step: "token" });
     return;
   }
   if (!creds.squareLocationId) {
-    res.json({ ok: false, error: "No Square location ID — complete setup" });
+    res.json({ ok: false, error: "No Square location ID — complete setup", step: "location" });
     return;
   }
 
+  // Step 1: Verify the token works by fetching the location
+  let locationName = "unknown";
+  try {
+    const locRes = await fetch(`https://connect.squareup.com/v2/locations/${creds.squareLocationId}`, {
+      headers: {
+        Authorization: `Bearer ${creds.squareToken}`,
+        "Content-Type": "application/json",
+        "Square-Version": "2024-12-18",
+      },
+    });
+    const locData = (await locRes.json()) as any;
+    if (!locRes.ok) {
+      res.json({
+        ok: false,
+        error: `Square token invalid or expired: ${locData.errors?.[0]?.detail || locRes.status}`,
+        step: "verify_token",
+        hint: "Reconnect Square from the Dashboard",
+      });
+      return;
+    }
+    locationName = locData.location?.name || "unknown";
+  } catch (e: any) {
+    res.json({ ok: false, error: `Cannot reach Square API: ${e.message}`, step: "verify_token" });
+    return;
+  }
+
+  // Step 2: Create a test order
   const testSession: LiveSession = {
     items: [{
       catalogItemId: "test",
-      name: "Sync Test",
+      name: "BevPro Sync Test",
       price: 0.01,
       quantity: 1,
     }],
@@ -270,16 +297,78 @@ router.post("/test-sync", requireAuth as any, async (req: any, res: any) => {
 
   const sync = await syncLiveOrderToSquare(testSession, creds.squareToken, creds.squareLocationId);
   if (!sync.ok) {
-    res.json({ ok: false, error: sync.error, step: "create_order" });
+    res.json({
+      ok: false,
+      error: sync.error,
+      step: "create_order",
+      location: locationName,
+      locationId: creds.squareLocationId,
+    });
     return;
   }
 
+  // Step 3: Fetch the order back to confirm its state
+  let orderState = "unknown";
+  let orderDetails: any = null;
+  try {
+    const orderRes = await fetch(`https://connect.squareup.com/v2/orders/${testSession.squareOrderId}`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${creds.squareToken}`,
+        "Content-Type": "application/json",
+        "Square-Version": "2024-12-18",
+      },
+      body: JSON.stringify({ order_ids: [testSession.squareOrderId] }),
+    });
+    // Batch retrieve uses POST /v2/orders/batch-retrieve
+    const batchRes = await fetch(`https://connect.squareup.com/v2/orders/batch-retrieve`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${creds.squareToken}`,
+        "Content-Type": "application/json",
+        "Square-Version": "2024-12-18",
+      },
+      body: JSON.stringify({ location_id: creds.squareLocationId, order_ids: [testSession.squareOrderId] }),
+    });
+    const batchData = (await batchRes.json()) as any;
+    const order = batchData.orders?.[0];
+    if (order) {
+      orderState = order.state;
+      orderDetails = {
+        id: order.id,
+        state: order.state,
+        source: order.source?.name,
+        ticketName: order.ticket_name,
+        lineItems: (order.line_items || []).length,
+        fulfillments: (order.fulfillments || []).map((f: any) => ({
+          type: f.type,
+          state: f.state,
+        })),
+        total: order.total_money?.amount ? `$${(order.total_money.amount / 100).toFixed(2)}` : "$0.00",
+        createdAt: order.created_at,
+      };
+    }
+  } catch (e: any) {
+    console.warn("[TestSync] Could not fetch order back:", e.message);
+  }
+
+  // Step 4: Cancel the test order
   await cancelLiveOrder(testSession, creds.squareToken, creds.squareLocationId);
 
   res.json({
     ok: true,
-    message: "Square order sync is working. Test order created and canceled.",
+    message: `Order created and visible at "${locationName}". If you don't see it on the iPad, check: 1) Open Tickets is enabled in Square POS settings, 2) iPad is signed into "${locationName}", 3) Check the Orders tab (not just the register screen).`,
+    location: locationName,
+    locationId: creds.squareLocationId,
     testOrderId: sync.squareOrderId,
+    orderState,
+    orderDetails,
+    posChecklist: [
+      "Open Square POS on iPad → tap ☰ → Orders — the test order should have appeared there briefly",
+      "Settings → Checkout → enable 'Open Tickets' if not already on",
+      "Make sure your iPad POS is signed into the same location: " + locationName,
+      "Pull down to refresh the orders list after creating a voice order",
+    ],
   });
 });
 

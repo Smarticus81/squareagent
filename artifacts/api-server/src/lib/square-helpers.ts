@@ -129,23 +129,39 @@ export async function syncLiveOrderToSquare(
     if (!session.squareOrderId) {
       // ── CREATE a new live order ─────────────────────────────────────────
       const refId = `VOICE-LIVE-${Date.now()}`;
+      const ticketName = `Voice #${Date.now().toString().slice(-4)}`;
+      const orderPayload: Record<string, unknown> = {
+        location_id: locationId,
+        reference_id: refId,
+        ticket_name: ticketName,
+        source: { name: "BevPro Voice" },
+        line_items: lineItems,
+        // Fulfillment ensures the order shows in Square POS "Orders" tab on iPad
+        fulfillments: [{
+          type: "PICKUP",
+          state: "PROPOSED",
+          pickup_details: {
+            recipient: { display_name: "Voice Order" },
+            note: "BevPro voice order — complete at register",
+            auto_complete_duration: "P0D",
+            schedule_type: "ASAP",
+            is_curbside_pickup: false,
+          },
+        }],
+      };
+      console.log(`[LiveSync] Creating order at location=${locationId} with ${lineItems.length} items, ticket=${ticketName}`);
       const res = await fetch(`${SQUARE_BASE}/orders`, {
         method: "POST",
         headers: squareHeaders(squareToken),
         body: JSON.stringify({
           idempotency_key: `live-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-          order: {
-            location_id: locationId,
-            reference_id: refId,
-            source: { name: "BevPro Voice" },
-            line_items: lineItems,
-          },
+          order: orderPayload,
         }),
       });
       const data = (await res.json()) as any;
       if (!res.ok) {
         const errMsg = data.errors?.[0]?.detail || JSON.stringify(data.errors);
-        console.error("[LiveSync] Create order failed:", errMsg);
+        console.error("[LiveSync] Create order failed:", errMsg, JSON.stringify(data.errors));
         return { ok: false, error: `Create order failed: ${errMsg}` };
       }
       session.squareOrderId = data.order.id;
@@ -153,7 +169,7 @@ export async function syncLiveOrderToSquare(
       session.squareOrderTotal = data.order.total_money?.amount ?? 0;
       session.referenceId = refId;
       session.lineItemUids = (data.order.line_items || []).map((li: any) => li.uid);
-      console.log(`[LiveSync] Order created: ${data.order.id} v${data.order.version} | $${((session.squareOrderTotal ?? 0) / 100).toFixed(2)} | ref=${refId} | uids=${session.lineItemUids?.length ?? 0}`);
+      console.log(`[LiveSync] Order created: ${data.order.id} v${data.order.version} | $${((session.squareOrderTotal ?? 0) / 100).toFixed(2)} | ref=${refId} | ticket=${ticketName} | state=${data.order.state} | uids=${session.lineItemUids?.length ?? 0}`);
     } else if (session.items.length > 0) {
       // ── UPDATE existing order — clear old line items by UID, set new ones ──
       const uidsToRemove = (session.lineItemUids || []).map((uid) => `line_items[${uid}]`);
