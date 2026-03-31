@@ -180,7 +180,46 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
 
 // ── POST /tools — Execute a tool call ─────────────────────────────────────────
 
-const sessionOrders = new Map<string, LiveSession>();
+// Session state with TTL — auto-cleanup abandoned sessions after 30 minutes
+interface TimedSession {
+  session: LiveSession;
+  squareToken: string;
+  squareLocationId: string;
+  lastAccess: number;
+}
+const SESSION_TTL_MS = 30 * 60 * 1000; // 30 minutes
+const sessionOrders = new Map<string, TimedSession>();
+
+// Garbage-collect stale sessions every 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  let cleaned = 0;
+  for (const [key, entry] of sessionOrders) {
+    if (now - entry.lastAccess > SESSION_TTL_MS) {
+      // Cancel any orphaned live order in Square before removing
+      if (entry.session.squareOrderId && entry.squareToken && entry.squareLocationId) {
+        console.log(`[Sessions] Canceling orphaned order ${entry.session.squareOrderId} for session ${key}`);
+        cancelLiveOrder(entry.session, entry.squareToken, entry.squareLocationId).catch(() => {});
+      }
+      sessionOrders.delete(key);
+      cleaned++;
+    }
+  }
+  if (cleaned > 0) console.log(`[Sessions] Cleaned ${cleaned} stale session(s). Active: ${sessionOrders.size}`);
+}, 5 * 60 * 1000);
+
+function getOrCreateSession(sessionId: string, squareToken: string, squareLocationId: string): LiveSession {
+  const existing = sessionOrders.get(sessionId);
+  if (existing) {
+    existing.lastAccess = Date.now();
+    existing.squareToken = squareToken;
+    existing.squareLocationId = squareLocationId;
+    return existing.session;
+  }
+  const session: LiveSession = { items: [] };
+  sessionOrders.set(sessionId, { session, squareToken, squareLocationId, lastAccess: Date.now() });
+  return session;
+}
 
 router.post("/tools", requireAuth as any, requirePlan() as any, async (req: any, res: any) => {
   const {
@@ -213,10 +252,7 @@ router.post("/tools", requireAuth as any, requirePlan() as any, async (req: any,
 
   // Use a stable fallback so multiple tool calls in one conversation share the same session
   const sessionId = String(session_id || `rt-${req.user.id}-${venueId}`);
-  if (!sessionOrders.has(sessionId)) {
-    sessionOrders.set(sessionId, { items: [] });
-  }
-  const session = sessionOrders.get(sessionId)!;
+  const session = getOrCreateSession(sessionId, squareToken, squareLocationId);
 
   try {
     const { result, command } = await executeToolCall(
