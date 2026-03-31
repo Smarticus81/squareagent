@@ -133,21 +133,15 @@ export async function syncLiveOrderToSquare(
       const orderPayload: Record<string, unknown> = {
         location_id: locationId,
         reference_id: refId,
+        // ticket_name makes the order appear as an Open Ticket in Square POS.
+        // Staff taps it in the ticket drawer to load all items into the register.
+        // Requires: Square POS → Settings → Checkout → Open Tickets = ON
         ticket_name: ticketName,
         source: { name: "BevPro Voice" },
         line_items: lineItems,
-        // Fulfillment ensures the order shows in Square POS "Orders" tab on iPad
-        fulfillments: [{
-          type: "PICKUP",
-          state: "PROPOSED",
-          pickup_details: {
-            recipient: { display_name: "Voice Order" },
-            note: "BevPro voice order — complete at register",
-            auto_complete_duration: "P0D",
-            schedule_type: "ASAP",
-            is_curbside_pickup: false,
-          },
-        }],
+        // No fulfillment — we want this as an Open Ticket on the register,
+        // not routed to the "Orders" tab. Open Tickets show in the ticket
+        // drawer and load directly into the cart when tapped.
       };
       console.log(`[LiveSync] Creating order at location=${locationId} with ${lineItems.length} items, ticket=${ticketName}`);
       const res = await fetch(`${SQUARE_BASE}/orders`, {
