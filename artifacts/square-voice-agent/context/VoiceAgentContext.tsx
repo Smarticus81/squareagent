@@ -65,7 +65,7 @@ interface VoiceAgentContextType {
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const OPENAI_REALTIME_MODEL = "gpt-4o-mini-realtime-preview-2024-12-17";
+const OPENAI_REALTIME_MODEL = "gpt-realtime-mini";
 
 // AudioWorklet processor source for web path only
 const WORKLET_SRC = `
@@ -627,8 +627,8 @@ General:
     const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: false });
     await pc.setLocalDescription(offer);
 
-    // 8. Send offer to OpenAI, get SDP answer
-    const sdpRes = await fetch(`https://api.openai.com/v1/realtime?model=${OPENAI_REALTIME_MODEL}`, {
+    // 8. Send offer to OpenAI, get SDP answer (GA endpoint)
+    const sdpRes = await fetch("https://api.openai.com/v1/realtime/calls", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${ephemeralKey}`,

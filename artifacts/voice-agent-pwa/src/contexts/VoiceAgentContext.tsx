@@ -426,9 +426,8 @@ General:
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
 
-      // 7. Send offer to OpenAI, get SDP answer
-      const model = "gpt-4o-mini-realtime-preview-2024-12-17";
-      const sdpRes = await fetch(`https://api.openai.com/v1/realtime?model=${model}`, {
+      // 7. Send offer to OpenAI, get SDP answer (GA endpoint)
+      const sdpRes = await fetch("https://api.openai.com/v1/realtime/calls", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${ephemeralKey}`,

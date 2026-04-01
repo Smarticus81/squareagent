@@ -22,7 +22,7 @@ import {
 import { ALL_TOOLS, executeToolCall, toolCount } from "../tools";
 
 const JWT_SECRET = process.env.JWT_SECRET ?? "bevpro-dev-secret-change-in-production";
-const OPENAI_REALTIME_MODEL = "gpt-4o-mini-realtime-preview-2024-12-17";
+const OPENAI_REALTIME_MODEL = "gpt-realtime-mini";
 
 // ── Auth helper ───────────────────────────────────────────────────────────────
 
@@ -219,7 +219,6 @@ export function attachWebSocketRelay(server: Server): void {
     const openaiWs = new WebSocket(openaiUrl, {
       headers: {
         "Authorization": `Bearer ${apiKey}`,
-        "OpenAI-Beta": "realtime=v1",
       },
     });
 
