@@ -166,7 +166,7 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
           output_modalities: ["audio"],
           audio: {
             input: {
-              format: { type: "audio/pcm" },
+              format: { type: "audio/pcm", rate: 24000 },
               transcription: { model: "whisper-1" },
               turn_detection: {
                 type: "server_vad",
@@ -177,7 +177,7 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
               },
             },
             output: {
-              format: { type: "audio/pcm" },
+              format: { type: "audio/pcm", rate: 24000 },
               voice,
               speed,
             },
