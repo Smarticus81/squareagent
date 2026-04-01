@@ -146,12 +146,16 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
   console.log(`[Realtime] Creating session with ${toolCount()} tools`);
 
   try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+
     const response = await fetch("https://api.openai.com/v1/realtime/client_secrets", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
+      signal: controller.signal,
       body: JSON.stringify({
         session: {
           type: "realtime",
@@ -159,23 +163,30 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
           instructions: buildInstructions(catalog, order),
           tools: ALL_TOOLS,
           tool_choice: "auto",
-          voice,
           output_modalities: ["text", "audio"],
-          input_audio_format: "pcm16",
-          output_audio_format: "pcm16",
-          input_audio_transcription: { model: "whisper-1" },
-          turn_detection: {
-            type: "server_vad",
-            threshold: 0.5,
-            prefix_padding_ms: 150,
-            silence_duration_ms: 300,
-            create_response: true,
-          },
           temperature: 0.6,
-          speed,
+          audio: {
+            input: {
+              format: { type: "audio/pcm" },
+              transcription: { model: "whisper-1" },
+              turn_detection: {
+                type: "server_vad",
+                threshold: 0.5,
+                prefix_padding_ms: 150,
+                silence_duration_ms: 300,
+                create_response: true,
+              },
+            },
+            output: {
+              format: { type: "audio/pcm" },
+              voice,
+              speed,
+            },
+          },
         },
       }),
     });
+    clearTimeout(timeout);
 
     if (!response.ok) {
       const errText = await response.text();
