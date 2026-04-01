@@ -184,7 +184,10 @@ General:
 
     dc.send(JSON.stringify({
       type: "session.update",
-      session: { instructions },
+      session: {
+        type: "realtime",
+        instructions,
+      },
     }));
   }, []);
 
