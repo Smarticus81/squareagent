@@ -163,7 +163,7 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
           instructions: buildInstructions(catalog, order),
           tools: ALL_TOOLS,
           tool_choice: "auto",
-          output_modalities: ["text", "audio"],
+          output_modalities: ["audio"],
           temperature: 0.6,
           audio: {
             input: {

@@ -368,7 +368,7 @@ General:
 
       if (!tokenRes.ok) {
         const err = await tokenRes.json().catch(() => ({ error: "Failed to get session token" }));
-        throw new Error(err.error || "Failed to get session token");
+        throw new Error(err.detail || err.error || "Failed to get session token");
       }
 
       const sessionData = await tokenRes.json();
