@@ -276,7 +276,10 @@ General:
 
       dc.send(JSON.stringify({
         type: "session.update",
-        session: { instructions },
+        session: {
+          type: "realtime",
+          instructions,
+        },
       }));
     } else {
       // Web WebSocket: goes to our ws-relay server which intercepts x.context_update
@@ -547,36 +550,7 @@ General:
     const { voice, speed } = await getVoicePrefs();
     const baseUrl = getApiBase();
 
-    // 1. Get ephemeral token from server
-    const sessionPath = "api/realtime/session";
-    console.log(`[WebRTC] Requesting ephemeral token...`);
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (authTokenRef.current) headers["Authorization"] = `Bearer ${authTokenRef.current}`;
-
-    const tokenRes = await fetch(`${baseUrl}${sessionPath}`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        voice,
-        speed,
-        catalog: catalogRef.current,
-        order: currentOrderRef.current,
-        venueId: venueIdRef.current || undefined,
-      }),
-    });
-
-    if (!tokenRes.ok) {
-      const err = await tokenRes.json().catch(() => ({ error: "Failed to get session token" }));
-      throw new Error(err.error || "Failed to get session token");
-    }
-
-    const sessionData = await tokenRes.json();
-    // Extract session ID immediately to avoid race with session.created event
-    if (sessionData.id) sessionIdRef.current = String(sessionData.id);
-    const ephemeralKey = sessionData.client_secret?.value;
-    if (!ephemeralKey) throw new Error("No ephemeral key in session response");
-
-    console.log("[WebRTC] Got ephemeral token, creating peer connection...");
+    console.log("[WebRTC] Creating peer connection...");
 
     // 2. Import react-native-webrtc (only available on native)
     const {
@@ -627,19 +601,27 @@ General:
     const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: false });
     await pc.setLocalDescription(offer);
 
-    // 8. Send offer to OpenAI, get SDP answer (GA endpoint)
-    const sdpRes = await fetch("https://api.openai.com/v1/realtime/calls", {
+    // 8. Send offer to our server, which performs the GA unified /realtime/calls exchange
+    const callHeaders: Record<string, string> = { "Content-Type": "application/json" };
+    if (authTokenRef.current) callHeaders["Authorization"] = `Bearer ${authTokenRef.current}`;
+
+    const sdpRes = await fetch(`${baseUrl}api/realtime/call`, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${ephemeralKey}`,
-        "Content-Type": "application/sdp",
-      },
-      body: offer.sdp,
+      headers: callHeaders,
+      body: JSON.stringify({
+        sdp: offer.sdp,
+        voice,
+        speed,
+        catalog: catalogRef.current,
+        order: currentOrderRef.current,
+        venueId: venueIdRef.current || undefined,
+      }),
     });
 
     if (!sdpRes.ok) {
-      const errText = await sdpRes.text();
-      throw new Error(`OpenAI SDP exchange failed: ${sdpRes.status} ${errText}`);
+      const err = await sdpRes.json().catch(() => null);
+      const detail = err?.detail || err?.error || "Failed to establish realtime call";
+      throw new Error(`OpenAI SDP exchange failed: ${sdpRes.status} ${detail}`);
     }
 
     const answerSdp = await sdpRes.text();

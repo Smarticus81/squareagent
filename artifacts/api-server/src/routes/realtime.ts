@@ -40,6 +40,35 @@ async function lookupVenueCredentials(userId: number, venueId: number) {
 const OPENAI_REALTIME_MODEL = "gpt-realtime-mini";
 // GA realtime mini model for low-latency voice. Use gpt-realtime-1.5 for more capability.
 
+function buildRealtimeSessionConfig(voice: string, speed: number, catalog: CatalogItem[], order: OrderItem[]) {
+  return {
+    type: "realtime" as const,
+    model: OPENAI_REALTIME_MODEL,
+    instructions: buildInstructions(catalog, order),
+    tools: ALL_TOOLS,
+    tool_choice: "auto" as const,
+    output_modalities: ["audio" as const],
+    audio: {
+      input: {
+        format: { type: "audio/pcm" as const, rate: 24000 as const },
+        transcription: { model: "whisper-1" },
+        turn_detection: {
+          type: "server_vad" as const,
+          threshold: 0.5,
+          prefix_padding_ms: 150,
+          silence_duration_ms: 300,
+          create_response: true,
+        },
+      },
+      output: {
+        format: { type: "audio/pcm" as const, rate: 24000 as const },
+        voice,
+        speed,
+      },
+    },
+  };
+}
+
 // ── System prompt ─────────────────────────────────────────────────────────────
 
 function buildInstructions(catalog: CatalogItem[], order: OrderItem[]): string {
@@ -159,32 +188,7 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
       },
       signal: controller.signal,
       body: JSON.stringify({
-        session: {
-          type: "realtime",
-          model: OPENAI_REALTIME_MODEL,
-          instructions: buildInstructions(catalog, order),
-          tools: ALL_TOOLS,
-          tool_choice: "auto",
-          output_modalities: ["audio"],
-          audio: {
-            input: {
-              format: { type: "audio/pcm", rate: 24000 },
-              transcription: { model: "whisper-1" },
-              turn_detection: {
-                type: "server_vad",
-                threshold: 0.5,
-                prefix_padding_ms: 150,
-                silence_duration_ms: 300,
-                create_response: true,
-              },
-            },
-            output: {
-              format: { type: "audio/pcm", rate: 24000 },
-              voice,
-              speed,
-            },
-          },
-        },
+        session: buildRealtimeSessionConfig(voice, speed, catalog, order),
       }),
     });
     clearTimeout(timeout);
@@ -204,6 +208,50 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
     });
   } catch (e: any) {
     console.error("[Realtime] Session error:", e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.post("/call", requireAuth as any, requirePlan() as any, async (req: any, res: any) => {
+  const apiKey = process.env.OPENAI_API_KEY ?? process.env.AI_INTEGRATIONS_OPENAI_API_KEY ?? "";
+  if (!apiKey) {
+    res.status(500).json({ error: "OpenAI API key not configured" });
+    return;
+  }
+
+  const { sdp, voice = "ash", speed = 1.0, catalog = [], order = [], venueId } = req.body ?? {};
+  if (!sdp || typeof sdp !== "string") {
+    res.status(400).json({ error: "sdp is required" });
+    return;
+  }
+
+  if (venueId) {
+    await lookupVenueCredentials(req.user.id, Number(venueId));
+  }
+
+  try {
+    const formData = new FormData();
+    formData.set("sdp", sdp);
+    formData.set("session", JSON.stringify(buildRealtimeSessionConfig(voice, speed, catalog, order)));
+
+    const response = await fetch("https://api.openai.com/v1/realtime/calls", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: formData,
+    });
+
+    const text = await response.text();
+    if (!response.ok) {
+      console.error("[Realtime] Unified call failed:", text);
+      res.status(response.status).json({ error: "Failed to establish realtime call", detail: text });
+      return;
+    }
+
+    res.type("application/sdp").send(text);
+  } catch (e: any) {
+    console.error("[Realtime] Unified call error:", e.message);
     res.status(500).json({ error: e.message });
   }
 });
