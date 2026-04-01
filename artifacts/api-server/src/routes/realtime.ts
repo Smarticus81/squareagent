@@ -164,7 +164,6 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
           tools: ALL_TOOLS,
           tool_choice: "auto",
           output_modalities: ["audio"],
-          temperature: 0.6,
           audio: {
             input: {
               format: { type: "audio/pcm" },
