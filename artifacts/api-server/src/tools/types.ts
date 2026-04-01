@@ -14,6 +14,8 @@ export interface ToolParameter {
   default?: unknown;
   enum?: string[];
   items?: ToolParameter;
+  properties?: Record<string, ToolParameter>;
+  required?: string[];
 }
 
 export interface ToolDefinition {

@@ -38,6 +38,7 @@ async function lookupVenueCredentials(userId: number, venueId: number) {
 }
 
 const OPENAI_REALTIME_MODEL = "gpt-4o-mini-realtime-preview-2024-12-17";
+// Fastest available model for ultra-low TTFT. Switch to gpt-4o-realtime for more capability.
 
 // ── System prompt ─────────────────────────────────────────────────────────────
 
@@ -83,11 +84,21 @@ Catalog Management:
 - When updating prices, say the old and new price: "Moving IPA from eight to nine fifty."
 
 Inventory Rules:
-- Always confirm quantities before making changes: "Adjusting Bud Light up 24, that right?"
-- For bulk operations, summarize what you'll do before executing.
-- Low stock alerts: proactively mention if an item drops below 5 units after an adjustment.
+- You are an expert inventory manager. You can check stock, adjust quantities, set counts, transfer between locations, view change history, generate low stock reports, and do batch adjustments.
+- Always confirm quantities before making changes: "Adjusting Bud Light up twenty-four, that right?"
+- For bulk operations (deliveries, shipments), use batch_adjust_inventory — summarize what you'll do, get confirmation, then execute in one call.
+- Low stock alerts: proactively mention if an item drops below 5 units after any adjustment.
 - Say numbers clearly: "twenty-four" not "24".
-- Understand bulk language: "case of" = 24, "keg" = context-dependent.
+- Understand bulk language: "case of" = 24, "half case" = 12, "six-pack" = 6, "keg" = context-dependent.
+- Use the right reason when adjusting: "received" for deliveries, "sold" for sales, "waste" for spoilage/expired, "damaged" for breakage, "theft" for missing stock.
+- When asked for a stock check, use check_inventory for one item or check_all_inventory for everything.
+- When asked "how's inventory looking" or "give me a rundown", use inventory_summary for the overview.
+- For receiving a delivery with multiple items, use batch_adjust_inventory to do it all at once.
+- For physical stock counts, use set_inventory to override to the actual count.
+- For transfers, ask which location they're sending to before executing.
+- When asked about history or what happened with an item, use get_inventory_changes.
+- "86 it" in inventory context means it's out of stock — check the count and confirm.
+- After any adjustment, always state the new count: "Got it, Bud Light now at forty-eight."
 
 Customers & Payments:
 - You can search/create/update customer profiles.
@@ -119,7 +130,7 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
     return;
   }
 
-  const { voice = "ash", speed = 0.9, catalog = [], order = [], venueId } = req.body ?? {};
+  const { voice = "ash", speed = 1.0, catalog = [], order = [], venueId } = req.body ?? {};
 
   // Look up credentials server-side if venueId provided
   let squareToken = "";
@@ -153,12 +164,12 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
         input_audio_transcription: { model: "whisper-1" },
         turn_detection: {
           type: "server_vad",
-          threshold: 0.35,
-          prefix_padding_ms: 200,
-          silence_duration_ms: 400,
+          threshold: 0.5,
+          prefix_padding_ms: 150,
+          silence_duration_ms: 300,
           create_response: true,
         },
-        temperature: 0.6,
+        temperature: 0.4,
         speed,
       }),
     });
