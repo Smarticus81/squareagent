@@ -5,7 +5,7 @@ import {
   View, Text, StyleSheet, Pressable, Platform,
   FlatList, Modal, ActivityIndicator, Linking, useColorScheme,
 } from "react-native";
-import Svg, { Circle, Rect, Defs, LinearGradient as SvgGrad, Stop, ClipPath } from "react-native-svg";
+import Svg, { Circle, Rect } from "react-native-svg";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
@@ -25,292 +25,159 @@ import { OrderCard } from "@/components/OrderCard";
 
 const WEB_TOP = 67;
 const WEB_BOT = 34;
-type OrbKey = AgentState | "wake";
 
-// ── Sizes ─────────────────────────────────────────────────────────────────────
-const ORB      = 180;   // sphere diameter (light mode)
-const RING_D   = 266;   // ring SVG container diameter (dark mode)
-const RING_C   = 133;   // SVG center
-const RING_R   = 103;   // circle radius of ring stroke
+// ── Rail colors per state ──────────────────────────────────────────────────────
+type RailKey = AgentState | "wake";
 
-// ── Orb colors ─────────────────────────────────────────────────────────────────
-const SPHERE_COLORS: Record<OrbKey, readonly [string, string, string]> = {
-  disconnected: ["#A78BFA", "#7C3AED", "#5B21B6"],
-  connecting:   ["#A78BFA", "#7C3AED", "#5B21B6"],
-  listening:    ["#C084FC", "#9333EA", "#7C3AED"],
-  thinking:     ["#818CF8", "#6366F1", "#4F46E5"],
-  speaking:     ["#E879F9", "#A855F7", "#7C3AED"],
-  error:        ["#F87171", "#EF4444", "#DC2626"],
-  wake:         ["#C084FC", "#9333EA", "#7C3AED"],
-};
+const RAIL_COLORS = {
+  light: {
+    line:       "rgba(15,15,15,0.08)",
+    glow:       "rgba(15,15,15,0.04)",
+    active:     "rgba(15,15,15,0.35)",
+    listening:  "rgba(80,140,255,0.50)",
+    speaking:   "rgba(100,200,160,0.50)",
+    thinking:   "rgba(180,160,220,0.40)",
+    error:      "rgba(220,60,60,0.50)",
+    bar:        "rgba(15,15,15,0.12)",
+  },
+  dark: {
+    line:       "rgba(240,240,240,0.06)",
+    glow:       "rgba(240,240,240,0.03)",
+    active:     "rgba(240,240,240,0.30)",
+    listening:  "rgba(100,160,255,0.55)",
+    speaking:   "rgba(120,220,180,0.50)",
+    thinking:   "rgba(200,180,240,0.40)",
+    error:      "rgba(252,100,100,0.55)",
+    bar:        "rgba(240,240,240,0.10)",
+  },
+} as const;
 
-const RING_SPEED: Record<OrbKey, number> = {
-  disconnected: 24000,
-  connecting:   12000,
-  listening:    7000,
-  thinking:     18000,
-  speaking:     4200,
-  error:        14000,
-  wake:         8000,
-};
+function railColors(key: RailKey, isDark: boolean) {
+  const c = isDark ? RAIL_COLORS.dark : RAIL_COLORS.light;
+  switch (key) {
+    case "listening":    return { line: c.listening, glow: c.listening, glowOp: 0.15, bar: c.listening };
+    case "speaking":     return { line: c.speaking,  glow: c.speaking,  glowOp: 0.20, bar: c.speaking  };
+    case "thinking":     return { line: c.thinking,  glow: c.thinking,  glowOp: 0.10, bar: c.bar       };
+    case "connecting":   return { line: c.active,    glow: c.glow,      glowOp: 0.05, bar: c.bar       };
+    case "error":        return { line: c.error,     glow: c.error,     glowOp: 0.12, bar: c.bar       };
+    case "wake":         return { line: c.active,    glow: c.active,    glowOp: 0.06, bar: c.bar       };
+    default:             return { line: c.line,      glow: c.glow,      glowOp: 0,    bar: c.bar       };
+  }
+}
 
-const RING_GLOW: Record<OrbKey, number> = {
-  disconnected: 0.38,
-  connecting:   0.60,
-  listening:    0.88,
-  thinking:     0.50,
-  speaking:     1.00,
-  error:        0.68,
-  wake:         0.84,
-};
+const NUM_BARS = 24;
 
 // ── Theme ──────────────────────────────────────────────────────────────────────
 const THEMES = {
   light: {
-    bg:           "#EEF0FF" as const,
-    bgGrad:       ["#EEF0FF", "#F3EEFF", "#E8F0FE"] as const,
-    logoText:     "rgba(74,40,180,0.72)",
-    logoBorder:   "rgba(74,40,180,0.42)",
-    logoBead:     "rgba(74,40,180,0.42)",
-    stateText:    "rgba(60,30,140,0.44)",
-    tapHint:      "rgba(60,30,140,0.30)",
-    errorText:    "rgba(160,20,20,0.72)",
-    hamburger:    "rgba(60,30,140,0.35)",
-    badgeBorder:  "rgba(74,40,180,0.24)",
-    badgeText:    "rgba(60,30,140,0.62)",
-    msgAgent:     (op: number) => `rgba(30,10,80,${op})`,
-    msgUser:      (op: number) => `rgba(30,10,80,${op})`,
-    partial:      "rgba(60,30,140,0.30)",
+    bg:           "#F5F5F5" as const,
+    bgGrad:       ["#F5F5F5", "#F0F0F0", "#F5F5F5"] as const,
+    logoText:     "rgba(15,15,15,0.62)",
+    stateText:    "rgba(15,15,15,0.48)",
+    tapHint:      "rgba(15,15,15,0.35)",
+    errorText:    "rgba(220,60,60,0.90)",
+    hamburger:    "rgba(15,15,15,0.40)",
+    badgeBorder:  "rgba(15,15,15,0.22)",
+    badgeText:    "rgba(15,15,15,0.65)",
+    msgAgent:     (op: number) => `rgba(15,15,15,${op})`,
+    msgUser:      (op: number) => `rgba(15,15,15,${op})`,
+    partial:      "rgba(15,15,15,0.42)",
     panelBg:      "#FFFFFF",
-    panelBorder:  "rgba(60,30,140,0.10)",
-    panelHandle:  "rgba(60,30,140,0.16)",
-    navText:      "rgba(30,10,80,0.32)",
-    navActive:    "rgba(30,10,80,0.84)",
-    divider:      "rgba(30,10,80,0.08)",
-    recTotal:     "rgba(30,10,80,0.82)",
-    recLabel:     "rgba(30,10,80,0.30)",
-    rowName:      "rgba(30,10,80,0.72)",
-    rowQty:       "rgba(30,10,80,0.36)",
-    rowPrice:     "rgba(30,10,80,0.46)",
-    emptyTxt:     "rgba(30,10,80,0.30)",
-    emptyHint:    "rgba(30,10,80,0.18)",
-    orderTotal:   "rgba(30,10,80,0.76)",
+    panelBorder:  "rgba(15,15,15,0.10)",
+    panelHandle:  "rgba(15,15,15,0.16)",
+    navText:      "rgba(15,15,15,0.32)",
+    navActive:    "rgba(15,15,15,0.84)",
+    divider:      "rgba(15,15,15,0.08)",
+    recTotal:     "rgba(15,15,15,0.82)",
+    recLabel:     "rgba(15,15,15,0.30)",
+    rowName:      "rgba(15,15,15,0.72)",
+    rowQty:       "rgba(15,15,15,0.36)",
+    rowPrice:     "rgba(15,15,15,0.46)",
+    emptyTxt:     "rgba(15,15,15,0.30)",
+    emptyHint:    "rgba(15,15,15,0.18)",
+    orderTotal:   "rgba(15,15,15,0.76)",
     orderFtrBg:   "#FFFFFF",
-    clearBorder:  "rgba(160,30,30,0.26)",
-    clearIcon:    "rgba(160,30,30,0.74)",
-    submitBg:     "rgba(30,10,80,0.06)",
-    submitBorder: "rgba(30,10,80,0.18)",
-    submitText:   "rgba(30,10,80,0.70)",
-    catName:      "rgba(30,10,80,0.72)",
-    catCat:       "rgba(30,10,80,0.36)",
-    catPrice:     "rgba(30,10,80,0.44)",
-    settingsTxt:  "rgba(30,10,80,0.72)",
-    settingsIcon: "rgba(30,10,80,0.46)",
-    chevron:      "rgba(30,10,80,0.26)",
-    link:         "rgba(60,30,160,0.76)",
+    clearBorder:  "rgba(220,60,60,0.26)",
+    clearIcon:    "rgba(220,60,60,0.74)",
+    submitBg:     "rgba(15,15,15,0.06)",
+    submitBorder: "rgba(15,15,15,0.18)",
+    submitText:   "rgba(15,15,15,0.70)",
+    catName:      "rgba(15,15,15,0.72)",
+    catCat:       "rgba(15,15,15,0.36)",
+    catPrice:     "rgba(15,15,15,0.44)",
+    settingsTxt:  "rgba(15,15,15,0.72)",
+    settingsIcon: "rgba(15,15,15,0.46)",
+    chevron:      "rgba(15,15,15,0.26)",
+    link:         "rgba(15,15,15,0.68)",
   },
   dark: {
-    bg:           "#08081C" as const,
-    bgGrad:       ["#0A0920", "#0D0C28", "#0A0920"] as const,
-    logoText:     "rgba(200,180,255,0.72)",
-    logoBorder:   "rgba(200,180,255,0.38)",
-    logoBead:     "rgba(200,180,255,0.38)",
-    stateText:    "rgba(200,180,255,0.42)",
-    tapHint:      "rgba(200,180,255,0.28)",
-    errorText:    "rgba(252,120,120,0.84)",
-    hamburger:    "rgba(200,180,255,0.36)",
-    badgeBorder:  "rgba(200,180,255,0.22)",
-    badgeText:    "rgba(200,180,255,0.70)",
-    msgAgent:     (op: number) => `rgba(220,210,255,${op})`,
-    msgUser:      (op: number) => `rgba(200,190,240,${op})`,
-    partial:      "rgba(200,180,255,0.30)",
-    panelBg:      "#10102A",
-    panelBorder:  "rgba(200,180,255,0.10)",
-    panelHandle:  "rgba(200,180,255,0.16)",
-    navText:      "rgba(200,180,255,0.32)",
-    navActive:    "rgba(220,210,255,0.88)",
-    divider:      "rgba(200,180,255,0.08)",
-    recTotal:     "rgba(220,210,255,0.84)",
-    recLabel:     "rgba(200,180,255,0.32)",
-    rowName:      "rgba(220,210,255,0.72)",
-    rowQty:       "rgba(200,180,255,0.36)",
-    rowPrice:     "rgba(200,180,255,0.46)",
-    emptyTxt:     "rgba(200,180,255,0.30)",
-    emptyHint:    "rgba(200,180,255,0.18)",
-    orderTotal:   "rgba(220,210,255,0.78)",
-    orderFtrBg:   "#10102A",
+    bg:           "#0A0A0A" as const,
+    bgGrad:       ["#0A0A0A", "#0E0E0E", "#0A0A0A"] as const,
+    logoText:     "rgba(240,240,240,0.62)",
+    stateText:    "rgba(240,240,240,0.48)",
+    tapHint:      "rgba(240,240,240,0.35)",
+    errorText:    "rgba(252,120,120,0.90)",
+    hamburger:    "rgba(240,240,240,0.40)",
+    badgeBorder:  "rgba(240,240,240,0.22)",
+    badgeText:    "rgba(240,240,240,0.65)",
+    msgAgent:     (op: number) => `rgba(240,240,240,${op})`,
+    msgUser:      (op: number) => `rgba(240,240,240,${op})`,
+    partial:      "rgba(240,240,240,0.42)",
+    panelBg:      "#141414",
+    panelBorder:  "rgba(240,240,240,0.10)",
+    panelHandle:  "rgba(240,240,240,0.16)",
+    navText:      "rgba(240,240,240,0.32)",
+    navActive:    "rgba(240,240,240,0.88)",
+    divider:      "rgba(240,240,240,0.08)",
+    recTotal:     "rgba(240,240,240,0.84)",
+    recLabel:     "rgba(240,240,240,0.32)",
+    rowName:      "rgba(240,240,240,0.72)",
+    rowQty:       "rgba(240,240,240,0.36)",
+    rowPrice:     "rgba(240,240,240,0.46)",
+    emptyTxt:     "rgba(240,240,240,0.30)",
+    emptyHint:    "rgba(240,240,240,0.18)",
+    orderTotal:   "rgba(240,240,240,0.78)",
+    orderFtrBg:   "#141414",
     clearBorder:  "rgba(252,100,100,0.28)",
     clearIcon:    "rgba(252,100,100,0.74)",
-    submitBg:     "rgba(200,180,255,0.07)",
-    submitBorder: "rgba(200,180,255,0.18)",
-    submitText:   "rgba(220,210,255,0.74)",
-    catName:      "rgba(220,210,255,0.72)",
-    catCat:       "rgba(200,180,255,0.36)",
-    catPrice:     "rgba(200,180,255,0.44)",
-    settingsTxt:  "rgba(220,210,255,0.74)",
-    settingsIcon: "rgba(200,180,255,0.48)",
-    chevron:      "rgba(200,180,255,0.26)",
-    link:         "rgba(140,160,255,0.82)",
+    submitBg:     "rgba(240,240,240,0.06)",
+    submitBorder: "rgba(240,240,240,0.18)",
+    submitText:   "rgba(240,240,240,0.68)",
+    catName:      "rgba(240,240,240,0.72)",
+    catCat:       "rgba(240,240,240,0.36)",
+    catPrice:     "rgba(240,240,240,0.44)",
+    settingsTxt:  "rgba(240,240,240,0.74)",
+    settingsIcon: "rgba(240,240,240,0.48)",
+    chevron:      "rgba(240,240,240,0.26)",
+    link:         "rgba(240,240,240,0.65)",
   },
 };
 
-// ── Light mode: gradient 3D sphere ────────────────────────────────────────────
-function OrbSphere({ orbKey }: { orbKey: OrbKey }) {
-  const [displayed, setDisplayed] = useState<OrbKey>(orbKey);
-  const fadeOp  = useSharedValue(1);
-  const scale   = useSharedValue(1);
-  const glowOp  = useSharedValue(0.18);
-
-  // Cross-fade on state change
+// ── Animated waveform bar ──────────────────────────────────────────────────────
+function RailBar({ index, active, color }: { index: number; active: boolean; color: string }) {
+  const height = useSharedValue(4);
   useEffect(() => {
-    fadeOp.value = withSequence(
-      withTiming(0, { duration: 200, easing: Easing.in(Easing.quad) }),
-      withTiming(1, { duration: 380, easing: Easing.out(Easing.quad) }),
-    );
-    const t = setTimeout(() => setDisplayed(orbKey), 200);
-    return () => clearTimeout(t);
-  }, [orbKey]);
-
-  // Scale + glow pulse per state
-  useEffect(() => {
-    if (orbKey === "speaking") {
-      scale.value = withRepeat(withSequence(
-        withTiming(1.11, { duration: 320, easing: Easing.out(Easing.quad) }),
-        withTiming(0.96, { duration: 320, easing: Easing.in(Easing.quad) }),
-      ), -1);
-      glowOp.value = withRepeat(withSequence(
-        withTiming(0.42, { duration: 320 }),
-        withTiming(0.14, { duration: 320 }),
-      ), -1);
-    } else if (orbKey === "listening" || orbKey === "wake") {
-      scale.value = withRepeat(withSequence(
-        withTiming(1.07, { duration: 950, easing: Easing.inOut(Easing.sin) }),
-        withTiming(0.97, { duration: 950, easing: Easing.inOut(Easing.sin) }),
-      ), -1);
-      glowOp.value = withRepeat(withSequence(
-        withTiming(0.32, { duration: 950 }),
-        withTiming(0.10, { duration: 950 }),
-      ), -1);
-    } else if (orbKey === "thinking") {
-      scale.value = withRepeat(withSequence(
-        withTiming(1.02, { duration: 1800 }), withTiming(0.98, { duration: 1800 }),
-      ), -1);
-      glowOp.value = withTiming(0.12, { duration: 600 });
+    const delay = index * 60;
+    if (active) {
+      height.value = withRepeat(
+        withSequence(
+          withTiming(4,  { duration: 0 }),
+          withTiming(18, { duration: 300 + delay * 0.15, easing: Easing.out(Easing.sin) }),
+          withTiming(4,  { duration: 300 + delay * 0.15, easing: Easing.in(Easing.sin) }),
+        ), -1,
+      );
     } else {
-      scale.value = withRepeat(withSequence(
-        withTiming(1.025, { duration: 2800, easing: Easing.inOut(Easing.sin) }),
-        withTiming(0.980, { duration: 2800, easing: Easing.inOut(Easing.sin) }),
-      ), -1);
-      glowOp.value = withTiming(0.18, { duration: 700 });
+      height.value = withRepeat(
+        withSequence(
+          withTiming(3, { duration: 1200 + delay * 0.4, easing: Easing.inOut(Easing.sin) }),
+          withTiming(6, { duration: 1200 + delay * 0.4, easing: Easing.inOut(Easing.sin) }),
+        ), -1,
+      );
     }
-  }, [orbKey]);
-
-  const fadeStyle  = useAnimatedStyle(() => ({ opacity: fadeOp.value }));
-  const scaleStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
-  const glowStyle  = useAnimatedStyle(() => ({ opacity: glowOp.value }));
-
-  const colors = SPHERE_COLORS[displayed];
-
+  }, [active, index]);
+  const barStyle = useAnimatedStyle(() => ({ height: height.value }));
   return (
-    <Animated.View style={[{ width: ORB + 100, height: ORB + 100, alignItems: "center", justifyContent: "center" }, fadeStyle]}>
-      {/* Outer haze glow */}
-      <Animated.View style={[glowStyle, s.outerGlow, { backgroundColor: colors[1] }]} />
-      {/* Mid glow */}
-      <Animated.View style={[glowStyle, s.midGlow, { backgroundColor: colors[0] }]} />
-
-      {/* Sphere itself */}
-      <Animated.View style={[scaleStyle, { width: ORB, height: ORB, borderRadius: ORB / 2, overflow: "hidden" }]}>
-        {/* Base gradient */}
-        <LinearGradient
-          colors={[colors[0], colors[1], colors[2]]}
-          start={{ x: 0.25, y: 0 }}
-          end={{ x: 0.75, y: 1 }}
-          style={StyleSheet.absoluteFill}
-        />
-        {/* Top-left specular highlight — gives 3D depth */}
-        <LinearGradient
-          colors={["rgba(255,255,255,0.40)", "rgba(255,255,255,0.08)", "transparent"]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 0.65, y: 0.80 }}
-          style={StyleSheet.absoluteFill}
-        />
-        {/* Bottom-right shadow — deepens the sphere */}
-        <LinearGradient
-          colors={["transparent", "rgba(0,0,0,0.22)"]}
-          start={{ x: 0.3, y: 0.4 }}
-          end={{ x: 1, y: 1 }}
-          style={StyleSheet.absoluteFill}
-        />
-      </Animated.View>
-    </Animated.View>
-  );
-}
-
-// ── Dark mode: hollow rotating gradient ring ───────────────────────────────────
-function OrbRing({ orbKey }: { orbKey: OrbKey }) {
-  const rotation = useSharedValue(0);
-  const ringOp   = useSharedValue(RING_GLOW[orbKey]);
-  const scale    = useSharedValue(1);
-
-  useEffect(() => {
-    rotation.value = withRepeat(
-      withTiming(rotation.value + 360, { duration: RING_SPEED[orbKey], easing: Easing.linear }),
-      -1,
-    );
-    ringOp.value = withTiming(RING_GLOW[orbKey], { duration: 600 });
-
-    if (orbKey === "speaking") {
-      scale.value = withRepeat(withSequence(
-        withTiming(1.09, { duration: 280, easing: Easing.out(Easing.quad) }),
-        withTiming(0.94, { duration: 280, easing: Easing.in(Easing.quad) }),
-      ), -1);
-    } else if (orbKey === "listening" || orbKey === "wake") {
-      scale.value = withRepeat(withSequence(
-        withTiming(1.06, { duration: 900, easing: Easing.inOut(Easing.sin) }),
-        withTiming(0.96, { duration: 900, easing: Easing.inOut(Easing.sin) }),
-      ), -1);
-    } else if (orbKey === "thinking") {
-      scale.value = withRepeat(withSequence(
-        withTiming(1.03, { duration: 1700, easing: Easing.inOut(Easing.sin) }),
-        withTiming(0.97, { duration: 1700, easing: Easing.inOut(Easing.sin) }),
-      ), -1);
-    } else {
-      scale.value = withRepeat(withSequence(
-        withTiming(1.015, { duration: 2600, easing: Easing.inOut(Easing.sin) }),
-        withTiming(0.990, { duration: 2600, easing: Easing.inOut(Easing.sin) }),
-      ), -1);
-    }
-  }, [orbKey]);
-
-  const rotStyle   = useAnimatedStyle(() => ({ transform: [{ rotate: `${rotation.value}deg` }] }));
-  const ringStyle  = useAnimatedStyle(() => ({ opacity: ringOp.value }));
-  const scaleStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
-
-  return (
-    <Animated.View style={[{ width: RING_D, height: RING_D, alignItems: "center", justifyContent: "center" }, scaleStyle]}>
-      {/* Rotating gradient ring — hollow, nothing inside */}
-      <Animated.View style={[StyleSheet.absoluteFill, rotStyle]}>
-        <Animated.View style={[StyleSheet.absoluteFill, ringStyle]}>
-          <Svg width={RING_D} height={RING_D}>
-            <Defs>
-              <SvgGrad id="rg" x1="0.5" y1="0" x2="0.5" y2="1">
-                <Stop offset="0%"   stopColor="#9333EA" stopOpacity="1" />
-                <Stop offset="48%"  stopColor="#4F46E5" stopOpacity="1" />
-                <Stop offset="100%" stopColor="#06B6D4" stopOpacity="1" />
-              </SvgGrad>
-            </Defs>
-            {/* Wide outer glow */}
-            <Circle cx={RING_C} cy={RING_C} r={RING_R} fill="none" stroke="url(#rg)" strokeWidth={32} opacity={0.12} />
-            {/* Medium glow */}
-            <Circle cx={RING_C} cy={RING_C} r={RING_R} fill="none" stroke="url(#rg)" strokeWidth={16} opacity={0.28} />
-            {/* Core bright ring */}
-            <Circle cx={RING_C} cy={RING_C} r={RING_R} fill="none" stroke="url(#rg)" strokeWidth={5}  opacity={0.92} />
-            {/* Inner edge gleam */}
-            <Circle cx={RING_C} cy={RING_C} r={RING_R} fill="none" stroke="rgba(255,255,255,0.22)" strokeWidth={1.5} />
-          </Svg>
-        </Animated.View>
-      </Animated.View>
-    </Animated.View>
+    <Animated.View style={[barStyle, { width: 3, borderRadius: 2, backgroundColor: color }]} />
   );
 }
 
@@ -475,18 +342,22 @@ export default function MainScreen() {
   }
 
   // ── Derived ────────────────────────────────────────────────────────────────
-  const orbKey: OrbKey = wakeMode === "wake" ? "wake"
+  const railKey: RailKey = wakeMode === "wake" ? "wake"
     : wakeMode === "command" ? agentState
     : agentState;
 
   const msgs       = conversation.slice(-3);
   const orderCount = currentOrder?.items.length ?? 0;
+  const rc         = railColors(railKey, isDark);
+  const showWaveform = agentState === "speaking" || agentState === "listening";
 
   const stateLabel: string | null =
-    wakeMode === "wake"       ? (wakeListening ? "HEY BAR" : "OPENING MIC\u2026")
-    : orbKey === "connecting" ? "CONNECTING"
-    : orbKey === "thinking"   ? "\u00B7  \u00B7  \u00B7"
-    : orbKey === "error"      ? "ERROR"
+    wakeMode === "wake"        ? (wakeListening ? "READY" : "STARTING")
+    : railKey === "connecting" ? "CONNECTING"
+    : railKey === "thinking"   ? "THINKING"
+    : railKey === "listening"  ? "LISTENING"
+    : railKey === "speaking"   ? "SPEAKING"
+    : railKey === "error"      ? "ERROR"
     : null;
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -500,10 +371,51 @@ export default function MainScreen() {
         style={StyleSheet.absoluteFill}
       />
 
-      {/* Content */}
-      <View style={[s.content, { paddingTop: topPad }]}>
+      {/* ── Top bar (hamburger | brand | order badge) ────────────── */}
+      <View style={[s.topBar, { paddingTop: topPad + 12 }]}>
+        <Pressable onPress={() => setPanelOpen(true)} hitSlop={22} style={s.hamburger}>
+          <Feather name="menu" size={18} color={t.hamburger} />
+        </Pressable>
 
-        {/* Conversation — fills upper space, aligns to bottom */}
+        <View style={s.brandRow}>
+          <Svg width={24} height={24} viewBox="0 0 36 36">
+            <Circle cx={18} cy={18} r={17} fill="#E8A020" />
+            <Rect x={5.5} y={13} width={3} height={10} rx={1.5} fill="#140b05" />
+            <Rect x={11} y={10} width={3} height={16} rx={1.5} fill="#140b05" />
+            <Rect x={16.5} y={7} width={3} height={22} rx={1.5} fill="#140b05" />
+            <Rect x={22} y={10} width={3} height={16} rx={1.5} fill="#140b05" />
+            <Rect x={27.5} y={13} width={3} height={10} rx={1.5} fill="#140b05" />
+          </Svg>
+          <View style={s.brandWords}>
+            <Text style={[s.brandBev, { color: t.logoText }]}>Bev</Text>
+            <Text style={[s.brandPro, { color: "#E8A020" }]}>Pro</Text>
+          </View>
+        </View>
+
+        {orderCount > 0 ? (
+          <Pressable onPress={() => { setPanelTab("order"); setPanelOpen(true); }} hitSlop={22}>
+            <View style={[s.orderBadge, { borderColor: t.badgeBorder }]}>
+              <Text style={[s.orderBadgeNum, { color: t.badgeText }]}>{orderCount}</Text>
+            </View>
+          </Pressable>
+        ) : <View style={{ width: 22 }} />}
+      </View>
+
+      {/* ── Content (conversation area fills space) ──────────────── */}
+      <View style={s.content}>
+        {/* Watermark */}
+        <View style={s.watermark} pointerEvents="none">
+          <Svg width={120} height={120} viewBox="0 0 36 36">
+            <Circle cx={18} cy={18} r={17} fill="#E8A020" opacity={0.07} />
+            <Rect x={5.5} y={13} width={3} height={10} rx={1.5} fill="#E8A020" opacity={0.09} />
+            <Rect x={11} y={10} width={3} height={16} rx={1.5} fill="#E8A020" opacity={0.09} />
+            <Rect x={16.5} y={7} width={3} height={22} rx={1.5} fill="#E8A020" opacity={0.09} />
+            <Rect x={22} y={10} width={3} height={16} rx={1.5} fill="#E8A020" opacity={0.09} />
+            <Rect x={27.5} y={13} width={3} height={10} rx={1.5} fill="#E8A020" opacity={0.09} />
+          </Svg>
+        </View>
+
+        {/* Conversation ghost text */}
         <View style={s.convoArea} pointerEvents="none">
           {msgs.map((m, i) => (
             <GhostLine key={m.id} msg={m} rank={msgs.length - 1 - i} t={t} />
@@ -515,83 +427,73 @@ export default function MainScreen() {
           ) : null}
         </View>
 
-        {/* Orb — centered hero element */}
-        <Pressable onPress={handleOrbPress} hitSlop={32} style={s.orbArea}>
-          {isDark
-            ? <OrbRing orbKey={orbKey} />
-            : <OrbSphere orbKey={orbKey} />}
-        </Pressable>
-
-        {/* Brand + state label below orb */}
-        <View style={s.belowOrb}>
-          <View style={s.brandRow}>
-            {/* Waveform logo icon */}
-            <Svg width={22} height={22} viewBox="0 0 32 32">
-              <ClipPath id="logoClip"><Circle cx={16} cy={16} r={16} /></ClipPath>
-              <Circle cx={16} cy={16} r={16} fill="#E8A020" />
-              <Rect x={7}  y={12} width={2.6} height={8}  rx={1.3} fill="#140b05" clipPath="url(#logoClip)" />
-              <Rect x={11.5} y={9} width={2.6} height={14} rx={1.3} fill="#140b05" clipPath="url(#logoClip)" />
-              <Rect x={16} y={7}  width={2.6} height={18} rx={1.3} fill="#140b05" clipPath="url(#logoClip)" />
-              <Rect x={20.5} y={9} width={2.6} height={14} rx={1.3} fill="#140b05" clipPath="url(#logoClip)" />
-              <Rect x={25} y={12} width={2.6} height={8}  rx={1.3} fill="#140b05" clipPath="url(#logoClip)" />
-            </Svg>
-            <View style={s.brandWords}>
-              <Text style={[s.brandBev, { color: t.logoText }]}>Bev</Text>
-              <Text style={[s.brandPro, { color: "#E8A020" }]}>Pro</Text>
-            </View>
-          </View>
-          <View style={{ height: 10 }} />
-          {stateLabel ? (
-            <Animated.Text key={stateLabel} entering={FadeIn.duration(600)} exiting={FadeOut.duration(400)}
-              style={[s.stateLabel, { color: t.stateText }]}>
-              {stateLabel}
-            </Animated.Text>
-          ) : orbKey === "disconnected" ? (
-            <Text style={[s.tapHint, { color: t.tapHint }]}>tap to begin</Text>
-          ) : null}
-        </View>
-
-        {/* Lower breathing room */}
-        <View style={s.lower}>
-          {agentState === "speaking" ? (
-            <Pressable onPress={interrupt} hitSlop={28}>
-              <View style={[s.interruptDot, { backgroundColor: isDark ? "rgba(200,180,255,0.30)" : "rgba(60,30,140,0.28)" }]} />
-            </Pressable>
-          ) : null}
+        {/* Status messages */}
+        <View style={s.statusArea}>
           {error ? <Text style={[s.errorText, { color: t.errorText }]}>{error}</Text> : null}
         </View>
       </View>
 
-      {/* Bottom bar */}
-      <View style={[s.bottomBar, { paddingBottom: bottomPad + 18 }]}>
-        <Pressable onPress={() => setPanelOpen(true)} hitSlop={22} style={s.hamburger}>
-          <Feather name="menu" size={18} color={t.hamburger} />
-        </Pressable>
+      {/* ── Bar Rail Zone ────────────────────────────────────────── */}
+      <Pressable onPress={handleOrbPress} style={[s.railZone, { paddingBottom: bottomPad + 22 }]}>
+        {/* State label / tap hint */}
+        <View style={s.railLabelRow}>
+          {stateLabel ? (
+            <Animated.Text key={stateLabel} entering={FadeIn.duration(400)} exiting={FadeOut.duration(300)}
+              style={[s.railLabel, { color: t.stateText }]}>
+              {stateLabel}
+            </Animated.Text>
+          ) : railKey === "disconnected" && wakeMode === "idle" ? (
+            <Text style={[s.railHint, { color: t.tapHint }]}>tap to begin</Text>
+          ) : null}
+        </View>
 
-        {/* Wake-word toggle */}
-        {isWakeWordSupported() && agentState === "disconnected" ? (
-          <Pressable
-            onPress={() => (wakeMode === "idle" ? enterWake() : exitWake())}
-            hitSlop={22}
-            style={s.wakeBtn}
-          >
-            <Feather
-              name={wakeMode === "idle" ? "mic" : "mic-off"}
-              size={18}
-              color={wakeMode === "idle" ? t.hamburger : "#E8A020"}
-            />
-          </Pressable>
-        ) : null}
-
-        <View style={{ flex: 1 }} />
-        {orderCount > 0 ? (
-          <Pressable onPress={() => { setPanelTab("order"); setPanelOpen(true); }} hitSlop={22}>
-            <View style={[s.orderBadge, { borderColor: t.badgeBorder }]}>
-              <Text style={[s.orderBadgeNum, { color: t.badgeText }]}>{orderCount}</Text>
+        {/* The rail itself */}
+        <View style={s.barRail}>
+          {/* Glow behind rail */}
+          <View style={[s.railGlow, { backgroundColor: rc.glow, opacity: rc.glowOp }]} />
+          {/* Main rail line */}
+          <View style={[s.railLine, {
+            backgroundColor: rc.line,
+            opacity: railKey === "disconnected" ? 0.5 : 1,
+            height: ["listening", "speaking", "error"].includes(railKey) ? 3 : 2,
+          }]} />
+          {/* Waveform bars */}
+          {showWaveform && (
+            <View style={s.railWaveform}>
+              {Array.from({ length: NUM_BARS }).map((_, i) => (
+                <RailBar key={i} index={i} active={agentState === "speaking"} color={agentState === "speaking" ? rc.bar : rc.bar} />
+              ))}
             </View>
-          </Pressable>
-        ) : null}
-      </View>
+          )}
+        </View>
+
+        {/* Interrupt hint + wake toggle row */}
+        <View style={s.railFooter}>
+          {/* Wake word toggle on the left */}
+          {isWakeWordSupported() && agentState === "disconnected" ? (
+            <Pressable
+              onPress={(e) => { e.stopPropagation?.(); wakeMode === "idle" ? enterWake() : exitWake(); }}
+              hitSlop={22}
+              style={s.wakeBtn}
+            >
+              <Feather
+                name={wakeMode === "idle" ? "mic" : "mic-off"}
+                size={16}
+                color={wakeMode === "idle" ? t.hamburger : "#E8A020"}
+              />
+            </Pressable>
+          ) : <View style={{ width: 24 }} />}
+
+          {/* Interrupt hint centered */}
+          {agentState === "speaking" ? (
+            <Animated.Text entering={FadeIn.duration(400)} style={[s.interruptHint, { color: t.tapHint }]}>
+              tap to interrupt
+            </Animated.Text>
+          ) : <View style={{ flex: 1 }} />}
+
+          <View style={{ width: 24 }} />
+        </View>
+      </Pressable>
 
       {/* Slide-up panel */}
       <Modal visible={panelOpen} transparent animationType="slide" onRequestClose={() => setPanelOpen(false)}>
@@ -804,66 +706,85 @@ export default function MainScreen() {
 // ── Styles ────────────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
   root:    { flex: 1 },
+
+  // Top bar
+  topBar: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    paddingHorizontal: 24, paddingBottom: 8,
+  },
+  hamburger:    { padding: 4 },
+  brandRow:     { flexDirection: "row", alignItems: "center", gap: 8 },
+  brandWords:   { flexDirection: "row", alignItems: "baseline" },
+  brandBev:     { fontFamily: "Inter_300Light", fontSize: 16, letterSpacing: -0.3, fontWeight: "700" },
+  brandPro:     { fontFamily: "Inter_500Medium", fontSize: 16, letterSpacing: -0.3, fontWeight: "700", fontStyle: "italic" },
+  orderBadge:   { minWidth: 24, height: 24, borderRadius: 8, borderWidth: 0.5, alignItems: "center", justifyContent: "center", paddingHorizontal: 6 },
+  orderBadgeNum:{ fontFamily: "Inter_500Medium", fontSize: 12 },
+
+  // Content
   content: { flex: 1, flexDirection: "column" },
+
+  watermark: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center", justifyContent: "center",
+  },
 
   convoArea: {
     flex: 1,
     alignItems: "center", justifyContent: "flex-end",
-    paddingHorizontal: 36, paddingBottom: 32, gap: 10,
+    paddingHorizontal: 36, paddingBottom: 24, gap: 10,
   },
   partial: {
-    textAlign: "center", fontSize: 13, fontFamily: "Inter_300Light", fontStyle: "italic",
+    textAlign: "center", fontSize: 14, fontFamily: "Inter_300Light", fontStyle: "italic",
   },
 
-  // Orb block
-  orbArea:  { alignItems: "center", justifyContent: "center" },
-
-  // Light mode sphere glow layers
-  outerGlow: {
-    position: "absolute",
-    width: ORB + 90, height: ORB + 90, borderRadius: (ORB + 90) / 2,
+  statusArea: {
+    alignItems: "center", gap: 6, paddingHorizontal: 36, paddingBottom: 12,
   },
-  midGlow: {
-    position: "absolute",
-    width: ORB + 44, height: ORB + 44, borderRadius: (ORB + 44) / 2,
-  },
-
-  // Below orb
-  belowOrb: { alignItems: "center", paddingTop: 22 },
-  brandRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  brandWords: { flexDirection: "row", alignItems: "baseline" },
-  brandBev: {
-    fontFamily: "Inter_300Light", fontSize: 13, letterSpacing: 1.5,
-  },
-  brandPro: {
-    fontFamily: "Inter_500Medium", fontSize: 13, letterSpacing: 1.5, fontStyle: "italic",
-  },
-  stateLabel: {
-    fontFamily: "Inter_300Light", fontSize: 9, letterSpacing: 3.5, textAlign: "center",
-  },
-  tapHint: {
-    fontFamily: "Inter_300Light", fontSize: 10, letterSpacing: 2.5, textAlign: "center",
-  },
-
-  lower: {
-    flex: 1, alignItems: "center", justifyContent: "flex-start",
-    paddingTop: 28, gap: 10,
-  },
-  interruptDot: { width: 8, height: 8, borderRadius: 4 },
   errorText: {
     textAlign: "center", fontFamily: "Inter_300Light",
-    fontSize: 11, paddingHorizontal: 40,
+    fontSize: 13, paddingHorizontal: 20,
   },
 
-  // Bottom bar
-  bottomBar: {
-    flexDirection: "row", alignItems: "center",
-    paddingHorizontal: 30, paddingTop: 8,
+  // Bar rail zone
+  railZone: {
+    paddingHorizontal: 24, paddingTop: 8,
   },
-  hamburger:    { padding: 4 },
-  wakeBtn:      { padding: 4, marginLeft: 16 },
-  orderBadge:   { minWidth: 22, height: 22, borderRadius: 11, borderWidth: 0.5, alignItems: "center", justifyContent: "center", paddingHorizontal: 5 },
-  orderBadgeNum:{ fontFamily: "Inter_500Medium", fontSize: 11 },
+  railLabelRow: {
+    alignItems: "center", justifyContent: "center",
+    paddingBottom: 10, minHeight: 26,
+  },
+  railLabel: {
+    fontFamily: "Inter_300Light", fontSize: 11, letterSpacing: 3.5,
+    textAlign: "center", textTransform: "uppercase",
+  },
+  railHint: {
+    fontFamily: "Inter_300Light", fontSize: 12, letterSpacing: 2.5,
+    textAlign: "center",
+  },
+  barRail: {
+    height: 28, alignItems: "center", justifyContent: "center",
+  },
+  railGlow: {
+    position: "absolute", left: "10%", right: "10%", height: 20,
+    borderRadius: 10,
+  },
+  railLine: {
+    position: "absolute", left: "5%", right: "5%", height: 2,
+    borderRadius: 1,
+  },
+  railWaveform: {
+    position: "absolute", left: "15%", right: "15%", height: 28,
+    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 3,
+  },
+  railFooter: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    paddingTop: 6, minHeight: 28,
+  },
+  wakeBtn:      { padding: 4 },
+  interruptHint: {
+    flex: 1, textAlign: "center",
+    fontFamily: "Inter_300Light", fontSize: 9, letterSpacing: 2,
+  },
 
   // Panel
   backdrop: { flex: 1 },

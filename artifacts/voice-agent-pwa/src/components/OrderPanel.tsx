@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { X, Menu, Trash2, Loader, Link, ChevronRight, Sun, Moon, RefreshCw } from "lucide-react";
+import { X, Menu, Trash2, Loader, Link, ChevronRight, Sun, Moon, RefreshCw, LogIn, User, MapPin, LogOut } from "lucide-react";
 import { useOrder, type OrderLineItem } from "@/contexts/OrderContext";
 import { useSquare } from "@/contexts/SquareContext";
 
@@ -181,16 +181,25 @@ function MenuTab({ onTabChange }: { onTabChange: (t: "order" | "menu" | "setting
 
 /* ── Settings Tab ──────────────────────────────────────────── */
 function SettingsTab() {
-  const { isConfigured, clearCredentials, connectionError, isReconnecting, refreshCredentials } = useSquare();
+  const {
+    isConfigured, clearCredentials, connectionError, isReconnecting, refreshCredentials,
+    userInfo, venues, login, signup, logout, selectVenue, loadCatalog,
+  } = useSquare();
 
   const [prefs, setPrefs] = useState(getVoicePrefs);
   const [theme, setTheme] = useState(() => document.documentElement.getAttribute("data-theme") || "light");
 
-  // Dashboard lives at the root of the same origin (without /agent/)
-  const getDashboardUrl = () => {
-    const origin = window.location.origin;
-    return `${origin}/dashboard`;
-  };
+  // Auth form state
+  const [authMode, setAuthMode] = useState<"login" | "signup">("login");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [name, setName] = useState("");
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [venueLoading, setVenueLoading] = useState(false);
+  const [venueError, setVenueError] = useState<string | null>(null);
+
+  const isLoggedIn = !!userInfo;
 
   const toggleTheme = () => {
     const next = theme === "dark" ? "light" : "dark";
@@ -208,121 +217,269 @@ function SettingsTab() {
     setPrefs(getVoicePrefs());
   };
 
+  async function handleAuth() {
+    setAuthError(null);
+    if (authMode === "signup" && !name.trim()) { setAuthError("Name is required"); return; }
+    if (!email.trim() || !password.trim()) { setAuthError("Email and password are required"); return; }
+    if (authMode === "signup" && password.length < 8) { setAuthError("Password must be at least 8 characters"); return; }
+
+    setAuthLoading(true);
+    try {
+      const err = authMode === "login"
+        ? await login(email.trim(), password)
+        : await signup(name.trim(), email.trim(), password);
+      if (err) setAuthError(err);
+    } finally {
+      setAuthLoading(false);
+    }
+  }
+
+  async function handleSelectVenue(venueId: number) {
+    setVenueError(null);
+    setVenueLoading(true);
+    try {
+      const err = await selectVenue(venueId);
+      if (err) { setVenueError(err); }
+      else { await loadCatalog(); }
+    } finally {
+      setVenueLoading(false);
+    }
+  }
+
   return (
-    <div style={{ padding: "12px 16px" }}>
-      {/* Square Connection — compact status row */}
-      <div
-        className="settings-row"
-        style={{ cursor: isConfigured ? "pointer" : "default", borderBottom: "none", padding: "10px 10px" }}
-        onClick={() => {
-          if (isConfigured) {
-            if (confirm("Disconnect Square? Voice ordering will stop working.")) clearCredentials();
-          }
-        }}
-      >
-        <Link size={15} />
-        <span className="settings-txt" style={{ fontSize: 14 }}>
-          {isConfigured ? "Square Connected" : "Square Not Connected"}
-        </span>
-        <span className="status-dot" style={{ background: isConfigured ? "#22C55E" : "#EF4444" }} />
-        {isConfigured && <ChevronRight size={14} />}
-      </div>
+    <div style={{ padding: "12px 16px", overflowY: "auto" }}>
 
-      {/* Reconnect controls — compact */}
-      {!isConfigured && (
-        <div style={{ padding: "4px 10px 8px", display: "flex", flexDirection: "column", gap: 6 }}>
-          {connectionError && (
-            <div className="error-text" style={{ fontSize: 12, textAlign: "left", padding: 0 }}>{connectionError}</div>
-          )}
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <button
-              disabled={isReconnecting}
-              onClick={async (e) => {
-                e.stopPropagation();
-                await refreshCredentials();
-              }}
-              style={{
-                display: "flex", alignItems: "center", gap: 5,
-                padding: "8px 14px", borderRadius: 20,
-                background: "rgba(34,197,94,0.12)", color: "#22C55E",
-                border: "1px solid rgba(34,197,94,0.25)",
-                fontSize: 13, fontWeight: 500, cursor: isReconnecting ? "wait" : "pointer",
-                opacity: isReconnecting ? 0.6 : 1, fontFamily: "var(--font)",
-              }}
-            >
-              {isReconnecting ? <Loader size={13} className="spin" /> : <RefreshCw size={13} />}
-              {isReconnecting ? "Reconnecting…" : "Reconnect"}
-            </button>
-            <a
-              href={getDashboardUrl()}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{ fontSize: 12, color: "var(--link)", textDecoration: "underline" }}
-            >
-              Dashboard ↗
-            </a>
+      {/* ── Not logged in: Login / Signup ──────────────────── */}
+      {!isLoggedIn && !isConfigured ? (
+        <div className="auth-section">
+          <div className="auth-title">
+            {authMode === "login" ? "Sign in to BevPro" : "Create your account"}
           </div>
+          <div className="auth-sub">
+            {authMode === "login"
+              ? "Log in with the account you created on the BevPro dashboard."
+              : "Create an account to get started."}
+          </div>
+
+          {authMode === "signup" && (
+            <input
+              className="auth-input"
+              type="text"
+              placeholder="Your name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              autoComplete="name"
+            />
+          )}
+
+          <input
+            className="auth-input"
+            type="email"
+            placeholder="Email address"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            autoComplete="email"
+          />
+
+          <input
+            className="auth-input"
+            type="password"
+            placeholder="Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            autoComplete={authMode === "login" ? "current-password" : "new-password"}
+            onKeyDown={(e) => e.key === "Enter" && handleAuth()}
+          />
+
+          {authError && (
+            <div className="auth-error">{authError}</div>
+          )}
+
+          <button
+            className="auth-btn"
+            onClick={handleAuth}
+            disabled={authLoading}
+          >
+            {authLoading ? <Loader size={16} className="spin" /> : (
+              <>
+                <LogIn size={16} />
+                {authMode === "login" ? "Sign In" : "Create Account"}
+              </>
+            )}
+          </button>
+
+          <button
+            className="auth-switch"
+            onClick={() => { setAuthMode(authMode === "login" ? "signup" : "login"); setAuthError(null); }}
+          >
+            {authMode === "login"
+              ? "Don't have an account? Sign up"
+              : "Already have an account? Sign in"}
+          </button>
         </div>
+
+      /* ── Logged in but no venue selected ──────────────────── */
+      ) : isLoggedIn && !isConfigured ? (
+        <div className="auth-section">
+          <div className="auth-title">Select your venue</div>
+          <div className="auth-sub">Choose the venue to use with the voice agent.</div>
+
+          {venues.length > 0 ? (
+            <div className="venue-list">
+              {venues.map((v) => (
+                <button
+                  key={v.id}
+                  className="venue-row"
+                  onClick={() => handleSelectVenue(v.id)}
+                  disabled={venueLoading}
+                >
+                  <MapPin size={15} />
+                  <div style={{ flex: 1, textAlign: "left" }}>
+                    <div className="venue-name">{v.name}</div>
+                    {v.squareLocationName && (
+                      <div className="venue-sub">{v.squareLocationName}</div>
+                    )}
+                  </div>
+                  <ChevronRight size={15} />
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="venue-empty">
+              <MapPin size={22} />
+              <span>No venues found</span>
+              <span className="auth-sub">Connect your Square account from the BevPro dashboard first.</span>
+            </div>
+          )}
+
+          {venueError && <div className="auth-error">{venueError}</div>}
+
+          <button className="auth-logout" onClick={logout}>
+            <LogOut size={14} /> Sign out
+          </button>
+        </div>
+
+      /* ── Connected — existing settings ────────────────────── */
+      ) : (
+        <>
+          {/* Account info */}
+          {isLoggedIn && (
+            <div className="settings-row" style={{ padding: "10px 10px", borderBottom: "none" }}>
+              <User size={15} />
+              <span className="settings-txt" style={{ fontSize: 13, flex: 1 }}>
+                {userInfo?.email}
+              </span>
+              <button className="auth-logout-sm" onClick={logout}>
+                <LogOut size={13} /> Sign out
+              </button>
+            </div>
+          )}
+
+          {/* Square Connection */}
+          <div
+            className="settings-row"
+            style={{ cursor: isConfigured ? "pointer" : "default", borderBottom: "none", padding: "10px 10px" }}
+            onClick={() => {
+              if (isConfigured) {
+                if (confirm("Disconnect Square? Voice ordering will stop working.")) clearCredentials();
+              }
+            }}
+          >
+            <Link size={15} />
+            <span className="settings-txt" style={{ fontSize: 14 }}>
+              {isConfigured ? "Square Connected" : "Square Not Connected"}
+            </span>
+            <span className="status-dot" style={{ background: isConfigured ? "#22C55E" : "#EF4444" }} />
+            {isConfigured && <ChevronRight size={14} />}
+          </div>
+
+          {/* Reconnect controls */}
+          {!isConfigured && (
+            <div style={{ padding: "4px 10px 8px", display: "flex", flexDirection: "column", gap: 6 }}>
+              {connectionError && (
+                <div className="error-text" style={{ fontSize: 12, textAlign: "left", padding: 0 }}>{connectionError}</div>
+              )}
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <button
+                  disabled={isReconnecting}
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    await refreshCredentials();
+                  }}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 5,
+                    padding: "8px 14px", borderRadius: 20,
+                    background: "rgba(34,197,94,0.12)", color: "#22C55E",
+                    border: "1px solid rgba(34,197,94,0.25)",
+                    fontSize: 13, fontWeight: 500, cursor: isReconnecting ? "wait" : "pointer",
+                    opacity: isReconnecting ? 0.6 : 1, fontFamily: "var(--font)",
+                  }}
+                >
+                  {isReconnecting ? <Loader size={13} className="spin" /> : <RefreshCw size={13} />}
+                  {isReconnecting ? "Reconnecting…" : "Reconnect"}
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="divider" style={{ margin: "8px 0" }} />
+
+          {/* Voice */}
+          <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "2px 0 4px" }}>
+            <span className="rec-label" style={{ margin: 0, whiteSpace: "nowrap" }}>VOICE</span>
+          </div>
+          <div className="voice-grid">
+            {VOICES.map((v) => (
+              <button
+                key={v.id}
+                className={`voice-chip${prefs.voice === v.id ? " active" : ""}`}
+                onClick={() => updateVoice(v.id)}
+              >
+                <div className="voice-chip-name">{v.label}</div>
+              </button>
+            ))}
+          </div>
+
+          {/* Speed */}
+          <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 0 4px" }}>
+            <span className="rec-label" style={{ margin: 0, whiteSpace: "nowrap" }}>SPEED</span>
+            <div className="speed-row" style={{ flex: 1, padding: 0 }}>
+              {SPEEDS.map((s) => (
+                <button
+                  key={s.label}
+                  className={`speed-chip${prefs.speed === s.id ? " active" : ""}`}
+                  onClick={() => updateSpeed(s.id)}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="divider" style={{ margin: "8px 0" }} />
+
+          {/* Theme */}
+          <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "2px 0 6px" }}>
+            <span className="rec-label" style={{ margin: 0, whiteSpace: "nowrap" }}>THEME</span>
+            <div className="speed-row" style={{ flex: 1, padding: 0 }}>
+              <button
+                className={`speed-chip${theme === "light" ? " active" : ""}`}
+                onClick={toggleTheme}
+                style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}
+              >
+                <Sun size={13} /> Light
+              </button>
+              <button
+                className={`speed-chip${theme === "dark" ? " active" : ""}`}
+                onClick={toggleTheme}
+                style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}
+              >
+                <Moon size={13} /> Dark
+              </button>
+            </div>
+          </div>
+        </>
       )}
-
-      <div className="divider" style={{ margin: "8px 0" }} />
-
-
-
-      {/* Voice — horizontal scrollable strip */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "2px 0 4px" }}>
-        <span className="rec-label" style={{ margin: 0, whiteSpace: "nowrap" }}>VOICE</span>
-      </div>
-      <div className="voice-grid">
-        {VOICES.map((v) => (
-          <button
-            key={v.id}
-            className={`voice-chip${prefs.voice === v.id ? " active" : ""}`}
-            onClick={() => updateVoice(v.id)}
-          >
-            <div className="voice-chip-name">{v.label}</div>
-          </button>
-        ))}
-      </div>
-
-      {/* Speed — inline with label */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 0 4px" }}>
-        <span className="rec-label" style={{ margin: 0, whiteSpace: "nowrap" }}>SPEED</span>
-        <div className="speed-row" style={{ flex: 1, padding: 0 }}>
-          {SPEEDS.map((s) => (
-            <button
-              key={s.label}
-              className={`speed-chip${prefs.speed === s.id ? " active" : ""}`}
-              onClick={() => updateSpeed(s.id)}
-            >
-              {s.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="divider" style={{ margin: "8px 0" }} />
-
-      {/* Appearance — compact toggle */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "2px 0 6px" }}>
-        <span className="rec-label" style={{ margin: 0, whiteSpace: "nowrap" }}>THEME</span>
-        <div className="speed-row" style={{ flex: 1, padding: 0 }}>
-          <button
-            className={`speed-chip${theme === "light" ? " active" : ""}`}
-            onClick={toggleTheme}
-            style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}
-          >
-            <Sun size={13} /> Light
-          </button>
-          <button
-            className={`speed-chip${theme === "dark" ? " active" : ""}`}
-            onClick={toggleTheme}
-            style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}
-          >
-            <Moon size={13} /> Dark
-          </button>
-        </div>
-      </div>
     </div>
   );
 }
