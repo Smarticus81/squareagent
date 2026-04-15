@@ -1,5 +1,5 @@
 /**
- * Unified BevPro Agent — REST endpoints for WebRTC-based Realtime API
+ * Unified VoyceLab Agent — REST endpoints for WebRTC-based Realtime API
  *
  * POST /session  → Mint ephemeral OpenAI token, return tools + instructions
  * POST /tools    → Execute a tool call server-side, return result + optional order command
@@ -13,8 +13,6 @@
  */
 
 import { Router } from "express";
-import { db, venuesTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
 import { requireAuth, requirePlan } from "./auth";
 import {
   syncLiveOrderToSquare,
@@ -23,29 +21,36 @@ import {
   type OrderItem,
   type LiveSession,
 } from "../lib/square-helpers";
-import { ALL_TOOLS, executeToolCall, toolCount } from "../tools";
+import { SquareClient } from "../lib/square-client";
+import { getCachedCredentials } from "../lib/credential-cache";
+import { executeToolCall } from "../tools";
+import {
+  getSkillsForSession,
+  buildToolsFromSkills,
+  buildInstructionsFromSkills,
+  skillSummary,
+} from "../skills";
+import {
+  getOrCreateSession,
+  markDirty,
+  removeSession,
+} from "../lib/session-store";
 
 const router = Router();
-
-/** Look up Square credentials from DB for the authenticated user's venue. */
-async function lookupVenueCredentials(userId: number, venueId: number) {
-  const [venue] = await db
-    .select()
-    .from(venuesTable)
-    .where(and(eq(venuesTable.id, venueId), eq(venuesTable.userId, userId)));
-  if (!venue) return null;
-  return { squareToken: venue.squareAccessToken ?? "", squareLocationId: venue.squareLocationId ?? "" };
-}
 
 const OPENAI_REALTIME_MODEL = "gpt-realtime-mini";
 // GA realtime mini model for low-latency voice. Use gpt-realtime-1.5 for more capability.
 
-function buildRealtimeSessionConfig(voice: string, speed: number, catalog: CatalogItem[], order: OrderItem[]) {
+function buildRealtimeSessionConfig(voice: string, speed: number, catalog: CatalogItem[], order: OrderItem[], plan?: string) {
+  const skills = getSkillsForSession(plan ?? "trial");
+  const tools = buildToolsFromSkills(skills);
+  const instructions = buildInstructionsFromSkills(skills, catalog, order);
+
   return {
     type: "realtime" as const,
     model: OPENAI_REALTIME_MODEL,
-    instructions: buildInstructions(catalog, order),
-    tools: ALL_TOOLS,
+    instructions,
+    tools,
     tool_choice: "auto" as const,
     output_modalities: ["audio" as const],
     audio: {
@@ -69,91 +74,6 @@ function buildRealtimeSessionConfig(voice: string, speed: number, catalog: Catal
   };
 }
 
-// ── System prompt ─────────────────────────────────────────────────────────────
-
-function buildInstructions(catalog: CatalogItem[], order: OrderItem[]): string {
-  const catalogStr =
-    catalog.length > 0
-      ? catalog.map((c) => `  - ${c.name}: $${c.price.toFixed(2)}${c.category ? ` (${c.category})` : ""}`).join("\n")
-      : "  (No catalog loaded — ask user to connect Square)";
-
-  const orderStr =
-    order.length > 0
-      ? order.map((i) => `  - ${i.quantity}x ${i.item_name} @ $${i.price.toFixed(2)}`).join("\n")
-      : "  (empty)";
-
-  return `You are BevPro, a comprehensive voice assistant for bars and venues running on Square. You have FULL access to the Square platform — ordering, inventory, catalog management, customer profiles, payments, team management, reporting, and more.
-
-Catalog:
-${catalogStr}
-
-Current order:
-${orderStr}
-
-Persona:
-- Sharp, knowledgeable, confident. You're the venue's operations brain.
-- Speak like bar staff: short, punchy, no fluff. Default to one short sentence; use two only if needed.
-- NEVER repeat the order back or read items back unless the user explicitly asks ("what's on the ticket", "read that back", "what do I have").
-- NEVER ask "is that right?" or "sound good?" after adding items. Just do it and confirm with a few words.
-- Keep confirmations ultra-tight: "Got it", "Done", "Added", "On there". Prefer 2 to 6 words.
-- Understand bartender slang: "86 it" = remove/out of stock, "ring it up" / "close it out" = submit, "tab it" = add to order, "what's on the ticket" = get order.
-- Understand inventory terms: "we got a case of" = add 24, "count" = check levels.
-
-POS Rules:
-- Add items only on clear intent ("two Fosters", "tab a Bud Light").
-- When adding items, just confirm briefly: "Got it" or "Added". Do NOT repeat what was added or list the order.
-- Never submit until they say so ("ring it up", "close it out", "that's it"). When they do, just confirm the total — don't read back every item.
-- If browsing or chatting, just talk — don't push items.
-- Menu questions: mention a few options, don't dump the whole list.
-- If something's not on the menu, suggest what's close.
-- Say prices naturally: "eight fifty" not "$8.50". Never say "dollar sign".
-- Items appear on the Square POS in real-time as they're added — a one-word acknowledgment is enough, no need to describe what appeared on screen.
-- If they want to pay by card, use send_to_terminal. Say "sent to the terminal, tap when ready".
-
-Catalog Management:
-- You can create, update, and delete menu items in Square.
-- Only confirm before destructive actions like deleting items. For creates and updates, just do it.
-- When updating prices, briefly state the change: "IPA moved to nine fifty."
-
-Inventory Rules:
-- You are an expert inventory manager. You can check stock, adjust quantities, set counts, transfer between locations, view change history, generate low stock reports, and do batch adjustments.
-- For single-item adjustments, just do it. No need to confirm unless the quantity sounds unusual or very large.
-- For bulk operations (deliveries, shipments), use batch_adjust_inventory — briefly state what you'll do, then execute. Only pause for confirmation if the numbers seem off.
-- Low stock alerts: proactively mention if an item drops below 5 units after any adjustment.
-- Say numbers clearly: "twenty-four" not "24".
-- Understand bulk language: "case of" = 24, "half case" = 12, "six-pack" = 6, "keg" = context-dependent.
-- Use the right reason when adjusting: "received" for deliveries, "sold" for sales, "waste" for spoilage/expired, "damaged" for breakage, "theft" for missing stock.
-- When asked for a stock check, use check_inventory for one item or check_all_inventory for everything.
-- When asked "how's inventory looking" or "give me a rundown", use inventory_summary for the overview.
-- For receiving a delivery with multiple items, use batch_adjust_inventory to do it all at once.
-- For physical stock counts, use set_inventory to override to the actual count.
-- For transfers, ask which location they're sending to before executing.
-- When asked about history or what happened with an item, use get_inventory_changes.
-- "86 it" in inventory context means it's out of stock — check the count and confirm.
-- After adjustments, briefly state the new count: "Bud Light's at forty-eight."
-
-Customers & Payments:
-- You can search/create/update customer profiles.
-- You can list payments, issue refunds, and cancel pending payments.
-- Always confirm refund amounts before executing.
-
-Team & Shifts:
-- You can list team members, see who's clocked in, clock people in/out.
-- Present shift info naturally: "Jake's been on since two."
-
-Reports:
-- Sales reports: today, yesterday, this week, last 7 days, this month.
-- Present numbers naturally: "you did forty-two orders, twelve hundred in revenue."
-- Top sellers, hourly breakdowns, item performance, daily summaries available.
-- Lead with the headline: "Good shift — 47 orders, eighteen hundred revenue."
-
-General:
-- Noisy environment — ignore background chatter. Only respond to direct speech. If unclear, ask.
-- Only confirm before destructive actions (delete, refund). Everything else — just do it.
-- Do not repeat back, summarize, or over-explain. Act fast and keep responses minimal.
-- You have full Square access — use it confidently.`;
-}
-
 // ── POST /session — Mint ephemeral OpenAI token ───────────────────────────────
 
 router.post("/session", requireAuth as any, requirePlan() as any, async (req: any, res: any) => {
@@ -169,14 +89,16 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
   let squareToken = "";
   let squareLocationId = "";
   if (venueId) {
-    const creds = await lookupVenueCredentials(req.user.id, Number(venueId));
+    const creds = await getCachedCredentials(req.user.id, Number(venueId));
     if (creds) {
       squareToken = creds.squareToken;
       squareLocationId = creds.squareLocationId;
     }
   }
 
-  console.log(`[Realtime] Creating session with ${toolCount()} tools`);
+  const plan = req.subscription?.plan ?? "trial";
+  const skills = getSkillsForSession(plan);
+  console.log(`[Realtime] Creating session: plan=${plan}, skills=[${skillSummary(skills)}], venue=${venueId || "none"}`);
 
   try {
     const controller = new AbortController();
@@ -190,7 +112,7 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
       },
       signal: controller.signal,
       body: JSON.stringify({
-        session: buildRealtimeSessionConfig(voice, speed, catalog, order),
+        session: buildRealtimeSessionConfig(voice, speed, catalog, order, plan),
       }),
     });
     clearTimeout(timeout);
@@ -228,13 +150,14 @@ router.post("/call", requireAuth as any, requirePlan() as any, async (req: any, 
   }
 
   if (venueId) {
-    await lookupVenueCredentials(req.user.id, Number(venueId));
+    await getCachedCredentials(req.user.id, Number(venueId));
   }
 
   try {
+    const callPlan = req.subscription?.plan ?? "trial";
     const formData = new FormData();
     formData.set("sdp", sdp);
-    formData.set("session", JSON.stringify(buildRealtimeSessionConfig(voice, speed, catalog, order)));
+    formData.set("session", JSON.stringify(buildRealtimeSessionConfig(voice, speed, catalog, order, callPlan)));
 
     const response = await fetch("https://api.openai.com/v1/realtime/calls", {
       method: "POST",
@@ -259,47 +182,7 @@ router.post("/call", requireAuth as any, requirePlan() as any, async (req: any, 
 });
 
 // ── POST /tools — Execute a tool call ─────────────────────────────────────────
-
-// Session state with TTL — auto-cleanup abandoned sessions after 30 minutes
-interface TimedSession {
-  session: LiveSession;
-  squareToken: string;
-  squareLocationId: string;
-  lastAccess: number;
-}
-const SESSION_TTL_MS = 30 * 60 * 1000; // 30 minutes
-const sessionOrders = new Map<string, TimedSession>();
-
-// Garbage-collect stale sessions every 5 minutes
-setInterval(() => {
-  const now = Date.now();
-  let cleaned = 0;
-  for (const [key, entry] of sessionOrders) {
-    if (now - entry.lastAccess > SESSION_TTL_MS) {
-      // Cancel any orphaned live order in Square before removing
-      if (entry.session.squareOrderId && entry.squareToken && entry.squareLocationId) {
-        console.log(`[Sessions] Canceling orphaned order ${entry.session.squareOrderId} for session ${key}`);
-        cancelLiveOrder(entry.session, entry.squareToken, entry.squareLocationId).catch(() => {});
-      }
-      sessionOrders.delete(key);
-      cleaned++;
-    }
-  }
-  if (cleaned > 0) console.log(`[Sessions] Cleaned ${cleaned} stale session(s). Active: ${sessionOrders.size}`);
-}, 5 * 60 * 1000);
-
-function getOrCreateSession(sessionId: string, squareToken: string, squareLocationId: string): LiveSession {
-  const existing = sessionOrders.get(sessionId);
-  if (existing) {
-    existing.lastAccess = Date.now();
-    existing.squareToken = squareToken;
-    existing.squareLocationId = squareLocationId;
-    return existing.session;
-  }
-  const session: LiveSession = { items: [] };
-  sessionOrders.set(sessionId, { session, squareToken, squareLocationId, lastAccess: Date.now() });
-  return session;
-}
+// Session state is managed by the shared session-store (in-memory + DB write-through).
 
 router.post("/tools", requireAuth as any, requirePlan() as any, async (req: any, res: any) => {
   const {
@@ -324,7 +207,7 @@ router.post("/tools", requireAuth as any, requirePlan() as any, async (req: any,
   // Server-side credential lookup
   let squareToken = "";
   let squareLocationId = "";
-  const creds = await lookupVenueCredentials(req.user.id, Number(venueId));
+  const creds = await getCachedCredentials(req.user.id, Number(venueId));
   if (creds) {
     squareToken = creds.squareToken;
     squareLocationId = creds.squareLocationId;
@@ -332,17 +215,20 @@ router.post("/tools", requireAuth as any, requirePlan() as any, async (req: any,
 
   // Use a stable fallback so multiple tool calls in one conversation share the same session
   const sessionId = String(session_id || `rt-${req.user.id}-${venueId}`);
-  const session = getOrCreateSession(sessionId, squareToken, squareLocationId);
+  const session = getOrCreateSession(sessionId, squareToken, squareLocationId, req.user.id, Number(venueId));
 
   try {
+    const squareClient = squareToken ? new SquareClient(squareToken, squareLocationId) : undefined;
     const { result, command } = await executeToolCall(
       tool_name,
       args,
-      { catalog, order, squareToken, squareLocationId, session },
+      { catalog, order, squareToken, squareLocationId, session, squareClient, requestId: sessionId },
     );
 
     if (session.items.length === 0 && !session.squareOrderId) {
-      sessionOrders.delete(sessionId);
+      removeSession(sessionId);
+    } else {
+      markDirty(sessionId);
     }
 
     res.json({ result, command: command ?? null });
@@ -361,7 +247,7 @@ router.post("/test-sync", requireAuth as any, async (req: any, res: any) => {
     return;
   }
 
-  const creds = await lookupVenueCredentials(req.user.id, Number(venueId));
+  const creds = await getCachedCredentials(req.user.id, Number(venueId));
   if (!creds) {
     res.json({ ok: false, error: "Venue not found or not owned by user", step: "lookup" });
     return;
@@ -405,7 +291,7 @@ router.post("/test-sync", requireAuth as any, async (req: any, res: any) => {
   const testSession: LiveSession = {
     items: [{
       catalogItemId: "test",
-      name: "BevPro Sync Test",
+      name: "VoyceLab Sync Test",
       price: 0.01,
       quantity: 1,
     }],

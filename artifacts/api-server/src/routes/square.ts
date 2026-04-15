@@ -223,7 +223,7 @@ function popupHtml(tokenState: string | null, error: string | null): string {
       var payload = JSON.parse(atob("${payloadB64}"));
       // Primary: write to localStorage (works reliably since popup callback is same-origin)
       // The parent window polls for this key.
-      localStorage.setItem("bevpro_oauth_result", JSON.stringify(payload));
+      localStorage.setItem("voycelab_oauth_result", JSON.stringify(payload));
       // Secondary: also try postMessage in case window.opener survived cross-origin nav
       if (window.opener) {
         window.opener.postMessage(payload, '*');

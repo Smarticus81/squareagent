@@ -576,7 +576,7 @@ export default function Capabilities() {
             </span>
           </div>
           <h1 className="font-display font-bold text-3xl sm:text-4xl tracking-tight mb-4">
-            Everything BevPro Can Do
+            Everything VoyceLab Can Do
           </h1>
           <p className="text-[15px] text-foreground/50 font-light leading-relaxed max-w-2xl">
             {totalTools} voice-powered tools across {domains.length} domains — ordering, inventory, catalog management,
@@ -625,14 +625,14 @@ export default function Capabilities() {
                 <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-[11px] font-semibold text-primary">1</div>
                 <span className="font-medium text-foreground/80">Speak naturally</span>
               </div>
-              <p>No rigid commands — just talk like you would to a coworker. BevPro understands bartender slang, casual language, and context.</p>
+              <p>No rigid commands — just talk like you would to a coworker. VoyceLab understands bartender slang, casual language, and context.</p>
             </div>
             <div>
               <div className="flex items-center gap-2 mb-2">
                 <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-[11px] font-semibold text-primary">2</div>
                 <span className="font-medium text-foreground/80">AI picks the tool</span>
               </div>
-              <p>BevPro's AI understands your intent and automatically selects the right tool — no menus, no tapping, no button hunting.</p>
+              <p>VoyceLab's AI understands your intent and automatically selects the right tool — no menus, no tapping, no button hunting.</p>
             </div>
             <div>
               <div className="flex items-center gap-2 mb-2">
@@ -666,7 +666,7 @@ export default function Capabilities() {
               <h2 className="font-display font-semibold text-xl tracking-tight">Bartender Slang Guide</h2>
             </div>
             <p className="text-[13px] text-foreground/50 font-light leading-relaxed max-w-2xl">
-              BevPro understands how bartenders actually talk. Here's a cheat sheet of slang that works out of the box.
+              VoyceLab understands how bartenders actually talk. Here's a cheat sheet of slang that works out of the box.
             </p>
           </motion.div>
 

@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, integer, index } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, index, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -84,3 +84,21 @@ export const exchangeCodesTable = pgTable("exchange_codes", {
 });
 
 export type ExchangeCode = typeof exchangeCodesTable.$inferSelect;
+
+// ── Voice Sessions (persistent session state) ────────────────────────────────
+
+export const voiceSessionsTable = pgTable("voice_sessions", {
+  id: text("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  venueId: integer("venue_id").notNull().references(() => venuesTable.id, { onDelete: "cascade" }),
+  state: jsonb("state").notNull().default({}),
+  squareOrderId: text("square_order_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  expiresAt: timestamp("expires_at").notNull(),
+}, (table) => [
+  index("voice_sessions_user_id_idx").on(table.userId),
+  index("voice_sessions_venue_id_idx").on(table.venueId),
+]);
+
+export type VoiceSession = typeof voiceSessionsTable.$inferSelect;

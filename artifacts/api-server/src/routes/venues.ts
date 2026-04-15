@@ -1,5 +1,5 @@
 /**
- * Bevpro Venue Management Routes
+ * VoyceLab Venue Management Routes
  *
  * All routes require authentication (Bearer token).
  *

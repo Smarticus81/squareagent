@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
-const getToken = () => localStorage.getItem("bevpro_token");
+const getToken = () => localStorage.getItem("voycelab_token");
 
 const getHeaders = () => {
   const token = getToken();

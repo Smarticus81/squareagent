@@ -538,7 +538,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
     setError(null);
 
     if (!authTokenRef.current) {
-      setError("Not authenticated. Please log in with your BevPro account.");
+      setError("Not authenticated. Please log in with your VoyceLab account.");
       setAgentState("error");
       return;
     }

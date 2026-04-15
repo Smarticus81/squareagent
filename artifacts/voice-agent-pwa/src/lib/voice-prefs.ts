@@ -20,8 +20,8 @@ export const SPEEDS = [
   { id: 1.15, label: "Fastest" },
 ];
 
-const VOICE_KEY = "bevpro_voice";
-const SPEED_KEY = "bevpro_speed";
+const VOICE_KEY = "voycelab_voice";
+const SPEED_KEY = "voycelab_speed";
 const DEFAULT_VOICE = "ash";
 const DEFAULT_SPEED = 0.9;
 const SUPPORTED = new Set(VOICES.map((v) => v.id));

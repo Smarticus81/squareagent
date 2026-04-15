@@ -32,7 +32,7 @@ interface SquareContextType {
   locationsError: string | null;
   connectionError: string | null;
   isReconnecting: boolean;
-  /** BevPro account info (email/name) after login */
+  /** VoyceLab account info (email/name) after login */
   userInfo: { id: number; email: string; name: string } | null;
   /** List of venues for the logged-in user */
   venues: { id: number; name: string; squareLocationName?: string; connectedAt?: string }[];
@@ -42,9 +42,9 @@ interface SquareContextType {
   loadCatalog: (overrideToken?: string, overrideLocationId?: string) => Promise<number>;
   fetchLocations: (token: string) => Promise<SquareLocation[]>;
   searchCatalog: (query: string) => SquareCatalogItem[];
-  /** Login with BevPro email + password. Returns error string or null on success. */
+  /** Login with VoyceLab email + password. Returns error string or null on success. */
   login: (email: string, password: string) => Promise<string | null>;
-  /** Signup with BevPro name + email + password. Returns error string or null on success. */
+  /** Signup with VoyceLab name + email + password. Returns error string or null on success. */
   signup: (name: string, email: string, password: string) => Promise<string | null>;
   /** Logout and clear all stored credentials */
   logout: () => Promise<void>;
@@ -57,8 +57,8 @@ const SquareContext = createContext<SquareContextType | null>(null);
 const STORAGE_KEYS = {
   ACCESS_TOKEN: "square_access_token",
   LOCATION_ID: "square_location_id",
-  VENUE_ID: "bevpro_venue_id",
-  AUTH_TOKEN: "bevpro_token",
+  VENUE_ID: "voycelab_venue_id",
+  AUTH_TOKEN: "voycelab_token",
 };
 
 function getBaseUrl() {
@@ -358,7 +358,7 @@ export function SquareProvider({ children }: { children: ReactNode }) {
 
   const isConfigured = !!(accessToken && locationId);
 
-  // ── BevPro Account Auth (native login/signup) ──────────────────────────────
+  // ── VoyceLab Account Auth (native login/signup) ──────────────────────────────
 
   /** Fetch the user's venues list from the API */
   async function loadVenues(tok: string): Promise<void> {

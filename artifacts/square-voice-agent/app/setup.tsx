@@ -201,11 +201,11 @@ export default function SetupScreen() {
         {!isLoggedIn ? (
           <Animated.View entering={FadeInDown.delay(60).duration(300)} style={styles.authSection}>
             <Text style={styles.authTitle}>
-              {authMode === "login" ? "Sign in to BevPro" : "Create your BevPro account"}
+              {authMode === "login" ? "Sign in to VoyceLab" : "Create your VoyceLab account"}
             </Text>
             <Text style={styles.authSub}>
               {authMode === "login"
-                ? "Log in with the account you created on the BevPro dashboard."
+                ? "Log in with the account you created on the VoyceLab dashboard."
                 : "Create an account to get started with voice-powered ordering."}
             </Text>
 
@@ -322,7 +322,7 @@ export default function SetupScreen() {
                 <Feather name="map-pin" size={24} color={Colors.dark.textMuted} />
                 <Text style={styles.noVenuesTitle}>No venues found</Text>
                 <Text style={styles.noVenuesText}>
-                  Connect your Square account from the BevPro dashboard first, then come back here.
+                  Connect your Square account from the VoyceLab dashboard first, then come back here.
                 </Text>
               </View>
             )}

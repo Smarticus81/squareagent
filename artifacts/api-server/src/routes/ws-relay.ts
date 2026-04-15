@@ -21,7 +21,7 @@ import {
 } from "../lib/square-helpers";
 import { ALL_TOOLS, executeToolCall, toolCount } from "../tools";
 
-const JWT_SECRET = process.env.JWT_SECRET ?? "bevpro-dev-secret-change-in-production";
+const JWT_SECRET = process.env.JWT_SECRET ?? "voycelab-dev-secret-change-in-production";
 const OPENAI_REALTIME_MODEL = "gpt-realtime-mini";
 
 // ── Auth helper ───────────────────────────────────────────────────────────────
@@ -81,7 +81,7 @@ function buildInstructions(catalog: CatalogItem[], order: OrderItem[]): string {
       ? order.map((i) => `  - ${i.quantity}x ${i.item_name} @ $${i.price.toFixed(2)}`).join("\n")
       : "  (empty)";
 
-  return `You are BevPro, a comprehensive voice assistant for bars and venues running on Square. You have FULL access to the Square platform — ordering, inventory, catalog management, customer profiles, payments, team management, reporting, and more.
+  return `You are VoyceLab, a comprehensive voice assistant for bars and venues running on Square. You have FULL access to the Square platform — ordering, inventory, catalog management, customer profiles, payments, team management, reporting, and more.
 
 Catalog:
 ${catalogStr}

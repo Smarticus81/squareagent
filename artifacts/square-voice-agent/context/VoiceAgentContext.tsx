@@ -221,7 +221,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
           ? order.map((i) => `  - ${i.quantity}x ${i.item_name || i.name} @ $${i.price.toFixed(2)}`).join("\n")
           : "  (empty)";
 
-      const instructions = `You are BevPro, a comprehensive voice assistant for bars and venues running on Square. You have FULL access to the Square platform — ordering, inventory, catalog management, customer profiles, payments, team management, reporting, and more.
+      const instructions = `You are VoyceLab, a comprehensive voice assistant for bars and venues running on Square. You have FULL access to the Square platform — ordering, inventory, catalog management, customer profiles, payments, team management, reporting, and more.
 
 Catalog:
 ${catalogStr}
@@ -685,7 +685,7 @@ General:
     setError(null);
 
     if (!authTokenRef.current) {
-      setError("Not authenticated. Please log in with your BevPro account.");
+      setError("Not authenticated. Please log in with your VoyceLab account.");
       setAgentState("error");
       return;
     }

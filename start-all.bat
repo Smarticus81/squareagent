@@ -3,7 +3,7 @@ setlocal EnableExtensions EnableDelayedExpansion
 
 set "ROOT=%~dp0"
 set "API_DIR=!ROOT!artifacts\api-server"
-set "LANDING_DIR=!ROOT!artifacts\bevpro-landing"
+set "LANDING_DIR=!ROOT!artifacts\voycelab-landing"
 set "PWA_DIR=!ROOT!artifacts\voice-agent-pwa"
 set "EXPO_DIR=!ROOT!artifacts\square-voice-agent"
 cd /d "%ROOT%"
@@ -41,7 +41,7 @@ echo Starting API server on http://localhost:8080
 start "Square Voice API" /D "!API_DIR!" cmd /k "call pnpm run dev:local"
 
 echo Starting dashboard on http://localhost:5173
-start "Bevpro Landing" /D "!LANDING_DIR!" cmd /k "call pnpm run dev"
+start "VoyceLab Landing" /D "!LANDING_DIR!" cmd /k "call pnpm run dev"
 
 if /i "!VOICE_TARGET!"=="expo" (
   echo Starting Expo voice app on http://localhost:8081

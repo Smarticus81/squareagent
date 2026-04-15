@@ -173,7 +173,7 @@ export default function Dashboard() {
 
   const handleManageSubscription = async () => {
     try {
-      const token = localStorage.getItem("bevpro_token") || "";
+      const token = localStorage.getItem("voycelab_token") || "";
       const res = await fetch("/api/subscriptions/portal", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -340,7 +340,7 @@ export default function Dashboard() {
               onClick={async () => {
                 if (!isSquareConnected || !primaryVenue) return;
                 try {
-                  const token = localStorage.getItem("bevpro_token") || "";
+                  const token = localStorage.getItem("voycelab_token") || "";
                   const res = await fetch("/api/auth/exchange/create", {
                     method: "POST",
                     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },

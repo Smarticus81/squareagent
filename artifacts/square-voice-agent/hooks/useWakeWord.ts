@@ -7,7 +7,7 @@
  */
 import { useRef, useCallback, useState } from "react";
 
-export const WAKE_WORDS = ["hey bar", "hey bars", "a bar", "okay bar", "hey bev", "bevpro"];
+export const WAKE_WORDS = ["hey bar", "hey bars", "a bar", "okay bar", "hey voyce", "voycelab"];
 export const STOP_PHRASES = ["shut down", "stop listening", "shut it down", "turn off"];
 export const TERMINATE_PHRASES = [
   "goodbye", "good bye", "wake word mode", "back to sleep",

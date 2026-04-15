@@ -8,7 +8,7 @@ import router from "./routes";
 
 const app: Express = express();
 const workspaceRoot = process.cwd();
-const landingDist = path.resolve(workspaceRoot, "artifacts", "bevpro-landing", "dist", "public");
+const landingDist = path.resolve(workspaceRoot, "artifacts", "voycelab-landing", "dist", "public");
 const voiceAgentDist = path.resolve(workspaceRoot, "artifacts", "voice-agent-pwa", "dist");
 
 // ── Security headers

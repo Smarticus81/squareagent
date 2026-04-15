@@ -11,7 +11,7 @@ const steps = [
   },
   {
     command: "pnpm",
-    args: ["--dir", "artifacts/bevpro-landing", "run", "typecheck"],
+    args: ["--dir", "artifacts/voycelab-landing", "run", "typecheck"],
   },
   {
     command: "pnpm",
@@ -19,7 +19,7 @@ const steps = [
   },
   {
     command: "pnpm",
-    args: ["--dir", "artifacts/bevpro-landing", "run", "build"],
+    args: ["--dir", "artifacts/voycelab-landing", "run", "build"],
   },
   {
     command: "pnpm",

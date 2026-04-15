@@ -137,7 +137,7 @@ export async function syncLiveOrderToSquare(
         // Staff taps it in the ticket drawer to load all items into the register.
         // Requires: Square POS → Settings → Checkout → Open Tickets = ON
         ticket_name: ticketName,
-        source: { name: "BevPro Voice" },
+        source: { name: "VoyceLab Voice" },
         line_items: lineItems,
         // No fulfillment — we want this as an Open Ticket on the register,
         // not routed to the "Orders" tab. Open Tickets show in the ticket
@@ -353,7 +353,7 @@ export async function pushToTerminal(
 }
 
 // ── Extended Square API helpers ────────────────────────────────────────────────
-// These power the comprehensive BevPro voice agent.
+// These power the comprehensive VoyceLab voice agent.
 
 /** Create a new catalog item (with one variation). */
 export async function createCatalogItem(

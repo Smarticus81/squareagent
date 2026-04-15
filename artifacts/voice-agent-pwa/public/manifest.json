@@ -1,7 +1,7 @@
 {
-  "name": "BevPro Voice Agent",
-  "short_name": "BevPro",
-  "description": "Voice-powered bar POS agent",
+  "name": "VoyceLab Voice Agent",
+  "short_name": "VoyceLab",
+  "description": "Voice-powered venue intelligence agent",
   "start_url": ".",
   "display": "standalone",
   "orientation": "portrait",

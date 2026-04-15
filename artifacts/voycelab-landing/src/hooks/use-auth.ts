@@ -32,9 +32,9 @@ export type User = z.infer<typeof UserSchema>;
 export type Subscription = z.infer<typeof SubscriptionSchema>;
 
 // Helpers
-const getToken = () => localStorage.getItem("bevpro_token");
-const setToken = (token: string) => localStorage.setItem("bevpro_token", token);
-const clearToken = () => localStorage.removeItem("bevpro_token");
+const getToken = () => localStorage.getItem("voycelab_token");
+const setToken = (token: string) => localStorage.setItem("voycelab_token", token);
+const clearToken = () => localStorage.removeItem("voycelab_token");
 
 const getHeaders = () => {
   const token = getToken();

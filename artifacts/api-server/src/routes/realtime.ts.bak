@@ -1,5 +1,5 @@
 /**
- * Unified BevPro Agent — REST endpoints for WebRTC-based Realtime API
+ * Unified VoyceLab Agent — REST endpoints for WebRTC-based Realtime API
  *
  * POST /session  → Mint ephemeral OpenAI token, return tools + instructions
  * POST /tools    → Execute a tool call server-side, return result + optional order command
@@ -39,9 +39,9 @@ async function lookupVenueCredentials(userId: number, venueId: number) {
 
 const OPENAI_REALTIME_MODEL = "gpt-4o-mini-realtime-preview-2024-12-17";
 
-// ── System prompt (unified BevPro — full Square capabilities) ─────────────────
+// ── System prompt (unified VoyceLab — full Square capabilities) ─────────────────
 
-// ── System prompt (unified BevPro — POS + Inventory) ──────────────────────────
+// ── System prompt (unified VoyceLab — POS + Inventory) ──────────────────────────
   },
   {
     type: "function",
@@ -122,7 +122,7 @@ const OPENAI_REALTIME_MODEL = "gpt-4o-mini-realtime-preview-2024-12-17";
 ];
 
 // ── BarClaw tools — comprehensive Square management superset ──────────────────
-// Includes ALL BevPro tools PLUS catalog CRUD, reporting, and insights tools.
+// Includes ALL VoyceLab tools PLUS catalog CRUD, reporting, and insights tools.
 
 const BARCLAW_EXTRA_TOOLS = [
   {
@@ -778,12 +778,12 @@ async function executeBarClawTool(
     }
 
     default:
-      // Fall through to base BevPro tools
+      // Fall through to base VoyceLab tools
       return executeTool(name, args, catalog, order, squareToken, squareLocationId, session);
   }
 }
 
-// ── System prompt (unified BevPro — POS + Inventory) ──────────────────────────
+// ── System prompt (unified VoyceLab — POS + Inventory) ──────────────────────────
 
 function buildInstructions(catalog: CatalogItem[], order: OrderItem[]): string {
   const catalogStr =
@@ -796,7 +796,7 @@ function buildInstructions(catalog: CatalogItem[], order: OrderItem[]): string {
       ? order.map((i) => `  - ${i.quantity}x ${i.item_name} @ $${i.price.toFixed(2)}`).join("\n")
       : "  (empty)";
 
-  return `You are BevPro, a voice assistant for bars and venues running on Square. You handle ordering (POS), inventory management, and menu lookups — all in one.
+  return `You are VoyceLab, a voice assistant for bars and venues running on Square. You handle ordering (POS), inventory management, and menu lookups — all in one.
 
 Catalog:
 ${catalogStr}
@@ -895,7 +895,7 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
     return;
   }
 
-  const { voice = "ash", speed = 0.9, catalog = [], order = [], venueId, agent = "bevpro" } = req.body ?? {};
+  const { voice = "ash", speed = 0.9, catalog = [], order = [], venueId, agent = "voycelab" } = req.body ?? {};
   const isBarClaw = agent === "barclaw";
 
   // Look up credentials server-side if venueId provided
@@ -965,7 +965,7 @@ router.post("/tools", requireAuth as any, requirePlan() as any, async (req: any,
     catalog = [],
     order = [],
     venueId,
-    agent = "bevpro",
+    agent = "voycelab",
   } = req.body ?? {};
   const isBarClaw = agent === "barclaw";
 

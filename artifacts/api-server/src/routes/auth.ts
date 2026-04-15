@@ -1,5 +1,5 @@
 /**
- * Bevpro Auth Routes
+ * VoyceLab Auth Routes
  * POST /api/auth/signup — create account
  * POST /api/auth/login  — get JWT session token
  * GET  /api/auth/me     — get current user (requires auth)
@@ -15,7 +15,7 @@ import { eq, lt } from "drizzle-orm";
 
 const router = Router();
 
-const DEFAULT_SECRET = "bevpro-dev-secret-change-in-production";
+const DEFAULT_SECRET = "voycelab-dev-secret-change-in-production";
 export const JWT_SECRET = process.env.JWT_SECRET ?? DEFAULT_SECRET;
 const SESSION_DAYS = 30;
 

@@ -30,7 +30,7 @@ interface SquareContextType {
   catalogError: string | null;
   connectionError: string | null;
   isReconnecting: boolean;
-  /** BevPro account info after login */
+  /** VoyceLab account info after login */
   userInfo: { id: number; email: string; name: string } | null;
   /** Venues available to the logged-in user */
   venues: { id: number; name: string; squareLocationName?: string }[];
@@ -90,8 +90,8 @@ export function SquareProvider({ children }: { children: ReactNode }) {
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [credentialsReady, setCredentialsReady] = useState(false);
-  const [venueId, setVenueId] = useState<string | null>(localStorage.getItem("bevpro_venue_id"));
-  const [authToken, setAuthToken] = useState<string | null>(localStorage.getItem("bevpro_token"));
+  const [venueId, setVenueId] = useState<string | null>(localStorage.getItem("voycelab_venue_id"));
+  const [authToken, setAuthToken] = useState<string | null>(localStorage.getItem("voycelab_token"));
   const [userInfo, setUserInfo] = useState<{ id: number; email: string; name: string } | null>(null);
   const [venues, setVenues] = useState<{ id: number; name: string; squareLocationName?: string }[]>([]);
 
@@ -130,8 +130,8 @@ export function SquareProvider({ children }: { children: ReactNode }) {
               localStorage.setItem(TOKEN_KEY, data.accessToken);
               localStorage.setItem(LOC_KEY, data.locationId);
               // Store auth params for voice agent session auth
-              localStorage.setItem("bevpro_venue_id", launch.venueId);
-              localStorage.setItem("bevpro_token", launch.authToken);
+              localStorage.setItem("voycelab_venue_id", launch.venueId);
+              localStorage.setItem("voycelab_token", launch.authToken);
               setVenueId(launch.venueId);
               setAuthToken(launch.authToken);
               setCredentialsReady(true);
@@ -156,7 +156,7 @@ export function SquareProvider({ children }: { children: ReactNode }) {
 
   // On mount, restore user session if we have a stored auth token
   useEffect(() => {
-    const tok = localStorage.getItem("bevpro_token");
+    const tok = localStorage.getItem("voycelab_token");
     if (!tok) return;
     (async () => {
       try {
@@ -179,7 +179,7 @@ export function SquareProvider({ children }: { children: ReactNode }) {
     loadCatalog();
   }, [credentialsReady, accessToken, locationId]);
 
-  // ── BevPro Account Auth ─────────────────────────────────────────────────────
+  // ── VoyceLab Account Auth ─────────────────────────────────────────────────────
 
   async function loadVenues(tok: string): Promise<void> {
     try {
@@ -205,7 +205,7 @@ export function SquareProvider({ children }: { children: ReactNode }) {
       const data = await res.json();
       if (!res.ok) return data.error || "Login failed";
 
-      localStorage.setItem("bevpro_token", data.token);
+      localStorage.setItem("voycelab_token", data.token);
       setAuthToken(data.token);
       setUserInfo(data.user);
       await loadVenues(data.token);
@@ -225,7 +225,7 @@ export function SquareProvider({ children }: { children: ReactNode }) {
       const data = await res.json();
       if (!res.ok) return data.error || "Signup failed";
 
-      localStorage.setItem("bevpro_token", data.token);
+      localStorage.setItem("voycelab_token", data.token);
       setAuthToken(data.token);
       setUserInfo(data.user);
       setVenues([]);
@@ -236,7 +236,7 @@ export function SquareProvider({ children }: { children: ReactNode }) {
   }
 
   async function logout(): Promise<void> {
-    const tok = authToken || localStorage.getItem("bevpro_token");
+    const tok = authToken || localStorage.getItem("voycelab_token");
     if (tok) {
       try {
         await fetch(`${getBaseUrl()}api/auth/logout`, {
@@ -246,15 +246,15 @@ export function SquareProvider({ children }: { children: ReactNode }) {
       } catch {}
     }
     clearCredentials();
-    localStorage.removeItem("bevpro_token");
-    localStorage.removeItem("bevpro_venue_id");
+    localStorage.removeItem("voycelab_token");
+    localStorage.removeItem("voycelab_venue_id");
     setAuthToken(null);
     setUserInfo(null);
     setVenues([]);
   }
 
   async function selectVenue(vid: number): Promise<string | null> {
-    const tok = authToken || localStorage.getItem("bevpro_token");
+    const tok = authToken || localStorage.getItem("voycelab_token");
     if (!tok) return "Not logged in";
 
     try {
@@ -272,7 +272,7 @@ export function SquareProvider({ children }: { children: ReactNode }) {
         setVenueId(String(vid));
         localStorage.setItem(TOKEN_KEY, data.accessToken);
         localStorage.setItem(LOC_KEY, data.locationId);
-        localStorage.setItem("bevpro_venue_id", String(vid));
+        localStorage.setItem("voycelab_venue_id", String(vid));
         setConnectionError(null);
         return null;
       }
@@ -312,8 +312,8 @@ export function SquareProvider({ children }: { children: ReactNode }) {
 
   /** Re-fetch Square credentials from the server using stored venueId + authToken. */
   async function refreshCredentials(): Promise<boolean> {
-    const vid = venueId || localStorage.getItem("bevpro_venue_id");
-    const tok = authToken || localStorage.getItem("bevpro_token");
+    const vid = venueId || localStorage.getItem("voycelab_venue_id");
+    const tok = authToken || localStorage.getItem("voycelab_token");
     if (!vid || !tok) {
       setConnectionError("No saved session. Open the dashboard to reconnect Square.");
       return false;

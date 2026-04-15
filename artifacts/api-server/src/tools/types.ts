@@ -1,10 +1,11 @@
 /**
- * Shared types for the BevPro tool registry.
+ * Shared types for the VoyceLab tool registry.
  * Every domain module (pos, inventory, catalog, etc.) exports tools
  * conforming to these interfaces.
  */
 
 import type { CatalogItem, OrderItem, LiveSession, OrderCommand } from "../lib/square-helpers";
+import type { SquareClient } from "../lib/square-client";
 
 // ── OpenAI Realtime tool schema (JSON-Schema subset) ──────────────────────────
 
@@ -37,6 +38,10 @@ export interface ToolContext {
   squareToken: string;
   squareLocationId: string;
   session: LiveSession;
+  /** Resilient Square API client (with retry + circuit breaker). */
+  squareClient?: SquareClient;
+  /** Unique request ID for tracing (optional). */
+  requestId?: string;
 }
 
 // ── Result returned by every tool executor ────────────────────────────────────

@@ -21,8 +21,8 @@ export const SPEEDS = [
   { id: 1.15, label: "Fast" },
 ];
 
-const VOICE_KEY = "bevpro_voice";
-const SPEED_KEY = "bevpro_speed";
+const VOICE_KEY = "voycelab_voice";
+const SPEED_KEY = "voycelab_speed";
 
 export const DEFAULT_VOICE = "ash";
 export const DEFAULT_SPEED = 0.9;

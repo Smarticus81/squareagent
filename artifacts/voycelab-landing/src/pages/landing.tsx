@@ -341,7 +341,7 @@ export default function Landing() {
               initial="hidden" whileInView="visible" viewport={{ once: true }} custom={0} variants={fadeUp}
               className="text-[11px] font-medium tracking-[0.3em] uppercase text-primary/60 mb-4"
             >
-              Why Bevpro
+              Why VoyceLab
             </motion.p>
             <motion.h2
               initial="hidden" whileInView="visible" viewport={{ once: true }} custom={1} variants={fadeUp}

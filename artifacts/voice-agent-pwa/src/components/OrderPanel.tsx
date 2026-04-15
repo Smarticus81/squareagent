@@ -204,7 +204,7 @@ function SettingsTab() {
   const toggleTheme = () => {
     const next = theme === "dark" ? "light" : "dark";
     document.documentElement.setAttribute("data-theme", next);
-    localStorage.setItem("bevpro_theme", next);
+    localStorage.setItem("voycelab_theme", next);
     setTheme(next);
   };
 
@@ -253,11 +253,11 @@ function SettingsTab() {
       {!isLoggedIn && !isConfigured ? (
         <div className="auth-section">
           <div className="auth-title">
-            {authMode === "login" ? "Sign in to BevPro" : "Create your account"}
+            {authMode === "login" ? "Sign in to VoyceLab" : "Create your account"}
           </div>
           <div className="auth-sub">
             {authMode === "login"
-              ? "Log in with the account you created on the BevPro dashboard."
+              ? "Log in with the account you created on the VoyceLab dashboard."
               : "Create an account to get started."}
           </div>
 
@@ -348,7 +348,7 @@ function SettingsTab() {
             <div className="venue-empty">
               <MapPin size={22} />
               <span>No venues found</span>
-              <span className="auth-sub">Connect your Square account from the BevPro dashboard first.</span>
+              <span className="auth-sub">Connect your Square account from the VoyceLab dashboard first.</span>
             </div>
           )}
 

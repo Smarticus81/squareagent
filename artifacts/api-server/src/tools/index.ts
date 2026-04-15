@@ -1,5 +1,5 @@
 /**
- * BevPro Tool Registry — single source of truth for ALL voice agent tools.
+ * VoyceLab Tool Registry — single source of truth for ALL voice agent tools.
  *
  * Both realtime.ts (WebRTC REST) and ws-relay.ts (native WebSocket) import
  * from here instead of maintaining inline tool arrays.
@@ -11,6 +11,7 @@
  */
 
 import type { ToolDefinition, ToolExecutor, ToolContext, ToolResult } from "./types";
+import { wrapExecutors, DEFAULT_MIDDLEWARES } from "./middleware";
 
 import * as pos from "./pos";
 import * as inventory from "./inventory";
@@ -21,9 +22,11 @@ import * as customers from "./customers";
 import * as payments from "./payments";
 import * as team from "./team";
 import * as reports from "./reports";
+import * as workflows from "../workflows";
 
 // Re-export types for convenience
 export type { ToolDefinition, ToolExecutor, ToolContext, ToolResult } from "./types";
+export type { ToolMiddleware } from "./middleware";
 
 // ── Aggregate all domain modules ──────────────────────────────────────────────
 
@@ -37,23 +40,27 @@ const DOMAIN_MODULES = [
   payments,
   team,
   reports,
+  workflows,
 ];
 
 // ── ALL_TOOLS: flat array of every tool definition (for OpenAI session config) ─
 
 export const ALL_TOOLS: ToolDefinition[] = DOMAIN_MODULES.flatMap((m) => m.definitions);
 
-// ── Merged executor map ───────────────────────────────────────────────────────
+// ── Merged executor map (wrapped with middleware) ─────────────────────────────
 
-const EXECUTOR_MAP: Record<string, ToolExecutor> = {};
+const RAW_EXECUTORS: Record<string, ToolExecutor> = {};
 for (const mod of DOMAIN_MODULES) {
   for (const [name, fn] of Object.entries(mod.executors)) {
-    if (EXECUTOR_MAP[name]) {
+    if (RAW_EXECUTORS[name]) {
       console.warn(`[ToolRegistry] Duplicate tool name: "${name}" — last module wins`);
     }
-    EXECUTOR_MAP[name] = fn;
+    RAW_EXECUTORS[name] = fn;
   }
 }
+
+// Apply default middleware stack (error handling, timing, logging)
+const EXECUTOR_MAP: Record<string, ToolExecutor> = wrapExecutors(RAW_EXECUTORS, ...DEFAULT_MIDDLEWARES);
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
@@ -72,4 +79,14 @@ export async function executeToolCall(
 /** Get the count of registered tools (useful for logs). */
 export function toolCount(): number {
   return ALL_TOOLS.length;
+}
+
+/** Check if a tool exists in the registry. */
+export function hasTool(toolName: string): boolean {
+  return toolName in EXECUTOR_MAP;
+}
+
+/** Get all registered tool names. */
+export function toolNames(): string[] {
+  return Object.keys(EXECUTOR_MAP);
 }

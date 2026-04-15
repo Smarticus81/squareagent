@@ -91,7 +91,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             </div>
             <div className="mt-12 pt-6 border-t border-border flex flex-col sm:flex-row justify-between items-center gap-2">
               <p className="text-[11px] text-foreground/40 font-light tracking-wider">
-                &copy; {new Date().getFullYear()} Bevpro. All rights reserved.
+                &copy; {new Date().getFullYear()} VoyceLab. All rights reserved.
               </p>
             </div>
           </div>

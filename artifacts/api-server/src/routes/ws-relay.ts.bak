@@ -36,7 +36,7 @@ import {
   type SyncResult,
 } from "../lib/square-helpers";
 
-const JWT_SECRET = process.env.JWT_SECRET ?? "bevpro-dev-secret-change-in-production";
+const JWT_SECRET = process.env.JWT_SECRET ?? "voycelab-dev-secret-change-in-production";
 const OPENAI_REALTIME_MODEL = "gpt-4o-mini-realtime-preview-2024-12-17";
 
 // ── Auth helper ───────────────────────────────────────────────────────────────
@@ -705,7 +705,7 @@ function buildInstructions(catalog: CatalogItem[], order: OrderItem[]): string {
       ? order.map((i) => `  - ${i.quantity}x ${i.item_name} @ $${i.price.toFixed(2)}`).join("\n")
       : "  (empty)";
 
-  return `You are BevPro, a voice assistant for bars and venues running on Square. You handle ordering (POS), inventory management, and menu lookups — all in one.
+  return `You are VoyceLab, a voice assistant for bars and venues running on Square. You handle ordering (POS), inventory management, and menu lookups — all in one.
 
 Catalog:
 ${catalogStr}
@@ -750,7 +750,7 @@ function buildBarClawInstructionsWs(catalog: CatalogItem[], order: OrderItem[]):
       ? order.map((i) => `  - ${i.quantity}x ${i.item_name} @ $${i.price.toFixed(2)}`).join("\n")
       : "  (empty)";
 
-  return `You are BarClaw, the comprehensive Square management voice assistant for bars and venues. You can do everything BevPro does PLUS full catalog management, sales reporting, and venue insights.
+  return `You are BarClaw, the comprehensive Square management voice assistant for bars and venues. You can do everything VoyceLab does PLUS full catalog management, sales reporting, and venue insights.
 
 Catalog:
 ${catalogStr}
@@ -763,7 +763,7 @@ Persona:
 - Professional but casual. Think experienced bar manager, not corporate suit.
 - Keep answers punchy — one or two sentences unless they ask for detail.
 
-POS Rules (same as BevPro):
+POS Rules (same as VoyceLab):
 - Add items only on clear intent. Never submit until told. Confirm totals.
 - Items appear on the Square POS in real-time.
 - For card payments, use send_to_terminal.
@@ -807,7 +807,7 @@ export function attachWebSocketRelay(server: Server): void {
 
     const token = url.searchParams.get("token");
     const venueIdStr = url.searchParams.get("venueId");
-    const agentParam = url.searchParams.get("agent") ?? "bevpro";
+    const agentParam = url.searchParams.get("agent") ?? "voycelab";
 
     if (!token) {
       socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");

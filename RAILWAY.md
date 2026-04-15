@@ -2,7 +2,7 @@
 
 This repo can run on Railway as a single web service:
 
-- `/` serves the Bevpro landing/dashboard app
+- `/` serves the VoyceLab landing/dashboard app
 - `/agent/` serves the voice-agent PWA
 - `/api/*` serves the Express API and WebSocket realtime relay
 

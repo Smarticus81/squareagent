@@ -16,7 +16,7 @@ import {
 
 // ── Shared word lists (must match useWakeWord.ts) ────────────────────────────
 export const WAKE_WORDS = [
-  "hey bar", "hey bars", "a bar", "okay bar", "hey bev", "bevpro",
+  "hey bar", "hey bars", "a bar", "okay bar", "hey voyce", "voycelab",
 ];
 export const STOP_PHRASES = [
   "shut down", "stop listening", "shut it down", "turn off",

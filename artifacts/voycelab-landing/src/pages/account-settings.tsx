@@ -39,7 +39,7 @@ export default function AccountSettings() {
   }
 
   const getHeaders = () => {
-    const token = localStorage.getItem("bevpro_token");
+    const token = localStorage.getItem("voycelab_token");
     return {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),

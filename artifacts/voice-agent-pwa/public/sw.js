@@ -1,5 +1,5 @@
 const BASE_PATH = self.location.pathname.replace(/sw\.js$/, "");
-const CACHE = `bevpro-v2:${BASE_PATH}`;
+const CACHE = `voycelab-v2:${BASE_PATH}`;
 const PRECACHE = [BASE_PATH, `${BASE_PATH}index.html`, `${BASE_PATH}manifest.json`];
 
 function shouldBypassCache(request, url) {

@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Bevpro",
+    "name": "VoyceLab",
     "slug": "squareagent",
     "owner": "smarticus1",
     "version": "1.0.0",
@@ -9,7 +9,7 @@
     },
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "bevpro",
+    "scheme": "voycelab",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "splash": {
@@ -22,11 +22,11 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.bevpro.app",
+      "bundleIdentifier": "com.voycelab.app",
       "buildNumber": "1",
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "Bevpro uses your microphone to take drink orders by voice.",
-        "NSSpeechRecognitionUsageDescription": "Bevpro uses speech recognition for the voice ordering wake-word feature.",
+        "NSMicrophoneUsageDescription": "VoyceLab uses your microphone to take drink orders by voice.",
+        "NSSpeechRecognitionUsageDescription": "VoyceLab uses speech recognition for the voice ordering wake-word feature.",
         "ITSAppUsesNonExemptEncryption": false,
         "UIBackgroundModes": [
           "audio"
@@ -35,7 +35,7 @@
     },
     "android": {
       "backgroundColor": "#050508",
-      "package": "com.bevpro.app",
+      "package": "com.voycelab.app",
       "permissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.INTERNET",
@@ -58,21 +58,21 @@
       [
         "expo-audio",
         {
-          "microphonePermission": "Allow Bevpro to access your microphone for voice ordering."
+          "microphonePermission": "Allow VoyceLab to access your microphone for voice ordering."
         }
       ],
       [
         "@config-plugins/react-native-webrtc",
         {
           "cameraPermission": false,
-          "microphonePermission": "Allow Bevpro to access your microphone for voice ordering."
+          "microphonePermission": "Allow VoyceLab to access your microphone for voice ordering."
         }
       ],
       [
         "expo-speech-recognition",
         {
-          "microphonePermission": "Allow Bevpro to access your microphone for voice ordering.",
-          "speechRecognitionPermission": "Allow Bevpro to use speech recognition for the wake-word feature.",
+          "microphonePermission": "Allow VoyceLab to access your microphone for voice ordering.",
+          "speechRecognitionPermission": "Allow VoyceLab to use speech recognition for the wake-word feature.",
           "androidSpeechServicePackages": ["com.google.android.googlequicksearchbox"]
         }
       ]
