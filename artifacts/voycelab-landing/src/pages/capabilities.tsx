@@ -40,7 +40,7 @@ interface DomainSection {
 const domains: DomainSection[] = [
   {
     title: "Point of Sale",
-    subtitle: "Build and manage orders in real time — items appear on the Square POS as you speak.",
+    subtitle: "Build and manage orders in real time — items appear on your POS as you speak.",
     icon: <ShoppingCart className="w-5 h-5" />,
     color: "text-emerald-400",
     tools: [
@@ -637,9 +637,9 @@ export default function Capabilities() {
             <div>
               <div className="flex items-center gap-2 mb-2">
                 <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-[11px] font-semibold text-primary">3</div>
-                <span className="font-medium text-foreground/80">Square executes</span>
+                <span className="font-medium text-foreground/80">Your POS executes</span>
               </div>
-              <p>The action runs directly against your Square account — orders appear on the POS, inventory updates in real time, reports pull live data.</p>
+              <p>The action runs directly against your connected POS — orders appear on the terminal, inventory updates in real time, reports pull live data.</p>
             </div>
           </div>
         </motion.div>
@@ -662,7 +662,7 @@ export default function Capabilities() {
         >
           <motion.div custom={0} variants={fadeUp} className="mb-6">
             <div className="flex items-center gap-3 mb-2">
-              <Zap className="w-5 h-5 text-[#E8A020]" />
+              <Zap className="w-5 h-5 text-primary" />
               <h2 className="font-display font-semibold text-xl tracking-tight">Bartender Slang Guide</h2>
             </div>
             <p className="text-[13px] text-foreground/50 font-light leading-relaxed max-w-2xl">
@@ -678,7 +678,7 @@ export default function Capabilities() {
                 variants={fadeUp}
                 className="flex items-center gap-3 px-4 py-3 rounded-lg border border-foreground/[0.06] bg-foreground/[0.02]"
               >
-                <code className="text-[12px] font-mono text-[#E8A020] shrink-0 min-w-[140px]">
+                <code className="text-[12px] font-mono text-primary shrink-0 min-w-[140px]">
                   "{item.phrase}"
                 </code>
                 <ChevronRight className="w-3 h-3 text-foreground/20 shrink-0" />
@@ -721,7 +721,7 @@ export default function Capabilities() {
             Ready to go hands-free?
           </h2>
           <p className="text-[13px] text-foreground/50 font-light mb-6 max-w-md mx-auto">
-            Connect your Square account and start running your bar with your voice. Free 14-day trial.
+            Connect your POS and start running your venue with your voice. Free 14-day trial.
           </p>
           <Link href="/signup">
             <button className="inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-primary text-primary-foreground font-medium text-[14px] hover:opacity-90 transition-opacity">

@@ -306,18 +306,24 @@ export default function App() {
           <Menu size={18} />
         </button>
         <div className="brand-row">
-          <svg width="24" height="24" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <circle cx="18" cy="18" r="17" fill="#E8A020"/>
-            <rect x="5.5" y="13" width="3" height="10" rx="1.5" fill="#140b05"/>
-            <rect x="11" y="10" width="3" height="16" rx="1.5" fill="#140b05"/>
-            <rect x="16.5" y="7" width="3" height="22" rx="1.5" fill="#140b05"/>
-            <rect x="22" y="10" width="3" height="16" rx="1.5" fill="#140b05"/>
-            <rect x="27.5" y="13" width="3" height="10" rx="1.5" fill="#140b05"/>
+          <svg width="24" height="24" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <defs>
+              <linearGradient id="vl-brand-top" x1="0" y1="0" x2="36" y2="36" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stopColor="#7C6EF5" />
+                <stop offset="100%" stopColor="#5E56E6" />
+              </linearGradient>
+            </defs>
+            <rect x="0.5" y="0.5" width="35" height="35" rx="9.5" fill="url(#vl-brand-top)"/>
+            <circle cx="18" cy="18" r="2.2" fill="#FFFFFF"/>
+            <path d="M11.5 14.5a6.5 6.5 0 0 1 0 7" stroke="#FFFFFF" strokeWidth="1.8" strokeLinecap="round" fill="none" opacity="0.85"/>
+            <path d="M24.5 14.5a6.5 6.5 0 0 0 0 7" stroke="#FFFFFF" strokeWidth="1.8" strokeLinecap="round" fill="none" opacity="0.85"/>
+            <path d="M8 11a11 11 0 0 1 0 14" stroke="#FFFFFF" strokeWidth="1.6" strokeLinecap="round" fill="none" opacity="0.5"/>
+            <path d="M28 11a11 11 0 0 0 0 14" stroke="#FFFFFF" strokeWidth="1.6" strokeLinecap="round" fill="none" opacity="0.5"/>
           </svg>
           <span className="brand-text">
               <>
-                <span style={{ color: "var(--msg-agent)" }}>Bev</span>
-                <span style={{ color: "#E8A020", fontStyle: "italic" }}>Pro</span>
+                <span style={{ color: "var(--msg-agent)" }}>Voyce</span>
+                <span style={{ color: "#7C6EF5", fontStyle: "italic" }}>Labs</span>
               </>
           </span>
         </div>
@@ -332,13 +338,13 @@ export default function App() {
       <div className="content">
         {/* Subtle watermark */}
         <div className="watermark">
-          <svg width="120" height="120" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <circle cx="18" cy="18" r="17" fill="#E8A020" opacity="0.07"/>
-            <rect x="5.5" y="13" width="3" height="10" rx="1.5" fill="#E8A020" opacity="0.09"/>
-            <rect x="11" y="10" width="3" height="16" rx="1.5" fill="#E8A020" opacity="0.09"/>
-            <rect x="16.5" y="7" width="3" height="22" rx="1.5" fill="#E8A020" opacity="0.09"/>
-            <rect x="22" y="10" width="3" height="16" rx="1.5" fill="#E8A020" opacity="0.09"/>
-            <rect x="27.5" y="13" width="3" height="10" rx="1.5" fill="#E8A020" opacity="0.09"/>
+          <svg width="120" height="120" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <circle cx="18" cy="18" r="17" fill="#7C6EF5" opacity="0.07"/>
+            <circle cx="18" cy="18" r="2.2" fill="#7C6EF5" opacity="0.12"/>
+            <path d="M11.5 14.5a6.5 6.5 0 0 1 0 7" stroke="#7C6EF5" strokeWidth="1.8" strokeLinecap="round" fill="none" opacity="0.12"/>
+            <path d="M24.5 14.5a6.5 6.5 0 0 0 0 7" stroke="#7C6EF5" strokeWidth="1.8" strokeLinecap="round" fill="none" opacity="0.12"/>
+            <path d="M8 11a11 11 0 0 1 0 14" stroke="#7C6EF5" strokeWidth="1.6" strokeLinecap="round" fill="none" opacity="0.08"/>
+            <path d="M28 11a11 11 0 0 0 0 14" stroke="#7C6EF5" strokeWidth="1.6" strokeLinecap="round" fill="none" opacity="0.08"/>
           </svg>
         </div>
         <div className="convo-area">

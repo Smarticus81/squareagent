@@ -181,7 +181,7 @@ export default function Landing() {
             initial="hidden" animate="visible" custom={0} variants={fadeUp}
             className="text-5xl md:text-7xl lg:text-8xl font-display font-semibold tracking-tight text-foreground leading-[1.02]"
           >
-            Your Bar,
+            Your Venue,
             <br />
             <span className="bg-clip-text text-transparent bg-gradient-to-r from-foreground via-primary to-primary/60">
               In Sync
@@ -192,8 +192,8 @@ export default function Landing() {
             initial="hidden" animate="visible" custom={1} variants={fadeUp}
             className="mt-8 text-lg md:text-xl text-foreground/60 max-w-lg mx-auto font-light leading-relaxed"
           >
-            A voice agent that works at the speed of your bar.
-            Speak the order — it lands in Square&nbsp;instantly.
+            A voice agent that works at the speed of your venue.
+            Speak the order — it lands in your&nbsp;POS instantly.
           </motion.p>
 
           <motion.div
@@ -298,7 +298,7 @@ export default function Landing() {
               {
                 n: "03",
                 title: "Serve faster",
-                desc: "Order created in Square, inventory updated, payment logged. You're already pouring the next drink.",
+                desc: "Order created in your POS, inventory updated, payment logged. You're already pouring the next drink.",
                 visual: (
                   <motion.div
                     initial={{ scale: 0.8, opacity: 0 }}
@@ -375,20 +375,21 @@ export default function Landing() {
             </div>
           </motion.div>
 
-          {/* Feature 2: Square Integration */}
+          {/* Feature 2: Multi-POS Integration */}
           <motion.div
             initial="hidden" whileInView="visible" viewport={{ once: true }} custom={1} variants={fadeUp}
             className="grid md:grid-cols-2 gap-0 border border-border rounded-xl overflow-hidden mb-4"
           >
             <div className="bg-secondary p-10 flex items-center justify-center min-h-[280px] order-2 md:order-1">
-              <div className="flex flex-col items-center gap-5">
-                <svg className="h-12 w-12 text-foreground/30" viewBox="0 0 64 64" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M10 0C4.477 0 0 4.477 0 10v44c0 5.523 4.477 10 10 10h44c5.523 0 10-4.477 10-10V10c0-5.523-4.477-10-10-10H10zm30.5 16h-17C20.462 16 18 18.462 18 21.5v17c0 3.038 2.462 5.5 5.5 5.5h17c3.038 0 5.5-2.462 5.5-5.5v-17c0-3.038-2.462-5.5-5.5-5.5zM38 34a4 4 0 01-4 4H30a4 4 0 01-4-4v-4a4 4 0 014-4h4a4 4 0 014 4v4z" />
-                </svg>
-                <div className="flex items-center gap-2 text-[11px] text-foreground/40 tracking-wider uppercase">
-                  <div className="w-1.5 h-1.5 rounded-full bg-green-500/60" />
-                  <span>Connected</span>
-                </div>
+              <div className="grid grid-cols-3 gap-3 w-full max-w-[320px]">
+                {["Square", "Toast", "Clover", "Lightspeed", "Shopify", "GoDaddy"].map((name) => (
+                  <div
+                    key={name}
+                    className="aspect-square border border-border rounded-lg bg-background/50 flex items-center justify-center text-[11px] font-medium text-foreground/60 tracking-tight text-center px-1"
+                  >
+                    {name}
+                  </div>
+                ))}
               </div>
             </div>
             <div className="p-10 md:p-14 flex flex-col justify-center order-1 md:order-2">
@@ -399,10 +400,10 @@ export default function Landing() {
                 <span className="text-[11px] tracking-[0.2em] uppercase text-foreground/50 font-medium">Integration</span>
               </div>
               <h3 className="text-2xl md:text-3xl font-display font-semibold tracking-tight text-foreground leading-tight">
-                Seamless Square sync
+                Works with your POS
               </h3>
               <p className="text-[15px] text-foreground/60 font-light mt-4 leading-relaxed max-w-sm">
-                Real orders, real payments, real inventory counts. Everything flows into your Square dashboard — no middleware, no export.
+                Live today on Square. Toast, Clover, Lightspeed, Shopify POS, GoDaddy Smart Terminal, and Revel are on the way — one voice agent, every register.
               </p>
             </div>
           </motion.div>
@@ -423,7 +424,7 @@ export default function Landing() {
                 All-in-one assistant
               </h3>
               <p className="text-[15px] text-foreground/60 font-light mt-4 leading-relaxed max-w-sm">
-                One voice assistant handles everything — take orders, check stock, adjust inventory, and process payments. All synced with Square.
+                One voice assistant handles everything — take orders, check stock, adjust inventory, and process payments. All synced with your POS.
               </p>
             </div>
             <div className="bg-secondary p-10 flex items-center justify-center min-h-[280px]">
@@ -552,7 +553,7 @@ export default function Landing() {
               </div>
               <p className="text-[13px] text-foreground/50 font-light mb-8">per venue</p>
               <ul className="text-left space-y-3 mb-8 flex-1">
-                {["Unlimited voice orders", "Real-time Square sync", "Wake-word activation", "Any device with a mic"].map((f, i) => (
+                {["Unlimited voice orders", "Real-time POS sync", "Wake-word activation", "Any device with a mic"].map((f, i) => (
                   <li key={i} className="text-[13px] text-foreground/60 font-light flex items-center gap-3">
                     <span className="w-1.5 h-1.5 rounded-full bg-primary/40 shrink-0" />{f}
                   </li>
@@ -621,7 +622,7 @@ export default function Landing() {
             initial="hidden" whileInView="visible" viewport={{ once: true }} custom={1} variants={fadeUp}
             className="text-foreground/60 font-light mb-10 max-w-md mx-auto text-lg"
           >
-            Set up in under two minutes. Connect Square, speak your first order, and&nbsp;go.
+            Set up in under two minutes. Connect your POS, speak your first order, and&nbsp;go.
           </motion.p>
           <motion.div
             initial="hidden" whileInView="visible" viewport={{ once: true }} custom={2} variants={fadeUp}
