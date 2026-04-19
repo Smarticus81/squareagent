@@ -23,6 +23,10 @@ export const venuesTable = pgTable("venues", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
+  // Identifies which POS powers this venue. Today only "square" is live;
+  // "toast" | "clover" | "lightspeed" | "shopify" | "godaddy" | "revel" are
+  // reserved for upcoming integrations.
+  posProvider: text("pos_provider").notNull().default("square"),
   squareAccessToken: text("square_access_token"),
   squareMerchantId: text("square_merchant_id"),
   squareLocationId: text("square_location_id"),

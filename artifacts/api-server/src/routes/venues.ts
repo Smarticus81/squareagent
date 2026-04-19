@@ -41,6 +41,7 @@ router.get("/", requireAuth as any, async (req: Request, res: Response): Promise
       venues: venues.map((v: any) => ({
         id: v.id,
         name: v.name,
+        posProvider: v.posProvider,
         squareMerchantId: v.squareMerchantId,
         squareLocationId: v.squareLocationId,
         squareLocationName: v.squareLocationName,
@@ -101,6 +102,7 @@ router.post("/", requireAuth as any, async (req: Request, res: Response): Promis
         venue: {
           id: updated.id,
           name: updated.name,
+          posProvider: updated.posProvider,
           squareMerchantId: updated.squareMerchantId,
           squareLocationId: updated.squareLocationId,
           squareLocationName: updated.squareLocationName,
@@ -129,6 +131,7 @@ router.post("/", requireAuth as any, async (req: Request, res: Response): Promis
         venue: {
           id: updated.id,
           name: updated.name,
+          posProvider: updated.posProvider,
           squareMerchantId: updated.squareMerchantId,
           squareLocationId: updated.squareLocationId,
           squareLocationName: updated.squareLocationName,
@@ -146,6 +149,7 @@ router.post("/", requireAuth as any, async (req: Request, res: Response): Promis
       .values({
         userId: user.id,
         name: venueName,
+        posProvider: "square",
         squareAccessToken: accessToken,
         squareMerchantId: merchantId || null,
         squareLocationId: locationId,
@@ -158,6 +162,7 @@ router.post("/", requireAuth as any, async (req: Request, res: Response): Promis
       venue: {
         id: venue.id,
         name: venue.name,
+        posProvider: venue.posProvider,
         squareMerchantId: venue.squareMerchantId,
         squareLocationId: venue.squareLocationId,
         squareLocationName: venue.squareLocationName,
