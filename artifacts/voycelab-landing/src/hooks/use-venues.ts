@@ -10,19 +10,9 @@ const getHeaders = () => {
   };
 };
 
-export type PosProvider =
-  | "square"
-  | "toast"
-  | "clover"
-  | "lightspeed"
-  | "shopify"
-  | "godaddy"
-  | "revel";
-
 export interface Venue {
   id: number;
   name: string;
-  posProvider: PosProvider;
   squareMerchantId: string | null;
   squareLocationId: string | null;
   squareLocationName: string | null;
