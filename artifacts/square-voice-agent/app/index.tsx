@@ -5,7 +5,7 @@ import {
   View, Text, StyleSheet, Pressable, Platform,
   FlatList, Modal, ActivityIndicator, Linking, useColorScheme,
 } from "react-native";
-import Svg, { Circle, Rect } from "react-native-svg";
+import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Path, Rect, Stop } from "react-native-svg";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
@@ -379,16 +379,22 @@ export default function MainScreen() {
 
         <View style={s.brandRow}>
           <Svg width={24} height={24} viewBox="0 0 36 36">
-            <Circle cx={18} cy={18} r={17} fill="#E8A020" />
-            <Rect x={5.5} y={13} width={3} height={10} rx={1.5} fill="#140b05" />
-            <Rect x={11} y={10} width={3} height={16} rx={1.5} fill="#140b05" />
-            <Rect x={16.5} y={7} width={3} height={22} rx={1.5} fill="#140b05" />
-            <Rect x={22} y={10} width={3} height={16} rx={1.5} fill="#140b05" />
-            <Rect x={27.5} y={13} width={3} height={10} rx={1.5} fill="#140b05" />
+            <Defs>
+              <SvgLinearGradient id="vl-brand" x1="0" y1="0" x2="36" y2="36" gradientUnits="userSpaceOnUse">
+                <Stop offset="0" stopColor="#7C6EF5" />
+                <Stop offset="1" stopColor="#5E56E6" />
+              </SvgLinearGradient>
+            </Defs>
+            <Rect x={0.5} y={0.5} width={35} height={35} rx={9.5} fill="url(#vl-brand)" />
+            <Circle cx={18} cy={18} r={2.2} fill="#FFFFFF" />
+            <Path d="M11.5 14.5a6.5 6.5 0 0 1 0 7" stroke="#FFFFFF" strokeWidth={1.8} strokeLinecap="round" fill="none" opacity={0.85} />
+            <Path d="M24.5 14.5a6.5 6.5 0 0 0 0 7" stroke="#FFFFFF" strokeWidth={1.8} strokeLinecap="round" fill="none" opacity={0.85} />
+            <Path d="M8 11a11 11 0 0 1 0 14" stroke="#FFFFFF" strokeWidth={1.6} strokeLinecap="round" fill="none" opacity={0.5} />
+            <Path d="M28 11a11 11 0 0 0 0 14" stroke="#FFFFFF" strokeWidth={1.6} strokeLinecap="round" fill="none" opacity={0.5} />
           </Svg>
           <View style={s.brandWords}>
-            <Text style={[s.brandBev, { color: t.logoText }]}>Bev</Text>
-            <Text style={[s.brandPro, { color: "#E8A020" }]}>Pro</Text>
+            <Text style={[s.brandVoyce, { color: t.logoText }]}>Voyce</Text>
+            <Text style={[s.brandLabs, { color: "#7C6EF5" }]}>Labs</Text>
           </View>
         </View>
 
@@ -406,12 +412,12 @@ export default function MainScreen() {
         {/* Watermark */}
         <View style={s.watermark} pointerEvents="none">
           <Svg width={120} height={120} viewBox="0 0 36 36">
-            <Circle cx={18} cy={18} r={17} fill="#E8A020" opacity={0.07} />
-            <Rect x={5.5} y={13} width={3} height={10} rx={1.5} fill="#E8A020" opacity={0.09} />
-            <Rect x={11} y={10} width={3} height={16} rx={1.5} fill="#E8A020" opacity={0.09} />
-            <Rect x={16.5} y={7} width={3} height={22} rx={1.5} fill="#E8A020" opacity={0.09} />
-            <Rect x={22} y={10} width={3} height={16} rx={1.5} fill="#E8A020" opacity={0.09} />
-            <Rect x={27.5} y={13} width={3} height={10} rx={1.5} fill="#E8A020" opacity={0.09} />
+            <Circle cx={18} cy={18} r={17} fill="#7C6EF5" opacity={0.07} />
+            <Circle cx={18} cy={18} r={2.2} fill="#7C6EF5" opacity={0.12} />
+            <Path d="M11.5 14.5a6.5 6.5 0 0 1 0 7" stroke="#7C6EF5" strokeWidth={1.8} strokeLinecap="round" fill="none" opacity={0.12} />
+            <Path d="M24.5 14.5a6.5 6.5 0 0 0 0 7" stroke="#7C6EF5" strokeWidth={1.8} strokeLinecap="round" fill="none" opacity={0.12} />
+            <Path d="M8 11a11 11 0 0 1 0 14" stroke="#7C6EF5" strokeWidth={1.6} strokeLinecap="round" fill="none" opacity={0.08} />
+            <Path d="M28 11a11 11 0 0 0 0 14" stroke="#7C6EF5" strokeWidth={1.6} strokeLinecap="round" fill="none" opacity={0.08} />
           </Svg>
         </View>
 
@@ -479,7 +485,7 @@ export default function MainScreen() {
               <Feather
                 name={wakeMode === "idle" ? "mic" : "mic-off"}
                 size={16}
-                color={wakeMode === "idle" ? t.hamburger : "#E8A020"}
+                color={wakeMode === "idle" ? t.hamburger : "#7C6EF5"}
               />
             </Pressable>
           ) : <View style={{ width: 24 }} />}
@@ -715,8 +721,8 @@ const s = StyleSheet.create({
   hamburger:    { padding: 4 },
   brandRow:     { flexDirection: "row", alignItems: "center", gap: 8 },
   brandWords:   { flexDirection: "row", alignItems: "baseline" },
-  brandBev:     { fontFamily: "Inter_300Light", fontSize: 16, letterSpacing: -0.3, fontWeight: "700" },
-  brandPro:     { fontFamily: "Inter_500Medium", fontSize: 16, letterSpacing: -0.3, fontWeight: "700", fontStyle: "italic" },
+  brandVoyce:     { fontFamily: "Inter_300Light", fontSize: 16, letterSpacing: -0.3, fontWeight: "700" },
+  brandLabs:     { fontFamily: "Inter_500Medium", fontSize: 16, letterSpacing: -0.3, fontWeight: "700", fontStyle: "italic" },
   orderBadge:   { minWidth: 24, height: 24, borderRadius: 8, borderWidth: 0.5, alignItems: "center", justifyContent: "center", paddingHorizontal: 6 },
   orderBadgeNum:{ fontFamily: "Inter_500Medium", fontSize: 12 },
 

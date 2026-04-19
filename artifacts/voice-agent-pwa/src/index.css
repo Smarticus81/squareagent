@@ -2,6 +2,9 @@
 
 :root {
   --font: 'Inter', -apple-system, sans-serif;
+  --brand: #7C6EF5;
+  --brand-strong: #5E56E6;
+  --brand-ink: #FFFFFF;
   color-scheme: light;
 }
 
@@ -449,7 +452,7 @@ html[data-theme="dark"] .auth-input:focus { border-color: var(--brand); }
 .auth-btn {
   display: flex; align-items: center; justify-content: center; gap: 8px;
   width: 100%; height: 50px; border-radius: 14px;
-  background: var(--brand); color: #140b05;
+  background: var(--brand); color: var(--brand-ink);
   font-family: var(--font); font-weight: 600; font-size: 15px;
   border: none; cursor: pointer; transition: opacity 0.2s;
 }

@@ -205,7 +205,7 @@ export default function Dashboard() {
               </button>
               <button
                 onClick={() => logout.mutate()}
-                className="text-[13px] font-medium flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[#E8A020]/10 text-[#E8A020] hover:bg-[#E8A020]/20 transition-colors"
+                className="text-[13px] font-medium flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
               >
                 <LogOut className="w-3.5 h-3.5" />
                 Sign Out
@@ -261,62 +261,105 @@ export default function Dashboard() {
 
         {/* ── Cards ──────────────────────────────────────────────────── */}
         <div className="space-y-6">
-          {/* Square Integration */}
+          {/* POS Integrations */}
           <div className="border border-foreground/8 p-8">
-            <div className="flex items-start justify-between mb-6">
+            <div className="flex items-start justify-between mb-2">
               <div>
-                <p className="text-[12px] tracking-[0.15em] uppercase text-foreground/30 mb-2">Square POS</p>
+                <p className="text-[12px] tracking-[0.15em] uppercase text-foreground/30 mb-2">POS Integrations</p>
                 <p className="text-[14px] font-light text-foreground/50">
+                  Connect the point-of-sale that powers your venue.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6 grid sm:grid-cols-2 gap-3">
+              {/* Square — live */}
+              <div className={`border p-5 rounded-lg ${isSquareConnected ? "border-primary/40 bg-primary/5" : "border-foreground/8"}`}>
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-2">
+                    <svg className="h-5 w-5 text-foreground/70" viewBox="0 0 64 64" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                      <path d="M10 0C4.477 0 0 4.477 0 10v44c0 5.523 4.477 10 10 10h44c5.523 0 10-4.477 10-10V10c0-5.523-4.477-10-10-10H10zm30.5 16h-17C20.462 16 18 18.462 18 21.5v17c0 3.038 2.462 5.5 5.5 5.5h17c3.038 0 5.5-2.462 5.5-5.5v-17c0-3.038-2.462-5.5-5.5-5.5zM38 34a4 4 0 01-4 4H30a4 4 0 01-4-4v-4a4 4 0 014-4h4a4 4 0 014 4v4z" />
+                    </svg>
+                    <span className="text-[14px] font-medium">Square</span>
+                  </div>
+                  {isSquareConnected && (
+                    <span className="text-[10px] tracking-wider uppercase text-primary flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-primary" />
+                      Connected
+                    </span>
+                  )}
+                </div>
+                <p className="text-[12px] text-foreground/45 font-light mb-4 leading-relaxed">
                   {isSquareConnected ? (
-                    <>Connected &mdash; {primaryVenue!.squareLocationName}</>
+                    <>{primaryVenue!.squareLocationName}</>
                   ) : (
-                    "Not connected"
+                    "Full bi-directional sync: catalog, orders, inventory, payments."
                   )}
                 </p>
-              </div>
-              {isSquareConnected && (
-                <span className="w-2 h-2 bg-foreground/60 rounded-full mt-1"></span>
-              )}
-            </div>
-
-            <div className="space-y-2.5 mb-8">
-              <div className="flex items-center gap-2.5 text-[13px] text-foreground/50 font-light">
-                <span className={`w-1 h-1 rounded-full ${isSquareConnected ? "bg-foreground/50" : "bg-foreground/15"}`}></span>
-                Menu catalog sync
-              </div>
-              <div className="flex items-center gap-2.5 text-[13px] text-foreground/50 font-light">
-                <span className={`w-1 h-1 rounded-full ${isSquareConnected ? "bg-foreground/50" : "bg-foreground/15"}`}></span>
-                Order creation &amp; payments
-              </div>
-              {isSquareConnected && primaryVenue?.connectedAt && (
-                <p className="text-[11px] text-foreground/25 mt-2">
-                  Connected {new Date(primaryVenue.connectedAt).toLocaleDateString()}
-                </p>
-              )}
-            </div>
-
-            {isSquareConnected ? (
-              <button
-                className="text-[13px] text-foreground/35 hover:text-destructive transition-colors flex items-center gap-1.5"
-                onClick={() => handleDisconnect(primaryVenue!.id)}
-                disabled={deleteVenue.isPending}
-              >
-                {deleteVenue.isPending ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                {isSquareConnected ? (
+                  <button
+                    className="text-[12px] text-foreground/35 hover:text-destructive transition-colors flex items-center gap-1.5"
+                    onClick={() => handleDisconnect(primaryVenue!.id)}
+                    disabled={deleteVenue.isPending}
+                  >
+                    {deleteVenue.isPending ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <Trash2 className="w-3 h-3" />
+                    )}
+                    Disconnect
+                  </button>
                 ) : (
-                  <Trash2 className="w-3.5 h-3.5" />
+                  <Button
+                    className="h-9 px-5 text-[12px]"
+                    onClick={handleConnectSquare}
+                    disabled={connecting}
+                  >
+                    {connecting ? <Loader2 className="w-3 h-3 animate-spin mr-2" /> : null}
+                    Connect
+                  </Button>
                 )}
-                Disconnect
-              </button>
-            ) : (
-              <Button
-                className="h-10 px-7 text-[13px]"
-                onClick={handleConnectSquare}
-                disabled={connecting}
-              >
-                {connecting ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" /> : null}
-                Connect Square
-              </Button>
+              </div>
+
+              {/* Coming-soon providers */}
+              {[
+                { name: "Toast", desc: "Restaurant POS with kitchen display & tabs." },
+                { name: "Clover", desc: "Clover Station, Mini, and Flex (Fiserv)." },
+                { name: "Lightspeed", desc: "Lightspeed Retail & Restaurant (K-Series)." },
+                { name: "Shopify POS", desc: "In-store and online unified commerce." },
+                { name: "GoDaddy Smart Terminal", desc: "Poynt-based countertop & mobile." },
+                { name: "Revel Systems", desc: "Enterprise iPad POS for QSR & retail." },
+              ].map((p) => (
+                <div key={p.name} className="border border-foreground/8 p-5 rounded-lg opacity-80">
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-2">
+                      <div className="h-5 w-5 rounded-sm bg-foreground/8 flex items-center justify-center text-[10px] font-semibold text-foreground/50">
+                        {p.name.slice(0, 1)}
+                      </div>
+                      <span className="text-[14px] font-medium">{p.name}</span>
+                    </div>
+                    <span className="text-[10px] tracking-wider uppercase text-foreground/35">
+                      Soon
+                    </span>
+                  </div>
+                  <p className="text-[12px] text-foreground/45 font-light mb-4 leading-relaxed">
+                    {p.desc}
+                  </p>
+                  <Button
+                    variant="outline"
+                    className="h-9 px-5 text-[12px]"
+                    disabled
+                  >
+                    Join waitlist
+                  </Button>
+                </div>
+              ))}
+            </div>
+
+            {isSquareConnected && primaryVenue?.connectedAt && (
+              <p className="text-[11px] text-foreground/25 mt-4">
+                Square connected {new Date(primaryVenue.connectedAt).toLocaleDateString()}
+              </p>
             )}
           </div>
 
