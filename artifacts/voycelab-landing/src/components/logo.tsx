@@ -6,36 +6,62 @@ interface LogoProps {
 }
 
 /**
- * VoyceLabs wordmark.
- *
- * Icon: concentric sound-wave pulse in the brand gradient,
- * evoking voice and broadcast. Wordmark pairs "Voyce" in the
- * foreground color with an italic "Labs" in the brand primary.
+ * VoyceLab wordmark — liquid-amber sound-wave mark paired with a
+ * lightly condensed Fraunces wordmark. The mark is a single speaker
+ * glyph inside an amber "coin" with a faint top highlight, evoking
+ * a freshly polished brass fitting.
  */
 export function Logo({ className, iconOnly = false }: LogoProps) {
   return (
-    <div className={cn("flex items-center gap-2.5 select-none", className)}>
-      <div className="relative w-7 h-7 flex items-center justify-center">
-        <svg width="28" height="28" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <div className={cn("flex items-center gap-3 select-none", className)}>
+      <div className="relative w-8 h-8 flex items-center justify-center">
+        <svg
+          width="32"
+          height="32"
+          viewBox="0 0 40 40"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+          aria-hidden="true"
+          className="drop-shadow-[0_0_12px_rgba(232,185,35,0.25)]"
+        >
           <defs>
-            <linearGradient id="vl-grad" x1="0" y1="0" x2="36" y2="36" gradientUnits="userSpaceOnUse">
-              <stop offset="0%" stopColor="#7C6EF5" />
-              <stop offset="100%" stopColor="#5E56E6" />
+            <linearGradient id="vl-coin" x1="0" y1="0" x2="40" y2="40" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stopColor="#F3CE57" />
+              <stop offset="55%" stopColor="#E8B923" />
+              <stop offset="100%" stopColor="#A87A12" />
+            </linearGradient>
+            <linearGradient id="vl-sheen" x1="0" y1="0" x2="0" y2="40" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stopColor="rgba(255,255,255,0.55)" />
+              <stop offset="40%" stopColor="rgba(255,255,255,0)" />
             </linearGradient>
           </defs>
-          <rect x="0.5" y="0.5" width="35" height="35" rx="9.5" fill="url(#vl-grad)" />
-          {/* Inner speaker / sound-wave glyph */}
-          <circle cx="18" cy="18" r="2.2" fill="#FFFFFF" />
-          <path d="M11.5 14.5a6.5 6.5 0 0 1 0 7" stroke="#FFFFFF" strokeWidth="1.8" strokeLinecap="round" fill="none" opacity="0.85" />
-          <path d="M24.5 14.5a6.5 6.5 0 0 0 0 7" stroke="#FFFFFF" strokeWidth="1.8" strokeLinecap="round" fill="none" opacity="0.85" />
-          <path d="M8 11a11 11 0 0 1 0 14" stroke="#FFFFFF" strokeWidth="1.6" strokeLinecap="round" fill="none" opacity="0.5" />
-          <path d="M28 11a11 11 0 0 0 0 14" stroke="#FFFFFF" strokeWidth="1.6" strokeLinecap="round" fill="none" opacity="0.5" />
+          <circle cx="20" cy="20" r="18.5" fill="url(#vl-coin)" />
+          <circle cx="20" cy="20" r="18.5" fill="url(#vl-sheen)" />
+          {/* speaker / pulse glyph — single dot + two rings */}
+          <circle cx="20" cy="20" r="2.6" fill="#0C0F1A" />
+          <path
+            d="M13.2 15.5a8 8 0 0 1 0 9"
+            stroke="#0C0F1A"
+            strokeWidth="2"
+            strokeLinecap="round"
+            fill="none"
+            opacity="0.85"
+          />
+          <path
+            d="M26.8 15.5a8 8 0 0 0 0 9"
+            stroke="#0C0F1A"
+            strokeWidth="2"
+            strokeLinecap="round"
+            fill="none"
+            opacity="0.85"
+          />
+          <circle cx="20" cy="20" r="18.5" fill="none" stroke="rgba(12,15,26,0.25)" strokeWidth="0.8" />
         </svg>
       </div>
       {!iconOnly && (
-        <span className="font-display font-bold text-[17px] tracking-tight">
-          <span className="text-foreground">Voyce</span>
-          <span className="text-primary italic">Labs</span>
+        <span className="font-display text-[18px] tracking-[-0.01em] leading-none">
+          <span className="font-semibold text-[color:var(--color-cream)]">Voyce</span>
+          <span className="font-medium italic text-[color:var(--color-amber)]">Lab</span>
         </span>
       )}
     </div>
