@@ -193,7 +193,20 @@ router.get("/me", requireAuth as any, async (req: Request, res: Response): Promi
 
   try {
     const [subscription] = await db.select().from(subscriptionsTable).where(eq(subscriptionsTable.userId, user.id));
-    res.json({ user: { id: user.id, email: user.email, name: user.name }, subscription: subscription ?? null });
+    // Best-effort organization lookup — the wizard needs this to create agent profiles.
+    let organizationId: string | null = null;
+    try {
+      const { ensureUserOrganization } = await import("./v1/_helpers");
+      const org = await ensureUserOrganization(user);
+      organizationId = org.id;
+    } catch {
+      // Tables may not yet be migrated; the wizard will surface an actionable error.
+    }
+    res.json({
+      user: { id: user.id, email: user.email, name: user.name },
+      subscription: subscription ?? null,
+      organizationId,
+    });
   } catch (e: any) {
     console.error("[Auth] Current user lookup error:", e.message);
     res.status(503).json({ error: "Auth service unavailable" });
