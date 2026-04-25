@@ -9,11 +9,11 @@ import Landing from "@/pages/landing";
 import Login from "@/pages/login";
 import Signup from "@/pages/signup";
 import Command from "@/pages/command";
-import Agents from "@/pages/agents";
-import AgentSetup from "@/pages/agent-setup";
+import Assistants from "@/pages/assistants";
+import CreateAssistant from "@/pages/create-assistant";
 import ConnectedServices from "@/pages/connected-services";
-import Sessions from "@/pages/sessions";
-import Workflows from "@/pages/workflows";
+import Conversations from "@/pages/conversations";
+import Routines from "@/pages/routines";
 import Settings from "@/pages/settings";
 import NotFound from "@/pages/not-found";
 
@@ -42,15 +42,19 @@ function Router() {
         <Route path="/login" component={Login} />
         <Route path="/signup" component={Signup} />
         <Route path="/command" component={Command} />
-        <Route path="/agents" component={Agents} />
-        <Route path="/agents/new" component={AgentSetup} />
+        <Route path="/assistants" component={Assistants} />
+        <Route path="/assistants/new" component={CreateAssistant} />
         <Route path="/services" component={ConnectedServices} />
-        <Route path="/sessions" component={Sessions} />
-        <Route path="/workflows" component={Workflows} />
+        <Route path="/conversations" component={Conversations} />
+        <Route path="/routines" component={Routines} />
         <Route path="/settings" component={Settings} />
         {/* Legacy redirects so existing links still resolve */}
         <Route path="/dashboard" component={Command} />
-        <Route path="/agent-setup" component={AgentSetup} />
+        <Route path="/agents" component={Assistants} />
+        <Route path="/agents/new" component={CreateAssistant} />
+        <Route path="/agent-setup" component={CreateAssistant} />
+        <Route path="/sessions" component={Conversations} />
+        <Route path="/workflows" component={Routines} />
         <Route path="/account" component={Settings} />
         <Route component={NotFound} />
       </Switch>

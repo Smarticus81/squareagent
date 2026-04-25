@@ -6,20 +6,16 @@ import { useState } from "react";
 
 const APP_NAV = [
   { href: "/command", label: "Command" },
-  { href: "/agents", label: "Agents" },
-  { href: "/services", label: "Services" },
-  { href: "/sessions", label: "Sessions" },
-  { href: "/workflows", label: "Workflows" },
+  { href: "/assistants", label: "Assistants" },
+  { href: "/services", label: "Connected services" },
+  { href: "/conversations", label: "Conversations" },
+  { href: "/routines", label: "Routines" },
   { href: "/settings", label: "Settings" },
 ];
 
-const LANDING_NAV = [
-  { href: "#how", label: "How it works" },
-  { href: "#noise", label: "Noisy rooms" },
-  { href: "#services", label: "Connected services" },
-  { href: "#configure", label: "Configure" },
-  { href: "#pricing", label: "Pricing" },
-];
+// Landing has no brochure nav — the page itself is the journey.
+// We keep one tiny anchor so people can skim to the start CTA at the bottom.
+const LANDING_NAV: { href: string; label: string }[] = [];
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
@@ -96,7 +92,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       </Link>
                       <Link href="/signup" className="inline-block">
                         <button className="vl-btn-primary text-[13px] py-2 px-5">
-                          Configure your agent
+                          Create your assistant
                         </button>
                       </Link>
                     </>
@@ -147,18 +143,16 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <FooterCol
                 title="Product"
                 links={[
-                  { href: "/signup", label: "Configure your agent" },
+                  { href: "/assistants/new", label: "Create your assistant" },
                   { href: "/command", label: "Console" },
-                  { href: "#services", label: "Connected services" },
-                  { href: "#noise", label: "Noisy rooms" },
+                  { href: "/services", label: "Connected services" },
                 ]}
               />
               <FooterCol
                 title="Trust"
                 links={[
-                  { href: "#boundaries", label: "Control boundaries" },
-                  { href: "#pipelines", label: "Voice pipelines" },
-                  { href: "#pricing", label: "Pricing" },
+                  { href: "/settings", label: "Approval rules" },
+                  { href: "/conversations", label: "Conversations" },
                 ]}
               />
               <FooterCol

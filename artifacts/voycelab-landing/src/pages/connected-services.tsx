@@ -8,7 +8,7 @@ import {
   useSquareLocations,
   type SquareLocation,
 } from "@/hooks/use-venues";
-import { connectedProviders } from "@/lib/tokens";
+import { connectedServices } from "@/lib/tokens";
 import { Loader2, Trash2, ExternalLink, MapPin, X } from "lucide-react";
 
 export default function ConnectedServices() {
@@ -200,7 +200,7 @@ export default function ConnectedServices() {
         <section>
           <p className="vl-eyebrow mb-3">Request access</p>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {connectedProviders.filter((p) => p.status !== "live").map((p) => (
+            {connectedServices.filter((p: typeof connectedServices[number]) => p.status !== "live").map((p: typeof connectedServices[number]) => (
               <div key={p.id} className="vl-panel p-5" style={{ opacity: 0.78 }}>
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-[14px] font-semibold" style={{ color: "var(--color-vl-ivory)" }}>{p.name}</span>

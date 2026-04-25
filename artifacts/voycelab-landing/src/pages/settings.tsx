@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
-import { Loader2, Settings as Cog } from "lucide-react";
+import { Loader2, Settings as Cog, ChevronDown } from "lucide-react";
+import { roomSettings } from "@/lib/tokens";
 
 export default function Settings() {
   const [, setLocation] = useLocation();
@@ -17,8 +18,9 @@ export default function Settings() {
   const [pwLoading, setPwLoading] = useState(false);
   const [pwMsg, setPwMsg] = useState("");
 
-  const [defaultNoiseMode, setDefaultNoiseMode] = useState("bar");
-  const [defaultConfirm, setDefaultConfirm] = useState("strict");
+  const [defaultRoom, setDefaultRoom] = useState("bar");
+  const [defaultApprovalLevel, setDefaultApprovalLevel] = useState("standard");
+  const [advancedOpen, setAdvancedOpen] = useState(false);
 
   useEffect(() => {
     if (!isLoading && !auth?.user) setLocation("/login");
@@ -59,11 +61,11 @@ export default function Settings() {
         body: JSON.stringify({ name, email }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to update profile");
+      if (!res.ok) throw new Error(data.error || "Could not save your profile.");
       setProfileMsg("Profile updated.");
       refetch();
     } catch (err) {
-      setProfileMsg(err instanceof Error ? err.message : "Update failed");
+      setProfileMsg(err instanceof Error ? err.message : "Could not save your profile.");
     } finally {
       setProfileLoading(false);
     }
@@ -80,12 +82,12 @@ export default function Settings() {
         body: JSON.stringify({ currentPassword, newPassword }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to change password");
+      if (!res.ok) throw new Error(data.error || "Could not change your password.");
       setPwMsg("Password updated.");
       setCurrentPassword("");
       setNewPassword("");
     } catch (err) {
-      setPwMsg(err instanceof Error ? err.message : "Change failed");
+      setPwMsg(err instanceof Error ? err.message : "Could not change your password.");
     } finally {
       setPwLoading(false);
     }
@@ -97,7 +99,7 @@ export default function Settings() {
         method: "POST",
         headers: getHeaders(),
       });
-      if (!res.ok) throw new Error("Failed");
+      if (!res.ok) throw new Error("Could not open billing.");
       const { url } = await res.json();
       window.location.href = url;
     } catch (e) {
@@ -129,7 +131,10 @@ export default function Settings() {
                   Save profile
                 </button>
                 {profileMsg && (
-                  <span className="text-[12px]" style={{ color: profileMsg.includes("updated") ? "var(--color-vl-success)" : "var(--color-vl-danger)" }}>
+                  <span
+                    className="text-[12px]"
+                    style={{ color: profileMsg.includes("updated") ? "var(--color-vl-success)" : "var(--color-vl-danger)" }}
+                  >
                     {profileMsg}
                   </span>
                 )}
@@ -163,7 +168,10 @@ export default function Settings() {
                   Change password
                 </button>
                 {pwMsg && (
-                  <span className="text-[12px]" style={{ color: pwMsg.includes("updated") ? "var(--color-vl-success)" : "var(--color-vl-danger)" }}>
+                  <span
+                    className="text-[12px]"
+                    style={{ color: pwMsg.includes("updated") ? "var(--color-vl-success)" : "var(--color-vl-danger)" }}
+                  >
                     {pwMsg}
                   </span>
                 )}
@@ -171,64 +179,110 @@ export default function Settings() {
             </form>
           </SettingCard>
 
-          {/* Defaults */}
-          <SettingCard title="Defaults" subtitle="Apply to new agents. You can override per agent.">
+          {/* Assistant defaults */}
+          <SettingCard title="Assistant defaults" subtitle="Apply to new assistants. You can override per assistant.">
             <div className="grid sm:grid-cols-2 gap-4">
-              <Field label="Default noise mode">
-                <select value={defaultNoiseMode} onChange={(e) => setDefaultNoiseMode(e.target.value)} className="vl-input">
-                  <option value="quiet_room">Quiet room</option>
-                  <option value="restaurant">Restaurant</option>
-                  <option value="bar">Bar</option>
-                  <option value="nightclub">Nightclub</option>
-                  <option value="event_venue">Event venue</option>
-                  <option value="manual_push_to_talk">Push-to-talk only</option>
+              <Field label="Default room setting">
+                <select value={defaultRoom} onChange={(e) => setDefaultRoom(e.target.value)} className="vl-input">
+                  {roomSettings.map((m) => (
+                    <option key={m.value} value={m.value}>{m.label}</option>
+                  ))}
                 </select>
               </Field>
-              <Field label="Default confirmation policy">
-                <select value={defaultConfirm} onChange={(e) => setDefaultConfirm(e.target.value)} className="vl-input">
-                  <option value="loose">Loose · only critical actions</option>
-                  <option value="standard">Standard · risky actions</option>
-                  <option value="strict">Strict · all writes confirmed</option>
+              <Field label="Default approval rule">
+                <select value={defaultApprovalLevel} onChange={(e) => setDefaultApprovalLevel(e.target.value)} className="vl-input">
+                  <option value="loose">Loose · only sensitive actions ask</option>
+                  <option value="standard">Standard · risky actions ask</option>
+                  <option value="strict">Strict · everything that changes asks</option>
                 </select>
               </Field>
             </div>
           </SettingCard>
 
+          {/* Connected services pointer */}
+          <SettingCard title="Connected services" subtitle="Manage Square and other connections.">
+            <button onClick={() => setLocation("/services")} className="vl-btn-ghost text-[13px]">
+              Open connected services
+            </button>
+          </SettingCard>
+
+          {/* Team access */}
+          <SettingCard title="Team access" subtitle="Invite people who can open and manage your assistants.">
+            <p className="text-[13px]" style={{ color: "rgba(245,239,227,0.6)" }}>
+              Team access is on the way. Today you and admins on your account can manage assistants.
+            </p>
+          </SettingCard>
+
           {/* Billing */}
-          <SettingCard title="Billing" subtitle="Plan, trial status, and invoices.">
+          <SettingCard title="Billing" subtitle="Plan and trial status.">
             <div className="flex items-center justify-between flex-wrap gap-3">
-              <div>
-                <p className="text-[13px]" style={{ color: "rgba(245,239,227,0.7)" }}>
-                  {auth.subscription?.status === "trialing" ? (
-                    <>
-                      Free trial · {auth.subscription?.plan ?? "trial"} · Ends{" "}
-                      {auth.subscription?.trialEndsAt
-                        ? new Date(auth.subscription.trialEndsAt).toLocaleDateString()
-                        : "—"}
-                    </>
-                  ) : auth.subscription?.status === "active" ? (
-                    <>Active · {auth.subscription?.plan ?? "—"}</>
-                  ) : (
-                    <>{auth.subscription?.status ?? "No plan"}</>
-                  )}
-                </p>
-              </div>
+              <p className="text-[13px]" style={{ color: "rgba(245,239,227,0.7)" }}>
+                {auth.subscription?.status === "trialing" ? (
+                  <>
+                    Free trial · {auth.subscription?.plan ?? "trial"} · Ends{" "}
+                    {auth.subscription?.trialEndsAt
+                      ? new Date(auth.subscription.trialEndsAt).toLocaleDateString()
+                      : "—"}
+                  </>
+                ) : auth.subscription?.status === "active" ? (
+                  <>Active · {auth.subscription?.plan ?? "—"}</>
+                ) : (
+                  <>{auth.subscription?.status ?? "No plan"}</>
+                )}
+              </p>
               <button onClick={handleManageBilling} className="vl-btn-ghost text-[13px]">Manage billing</button>
             </div>
           </SettingCard>
 
-          {/* Pipelines & credentials */}
-          <SettingCard title="Voice pipeline credentials" subtitle="Server-side keys for realtime providers. Configured via environment variables.">
-            <p className="text-[13px]" style={{ color: "rgba(245,239,227,0.6)" }}>
-              See your deployment's environment for OPENAI_API_KEY, GEMINI_API_KEY, ELEVENLABS_API_KEY, DEEPGRAM_API_KEY, and so on. Availability is reflected in the agent setup pipeline picker.
-            </p>
-          </SettingCard>
-
-          <SettingCard title="Data retention" subtitle="Sessions and transcripts.">
-            <p className="text-[13px]" style={{ color: "rgba(245,239,227,0.6)" }}>
-              Sessions are kept for 90 days by default. Contact support to extend.
-            </p>
-          </SettingCard>
+          {/* Advanced — disclosed */}
+          <section className="vl-panel">
+            <button
+              type="button"
+              onClick={() => setAdvancedOpen((v) => !v)}
+              className="w-full p-7 flex items-center justify-between text-left"
+            >
+              <div>
+                <h2 className="text-[18px] font-semibold tracking-tight" style={{ color: "var(--color-vl-ivory)" }}>
+                  Advanced
+                </h2>
+                <p className="text-[13px] mt-1" style={{ color: "rgba(245,239,227,0.6)" }}>
+                  Developer connection keys, voice provider details, diagnostics. Hidden from the default journey.
+                </p>
+              </div>
+              <ChevronDown
+                className="w-4 h-4 transition-transform"
+                style={{ transform: advancedOpen ? "rotate(180deg)" : "none", color: "rgba(245,239,227,0.55)" }}
+              />
+            </button>
+            {advancedOpen && (
+              <div className="px-7 pb-7 space-y-4 text-[13px]" style={{ color: "rgba(245,239,227,0.7)" }}>
+                <div>
+                  <p className="vl-eyebrow mb-1.5">Voice provider details</p>
+                  <p>
+                    Server-side keys (OPENAI_API_KEY, GEMINI_API_KEY, ELEVENLABS_API_KEY, DEEPGRAM_API_KEY, LIVEKIT_*) are configured by environment. Availability shows up automatically in the voice option picker.
+                  </p>
+                </div>
+                <div>
+                  <p className="vl-eyebrow mb-1.5">Custom connection</p>
+                  <p>
+                    Bridge a custom system over REST or webhook. Contact support to enable for your account.
+                  </p>
+                </div>
+                <div>
+                  <p className="vl-eyebrow mb-1.5">Diagnostics</p>
+                  <p>
+                    Connection logs, response times, and event traces live here when needed. Not shown in the default UI.
+                  </p>
+                </div>
+                <div>
+                  <p className="vl-eyebrow mb-1.5">Data retention</p>
+                  <p>
+                    Conversations are kept for 90 days by default. Contact support to extend.
+                  </p>
+                </div>
+              </div>
+            )}
+          </section>
         </div>
       </div>
 

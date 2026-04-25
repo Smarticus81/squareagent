@@ -1,0 +1,864 @@
+import { useEffect, useMemo, useState } from "react";
+import { useLocation } from "wouter";
+import { useAuth } from "@/hooks/use-auth";
+import { useVenues } from "@/hooks/use-venues";
+import { VoiceRail, type RailState } from "@/components/voice-rail";
+import {
+  roomSettings,
+  voiceOptions,
+  connectedServices,
+  actionGroups,
+  approvalLabels,
+  defaultApprovals,
+  type ApprovalLevel,
+  type RoomSettingValue,
+  type VoiceOptionId,
+} from "@/lib/tokens";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Check,
+  Copy,
+  ExternalLink,
+  Loader2,
+  Sparkles,
+} from "lucide-react";
+
+interface ConnectedServiceProvider {
+  provider: string;
+  displayName: string;
+  description: string;
+  status: "available" | "needs_configuration" | "request_access" | "unavailable";
+  isImplemented: boolean;
+}
+
+const STEPS = [
+  { n: "01", title: "Name", subtitle: "Name your assistant." },
+  { n: "02", title: "Connect", subtitle: "Connect the service your assistant will control." },
+  { n: "03", title: "Allowed actions", subtitle: "Choose what your assistant can do." },
+  { n: "04", title: "Room", subtitle: "Tune how your assistant listens." },
+  { n: "05", title: "Voice", subtitle: "Choose the voice experience." },
+  { n: "06", title: "Test", subtitle: "Test your assistant." },
+  { n: "07", title: "Launch", subtitle: "Your assistant is ready." },
+] as const;
+
+/* ─────────────────────────────────────────────────────────────────
+   Create assistant — guided journey.
+   ───────────────────────────────────────────────────────────────── */
+export default function CreateAssistant() {
+  const [, navigate] = useLocation();
+  const { data: auth, isLoading: authLoading } = useAuth();
+  const { data: venues } = useVenues();
+  const [step, setStep] = useState(1);
+
+  const [assistantName, setAssistantName] = useState(() => {
+    return sessionStorage.getItem("voycelab.pending_assistant_name") || "";
+  });
+  const [serviceId, setServiceId] = useState<string>("square");
+  const [venueId, setVenueId] = useState<number | null>(null);
+  const [room, setRoom] = useState<RoomSettingValue>("bar");
+  const [voiceOption, setVoiceOption] = useState<VoiceOptionId>("fastest_realtime");
+  const [approvals, setApprovals] = useState<Record<string, ApprovalLevel>>(defaultApprovals);
+  const [showAdvancedVoice, setShowAdvancedVoice] = useState(false);
+
+  const [providers, setProviders] = useState<ConnectedServiceProvider[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [savedId, setSavedId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!authLoading && !auth) navigate("/login");
+  }, [auth, authLoading, navigate]);
+
+  useEffect(() => {
+    fetch("/api/v1/connected-service-providers")
+      .then((r) => r.json())
+      .then((d) => setProviders(d.providers ?? []))
+      .catch(() => setProviders([]));
+  }, []);
+
+  useEffect(() => {
+    if (!venueId && venues && venues.length > 0) setVenueId(venues[0].id);
+  }, [venues, venueId]);
+
+  // Sensitive actions never enable themselves; keep them gated.
+  const allowedActionIds = useMemo(
+    () => Object.entries(approvals).filter(([, level]) => level !== "not_allowed").map(([id]) => id),
+    [approvals],
+  );
+  const askFirstCount = useMemo(
+    () => Object.values(approvals).filter((l) => l === "ask_first").length,
+    [approvals],
+  );
+  const allowedCount = allowedActionIds.length;
+
+  // Map UI voice option → engineering voice provider id.
+  const internalProviderFromOption: Record<VoiceOptionId, string> = {
+    fastest_realtime: "openai_realtime_webrtc",
+    best_in_noise: "deepgram_voice_agent",
+    best_voice_quality: "elevenlabs_agents",
+    enterprise_control: "livekit_agents",
+    fallback_manual: "websocket_relay",
+  };
+
+  // Engineering tool ids for the chosen actions — kept internal.
+  const allowedTools = useMemo(() => {
+    const set = new Set<string>();
+    for (const group of actionGroups) {
+      for (const a of group.actions) {
+        if (approvals[a.id] && approvals[a.id] !== "not_allowed") set.add(a.internalTool);
+      }
+    }
+    return Array.from(set);
+  }, [approvals]);
+
+  async function save() {
+    if (!venueId) return setError("Choose a venue first.");
+    if (!assistantName.trim()) return setError("Give your assistant a name.");
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/v1/agent-profiles", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          organizationId: auth?.organizationId ?? "",
+          venueId,
+          connectedServiceId: serviceId || undefined,
+          displayName: assistantName,
+          wakePhrase: `Hey ${assistantName}`,
+          voicePipelineProvider: internalProviderFromOption[voiceOption],
+          voicePipelineConfig: {},
+          noiseMode: room,
+          allowedTools,
+          confirmationPolicy: { approvals },
+          personality: "",
+        }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
+        throw new Error(body.error?.message ?? "Could not save your assistant.");
+      }
+      const body = await res.json().catch(() => ({}));
+      setSavedId(body?.id ?? "assistant");
+      sessionStorage.removeItem("voycelab.pending_assistant_name");
+      setStep(7);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not save your assistant.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (authLoading) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <Loader2 className="w-5 h-5 animate-spin" style={{ color: "var(--color-vl-brass2)" }} />
+      </div>
+    );
+  }
+
+  const railState: RailState =
+    step === 1 ? "ready" :
+    step === 2 ? "ready" :
+    step === 3 ? "confirming" :
+    step === 4 ? "listening" :
+    step === 5 ? "speaking" :
+    step === 6 ? "executing" :
+    "synced";
+
+  const railIntensity =
+    step === 4 ? roomSettings.find((r) => r.value === room)?.intensity ?? 0.6 : 0.55;
+
+  return (
+    <div className="flex-1 pt-24 pb-20">
+      <div className="w-full max-w-[1100px] mx-auto px-6 lg:px-10">
+        <div className="grid lg:grid-cols-[260px_1fr] gap-10">
+          {/* Step rail */}
+          <aside>
+            <p className="vl-eyebrow">Create</p>
+            <h1 className="vl-display text-[28px] mt-2" style={{ color: "var(--color-vl-ivory)" }}>
+              Build your assistant.
+            </h1>
+            <ol className="mt-8 space-y-1.5">
+              {STEPS.map((s, i) => {
+                const idx = i + 1;
+                const active = idx === step;
+                const done = idx < step;
+                return (
+                  <li
+                    key={s.n}
+                    className="flex items-center gap-3 px-3 py-2 rounded-xl transition-colors"
+                    style={{
+                      background: active ? "rgba(124,110,245,0.10)" : "transparent",
+                      borderLeft: active ? "2px solid var(--color-vl-voice)" : "2px solid transparent",
+                    }}
+                  >
+                    <span
+                      className="text-[10px] font-mono"
+                      style={{ color: active ? "var(--color-vl-voice)" : done ? "var(--color-vl-success)" : "rgba(245,239,227,0.4)" }}
+                    >
+                      {done ? "✓" : s.n}
+                    </span>
+                    <span
+                      className="text-[13px]"
+                      style={{
+                        color: active ? "var(--color-vl-ivory)" : done ? "rgba(245,239,227,0.65)" : "rgba(245,239,227,0.45)",
+                      }}
+                    >
+                      {s.title}
+                    </span>
+                  </li>
+                );
+              })}
+            </ol>
+          </aside>
+
+          {/* Step body */}
+          <section>
+            <PreviewBar
+              name={assistantName}
+              service={connectedServices.find((s) => s.id === serviceId)?.name ?? "Square"}
+              room={roomSettings.find((r) => r.value === room)?.label ?? "Bar"}
+              voice={voiceOptions.find((v) => v.id === voiceOption)?.label ?? "Fastest live voice"}
+              railState={railState}
+              railIntensity={railIntensity}
+              hint={STEPS[step - 1].subtitle}
+            />
+
+            {step === 1 && (
+              <StepShell
+                title="Name your assistant."
+                subtitle="This is the name people will use when they speak to it."
+              >
+                <Field label="Assistant name">
+                  <input
+                    autoFocus
+                    value={assistantName}
+                    onChange={(e) => setAssistantName(e.target.value)}
+                    placeholder="Bev, Kora, Friday, Barback, Ruby…"
+                    className="vl-input"
+                    maxLength={32}
+                  />
+                </Field>
+                <Nav onNext={() => setStep(2)} canNext={!!assistantName.trim()} />
+              </StepShell>
+            )}
+
+            {step === 2 && (
+              <StepShell
+                title="Connect the service your assistant will control."
+                subtitle="Your assistant does not replace your system. It works inside it."
+              >
+                <div className="space-y-2">
+                  <p className="vl-eyebrow mb-1">Available</p>
+                  {providersWithDefault(providers)
+                    .filter((p) => p.isImplemented)
+                    .map((p) => (
+                      <ServiceRow
+                        key={p.provider}
+                        label={p.displayName}
+                        desc={p.description}
+                        status="available"
+                        checked={serviceId === p.provider}
+                        onSelect={() => setServiceId(p.provider)}
+                      />
+                    ))}
+
+                  <p className="vl-eyebrow mb-1 mt-6">Request access</p>
+                  {providersWithDefault(providers)
+                    .filter((p) => !p.isImplemented)
+                    .map((p) => (
+                      <ServiceRow
+                        key={p.provider}
+                        label={p.displayName}
+                        desc={p.description}
+                        status="request"
+                        checked={false}
+                        onSelect={() => {}}
+                      />
+                    ))}
+                </div>
+
+                {(venues ?? []).length > 0 && (
+                  <div className="mt-8">
+                    <p className="vl-eyebrow mb-3">Location</p>
+                    <div className="grid sm:grid-cols-2 gap-2">
+                      {(venues ?? []).map((v) => (
+                        <button
+                          key={v.id}
+                          onClick={() => setVenueId(v.id)}
+                          className="text-left vl-panel p-4 transition-colors"
+                          style={{
+                            borderColor: venueId === v.id ? "rgba(124,110,245,0.6)" : undefined,
+                            background: venueId === v.id ? "rgba(124,110,245,0.06)" : undefined,
+                          }}
+                        >
+                          <p className="text-[14px] font-semibold" style={{ color: "var(--color-vl-ivory)" }}>
+                            {v.name ?? v.squareLocationName ?? `Venue ${v.id}`}
+                          </p>
+                          <p className="text-[12px] mt-1" style={{ color: "rgba(245,239,227,0.5)" }}>
+                            {v.squareLocationName ?? "No location"}
+                          </p>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {(!venues || venues.length === 0) && (
+                  <div className="mt-6 vl-panel p-5 text-[13px]" style={{ color: "rgba(245,239,227,0.62)" }}>
+                    No venues connected yet. Open{" "}
+                    <button onClick={() => navigate("/services")} className="underline" style={{ color: "var(--color-vl-brass2)" }}>
+                      Connected services
+                    </button>{" "}
+                    to connect Square first.
+                  </div>
+                )}
+
+                <Nav onBack={() => setStep(1)} onNext={() => setStep(3)} canNext={!!serviceId && !!venueId} />
+              </StepShell>
+            )}
+
+            {step === 3 && (
+              <StepShell
+                title="Choose what your assistant can do."
+                subtitle="Decide what runs without asking, what asks first, and what is not allowed."
+              >
+                <div className="space-y-4">
+                  {actionGroups.map((group) => (
+                    <div key={group.id} className="vl-panel p-5">
+                      <div className="flex items-baseline justify-between gap-3 mb-1">
+                        <p className="text-[14px] font-semibold" style={{ color: "var(--color-vl-ivory)" }}>
+                          {group.label}
+                        </p>
+                        <p className="text-[12px]" style={{ color: "rgba(245,239,227,0.5)" }}>
+                          {group.description}
+                        </p>
+                      </div>
+                      <ul className="mt-3 divide-y divide-white/[0.05]">
+                        {group.actions.map((a) => {
+                          const level = approvals[a.id];
+                          return (
+                            <li key={a.id} className="py-2.5 flex items-center gap-3">
+                              <p className="flex-1 text-[13px]" style={{ color: "var(--color-vl-ivory)" }}>
+                                {a.label}
+                              </p>
+                              <ApprovalSelector
+                                value={level}
+                                onChange={(next) => setApprovals((s) => ({ ...s, [a.id]: next }))}
+                              />
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+
+                <p className="text-[12px] mt-4" style={{ color: "rgba(245,239,227,0.55)" }}>
+                  {assistantName || "Your assistant"} can do <strong style={{ color: "var(--color-vl-ivory)" }}>{allowedCount}</strong>{" "}
+                  actions and will ask first on <strong style={{ color: "var(--color-vl-ivory)" }}>{askFirstCount}</strong>.
+                </p>
+
+                <Nav onBack={() => setStep(2)} onNext={() => setStep(4)} canNext />
+              </StepShell>
+            )}
+
+            {step === 4 && (
+              <StepShell
+                title="Tune how your assistant listens."
+                subtitle="Choose the setting that best matches the room."
+              >
+                <div className="grid sm:grid-cols-2 gap-2">
+                  {roomSettings.map((m) => (
+                    <button
+                      key={m.value}
+                      onClick={() => setRoom(m.value)}
+                      className="text-left vl-panel p-5 transition-colors"
+                      style={{
+                        borderColor: room === m.value ? "rgba(124,110,245,0.6)" : undefined,
+                        background: room === m.value ? "rgba(124,110,245,0.06)" : undefined,
+                      }}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[14px] font-semibold" style={{ color: "var(--color-vl-ivory)" }}>{m.label}</span>
+                        <RoomIntensity level={m.intensity} active={room === m.value} />
+                      </div>
+                      <p className="text-[12px]" style={{ color: "rgba(245,239,227,0.6)" }}>{m.description}</p>
+                      <div className="mt-3 grid grid-cols-2 gap-1 text-[11px]" style={{ color: "rgba(245,239,227,0.5)" }}>
+                        <span>Listens: {m.listens}</span>
+                        <span>Approval: {m.asks}</span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+                <Nav onBack={() => setStep(3)} onNext={() => setStep(5)} canNext />
+              </StepShell>
+            )}
+
+            {step === 5 && (
+              <StepShell
+                title="Choose the voice experience."
+                subtitle="Pick by outcome. The right technology will be selected for you."
+              >
+                <div className="space-y-2">
+                  {voiceOptions.map((p) => (
+                    <button
+                      key={p.id}
+                      onClick={() => setVoiceOption(p.id)}
+                      className="w-full text-left vl-panel p-5 transition-colors"
+                      style={{
+                        borderColor: voiceOption === p.id ? "rgba(124,110,245,0.6)" : undefined,
+                        background: voiceOption === p.id ? "rgba(124,110,245,0.06)" : undefined,
+                      }}
+                    >
+                      <p className="text-[15px] font-semibold" style={{ color: "var(--color-vl-ivory)" }}>{p.label}</p>
+                      <p className="text-[13px] mt-1" style={{ color: "rgba(245,239,227,0.62)" }}>{p.description}</p>
+                    </button>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  className="vl-eyebrow mt-6 cursor-pointer"
+                  onClick={() => setShowAdvancedVoice((v) => !v)}
+                >
+                  {showAdvancedVoice ? "Hide" : "Show"} advanced details
+                </button>
+                {showAdvancedVoice && (
+                  <div className="vl-panel p-4 mt-3 text-[12px]" style={{ color: "rgba(245,239,227,0.6)" }}>
+                    <p>
+                      Voice option: <strong style={{ color: "var(--color-vl-ivory)" }}>{voiceOptions.find((v) => v.id === voiceOption)?.label}</strong>
+                    </p>
+                    <p className="mt-1">
+                      Engine candidates: {voiceOptions.find((v) => v.id === voiceOption)?.advancedNote}
+                    </p>
+                    <p className="mt-2 text-[11px]">
+                      Provider details live in <span className="underline">Settings → Advanced</span>. The default summary stays human.
+                    </p>
+                  </div>
+                )}
+                <Nav onBack={() => setStep(4)} onNext={() => setStep(6)} canNext />
+              </StepShell>
+            )}
+
+            {step === 6 && (
+              <StepShell
+                title="Test your assistant."
+                subtitle="Try a real command. The full voice surface launches separately."
+              >
+                <TestProgress allowedActions={allowedCount} askFirst={askFirstCount} assistantName={assistantName || "Your assistant"} />
+                {error && (
+                  <p className="text-[13px] mt-4" style={{ color: "var(--color-vl-danger)" }}>{error}</p>
+                )}
+
+                <Nav
+                  onBack={() => setStep(5)}
+                  onNext={save}
+                  nextLabel={
+                    saving ? (
+                      <span className="inline-flex items-center gap-2">
+                        <Loader2 className="w-4 h-4 animate-spin" /> Saving…
+                      </span>
+                    ) : (
+                      <>
+                        Launch <ArrowRight className="w-4 h-4" />
+                      </>
+                    )
+                  }
+                  canNext={!saving}
+                />
+              </StepShell>
+            )}
+
+            {step === 7 && (
+              <StepShell
+                title="Your assistant is ready."
+                subtitle="Open it on the floor. Or copy a launch link to a phone, tablet, or terminal."
+              >
+                <div className="vl-panel p-7 text-center">
+                  <VoiceRail state="synced" />
+                  <p className="vl-display text-[40px] mt-6" style={{ color: "var(--color-vl-ivory)" }}>
+                    {assistantName} is live.
+                  </p>
+
+                  <dl className="mt-6 grid sm:grid-cols-2 gap-x-8 gap-y-1.5 text-[13px] text-left max-w-md mx-auto">
+                    <Summary k="Assistant" v={assistantName} />
+                    <Summary k="Connected service" v={connectedServices.find((s) => s.id === serviceId)?.name ?? "Square"} />
+                    <Summary k="Room setting" v={roomSettings.find((r) => r.value === room)?.label ?? "Bar"} />
+                    <Summary k="Voice option" v={voiceOptions.find((v) => v.id === voiceOption)?.label ?? ""} />
+                    <Summary k="Can do" v={`${allowedCount} actions`} />
+                    <Summary k="Will ask first" v={`${askFirstCount} actions`} />
+                  </dl>
+
+                  <div className="mt-7 flex flex-wrap items-center justify-center gap-2">
+                    <button
+                      onClick={() => venueId && launchAssistant(venueId)}
+                      className="vl-btn-primary inline-flex items-center gap-2"
+                    >
+                      Open assistant <ExternalLink className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => venueId && copyLaunchLink(venueId)}
+                      className="vl-btn-ghost inline-flex items-center gap-2"
+                    >
+                      <Copy className="w-4 h-4" /> Copy launch link
+                    </button>
+                    <button onClick={() => navigate("/command")} className="vl-btn-ghost inline-flex items-center gap-2">
+                      Go to Command
+                    </button>
+                  </div>
+
+                  <p className="mt-6 text-[12px]" style={{ color: "rgba(245,239,227,0.5)" }}>
+                    <Sparkles className="w-3.5 h-3.5 inline -mt-0.5" /> Saved as {savedId ?? "assistant"}. You can change everything from the Assistants screen.
+                  </p>
+                </div>
+              </StepShell>
+            )}
+          </section>
+        </div>
+      </div>
+
+      <style>{`
+        .vl-input {
+          width: 100%;
+          height: 46px;
+          padding: 0 16px;
+          border-radius: 12px;
+          background: rgba(245,239,227,0.04);
+          border: 1px solid rgba(245,239,227,0.12);
+          color: var(--color-vl-ivory);
+          font-size: 15px;
+          outline: none;
+          transition: border-color .2s ease, background .2s ease;
+        }
+        .vl-input::placeholder { color: rgba(245,239,227,0.32); }
+        .vl-input:focus { border-color: rgba(124,110,245,0.7); background: rgba(245,239,227,0.06); }
+      `}</style>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   Helpers / sub-components
+   ───────────────────────────────────────────────────────────────── */
+
+function PreviewBar({
+  name,
+  service,
+  room,
+  voice,
+  railState,
+  railIntensity,
+  hint,
+}: {
+  name: string;
+  service: string;
+  room: string;
+  voice: string;
+  railState: RailState;
+  railIntensity: number;
+  hint: string;
+}) {
+  return (
+    <div className="vl-panel vl-edge-brass p-6 mb-6">
+      <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="vl-chip" style={{ color: "var(--color-vl-brass2)" }}>
+            <Sparkles className="w-3 h-3" />
+            {name || "Your assistant"}
+          </span>
+          <span className="vl-chip">{service}</span>
+          <span className="vl-chip">{room}</span>
+          <span className="vl-chip">{voice}</span>
+        </div>
+      </div>
+      <VoiceRail state={railState} intensity={railIntensity} />
+      <div className="mt-3 vl-eyebrow text-center" style={{ color: "rgba(140,145,154,0.7)" }}>
+        Live preview · {hint}
+      </div>
+    </div>
+  );
+}
+
+function StepShell({
+  title,
+  subtitle,
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <h2 className="vl-display text-[34px]" style={{ color: "var(--color-vl-ivory)" }}>{title}</h2>
+      {subtitle && (
+        <p className="mt-2 text-[14px]" style={{ color: "rgba(245,239,227,0.62)" }}>{subtitle}</p>
+      )}
+      <div className="mt-7 space-y-5">{children}</div>
+    </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="block">
+      <span className="vl-eyebrow block mb-1.5">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+function Nav({
+  onBack,
+  onNext,
+  canNext,
+  nextLabel,
+}: {
+  onBack?: () => void;
+  onNext: () => void;
+  canNext?: boolean;
+  nextLabel?: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-center gap-3 pt-4">
+      {onBack && (
+        <button onClick={onBack} className="vl-btn-ghost inline-flex items-center gap-2 text-[13px]">
+          <ArrowLeft className="w-4 h-4" /> Back
+        </button>
+      )}
+      <button
+        onClick={onNext}
+        disabled={canNext === false}
+        className="vl-btn-primary inline-flex items-center gap-2 text-[13px] disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        {nextLabel ?? (
+          <>
+            Continue <ArrowRight className="w-4 h-4" />
+          </>
+        )}
+      </button>
+    </div>
+  );
+}
+
+function ServiceRow({
+  label,
+  desc,
+  status,
+  checked,
+  onSelect,
+}: {
+  label: string;
+  desc: string;
+  status: "available" | "request";
+  checked: boolean;
+  onSelect: () => void;
+}) {
+  const available = status === "available";
+  return (
+    <button
+      onClick={available ? onSelect : undefined}
+      className="w-full text-left vl-panel p-4 flex items-center gap-3 transition-colors"
+      style={{
+        opacity: available ? 1 : 0.65,
+        cursor: available ? "pointer" : "default",
+        borderColor: checked ? "rgba(124,110,245,0.6)" : undefined,
+        background: checked ? "rgba(124,110,245,0.06)" : undefined,
+      }}
+    >
+      <span
+        className="w-4 h-4 rounded-full flex items-center justify-center"
+        style={{
+          background: checked ? "var(--color-vl-voice)" : "transparent",
+          border: "1px solid rgba(245,239,227,0.3)",
+        }}
+      >
+        {checked && <Check className="w-3 h-3 text-white" />}
+      </span>
+      <div className="flex-1">
+        <div className="flex items-center gap-2">
+          <p className="text-[14px] font-semibold" style={{ color: "var(--color-vl-ivory)" }}>{label}</p>
+          {available ? (
+            <span
+              className="vl-chip"
+              style={{ color: "var(--color-vl-success)", borderColor: "rgba(53,194,117,0.4)", fontSize: 10 }}
+            >
+              Available
+            </span>
+          ) : (
+            <span className="vl-chip" style={{ fontSize: 10 }}>Request access</span>
+          )}
+        </div>
+        <p className="text-[12px] mt-0.5" style={{ color: "rgba(245,239,227,0.55)" }}>{desc}</p>
+      </div>
+    </button>
+  );
+}
+
+function ApprovalSelector({
+  value,
+  onChange,
+}: {
+  value: ApprovalLevel;
+  onChange: (next: ApprovalLevel) => void;
+}) {
+  const options: ApprovalLevel[] = ["no_approval", "ask_first", "not_allowed"];
+  return (
+    <div className="inline-flex rounded-full border border-white/[0.08] p-0.5" role="radiogroup">
+      {options.map((opt) => {
+        const selected = value === opt;
+        const tone =
+          opt === "no_approval"
+            ? "var(--color-vl-success)"
+            : opt === "ask_first"
+            ? "var(--color-vl-brass2)"
+            : "var(--color-vl-danger)";
+        return (
+          <button
+            key={opt}
+            type="button"
+            role="radio"
+            aria-checked={selected}
+            onClick={() => onChange(opt)}
+            className="text-[11px] px-3 py-1 rounded-full transition-all"
+            style={{
+              background: selected ? `${tone}1F` : "transparent",
+              color: selected ? tone : "rgba(245,239,227,0.55)",
+              border: selected ? `1px solid ${tone}55` : "1px solid transparent",
+            }}
+          >
+            {approvalLabels[opt]}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function RoomIntensity({ level, active }: { level: number; active: boolean }) {
+  return (
+    <div className="flex items-end gap-[2px]">
+      {[0.2, 0.4, 0.6, 0.8].map((threshold) => (
+        <div
+          key={threshold}
+          className="w-1 rounded-full"
+          style={{
+            height: 6 + threshold * 12,
+            background: level >= threshold ? (active ? "var(--color-vl-voice)" : "var(--color-vl-brass2)") : "rgba(245,239,227,0.18)",
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+function TestProgress({
+  allowedActions,
+  askFirst,
+  assistantName,
+}: {
+  allowedActions: number;
+  askFirst: number;
+  assistantName: string;
+}) {
+  // Static demo of the test command result. The actual voice surface is a
+  // separate launch from step 7. Here we show user-friendly progress only.
+  const stages = ["Heard", "Understood", "Allowed", "Added", "Synced"] as const;
+  return (
+    <div className="vl-panel p-5">
+      <p className="vl-eyebrow mb-3">Test command</p>
+      <p className="vl-display text-[28px]" style={{ color: "var(--color-vl-ivory)" }}>
+        "Add two ranch waters."
+      </p>
+
+      <div className="mt-6 grid sm:grid-cols-5 gap-px bg-white/[0.06] rounded-xl overflow-hidden">
+        {stages.map((s, i) => (
+          <div key={s} className="bg-[#0E1015] py-3 px-2 text-center">
+            <p className="text-[10px] tracking-[0.18em] uppercase" style={{ color: "rgba(140,145,154,0.7)" }}>
+              {String(i + 1).padStart(2, "0")}
+            </p>
+            <p className="mt-1 text-[13px] font-medium" style={{ color: i === 4 ? "var(--color-vl-success)" : "var(--color-vl-ivory)" }}>
+              {s}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      <p className="mt-5 text-[13px]" style={{ color: "rgba(245,239,227,0.7)" }}>
+        {assistantName} can do <strong>{allowedActions}</strong> actions. <strong>{askFirst}</strong> of them will ask before running.
+      </p>
+      <p className="mt-1 text-[12px]" style={{ color: "rgba(245,239,227,0.55)" }}>
+        For sensitive actions you'll see <strong>Confirm</strong> and <strong>Cancel</strong> on the voice surface.
+      </p>
+    </div>
+  );
+}
+
+function Summary({ k, v }: { k: string; v: string }) {
+  return (
+    <>
+      <dt style={{ color: "rgba(245,239,227,0.5)" }}>{k}</dt>
+      <dd style={{ color: "var(--color-vl-ivory)" }}>{v}</dd>
+    </>
+  );
+}
+
+function providersWithDefault(list: ConnectedServiceProvider[]) {
+  // Always show Square at the top, even if the registry is empty.
+  if (list.length > 0) return list;
+  return [
+    {
+      provider: "square",
+      displayName: "Square",
+      description: "Catalog, orders, terminal, stock checks.",
+      status: "available" as const,
+      isImplemented: true,
+    },
+  ];
+}
+
+async function launchAssistant(venueId: number) {
+  try {
+    const token = localStorage.getItem("voycelab_token") || "";
+    const res = await fetch("/api/auth/exchange/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ venueId }),
+    });
+    if (!res.ok) throw new Error("Could not open the assistant. Try again.");
+    const { code } = await res.json();
+    const isLocalDev =
+      !import.meta.env.PROD &&
+      (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+    const baseUrl = isLocalDev
+      ? `${window.location.protocol}//${window.location.hostname}:8081/`
+      : `${window.location.origin}/agent/`;
+    window.open(`${baseUrl}?code=${encodeURIComponent(code)}`, "_blank", "noopener,noreferrer");
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+async function copyLaunchLink(venueId: number) {
+  try {
+    const token = localStorage.getItem("voycelab_token") || "";
+    const res = await fetch("/api/auth/exchange/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ venueId }),
+    });
+    if (!res.ok) throw new Error("Could not generate a link.");
+    const { code } = await res.json();
+    const isLocalDev =
+      !import.meta.env.PROD &&
+      (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+    const baseUrl = isLocalDev
+      ? `${window.location.protocol}//${window.location.hostname}:8081/`
+      : `${window.location.origin}/agent/`;
+    const url = `${baseUrl}?code=${encodeURIComponent(code)}`;
+    await navigator.clipboard.writeText(url);
+  } catch (e) {
+    console.error(e);
+  }
+}
