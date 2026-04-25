@@ -26,16 +26,21 @@ function railClass(state: AgentState, mode: AppMode, wakeWordActive: boolean): s
   }
 }
 
+/**
+ * User-facing voice surface labels.
+ * Internal engineering states map to plain-language words the user can read.
+ * No "CONNECTING_TO_PROVIDER", "TURN_DETECTED", or technical strings.
+ */
 function stateLabel(state: AgentState, mode: AppMode, wakeWordActive: boolean): string | null {
-  if (mode === "shutdown") return "STOPPED";
-  if (mode === "wake_word" && wakeWordActive) return "READY";
-  if (mode === "wake_word" && !wakeWordActive) return "STARTING";
+  if (mode === "shutdown") return "Offline";
+  if (mode === "wake_word" && wakeWordActive) return "Ready";
+  if (mode === "wake_word" && !wakeWordActive) return "Waking up";
   switch (state) {
-    case "connecting": return "CONNECTING";
-    case "thinking":   return "THINKING";
-    case "error":      return "ERROR";
-    case "listening":  return "LISTENING";
-    case "speaking":   return "SPEAKING";
+    case "connecting": return "Connecting";
+    case "thinking":   return "Thinking";
+    case "error":      return "Needs attention";
+    case "listening":  return "Listening";
+    case "speaking":   return "Speaking";
     default:           return null;
   }
 }
@@ -326,11 +331,11 @@ export default function App() {
         ) : <div style={{ width: 22 }} />}
       </div>
 
-      {/* Status chips — agent · service · room */}
+      {/* Status chips — assistant · connected service · room */}
       <div className="status-chips">
         <span className="vl-pill vl-pill-brass">Bev</span>
         {isConfigured && <span className="vl-pill vl-pill-success"><span className="vl-pill-dot" />Square synced</span>}
-        <span className="vl-pill">Bar mode</span>
+        <span className="vl-pill">Bar</span>
       </div>
 
       {/* ── Conversation area ────────────────────────────────── */}

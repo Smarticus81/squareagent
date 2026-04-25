@@ -3,31 +3,36 @@ import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { Loader2, Play, Plus } from "lucide-react";
 
-const WORKFLOWS = [
+const ROUTINES = [
   {
-    id: "opening_checklist",
-    name: "Opening checklist",
-    when: 'Spoken: "Run the opening checklist"',
-    steps: ["inventory_summary", "low_stock_report(10)", "current_shifts", "list_locations"],
+    id: "opening_check",
+    name: "Opening check",
+    when: 'Say: "Run the opening check"',
+    steps: [
+      "Stock summary",
+      "Items below 10 units",
+      "Who's on shift",
+      "Where the team is working",
+    ],
     enabled: true,
   },
   {
-    id: "stock_take",
-    name: "Stock take",
-    when: 'Spoken: "Run a stock take"',
-    steps: ["check_all_inventory", "inventory_summary"],
+    id: "stock_count",
+    name: "Stock count",
+    when: 'Say: "Run a stock count"',
+    steps: ["Check all stock", "Stock summary"],
     enabled: true,
   },
   {
     id: "end_of_day_close",
     name: "End-of-day close",
-    when: 'Spoken: "Close out the day"',
-    steps: ["daily_summary", "list_open_orders", "low_stock_report"],
+    when: 'Say: "Close out the day"',
+    steps: ["Daily summary", "Open orders", "Items below 10 units"],
     enabled: true,
   },
 ];
 
-export default function Workflows() {
+export default function Routines() {
   const [, setLocation] = useLocation();
   const { data: auth, isLoading } = useAuth();
 
@@ -47,42 +52,42 @@ export default function Workflows() {
   return (
     <div className="flex-1 pt-24 pb-24">
       <div className="w-full max-w-[1100px] mx-auto px-6 lg:px-10">
-        <div className="flex items-end justify-between mb-10">
+        <div className="flex items-end justify-between mb-10 flex-wrap gap-4">
           <div>
-            <p className="vl-eyebrow">Workflows</p>
+            <p className="vl-eyebrow">Routines</p>
             <h1 className="vl-display text-[40px] md:text-[56px] mt-3" style={{ color: "var(--color-vl-ivory)" }}>
               Sequences your team can speak.
             </h1>
-            <p className="mt-3 text-[15px] max-w-2xl" style={{ color: "rgba(245,239,227,0.6)" }}>
-              Multi-step routines bundled behind a single spoken command. Lightweight by design.
+            <p className="mt-3 text-[15px] max-w-2xl" style={{ color: "rgba(245,239,227,0.62)" }}>
+              A routine is a named group of actions your assistant can help start or run on command.
             </p>
           </div>
           <button className="vl-btn-ghost inline-flex items-center gap-2 text-[13px]">
-            <Plus className="w-4 h-4" /> New workflow
+            <Plus className="w-4 h-4" /> New routine
           </button>
         </div>
 
         <div className="space-y-3">
-          {WORKFLOWS.map((w) => (
-            <article key={w.id} className="vl-panel p-6">
+          {ROUTINES.map((r) => (
+            <article key={r.id} className="vl-panel p-6">
               <div className="flex items-start justify-between gap-4 flex-wrap">
                 <div>
                   <h2 className="text-[20px] font-semibold tracking-tight" style={{ color: "var(--color-vl-ivory)" }}>
-                    {w.name}
+                    {r.name}
                   </h2>
                   <p className="text-[13px] mt-1.5" style={{ color: "rgba(245,239,227,0.6)" }}>
-                    {w.when}
+                    {r.when}
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
                   <span
                     className="vl-chip"
                     style={{
-                      color: w.enabled ? "var(--color-vl-success)" : "rgba(245,239,227,0.5)",
-                      borderColor: w.enabled ? "rgba(53,194,117,0.4)" : undefined,
+                      color: r.enabled ? "var(--color-vl-success)" : "rgba(245,239,227,0.5)",
+                      borderColor: r.enabled ? "rgba(53,194,117,0.4)" : undefined,
                     }}
                   >
-                    {w.enabled ? "Enabled" : "Off"}
+                    {r.enabled ? "On" : "Off"}
                   </span>
                   <button className="vl-btn-ghost inline-flex items-center gap-2 text-[12px]">
                     <Play className="w-3.5 h-3.5" /> Test
@@ -90,17 +95,23 @@ export default function Workflows() {
                 </div>
               </div>
 
-              <div className="mt-5 flex items-center gap-2 flex-wrap">
-                {w.steps.map((s, i) => (
-                  <span
+              <ol className="mt-5 grid sm:grid-cols-2 gap-1.5">
+                {r.steps.map((s, i) => (
+                  <li
                     key={s + i}
-                    className="vl-chip"
-                    style={{ fontFamily: "var(--font-mono)", fontSize: 10, textTransform: "none", letterSpacing: 0 }}
+                    className="flex items-center gap-3 px-3 py-2 rounded-lg border border-white/[0.06] text-[12px]"
+                    style={{ color: "rgba(245,239,227,0.78)" }}
                   >
-                    {i + 1}. {s}
-                  </span>
+                    <span
+                      className="text-[10px] font-mono"
+                      style={{ color: "rgba(224,183,106,0.85)" }}
+                    >
+                      {String(i + 1).padStart(2, "0")}
+                    </span>
+                    {s}
+                  </li>
                 ))}
-              </div>
+              </ol>
             </article>
           ))}
         </div>
