@@ -30,6 +30,10 @@ function squareHeaders(token: string) {
 
 router.get("/", requireAuth as any, async (req: Request, res: Response): Promise<void> => {
   const user = (req as any).user;
+  if (!db) {
+    res.status(503).json({ error: "Database not configured" });
+    return;
+  }
   try {
     const venues = await db
       .select()
@@ -48,8 +52,10 @@ router.get("/", requireAuth as any, async (req: Request, res: Response): Promise
       })),
     });
   } catch (e: any) {
-    console.error("[Venues] List error:", e.message);
-    res.status(500).json({ error: "Failed to load venues" });
+    // Surface schema/connection errors so the client can show a useful message
+    // instead of getting a generic 500 and retrying in a loop.
+    console.error("[Venues] List error:", e?.message, e?.stack);
+    res.status(500).json({ error: e?.message || "Failed to load venues" });
   }
 });
 

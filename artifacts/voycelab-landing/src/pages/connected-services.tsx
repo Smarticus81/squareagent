@@ -14,7 +14,7 @@ import { Loader2, Trash2, ExternalLink, MapPin, X } from "lucide-react";
 export default function ConnectedServices() {
   const [, setLocation] = useLocation();
   const { data: auth, isLoading } = useAuth();
-  const { data: venues, isLoading: venuesLoading } = useVenues();
+  const { data: venues, isLoading: venuesLoading, error: venuesError } = useVenues();
   const saveVenue = useSaveVenue();
   const deleteVenue = useDeleteVenue();
   const fetchLocations = useSquareLocations();
@@ -94,7 +94,7 @@ export default function ConnectedServices() {
     [oauthToken, oauthMerchantId, saveVenue],
   );
 
-  if (isLoading || venuesLoading) {
+  if (isLoading || (venuesLoading && !venuesError)) {
     return (
       <div className="flex-1 flex items-center justify-center">
         <Loader2 className="w-5 h-5 animate-spin" style={{ color: "var(--color-vl-brass2)" }} />
@@ -120,6 +120,12 @@ export default function ConnectedServices() {
         {errorMsg && (
           <div className="vl-panel p-4 mb-6 text-[13px]" style={{ color: "var(--color-vl-danger)" }}>
             {errorMsg}
+          </div>
+        )}
+
+        {venuesError && (
+          <div className="vl-panel p-4 mb-6 text-[13px]" style={{ color: "var(--color-vl-danger)" }}>
+            Venue service unavailable: {venuesError.message}
           </div>
         )}
 

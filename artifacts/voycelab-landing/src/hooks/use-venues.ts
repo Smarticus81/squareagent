@@ -30,7 +30,10 @@ export function useVenues() {
     queryKey: ["/api/venues"],
     queryFn: async () => {
       const res = await fetch("/api/venues", { headers: getHeaders() });
-      if (!res.ok) throw new Error("Failed to load venues");
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `Failed to load venues (${res.status})`);
+      }
       const data = await res.json();
       return data.venues as Venue[];
     },
