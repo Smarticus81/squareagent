@@ -302,49 +302,48 @@ export default function App() {
     <div className="app">
       {/* ── Top bar ──────────────────────────────────────────── */}
       <div className="top-bar">
-        <button className="hamburger" onClick={() => setPanelOpen(true)}>
+        <button className="hamburger" onClick={() => setPanelOpen(true)} aria-label="Open menu">
           <Menu size={18} />
         </button>
         <div className="brand-row">
-          <svg width="24" height="24" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-            <defs>
-              <linearGradient id="vl-brand-top" x1="0" y1="0" x2="36" y2="36" gradientUnits="userSpaceOnUse">
-                <stop offset="0%" stopColor="#7C6EF5" />
-                <stop offset="100%" stopColor="#5E56E6" />
-              </linearGradient>
-            </defs>
-            <rect x="0.5" y="0.5" width="35" height="35" rx="9.5" fill="url(#vl-brand-top)"/>
-            <circle cx="18" cy="18" r="2.2" fill="#FFFFFF"/>
-            <path d="M11.5 14.5a6.5 6.5 0 0 1 0 7" stroke="#FFFFFF" strokeWidth="1.8" strokeLinecap="round" fill="none" opacity="0.85"/>
-            <path d="M24.5 14.5a6.5 6.5 0 0 0 0 7" stroke="#FFFFFF" strokeWidth="1.8" strokeLinecap="round" fill="none" opacity="0.85"/>
-            <path d="M8 11a11 11 0 0 1 0 14" stroke="#FFFFFF" strokeWidth="1.6" strokeLinecap="round" fill="none" opacity="0.5"/>
-            <path d="M28 11a11 11 0 0 0 0 14" stroke="#FFFFFF" strokeWidth="1.6" strokeLinecap="round" fill="none" opacity="0.5"/>
+          <svg width="22" height="22" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <line x1="3" y1="28" x2="37" y2="28" stroke="rgba(245,239,227,0.55)" strokeWidth="1.5" strokeLinecap="round"/>
+            <path d="M7 22 Q12 8 20 8" stroke="#E0B76A" strokeWidth="1.5" strokeLinecap="round" fill="none" opacity="0.55"/>
+            <path d="M33 22 Q28 12 20 12" stroke="#E0B76A" strokeWidth="1.5" strokeLinecap="round" fill="none" opacity="0.55"/>
+            <path d="M11 24 Q15 14 20 14" stroke="#E0B76A" strokeWidth="2" strokeLinecap="round" fill="none"/>
+            <path d="M29 24 Q25 16 20 16" stroke="#E0B76A" strokeWidth="2" strokeLinecap="round" fill="none"/>
+            <circle cx="20" cy="28" r="2.4" fill="#F5EFE3"/>
+            <circle cx="20" cy="28" r="4.6" stroke="#E0B76A" strokeWidth="1.2" opacity="0.45"/>
           </svg>
-          <span className="brand-text">
-              <>
-                <span style={{ color: "var(--msg-agent)" }}>Voyce</span>
-                <span style={{ color: "#7C6EF5", fontStyle: "italic" }}>Labs</span>
-              </>
+          <span className="brand-text" style={{ color: "var(--logo-text)" }}>
+            Voyce<span style={{ fontWeight: 400, opacity: 0.78 }}>Lab</span>
           </span>
         </div>
         {orderCount > 0 ? (
-          <button className="order-badge" onClick={() => { setPanelTab("order"); setPanelOpen(true); }}>
+          <button className="order-badge" onClick={() => { setPanelTab("order"); setPanelOpen(true); }} aria-label={`${orderCount} items in order`}>
             <span className="order-badge-num">{orderCount}</span>
           </button>
         ) : <div style={{ width: 22 }} />}
       </div>
 
+      {/* Status chips — agent · service · room */}
+      <div className="status-chips">
+        <span className="vl-pill vl-pill-brass">Bev</span>
+        {isConfigured && <span className="vl-pill vl-pill-success"><span className="vl-pill-dot" />Square synced</span>}
+        <span className="vl-pill">Bar mode</span>
+      </div>
+
       {/* ── Conversation area ────────────────────────────────── */}
       <div className="content">
-        {/* Subtle watermark */}
+        {/* Subtle watermark — new mark */}
         <div className="watermark">
-          <svg width="120" height="120" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-            <circle cx="18" cy="18" r="17" fill="#7C6EF5" opacity="0.07"/>
-            <circle cx="18" cy="18" r="2.2" fill="#7C6EF5" opacity="0.12"/>
-            <path d="M11.5 14.5a6.5 6.5 0 0 1 0 7" stroke="#7C6EF5" strokeWidth="1.8" strokeLinecap="round" fill="none" opacity="0.12"/>
-            <path d="M24.5 14.5a6.5 6.5 0 0 0 0 7" stroke="#7C6EF5" strokeWidth="1.8" strokeLinecap="round" fill="none" opacity="0.12"/>
-            <path d="M8 11a11 11 0 0 1 0 14" stroke="#7C6EF5" strokeWidth="1.6" strokeLinecap="round" fill="none" opacity="0.08"/>
-            <path d="M28 11a11 11 0 0 0 0 14" stroke="#7C6EF5" strokeWidth="1.6" strokeLinecap="round" fill="none" opacity="0.08"/>
+          <svg width="160" height="160" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <line x1="3" y1="28" x2="37" y2="28" stroke="#E0B76A" strokeWidth="1.2" strokeLinecap="round" opacity="0.10"/>
+            <path d="M7 22 Q12 8 20 8" stroke="#E0B76A" strokeWidth="1.6" strokeLinecap="round" fill="none" opacity="0.08"/>
+            <path d="M33 22 Q28 12 20 12" stroke="#E0B76A" strokeWidth="1.6" strokeLinecap="round" fill="none" opacity="0.08"/>
+            <path d="M11 24 Q15 14 20 14" stroke="#E0B76A" strokeWidth="2" strokeLinecap="round" fill="none" opacity="0.10"/>
+            <path d="M29 24 Q25 16 20 16" stroke="#E0B76A" strokeWidth="2" strokeLinecap="round" fill="none" opacity="0.10"/>
+            <circle cx="20" cy="28" r="2.4" fill="#E0B76A" opacity="0.14"/>
           </svg>
         </div>
         <div className="convo-area">

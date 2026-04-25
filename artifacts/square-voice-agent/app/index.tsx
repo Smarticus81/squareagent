@@ -31,24 +31,24 @@ type RailKey = AgentState | "wake";
 
 const RAIL_COLORS = {
   light: {
-    line:       "rgba(15,15,15,0.08)",
-    glow:       "rgba(15,15,15,0.04)",
-    active:     "rgba(15,15,15,0.35)",
-    listening:  "rgba(80,140,255,0.50)",
-    speaking:   "rgba(100,200,160,0.50)",
-    thinking:   "rgba(180,160,220,0.40)",
-    error:      "rgba(220,60,60,0.50)",
-    bar:        "rgba(15,15,15,0.12)",
+    line:       "rgba(17,19,24,0.12)",
+    glow:       "rgba(17,19,24,0.05)",
+    active:     "rgba(150,110,40,0.55)",
+    listening:  "rgba(94,86,230,0.55)",
+    speaking:   "rgba(150,110,40,0.55)",
+    thinking:   "rgba(220,90,30,0.50)",
+    error:      "rgba(180,40,40,0.55)",
+    bar:        "rgba(17,19,24,0.18)",
   },
   dark: {
-    line:       "rgba(240,240,240,0.06)",
-    glow:       "rgba(240,240,240,0.03)",
-    active:     "rgba(240,240,240,0.30)",
-    listening:  "rgba(100,160,255,0.55)",
-    speaking:   "rgba(120,220,180,0.50)",
-    thinking:   "rgba(200,180,240,0.40)",
-    error:      "rgba(252,100,100,0.55)",
-    bar:        "rgba(240,240,240,0.10)",
+    line:       "rgba(245,239,227,0.10)",
+    glow:       "rgba(245,239,227,0.04)",
+    active:     "rgba(224,183,106,0.65)",
+    listening:  "rgba(124,110,245,0.70)",
+    speaking:   "rgba(224,183,106,0.70)",
+    thinking:   "rgba(255,106,42,0.55)",
+    error:      "rgba(224,82,82,0.65)",
+    bar:        "rgba(245,239,227,0.18)",
   },
 } as const;
 
@@ -70,86 +70,86 @@ const NUM_BARS = 24;
 // ── Theme ──────────────────────────────────────────────────────────────────────
 const THEMES = {
   light: {
-    bg:           "#F5F5F5" as const,
-    bgGrad:       ["#F5F5F5", "#F0F0F0", "#F5F5F5"] as const,
-    logoText:     "rgba(15,15,15,0.62)",
-    stateText:    "rgba(15,15,15,0.48)",
-    tapHint:      "rgba(15,15,15,0.35)",
-    errorText:    "rgba(220,60,60,0.90)",
-    hamburger:    "rgba(15,15,15,0.40)",
-    badgeBorder:  "rgba(15,15,15,0.22)",
-    badgeText:    "rgba(15,15,15,0.65)",
-    msgAgent:     (op: number) => `rgba(15,15,15,${op})`,
-    msgUser:      (op: number) => `rgba(15,15,15,${op})`,
-    partial:      "rgba(15,15,15,0.42)",
+    bg:           "#F5EFE3" as const,
+    bgGrad:       ["#F8F2E5", "#F0E7D2", "#F5EFE3"] as const,
+    logoText:     "rgba(17,19,24,0.78)",
+    stateText:    "rgba(17,19,24,0.48)",
+    tapHint:      "rgba(17,19,24,0.35)",
+    errorText:    "rgba(180,40,40,0.90)",
+    hamburger:    "rgba(17,19,24,0.45)",
+    badgeBorder:  "rgba(150,110,40,0.32)",
+    badgeText:    "rgba(150,110,40,0.85)",
+    msgAgent:     (op: number) => `rgba(17,19,24,${op})`,
+    msgUser:      (op: number) => `rgba(17,19,24,${op})`,
+    partial:      "rgba(17,19,24,0.42)",
     panelBg:      "#FFFFFF",
-    panelBorder:  "rgba(15,15,15,0.10)",
-    panelHandle:  "rgba(15,15,15,0.16)",
-    navText:      "rgba(15,15,15,0.32)",
-    navActive:    "rgba(15,15,15,0.84)",
-    divider:      "rgba(15,15,15,0.08)",
-    recTotal:     "rgba(15,15,15,0.82)",
-    recLabel:     "rgba(15,15,15,0.30)",
-    rowName:      "rgba(15,15,15,0.72)",
-    rowQty:       "rgba(15,15,15,0.36)",
-    rowPrice:     "rgba(15,15,15,0.46)",
-    emptyTxt:     "rgba(15,15,15,0.30)",
-    emptyHint:    "rgba(15,15,15,0.18)",
-    orderTotal:   "rgba(15,15,15,0.76)",
+    panelBorder:  "rgba(17,19,24,0.10)",
+    panelHandle:  "rgba(17,19,24,0.18)",
+    navText:      "rgba(17,19,24,0.46)",
+    navActive:    "rgba(17,19,24,0.86)",
+    divider:      "rgba(17,19,24,0.10)",
+    recTotal:     "rgba(17,19,24,0.86)",
+    recLabel:     "rgba(17,19,24,0.32)",
+    rowName:      "rgba(17,19,24,0.78)",
+    rowQty:       "rgba(17,19,24,0.42)",
+    rowPrice:     "rgba(17,19,24,0.55)",
+    emptyTxt:     "rgba(17,19,24,0.42)",
+    emptyHint:    "rgba(17,19,24,0.30)",
+    orderTotal:   "rgba(17,19,24,0.82)",
     orderFtrBg:   "#FFFFFF",
-    clearBorder:  "rgba(220,60,60,0.26)",
-    clearIcon:    "rgba(220,60,60,0.74)",
-    submitBg:     "rgba(15,15,15,0.06)",
-    submitBorder: "rgba(15,15,15,0.18)",
-    submitText:   "rgba(15,15,15,0.70)",
-    catName:      "rgba(15,15,15,0.72)",
-    catCat:       "rgba(15,15,15,0.36)",
-    catPrice:     "rgba(15,15,15,0.44)",
-    settingsTxt:  "rgba(15,15,15,0.72)",
-    settingsIcon: "rgba(15,15,15,0.46)",
-    chevron:      "rgba(15,15,15,0.26)",
-    link:         "rgba(15,15,15,0.68)",
+    clearBorder:  "rgba(180,40,40,0.28)",
+    clearIcon:    "rgba(180,40,40,0.74)",
+    submitBg:     "rgba(198,154,82,0.10)",
+    submitBorder: "rgba(198,154,82,0.32)",
+    submitText:   "rgba(150,110,40,0.85)",
+    catName:      "rgba(17,19,24,0.78)",
+    catCat:       "rgba(17,19,24,0.42)",
+    catPrice:     "rgba(17,19,24,0.55)",
+    settingsTxt:  "rgba(17,19,24,0.78)",
+    settingsIcon: "rgba(17,19,24,0.55)",
+    chevron:      "rgba(17,19,24,0.32)",
+    link:         "rgba(150,110,40,0.85)",
   },
   dark: {
-    bg:           "#0A0A0A" as const,
-    bgGrad:       ["#0A0A0A", "#0E0E0E", "#0A0A0A"] as const,
-    logoText:     "rgba(240,240,240,0.62)",
-    stateText:    "rgba(240,240,240,0.48)",
-    tapHint:      "rgba(240,240,240,0.35)",
-    errorText:    "rgba(252,120,120,0.90)",
-    hamburger:    "rgba(240,240,240,0.40)",
-    badgeBorder:  "rgba(240,240,240,0.22)",
-    badgeText:    "rgba(240,240,240,0.65)",
-    msgAgent:     (op: number) => `rgba(240,240,240,${op})`,
-    msgUser:      (op: number) => `rgba(240,240,240,${op})`,
-    partial:      "rgba(240,240,240,0.42)",
-    panelBg:      "#141414",
-    panelBorder:  "rgba(240,240,240,0.10)",
-    panelHandle:  "rgba(240,240,240,0.16)",
-    navText:      "rgba(240,240,240,0.32)",
-    navActive:    "rgba(240,240,240,0.88)",
-    divider:      "rgba(240,240,240,0.08)",
-    recTotal:     "rgba(240,240,240,0.84)",
-    recLabel:     "rgba(240,240,240,0.32)",
-    rowName:      "rgba(240,240,240,0.72)",
-    rowQty:       "rgba(240,240,240,0.36)",
-    rowPrice:     "rgba(240,240,240,0.46)",
-    emptyTxt:     "rgba(240,240,240,0.30)",
-    emptyHint:    "rgba(240,240,240,0.18)",
-    orderTotal:   "rgba(240,240,240,0.78)",
-    orderFtrBg:   "#141414",
-    clearBorder:  "rgba(252,100,100,0.28)",
-    clearIcon:    "rgba(252,100,100,0.74)",
-    submitBg:     "rgba(240,240,240,0.06)",
-    submitBorder: "rgba(240,240,240,0.18)",
-    submitText:   "rgba(240,240,240,0.68)",
-    catName:      "rgba(240,240,240,0.72)",
-    catCat:       "rgba(240,240,240,0.36)",
-    catPrice:     "rgba(240,240,240,0.44)",
-    settingsTxt:  "rgba(240,240,240,0.74)",
-    settingsIcon: "rgba(240,240,240,0.48)",
-    chevron:      "rgba(240,240,240,0.26)",
-    link:         "rgba(240,240,240,0.65)",
+    bg:           "#07080A" as const,
+    bgGrad:       ["#07080A", "#0B0D12", "#07080A"] as const,
+    logoText:     "rgba(245,239,227,0.78)",
+    stateText:    "rgba(245,239,227,0.50)",
+    tapHint:      "rgba(245,239,227,0.38)",
+    errorText:    "rgba(232,128,128,0.92)",
+    hamburger:    "rgba(245,239,227,0.55)",
+    badgeBorder:  "rgba(224,183,106,0.32)",
+    badgeText:    "#E0B76A",
+    msgAgent:     (op: number) => `rgba(245,239,227,${op})`,
+    msgUser:      (op: number) => `rgba(245,239,227,${op})`,
+    partial:      "rgba(245,239,227,0.42)",
+    panelBg:      "#111318",
+    panelBorder:  "rgba(245,239,227,0.10)",
+    panelHandle:  "rgba(245,239,227,0.18)",
+    navText:      "rgba(245,239,227,0.46)",
+    navActive:    "rgba(245,239,227,0.92)",
+    divider:      "rgba(245,239,227,0.08)",
+    recTotal:     "rgba(245,239,227,0.86)",
+    recLabel:     "rgba(245,239,227,0.42)",
+    rowName:      "rgba(245,239,227,0.82)",
+    rowQty:       "rgba(245,239,227,0.42)",
+    rowPrice:     "rgba(245,239,227,0.55)",
+    emptyTxt:     "rgba(245,239,227,0.42)",
+    emptyHint:    "rgba(245,239,227,0.30)",
+    orderTotal:   "rgba(245,239,227,0.86)",
+    orderFtrBg:   "#111318",
+    clearBorder:  "rgba(224,82,82,0.30)",
+    clearIcon:    "rgba(232,128,128,0.74)",
+    submitBg:     "rgba(224,183,106,0.10)",
+    submitBorder: "rgba(224,183,106,0.32)",
+    submitText:   "#E0B76A",
+    catName:      "rgba(245,239,227,0.82)",
+    catCat:       "rgba(245,239,227,0.42)",
+    catPrice:     "rgba(245,239,227,0.55)",
+    settingsTxt:  "rgba(245,239,227,0.82)",
+    settingsIcon: "rgba(245,239,227,0.55)",
+    chevron:      "rgba(245,239,227,0.32)",
+    link:         "#E0B76A",
   },
 };
 
@@ -378,23 +378,18 @@ export default function MainScreen() {
         </Pressable>
 
         <View style={s.brandRow}>
-          <Svg width={24} height={24} viewBox="0 0 36 36">
-            <Defs>
-              <SvgLinearGradient id="vl-brand" x1="0" y1="0" x2="36" y2="36" gradientUnits="userSpaceOnUse">
-                <Stop offset="0" stopColor="#7C6EF5" />
-                <Stop offset="1" stopColor="#5E56E6" />
-              </SvgLinearGradient>
-            </Defs>
-            <Rect x={0.5} y={0.5} width={35} height={35} rx={9.5} fill="url(#vl-brand)" />
-            <Circle cx={18} cy={18} r={2.2} fill="#FFFFFF" />
-            <Path d="M11.5 14.5a6.5 6.5 0 0 1 0 7" stroke="#FFFFFF" strokeWidth={1.8} strokeLinecap="round" fill="none" opacity={0.85} />
-            <Path d="M24.5 14.5a6.5 6.5 0 0 0 0 7" stroke="#FFFFFF" strokeWidth={1.8} strokeLinecap="round" fill="none" opacity={0.85} />
-            <Path d="M8 11a11 11 0 0 1 0 14" stroke="#FFFFFF" strokeWidth={1.6} strokeLinecap="round" fill="none" opacity={0.5} />
-            <Path d="M28 11a11 11 0 0 0 0 14" stroke="#FFFFFF" strokeWidth={1.6} strokeLinecap="round" fill="none" opacity={0.5} />
+          <Svg width={22} height={22} viewBox="0 0 40 40">
+            <Path d="M3 28 L37 28" stroke="rgba(245,239,227,0.55)" strokeWidth={1.5} strokeLinecap="round" />
+            <Path d="M7 22 Q12 8 20 8" stroke="#E0B76A" strokeWidth={1.5} strokeLinecap="round" fill="none" opacity={0.55} />
+            <Path d="M33 22 Q28 12 20 12" stroke="#E0B76A" strokeWidth={1.5} strokeLinecap="round" fill="none" opacity={0.55} />
+            <Path d="M11 24 Q15 14 20 14" stroke="#E0B76A" strokeWidth={2} strokeLinecap="round" fill="none" />
+            <Path d="M29 24 Q25 16 20 16" stroke="#E0B76A" strokeWidth={2} strokeLinecap="round" fill="none" />
+            <Circle cx={20} cy={28} r={2.4} fill="#F5EFE3" />
+            <Circle cx={20} cy={28} r={4.6} stroke="#E0B76A" strokeWidth={1.2} opacity={0.45} fill="none" />
           </Svg>
           <View style={s.brandWords}>
             <Text style={[s.brandVoyce, { color: t.logoText }]}>Voyce</Text>
-            <Text style={[s.brandLabs, { color: "#7C6EF5" }]}>Labs</Text>
+            <Text style={[s.brandLabs, { color: t.logoText, opacity: 0.78 }]}>Lab</Text>
           </View>
         </View>
 
@@ -721,8 +716,8 @@ const s = StyleSheet.create({
   hamburger:    { padding: 4 },
   brandRow:     { flexDirection: "row", alignItems: "center", gap: 8 },
   brandWords:   { flexDirection: "row", alignItems: "baseline" },
-  brandVoyce:     { fontFamily: "Inter_300Light", fontSize: 16, letterSpacing: -0.3, fontWeight: "700" },
-  brandLabs:     { fontFamily: "Inter_500Medium", fontSize: 16, letterSpacing: -0.3, fontWeight: "700", fontStyle: "italic" },
+  brandVoyce:     { fontFamily: "Inter_500Medium", fontSize: 15, letterSpacing: -0.2, fontWeight: "600" },
+  brandLabs:     { fontFamily: "Inter_400Regular", fontSize: 15, letterSpacing: -0.2, fontWeight: "400" },
   orderBadge:   { minWidth: 24, height: 24, borderRadius: 8, borderWidth: 0.5, alignItems: "center", justifyContent: "center", paddingHorizontal: 6 },
   orderBadgeNum:{ fontFamily: "Inter_500Medium", fontSize: 12 },
 

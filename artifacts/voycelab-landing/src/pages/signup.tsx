@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { Logo } from "@/components/logo";
+import { VoiceRail } from "@/components/voice-rail";
 import { useSignup } from "@/hooks/use-auth";
 import { ArrowLeft, Loader2 } from "lucide-react";
 
@@ -13,28 +14,15 @@ export default function Signup() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    signup.mutate(
-      { name, email, password },
-      { onSuccess: () => setLocation("/dashboard") }
-    );
-  };
-
-  const inputStyle = {
-    backgroundColor: "#F7F7F8",
-    boxShadow: "inset 2px 2px 4px rgba(0,0,0,0.04), inset -2px -2px 4px rgba(255,255,255,0.7)",
-    color: "#111827",
-    border: "1px solid #E5E7EB",
+    signup.mutate({ name, email, password }, { onSuccess: () => setLocation("/command") });
   };
 
   return (
-    <div
-      className="min-h-screen flex items-center justify-center relative p-6 py-12"
-      style={{ backgroundColor: "#F7F7F8" }}
-    >
+    <div className="min-h-screen flex items-center justify-center relative p-6 py-12">
       <Link
         href="/"
-        className="absolute top-6 left-6 flex items-center gap-1.5 transition-colors text-[13px] font-medium"
-        style={{ color: "#9CA3AF" }}
+        className="absolute top-6 left-6 flex items-center gap-1.5 text-[13px] font-medium"
+        style={{ color: "rgba(245,239,227,0.55)" }}
       >
         <ArrowLeft className="w-3.5 h-3.5" /> Back
       </Link>
@@ -44,55 +32,39 @@ export default function Signup() {
           <Logo size="lg" />
         </div>
 
-        <div
-          className="rounded-2xl p-8"
-          style={{
-            backgroundColor: "#FFFFFF",
-            boxShadow: "6px 6px 12px rgba(0,0,0,0.05), -6px -6px 12px rgba(255,255,255,0.9)",
-          }}
-        >
-          <h1 className="text-xl font-bold tracking-tight text-center" style={{ color: "#111827" }}>
-            Create account
+        <div className="vl-panel vl-edge-brass p-8">
+          <h1 className="text-[22px] font-semibold tracking-tight text-center" style={{ color: "var(--color-vl-ivory)" }}>
+            Configure your agent
           </h1>
-          <p className="text-[13px] text-center mt-1.5 mb-8" style={{ color: "#9CA3AF" }}>
-            14 days free, no card required
+          <p className="text-[13px] text-center mt-1.5" style={{ color: "rgba(245,239,227,0.55)" }}>
+            14 days free · No card required
           </p>
+          <div className="mt-6 mb-2">
+            <VoiceRail state="ready" intensity={0.5} />
+          </div>
 
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <div className="space-y-1.5">
-              <label className="text-[12px] font-semibold tracking-wide" style={{ color: "#6B7280" }}>
-                Name
-              </label>
+          <form onSubmit={handleSubmit} className="space-y-5 mt-6">
+            <Field label="Name">
               <input
                 type="text"
                 placeholder="Jane Doe"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 required
-                className="w-full h-11 px-4 rounded-xl text-[14px] outline-none transition-all focus:ring-2 focus:ring-[#2563EB]/20"
-                style={inputStyle}
+                className="vl-input"
               />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-[12px] font-semibold tracking-wide" style={{ color: "#6B7280" }}>
-                Email
-              </label>
+            </Field>
+            <Field label="Email">
               <input
                 type="email"
                 placeholder="name@venue.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="w-full h-11 px-4 rounded-xl text-[14px] outline-none transition-all focus:ring-2 focus:ring-[#2563EB]/20"
-                style={inputStyle}
+                className="vl-input"
               />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-[12px] font-semibold tracking-wide" style={{ color: "#6B7280" }}>
-                Password
-              </label>
+            </Field>
+            <Field label="Password">
               <input
                 type="password"
                 placeholder="••••••••"
@@ -100,39 +72,63 @@ export default function Signup() {
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 minLength={8}
-                className="w-full h-11 px-4 rounded-xl text-[14px] outline-none transition-all focus:ring-2 focus:ring-[#2563EB]/20"
-                style={inputStyle}
+                className="vl-input"
               />
-            </div>
+            </Field>
 
             {signup.error && (
-              <p className="text-[13px]" style={{ color: "#EF4444" }}>{signup.error.message}</p>
+              <p className="text-[13px]" style={{ color: "var(--color-vl-danger)" }}>
+                {signup.error.message}
+              </p>
             )}
 
-            <button
-              type="submit"
-              disabled={signup.isPending}
-              className="w-full h-11 rounded-xl text-[14px] font-semibold text-white transition-all hover:shadow-lg hover:shadow-blue-500/20 hover:-translate-y-0.5 disabled:opacity-60"
-              style={{ backgroundColor: "#2563EB" }}
-            >
+            <button type="submit" disabled={signup.isPending} className="vl-btn-primary w-full">
               {signup.isPending ? (
-                <span className="inline-flex items-center gap-2">
-                  <Loader2 className="w-4 h-4 animate-spin" /> Creating account...
+                <span className="inline-flex items-center justify-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin" /> Creating account…
                 </span>
               ) : (
-                "Get Started"
+                "Start free trial"
               )}
             </button>
           </form>
         </div>
 
-        <p className="mt-8 text-center text-[13px]" style={{ color: "#9CA3AF" }}>
+        <p className="mt-8 text-center text-[13px]" style={{ color: "rgba(245,239,227,0.55)" }}>
           Have an account?{" "}
-          <Link href="/login" className="font-medium transition-colors hover:underline" style={{ color: "#2563EB" }}>
+          <Link href="/login" className="font-medium hover:underline" style={{ color: "var(--color-vl-brass2)" }}>
             Sign in
           </Link>
         </p>
       </div>
+
+      <style>{`
+        .vl-input {
+          width: 100%;
+          height: 44px;
+          padding: 0 14px;
+          border-radius: 12px;
+          background: rgba(245,239,227,0.04);
+          border: 1px solid rgba(245,239,227,0.12);
+          color: var(--color-vl-ivory);
+          font-size: 14px;
+          outline: none;
+          transition: border-color .2s ease, background .2s ease;
+        }
+        .vl-input::placeholder { color: rgba(245,239,227,0.35); }
+        .vl-input:focus { border-color: rgba(124,110,245,0.7); background: rgba(245,239,227,0.06); }
+      `}</style>
     </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="block">
+      <span className="vl-eyebrow block mb-1.5" style={{ color: "rgba(245,239,227,0.55)" }}>
+        {label}
+      </span>
+      {children}
+    </label>
   );
 }

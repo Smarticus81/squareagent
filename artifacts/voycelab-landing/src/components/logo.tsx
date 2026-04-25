@@ -3,87 +3,109 @@ import { cn } from "@/lib/utils";
 interface LogoProps {
   className?: string;
   iconOnly?: boolean;
-  size?: "sm" | "md" | "lg";
+  size?: "sm" | "md" | "lg" | "xl";
+  variant?: "dark" | "light" | "mono";
 }
 
 /**
- * VoyceLabs logo — a glowing blue circle with concentric sound-wave arcs
- * radiating from the center, paired with a clean sans-serif wordmark.
+ * VoyceLab — symbol mark.
+ *
+ * A horizontal rail under a central signal node, flanked by two asymmetric
+ * sound arcs. The negative space between the upper arc and the rail forms
+ * a quiet "V". No microphone cliché.
  */
-export function Logo({ className, iconOnly = false, size = "md" }: LogoProps) {
-  const dims = { sm: 28, md: 34, lg: 44 }[size];
-  const textSize = { sm: "text-[15px]", md: "text-[18px]", lg: "text-[24px]" }[size];
+export function LogoMark({
+  size = 32,
+  variant = "dark",
+  className,
+}: {
+  size?: number;
+  variant?: "dark" | "light" | "mono";
+  className?: string;
+}) {
+  // Stroke + node colors — brass on dark, graphite on light, ink on mono.
+  const stroke = variant === "light" ? "#111318" : variant === "mono" ? "currentColor" : "#E0B76A";
+  const node = variant === "light" ? "#07080A" : variant === "mono" ? "currentColor" : "#F5EFE3";
+  const rail = variant === "light" ? "rgba(17,19,24,0.55)" : variant === "mono" ? "currentColor" : "rgba(245,239,227,0.55)";
+
+  return (
+    <svg
+      className={className}
+      width={size}
+      height={size}
+      viewBox="0 0 40 40"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+    >
+      {/* Rail — the signature horizontal line */}
+      <line
+        x1="3"
+        y1="28"
+        x2="37"
+        y2="28"
+        stroke={rail}
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+      {/* Outer arc, left — wider, lighter */}
+      <path
+        d="M7 22 Q12 8 20 8"
+        stroke={stroke}
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        fill="none"
+        opacity="0.55"
+      />
+      {/* Outer arc, right — asymmetric, slightly tighter */}
+      <path
+        d="M33 22 Q28 12 20 12"
+        stroke={stroke}
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        fill="none"
+        opacity="0.55"
+      />
+      {/* Inner arcs — the quiet "V" sits between these and the rail */}
+      <path
+        d="M11 24 Q15 14 20 14"
+        stroke={stroke}
+        strokeWidth="2"
+        strokeLinecap="round"
+        fill="none"
+      />
+      <path
+        d="M29 24 Q25 16 20 16"
+        stroke={stroke}
+        strokeWidth="2"
+        strokeLinecap="round"
+        fill="none"
+      />
+      {/* Signal node */}
+      <circle cx="20" cy="28" r="2.4" fill={node} />
+      <circle cx="20" cy="28" r="4.6" stroke={stroke} strokeWidth="1.2" opacity="0.45" />
+    </svg>
+  );
+}
+
+/**
+ * Horizontal lockup — symbol + wordmark.
+ */
+export function Logo({ className, iconOnly = false, size = "md", variant = "dark" }: LogoProps) {
+  const dim = { sm: 22, md: 28, lg: 36, xl: 48 }[size];
+  const text = { sm: "text-[14px]", md: "text-[16px]", lg: "text-[20px]", xl: "text-[28px]" }[size];
+  const wordColor =
+    variant === "light" ? "#07080A" : variant === "mono" ? "currentColor" : "#F5EFE3";
 
   return (
     <div className={cn("flex items-center gap-2.5 select-none", className)}>
-      <div className="relative flex items-center justify-center" style={{ width: dims, height: dims }}>
-        {/* Ambient glow */}
-        <div
-          className="absolute inset-0 rounded-full blur-lg opacity-30"
-          style={{ backgroundColor: "#2563EB" }}
-        />
-        <svg
-          width={dims}
-          height={dims}
-          viewBox="0 0 44 44"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-          aria-hidden="true"
-        >
-          <defs>
-            <linearGradient id="vl-bg" x1="0" y1="0" x2="44" y2="44" gradientUnits="userSpaceOnUse">
-              <stop offset="0%" stopColor="#3B82F6" />
-              <stop offset="100%" stopColor="#1D4ED8" />
-            </linearGradient>
-            <linearGradient id="vl-sheen" x1="0" y1="0" x2="0" y2="44" gradientUnits="userSpaceOnUse">
-              <stop offset="0%" stopColor="rgba(255,255,255,0.35)" />
-              <stop offset="50%" stopColor="rgba(255,255,255,0)" />
-            </linearGradient>
-          </defs>
-          {/* Base circle */}
-          <circle cx="22" cy="22" r="20" fill="url(#vl-bg)" />
-          <circle cx="22" cy="22" r="20" fill="url(#vl-sheen)" />
-          {/* Center dot */}
-          <circle cx="22" cy="22" r="3" fill="white" />
-          {/* Inner wave arcs */}
-          <path
-            d="M15.5 17a9 9 0 0 0 0 10"
-            stroke="white"
-            strokeWidth="2"
-            strokeLinecap="round"
-            fill="none"
-            opacity="0.9"
-          />
-          <path
-            d="M28.5 17a9 9 0 0 1 0 10"
-            stroke="white"
-            strokeWidth="2"
-            strokeLinecap="round"
-            fill="none"
-            opacity="0.9"
-          />
-          {/* Outer wave arcs */}
-          <path
-            d="M11.5 13.5a14 14 0 0 0 0 17"
-            stroke="white"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            fill="none"
-            opacity="0.4"
-          />
-          <path
-            d="M32.5 13.5a14 14 0 0 1 0 17"
-            stroke="white"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            fill="none"
-            opacity="0.4"
-          />
-        </svg>
-      </div>
+      <LogoMark size={dim} variant={variant} />
       {!iconOnly && (
-        <span className={cn("font-bold tracking-tight leading-none", textSize)} style={{ color: "#111827" }}>
-          Voyce<span style={{ color: "#2563EB" }}>Labs</span>
+        <span
+          className={cn("font-semibold tracking-[-0.01em] leading-none", text)}
+          style={{ color: wordColor, fontFeatureSettings: '"ss01"' }}
+        >
+          Voyce<span style={{ fontWeight: 400, opacity: 0.78 }}>Lab</span>
         </span>
       )}
     </div>
