@@ -23,7 +23,7 @@ import {
 export default function Command() {
   const [, setLocation] = useLocation();
   const { data: auth, isLoading, isFetching } = useAuth();
-  const { data: venues, isLoading: venuesLoading } = useVenues();
+  const { data: venues, isLoading: venuesLoading, error: venuesError } = useVenues();
 
   useEffect(() => {
     if (!isLoading && !isFetching && !auth?.user) setLocation("/login");
@@ -75,6 +75,15 @@ export default function Command() {
             </span>
           </h1>
         </div>
+
+        {venuesError && (
+          <div
+            className="vl-panel p-4 mb-6 text-[13px]"
+            style={{ color: "var(--color-vl-danger)" }}
+          >
+            Venue service unavailable: {venuesError.message}
+          </div>
+        )}
 
         {/* Live status panel */}
         <div className="vl-panel vl-edge-brass p-7 md:p-9 mb-12">

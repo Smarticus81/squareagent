@@ -14,13 +14,13 @@ import { Loader2, Mic, Plus, Settings2 } from "lucide-react";
 export default function Agents() {
   const [, setLocation] = useLocation();
   const { data: auth, isLoading } = useAuth();
-  const { data: venues, isLoading: venuesLoading } = useVenues();
+  const { data: venues, isLoading: venuesLoading, error: venuesError } = useVenues();
 
   useEffect(() => {
     if (!isLoading && !auth?.user) setLocation("/login");
   }, [auth, isLoading, setLocation]);
 
-  if (isLoading || venuesLoading) {
+  if (isLoading || (venuesLoading && !venuesError)) {
     return (
       <div className="flex-1 flex items-center justify-center">
         <Loader2 className="w-5 h-5 animate-spin" style={{ color: "var(--color-vl-brass2)" }} />
@@ -62,6 +62,12 @@ export default function Agents() {
             <Plus className="w-4 h-4" /> New agent
           </button>
         </div>
+
+        {venuesError && (
+          <div className="vl-panel p-4 mb-6 text-[13px]" style={{ color: "var(--color-vl-danger)" }}>
+            Venue service unavailable: {venuesError.message}
+          </div>
+        )}
 
         {list.length === 0 ? (
           <EmptyState onCreate={() => setLocation("/agents/new")} />

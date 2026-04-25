@@ -20,8 +20,16 @@ import NotFound from "@/pages/not-found";
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      retry: 1,
+      // Don't hammer the API on 4xx/5xx — a server error won't self-heal
+      // before the user can act, and a single failure should not cascade
+      // into 8–10 retries across page navigations.
+      retry: false,
       refetchOnWindowFocus: false,
+      // Keep cache fresh across page navigations so visiting Command,
+      // Agents, Services, and AgentSetup in sequence does not re-fetch
+      // /api/venues four times.
+      staleTime: 30_000,
+      gcTime: 5 * 60_000,
     },
   },
 });
