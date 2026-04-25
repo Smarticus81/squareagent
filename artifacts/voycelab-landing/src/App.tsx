@@ -11,6 +11,7 @@ import Signup from "@/pages/signup";
 import Dashboard from "@/pages/dashboard";
 import AccountSettings from "@/pages/account-settings";
 import Capabilities from "@/pages/capabilities";
+import AgentSetup from "@/pages/agent-setup";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient({
@@ -30,6 +31,7 @@ function Router() {
         <Route path="/login" component={Login} />
         <Route path="/signup" component={Signup} />
         <Route path="/dashboard" component={Dashboard} />
+        <Route path="/agent-setup" component={AgentSetup} />
         <Route path="/account" component={AccountSettings} />
         <Route path="/capabilities" component={Capabilities} />
         <Route component={NotFound} />

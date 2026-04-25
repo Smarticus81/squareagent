@@ -26,6 +26,7 @@ export const AuthResponseSchema = z.object({
 export const MeResponseSchema = z.object({
   user: UserSchema,
   subscription: SubscriptionSchema.nullable().optional(),
+  organizationId: z.string().nullable().optional(),
 });
 
 export type User = z.infer<typeof UserSchema>;

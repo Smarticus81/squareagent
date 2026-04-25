@@ -229,9 +229,9 @@ export default function Landing() {
                 className="mt-6 text-lg leading-relaxed max-w-lg"
                 style={{ color: muted }}
               >
-                VoyceLabs connects your POS, inventory, and events — then
-                executes tasks through voice-powered AI. Meet Bev, your venue's
-                intelligent operations agent.
+                VoyceLab is the voice control layer for your existing systems.
+                Name your agent, choose a SOTA voice pipeline, and ship voice
+                ordering on top of Square, Toast, Clover, or any connected service.
               </motion.p>
 
               <motion.div
@@ -390,7 +390,7 @@ export default function Landing() {
                 </div>
               </FloatingCard>
 
-              {/* Voice bubble — Bev */}
+              {/* Voice bubble — example agent (default name "Bev"; users rename) */}
               <FloatingCard
                 delay={3}
                 rotate={2}
@@ -615,7 +615,7 @@ export default function Landing() {
                 </motion.div>
                 <div>
                   <p className="text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ color: primary }}>
-                    Bev
+                    Your agent
                   </p>
                   <p className="text-lg font-medium" style={{ color: text }}>
                     "You're short 24 bottles for the 180-guest wedding.
@@ -1060,7 +1060,7 @@ export default function Landing() {
             className="mt-6 text-lg max-w-md mx-auto leading-relaxed"
             style={{ color: muted }}
           >
-            Connect your systems, activate Bev, and watch your operations transform in minutes — not months.
+            Connect your systems, name your agent, and watch your operations transform in minutes — not months.
           </motion.p>
 
           <motion.div
