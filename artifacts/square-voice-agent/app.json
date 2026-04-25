@@ -15,7 +15,7 @@
     "splash": {
       "image": "./assets/images/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#050508"
+      "backgroundColor": "#07080A"
     },
     "updates": {
       "url": "https://u.expo.dev/0157afb7-7402-4132-b38c-fa73c6c2a6b2"
@@ -25,8 +25,8 @@
       "bundleIdentifier": "com.voycelab.app",
       "buildNumber": "1",
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "VoyceLab uses your microphone to take drink orders by voice.",
-        "NSSpeechRecognitionUsageDescription": "VoyceLab uses speech recognition for the voice ordering wake-word feature.",
+        "NSMicrophoneUsageDescription": "VoyceLab uses your microphone to control your connected service by voice.",
+        "NSSpeechRecognitionUsageDescription": "VoyceLab uses speech recognition for the wake-word feature.",
         "ITSAppUsesNonExemptEncryption": false,
         "UIBackgroundModes": [
           "audio"
@@ -34,7 +34,7 @@
       }
     },
     "android": {
-      "backgroundColor": "#050508",
+      "backgroundColor": "#07080A",
       "package": "com.voycelab.app",
       "permissions": [
         "android.permission.RECORD_AUDIO",
@@ -58,20 +58,20 @@
       [
         "expo-audio",
         {
-          "microphonePermission": "Allow VoyceLab to access your microphone for voice ordering."
+          "microphonePermission": "Allow VoyceLab to access your microphone for voice control."
         }
       ],
       [
         "@config-plugins/react-native-webrtc",
         {
           "cameraPermission": false,
-          "microphonePermission": "Allow VoyceLab to access your microphone for voice ordering."
+          "microphonePermission": "Allow VoyceLab to access your microphone for voice control."
         }
       ],
       [
         "expo-speech-recognition",
         {
-          "microphonePermission": "Allow VoyceLab to access your microphone for voice ordering.",
+          "microphonePermission": "Allow VoyceLab to access your microphone for voice control.",
           "speechRecognitionPermission": "Allow VoyceLab to use speech recognition for the wake-word feature.",
           "androidSpeechServicePackages": ["com.google.android.googlequicksearchbox"]
         }

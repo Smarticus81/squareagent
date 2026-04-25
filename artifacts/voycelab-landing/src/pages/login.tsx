@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { Logo } from "@/components/logo";
+import { VoiceRail } from "@/components/voice-rail";
 import { useLogin } from "@/hooks/use-auth";
 import { ArrowLeft, Loader2 } from "lucide-react";
 
@@ -12,21 +13,15 @@ export default function Login() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    login.mutate(
-      { email, password },
-      { onSuccess: () => setLocation("/dashboard") }
-    );
+    login.mutate({ email, password }, { onSuccess: () => setLocation("/command") });
   };
 
   return (
-    <div
-      className="min-h-screen flex items-center justify-center relative p-6"
-      style={{ backgroundColor: "#F7F7F8" }}
-    >
+    <div className="min-h-screen flex items-center justify-center relative p-6">
       <Link
         href="/"
-        className="absolute top-6 left-6 flex items-center gap-1.5 transition-colors text-[13px] font-medium"
-        style={{ color: "#9CA3AF" }}
+        className="absolute top-6 left-6 flex items-center gap-1.5 text-[13px] font-medium"
+        style={{ color: "rgba(245,239,227,0.55)" }}
       >
         <ArrowLeft className="w-3.5 h-3.5" /> Back
       </Link>
@@ -36,89 +31,98 @@ export default function Login() {
           <Logo size="lg" />
         </div>
 
-        <div
-          className="rounded-2xl p-8"
-          style={{
-            backgroundColor: "#FFFFFF",
-            boxShadow: "6px 6px 12px rgba(0,0,0,0.05), -6px -6px 12px rgba(255,255,255,0.9)",
-          }}
-        >
-          <h1 className="text-xl font-bold tracking-tight text-center" style={{ color: "#111827" }}>
-            Sign in
+        <div className="vl-panel vl-edge-brass p-8">
+          <h1 className="text-[22px] font-semibold tracking-tight text-center" style={{ color: "var(--color-vl-ivory)" }}>
+            Open the console
           </h1>
-          <p className="text-[13px] text-center mt-1.5 mb-8" style={{ color: "#9CA3AF" }}>
-            Welcome back
+          <p className="text-[13px] text-center mt-1.5" style={{ color: "rgba(245,239,227,0.55)" }}>
+            Welcome back.
           </p>
+          <div className="mt-6 mb-2">
+            <VoiceRail state="ready" intensity={0.4} />
+          </div>
 
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <div className="space-y-1.5">
-              <label className="text-[12px] font-semibold tracking-wide" style={{ color: "#6B7280" }}>
-                Email
-              </label>
+          <form onSubmit={handleSubmit} className="space-y-5 mt-6">
+            <Field label="Email">
               <input
                 type="email"
                 placeholder="name@venue.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="w-full h-11 px-4 rounded-xl text-[14px] outline-none transition-all focus:ring-2 focus:ring-[#2563EB]/20"
-                style={{
-                  backgroundColor: "#F7F7F8",
-                  boxShadow: "inset 2px 2px 4px rgba(0,0,0,0.04), inset -2px -2px 4px rgba(255,255,255,0.7)",
-                  color: "#111827",
-                  border: "1px solid #E5E7EB",
-                }}
+                className="vl-input"
               />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-[12px] font-semibold tracking-wide" style={{ color: "#6B7280" }}>
-                Password
-              </label>
+            </Field>
+            <Field label="Password">
               <input
                 type="password"
                 placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                className="w-full h-11 px-4 rounded-xl text-[14px] outline-none transition-all focus:ring-2 focus:ring-[#2563EB]/20"
-                style={{
-                  backgroundColor: "#F7F7F8",
-                  boxShadow: "inset 2px 2px 4px rgba(0,0,0,0.04), inset -2px -2px 4px rgba(255,255,255,0.7)",
-                  color: "#111827",
-                  border: "1px solid #E5E7EB",
-                }}
+                className="vl-input"
               />
-            </div>
+            </Field>
 
             {login.error && (
-              <p className="text-[13px]" style={{ color: "#EF4444" }}>{login.error.message}</p>
+              <p className="text-[13px]" style={{ color: "var(--color-vl-danger)" }}>
+                {login.error.message}
+              </p>
             )}
 
-            <button
-              type="submit"
-              disabled={login.isPending}
-              className="w-full h-11 rounded-xl text-[14px] font-semibold text-white transition-all hover:shadow-lg hover:shadow-blue-500/20 hover:-translate-y-0.5 disabled:opacity-60"
-              style={{ backgroundColor: "#2563EB" }}
-            >
+            <button type="submit" disabled={login.isPending} className="vl-btn-primary w-full">
               {login.isPending ? (
-                <span className="inline-flex items-center gap-2">
-                  <Loader2 className="w-4 h-4 animate-spin" /> Signing in...
+                <span className="inline-flex items-center justify-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin" /> Signing in…
                 </span>
               ) : (
-                "Sign In"
+                "Sign in"
               )}
             </button>
           </form>
         </div>
 
-        <p className="mt-8 text-center text-[13px]" style={{ color: "#9CA3AF" }}>
+        <p className="mt-8 text-center text-[13px]" style={{ color: "rgba(245,239,227,0.55)" }}>
           No account?{" "}
-          <Link href="/signup" className="font-medium transition-colors hover:underline" style={{ color: "#2563EB" }}>
-            Get started
+          <Link href="/signup" className="font-medium hover:underline" style={{ color: "var(--color-vl-brass2)" }}>
+            Configure your agent
           </Link>
         </p>
       </div>
+
+      <FieldStyles />
     </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="block">
+      <span className="vl-eyebrow block mb-1.5" style={{ color: "rgba(245,239,227,0.55)" }}>
+        {label}
+      </span>
+      {children}
+    </label>
+  );
+}
+
+function FieldStyles() {
+  return (
+    <style>{`
+      .vl-input {
+        width: 100%;
+        height: 44px;
+        padding: 0 14px;
+        border-radius: 12px;
+        background: rgba(245,239,227,0.04);
+        border: 1px solid rgba(245,239,227,0.12);
+        color: var(--color-vl-ivory);
+        font-size: 14px;
+        outline: none;
+        transition: border-color .2s ease, background .2s ease;
+      }
+      .vl-input::placeholder { color: rgba(245,239,227,0.35); }
+      .vl-input:focus { border-color: rgba(124,110,245,0.7); background: rgba(245,239,227,0.06); }
+    `}</style>
   );
 }

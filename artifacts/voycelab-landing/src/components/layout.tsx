@@ -1,116 +1,200 @@
 import { Link, useLocation } from "wouter";
 import { Logo } from "./logo";
-import { Button } from "./ui/button";
 import { useAuth, useLogout } from "@/hooks/use-auth";
-import { LogOut } from "lucide-react";
+import { LogOut, Menu, X } from "lucide-react";
+import { useState } from "react";
+
+const APP_NAV = [
+  { href: "/command", label: "Command" },
+  { href: "/agents", label: "Agents" },
+  { href: "/services", label: "Services" },
+  { href: "/sessions", label: "Sessions" },
+  { href: "/workflows", label: "Workflows" },
+  { href: "/settings", label: "Settings" },
+];
+
+const LANDING_NAV = [
+  { href: "#how", label: "How it works" },
+  { href: "#noise", label: "Noisy rooms" },
+  { href: "#services", label: "Connected services" },
+  { href: "#configure", label: "Configure" },
+  { href: "#pricing", label: "Pricing" },
+];
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const { data: auth, isLoading } = useAuth();
   const logout = useLogout();
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   const isAuthPage = location === "/login" || location === "/signup";
+  const isLanding = location === "/";
+  const isAppPage =
+    !isLanding &&
+    !isAuthPage &&
+    APP_NAV.some((n) => location.startsWith(n.href));
 
   return (
     <div className="min-h-screen flex flex-col relative">
       {!isAuthPage && (
-        <header
-          className="fixed top-0 w-full z-50 border-b border-black/[0.04]"
-          style={{
-            background: "rgba(247,247,248,0.8)",
-            backdropFilter: "blur(16px)",
-            WebkitBackdropFilter: "blur(16px)",
-          }}
-        >
-          <div className="w-full max-w-[1400px] mx-auto px-6 lg:px-10 h-16 flex items-center justify-between">
-            <Link href="/" className="hover:opacity-80 transition-opacity">
-              <Logo />
-            </Link>
-
-            <nav className="flex items-center gap-6">
-              <Link
-                href="/capabilities"
-                className="text-[13px] font-medium text-[#6B7280] hover:text-[#111827] transition-colors hidden sm:block"
-              >
-                Capabilities
+        <header className="fixed top-0 inset-x-0 z-50">
+          <div className="vl-glass">
+            <div className="w-full max-w-[1400px] mx-auto px-6 lg:px-10 h-16 flex items-center justify-between">
+              <Link href="/" className="hover:opacity-90 transition-opacity">
+                <Logo size="md" />
               </Link>
-              {!isLoading && (
-                auth?.user ? (
-                  <>
-                    <Link
-                      href="/dashboard"
-                      className="text-[13px] font-medium text-[#6B7280] hover:text-[#111827] transition-colors"
+
+              {/* Desktop nav */}
+              <nav className="hidden md:flex items-center gap-1">
+                {(isAppPage ? APP_NAV : LANDING_NAV).map((item) => {
+                  const active = isAppPage && location.startsWith(item.href);
+                  return (
+                    <a
+                      key={item.href}
+                      href={item.href}
+                      className="text-[13px] font-medium px-3 py-1.5 rounded-full transition-colors"
+                      style={{
+                        color: active ? "var(--color-vl-ivory)" : "rgba(245,239,227,0.62)",
+                        background: active ? "rgba(245,239,227,0.06)" : "transparent",
+                      }}
                     >
-                      Dashboard
-                    </Link>
-                    <button
-                      className="text-[13px] font-medium flex items-center gap-1.5 px-4 py-2 rounded-xl text-[#2563EB] hover:bg-[#2563EB]/5 transition-colors"
-                      onClick={() => logout.mutate()}
-                    >
-                      <LogOut className="w-3.5 h-3.5" />
-                      Sign Out
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <Link
-                      href="/login"
-                      className="text-[13px] font-medium text-[#6B7280] hover:text-[#111827] transition-colors hidden sm:block"
-                    >
-                      Sign In
-                    </Link>
-                    <Link href="/signup" className="inline-block">
-                      <Button
-                        size="sm"
-                        className="text-[13px] h-9 px-6 rounded-xl bg-[#2563EB] text-white hover:bg-[#1D4ED8] shadow-sm"
+                      {item.label}
+                    </a>
+                  );
+                })}
+              </nav>
+
+              <div className="flex items-center gap-3">
+                {!isLoading &&
+                  (auth?.user ? (
+                    <>
+                      {!isAppPage && (
+                        <Link
+                          href="/command"
+                          className="hidden sm:inline-flex text-[13px] font-medium px-4 py-1.5 rounded-full vl-btn-ghost"
+                        >
+                          Open console
+                        </Link>
+                      )}
+                      <button
+                        onClick={() => logout.mutate()}
+                        className="text-[13px] font-medium flex items-center gap-1.5 px-3 py-1.5 rounded-full transition-colors hover:bg-white/5"
+                        style={{ color: "rgba(245,239,227,0.7)" }}
                       >
-                        Get Started
-                      </Button>
-                    </Link>
-                  </>
-                )
-              )}
-            </nav>
+                        <LogOut className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">Sign out</span>
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <Link
+                        href="/login"
+                        className="hidden sm:inline text-[13px] font-medium px-4 py-1.5"
+                        style={{ color: "rgba(245,239,227,0.7)" }}
+                      >
+                        Sign in
+                      </Link>
+                      <Link href="/signup" className="inline-block">
+                        <button className="vl-btn-primary text-[13px] py-2 px-5">
+                          Configure your agent
+                        </button>
+                      </Link>
+                    </>
+                  ))}
+
+                <button
+                  className="md:hidden text-ivory"
+                  onClick={() => setMobileOpen((s) => !s)}
+                  aria-label="Toggle menu"
+                  style={{ color: "var(--color-vl-ivory)" }}
+                >
+                  {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+                </button>
+              </div>
+            </div>
+
+            {mobileOpen && (
+              <div className="md:hidden border-t border-white/10 px-6 py-4 flex flex-col gap-2">
+                {(isAppPage ? APP_NAV : LANDING_NAV).map((item) => (
+                  <a
+                    key={item.href}
+                    href={item.href}
+                    onClick={() => setMobileOpen(false)}
+                    className="text-[14px] py-2"
+                    style={{ color: "rgba(245,239,227,0.78)" }}
+                  >
+                    {item.label}
+                  </a>
+                ))}
+              </div>
+            )}
           </div>
         </header>
       )}
 
-      <main className="flex-1 flex flex-col">
-        {children}
-      </main>
+      <main className="flex-1 flex flex-col">{children}</main>
 
       {!isAuthPage && (
-        <footer className="border-t border-black/[0.04] py-16 mt-auto" style={{ backgroundColor: "#F7F7F8" }}>
-          <div className="w-full max-w-[1400px] mx-auto px-6 lg:px-10">
-            <div className="flex flex-col md:flex-row justify-between items-start gap-10">
+        <footer className="border-t border-white/[0.06] mt-auto">
+          <div className="w-full max-w-[1400px] mx-auto px-6 lg:px-10 py-14">
+            <div className="grid md:grid-cols-[1.4fr_1fr_1fr_1fr] gap-10">
               <div>
-                <Logo />
-                <p className="text-[13px] text-[#6B7280] mt-3 max-w-[300px] leading-relaxed">
-                  Voice-powered AI operations for venues, bars, and events. Connect your POS, speak to your agent, and go.
+                <Logo size="md" />
+                <p className="text-[13px] mt-4 max-w-[320px] leading-relaxed" style={{ color: "rgba(245,239,227,0.55)" }}>
+                  The voice layer for modern venue operations. Bolt onto Square or another connected service. Speak. Confirm. Sync.
                 </p>
               </div>
-              <div className="flex gap-16 text-[13px]">
-                <div className="space-y-2.5">
-                  <p className="text-[#9CA3AF] font-semibold text-[10px] tracking-[0.2em] uppercase mb-3">Product</p>
-                  <Link href="/signup" className="block text-[#6B7280] hover:text-[#111827] transition-colors">Get Started</Link>
-                  <Link href="/login" className="block text-[#6B7280] hover:text-[#111827] transition-colors">Sign In</Link>
-                  <Link href="/capabilities" className="block text-[#6B7280] hover:text-[#111827] transition-colors">Capabilities</Link>
-                </div>
-                <div className="space-y-2.5">
-                  <p className="text-[#9CA3AF] font-semibold text-[10px] tracking-[0.2em] uppercase mb-3">Company</p>
-                  <span className="block text-[#6B7280] cursor-default">About</span>
-                  <span className="block text-[#6B7280] cursor-default">Contact</span>
-                </div>
-              </div>
+              <FooterCol
+                title="Product"
+                links={[
+                  { href: "/signup", label: "Configure your agent" },
+                  { href: "/command", label: "Console" },
+                  { href: "#services", label: "Connected services" },
+                  { href: "#noise", label: "Noisy rooms" },
+                ]}
+              />
+              <FooterCol
+                title="Trust"
+                links={[
+                  { href: "#boundaries", label: "Control boundaries" },
+                  { href: "#pipelines", label: "Voice pipelines" },
+                  { href: "#pricing", label: "Pricing" },
+                ]}
+              />
+              <FooterCol
+                title="Account"
+                links={[
+                  { href: "/login", label: "Sign in" },
+                  { href: "/signup", label: "Create account" },
+                ]}
+              />
             </div>
-            <div className="mt-12 pt-6 border-t border-black/[0.04] flex flex-col sm:flex-row justify-between items-center gap-2">
-              <p className="text-[11px] text-[#9CA3AF] tracking-wider">
-                &copy; {new Date().getFullYear()} VoyceLabs. All rights reserved.
-              </p>
+            <div className="vl-line my-10" />
+            <div className="flex flex-col sm:flex-row justify-between items-center gap-2 text-[11px]" style={{ color: "rgba(245,239,227,0.45)" }}>
+              <p className="tracking-wider">© {new Date().getFullYear()} VoyceLab. Speak. Confirm. Sync.</p>
+              <p className="tracking-[0.2em] uppercase">Voice layer · Not a POS</p>
             </div>
           </div>
         </footer>
       )}
+    </div>
+  );
+}
+
+function FooterCol({ title, links }: { title: string; links: { href: string; label: string }[] }) {
+  return (
+    <div className="space-y-2.5">
+      <p className="vl-eyebrow mb-3">{title}</p>
+      {links.map((l) => (
+        <Link
+          key={l.href}
+          href={l.href}
+          className="block text-[13px] transition-colors"
+          style={{ color: "rgba(245,239,227,0.62)" }}
+        >
+          {l.label}
+        </Link>
+      ))}
     </div>
   );
 }
