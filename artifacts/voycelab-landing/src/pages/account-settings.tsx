@@ -1,8 +1,15 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
-import { Button } from "@/components/ui/button";
 import { ArrowLeft, Loader2 } from "lucide-react";
+
+const bg = "#F7F7F8";
+const card = "#FFFFFF";
+const text = "#111827";
+const muted = "#6B7280";
+const primary = "#2563EB";
+const neuShadow = "6px 6px 12px rgba(0,0,0,0.05), -6px -6px 12px rgba(255,255,255,0.9)";
+const neuInset = "inset 2px 2px 4px rgba(0,0,0,0.04), inset -2px -2px 4px rgba(255,255,255,0.7)";
 
 export default function AccountSettings() {
   const [, setLocation] = useLocation();
@@ -18,7 +25,6 @@ export default function AccountSettings() {
   const [pwLoading, setPwLoading] = useState(false);
   const [pwMsg, setPwMsg] = useState("");
 
-  // Initialize form fields from auth data
   const user = auth?.user;
   if (user && !name && !email) {
     setName(user.name);
@@ -27,8 +33,8 @@ export default function AccountSettings() {
 
   if (isLoading) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-background">
-        <div className="w-5 h-5 border border-foreground/20 border-t-foreground/60 rounded-full animate-spin" />
+      <div className="flex-1 flex items-center justify-center" style={{ backgroundColor: bg }}>
+        <Loader2 className="w-6 h-6 animate-spin" style={{ color: primary }} />
       </div>
     );
   }
@@ -89,66 +95,121 @@ export default function AccountSettings() {
     }
   };
 
+  const inputStyle = {
+    backgroundColor: bg,
+    boxShadow: neuInset,
+    color: text,
+    border: "1px solid #E5E7EB",
+  };
+
   return (
-    <div className="flex-1 bg-background text-foreground">
-      <div className="max-w-xl w-full mx-auto px-6 py-12 pt-28">
-        <button onClick={() => setLocation("/dashboard")} className="text-[13px] text-foreground/40 hover:text-foreground transition-colors flex items-center gap-1.5 mb-8">
+    <div className="flex-1" style={{ backgroundColor: bg, color: text }}>
+      <div className="w-full max-w-[800px] mx-auto px-6 lg:px-10 py-12 pt-28">
+        <button
+          onClick={() => setLocation("/dashboard")}
+          className="flex items-center gap-1.5 mb-8 text-[13px] font-medium transition-colors"
+          style={{ color: "#9CA3AF" }}
+          onMouseEnter={(e) => (e.currentTarget.style.color = text)}
+          onMouseLeave={(e) => (e.currentTarget.style.color = "#9CA3AF")}
+        >
           <ArrowLeft className="w-3.5 h-3.5" />
           Back to dashboard
         </button>
 
-        <h1 className="text-2xl font-display font-medium tracking-tight text-foreground mb-10">Account Settings</h1>
+        <h1 className="text-3xl font-bold tracking-tight mb-10" style={{ color: text }}>
+          Account Settings
+        </h1>
 
-        {/* Profile */}
-        <div className="border border-foreground/8 p-8 mb-6">
-          <p className="text-[12px] tracking-[0.15em] uppercase text-foreground/30 mb-6">Profile</p>
-          <form onSubmit={handleProfileUpdate} className="space-y-4">
-            <div>
-              <label className="block text-[13px] text-foreground/50 font-light mb-1.5">Name</label>
-              <input
-                type="text" value={name} onChange={(e) => setName(e.target.value)}
-                className="w-full h-10 px-3 bg-foreground/[0.03] border border-foreground/10 text-[14px] text-foreground outline-none focus:border-foreground/30 transition-colors"
-              />
-            </div>
-            <div>
-              <label className="block text-[13px] text-foreground/50 font-light mb-1.5">Email</label>
-              <input
-                type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-                className="w-full h-10 px-3 bg-foreground/[0.03] border border-foreground/10 text-[14px] text-foreground outline-none focus:border-foreground/30 transition-colors"
-              />
-            </div>
-            {profileMsg && <p className="text-[13px] text-foreground/50">{profileMsg}</p>}
-            <Button type="submit" className="h-10 px-7 text-[13px]" disabled={profileLoading}>
-              {profileLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" /> : null}
-              Save changes
-            </Button>
-          </form>
-        </div>
+        <div className="grid gap-6">
+          {/* Profile */}
+          <div className="rounded-2xl p-8" style={{ backgroundColor: card, boxShadow: neuShadow }}>
+            <p className="text-[11px] font-bold tracking-[0.15em] uppercase mb-6" style={{ color: "#9CA3AF" }}>
+              Profile
+            </p>
+            <form onSubmit={handleProfileUpdate} className="space-y-5">
+              <div>
+                <label className="block text-[13px] font-medium mb-1.5" style={{ color: muted }}>Name</label>
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="w-full h-11 px-4 rounded-xl text-[14px] outline-none transition-all focus:ring-2 focus:ring-[#2563EB]/20"
+                  style={inputStyle}
+                />
+              </div>
+              <div>
+                <label className="block text-[13px] font-medium mb-1.5" style={{ color: muted }}>Email</label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full h-11 px-4 rounded-xl text-[14px] outline-none transition-all focus:ring-2 focus:ring-[#2563EB]/20"
+                  style={inputStyle}
+                />
+              </div>
+              {profileMsg && (
+                <p className="text-[13px]" style={{ color: profileMsg.includes("updated") ? "#16A34A" : "#EF4444" }}>
+                  {profileMsg}
+                </p>
+              )}
+              <button
+                type="submit"
+                disabled={profileLoading}
+                className="h-11 px-8 rounded-xl text-[13px] font-semibold text-white transition-all hover:shadow-lg hover:shadow-blue-500/20 hover:-translate-y-0.5 disabled:opacity-60 inline-flex items-center gap-2"
+                style={{ backgroundColor: primary }}
+              >
+                {profileLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                Save changes
+              </button>
+            </form>
+          </div>
 
-        {/* Password */}
-        <div className="border border-foreground/8 p-8">
-          <p className="text-[12px] tracking-[0.15em] uppercase text-foreground/30 mb-6">Change Password</p>
-          <form onSubmit={handlePasswordChange} className="space-y-4">
-            <div>
-              <label className="block text-[13px] text-foreground/50 font-light mb-1.5">Current password</label>
-              <input
-                type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)}
-                className="w-full h-10 px-3 bg-foreground/[0.03] border border-foreground/10 text-[14px] text-foreground outline-none focus:border-foreground/30 transition-colors"
-              />
-            </div>
-            <div>
-              <label className="block text-[13px] text-foreground/50 font-light mb-1.5">New password</label>
-              <input
-                type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
-                className="w-full h-10 px-3 bg-foreground/[0.03] border border-foreground/10 text-[14px] text-foreground outline-none focus:border-foreground/30 transition-colors"
-              />
-            </div>
-            {pwMsg && <p className="text-[13px] text-foreground/50">{pwMsg}</p>}
-            <Button type="submit" variant="outline" className="h-10 px-7 text-[13px]" disabled={pwLoading || !currentPassword || !newPassword}>
-              {pwLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" /> : null}
-              Change password
-            </Button>
-          </form>
+          {/* Password */}
+          <div className="rounded-2xl p-8" style={{ backgroundColor: card, boxShadow: neuShadow }}>
+            <p className="text-[11px] font-bold tracking-[0.15em] uppercase mb-6" style={{ color: "#9CA3AF" }}>
+              Change Password
+            </p>
+            <form onSubmit={handlePasswordChange} className="space-y-5">
+              <div>
+                <label className="block text-[13px] font-medium mb-1.5" style={{ color: muted }}>
+                  Current password
+                </label>
+                <input
+                  type="password"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  className="w-full h-11 px-4 rounded-xl text-[14px] outline-none transition-all focus:ring-2 focus:ring-[#2563EB]/20"
+                  style={inputStyle}
+                />
+              </div>
+              <div>
+                <label className="block text-[13px] font-medium mb-1.5" style={{ color: muted }}>
+                  New password
+                </label>
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  className="w-full h-11 px-4 rounded-xl text-[14px] outline-none transition-all focus:ring-2 focus:ring-[#2563EB]/20"
+                  style={inputStyle}
+                />
+              </div>
+              {pwMsg && (
+                <p className="text-[13px]" style={{ color: pwMsg.includes("success") ? "#16A34A" : "#EF4444" }}>
+                  {pwMsg}
+                </p>
+              )}
+              <button
+                type="submit"
+                disabled={pwLoading || !currentPassword || !newPassword}
+                className="h-11 px-8 rounded-xl text-[13px] font-semibold transition-all hover:-translate-y-0.5 disabled:opacity-50 inline-flex items-center gap-2"
+                style={{ backgroundColor: bg, boxShadow: neuShadow, color: text }}
+              >
+                {pwLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                Change password
+              </button>
+            </form>
+          </div>
         </div>
       </div>
     </div>

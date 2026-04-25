@@ -2,7 +2,6 @@ import { useEffect, useState, useCallback } from "react";
 import { useLocation } from "wouter";
 import { useAuth, useLogout } from "@/hooks/use-auth";
 import { useVenues, useSaveVenue, useDeleteVenue, useSquareLocations, type SquareLocation } from "@/hooks/use-venues";
-import { Button } from "@/components/ui/button";
 import {
   ExternalLink,
   AlertCircle,
@@ -16,7 +15,20 @@ import {
   Smartphone,
   Share,
   PlusSquare,
+  X,
 } from "lucide-react";
+
+/* ── Design tokens ────────────────────────────────────────────── */
+const bg = "#F7F7F8";
+const card = "#FFFFFF";
+const text = "#111827";
+const muted = "#6B7280";
+const border = "#E5E7EB";
+const primary = "#2563EB";
+const primaryDark = "#1D4ED8";
+const destructive = "#EF4444";
+const neuShadow = "6px 6px 12px rgba(0,0,0,0.05), -6px -6px 12px rgba(255,255,255,0.9)";
+const neuInset = "inset 2px 2px 4px rgba(0,0,0,0.04), inset -2px -2px 4px rgba(255,255,255,0.7)";
 
 export default function Dashboard() {
   const [, setLocation] = useLocation();
@@ -27,7 +39,6 @@ export default function Dashboard() {
   const deleteVenue = useDeleteVenue();
   const fetchLocations = useSquareLocations();
 
-  // OAuth + location selection state
   const [oauthToken, setOauthToken] = useState<string | null>(null);
   const [oauthMerchantId, setOauthMerchantId] = useState<string | null>(null);
   const [locations, setLocations] = useState<SquareLocation[]>([]);
@@ -35,14 +46,10 @@ export default function Dashboard() {
   const [connecting, setConnecting] = useState(false);
 
   useEffect(() => {
-    // Only redirect if the query has fully settled (not loading AND not refetching)
-    // This prevents a race where stale cached null data triggers a premature redirect
     if (!isLoading && !isFetching && !auth?.user) {
       setLocation("/login");
     }
   }, [isLoading, isFetching, auth, setLocation]);
-
-  // ── Handle OAuth redirect return (standalone PWA or redirect flow) ──────
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -51,7 +58,6 @@ export default function Dashboard() {
 
     if (!oauthTs && !oauthError) return;
 
-    // Clean URL params
     const url = new URL(window.location.href);
     url.searchParams.delete("oauth_ts");
     url.searchParams.delete("oauth_error");
@@ -86,14 +92,10 @@ export default function Dashboard() {
     }
   }, [fetchLocations]);
 
-  // ── Square OAuth — always use full-page redirect (reliable across all browsers) ──
-
   const handleConnectSquare = useCallback(() => {
     setConnecting(true);
     window.location.href = "/api/square/oauth/authorize?mode=redirect&return_url=/dashboard";
   }, []);
-
-  // ── Save selected location ────────────────────────────────────────────────
 
   const handleSelectLocation = useCallback(
     async (loc: SquareLocation) => {
@@ -106,7 +108,6 @@ export default function Dashboard() {
           locationName: loc.name,
           name: loc.name,
         });
-        // Reset OAuth state
         setOauthToken(null);
         setOauthMerchantId(null);
         setLocations([]);
@@ -117,8 +118,6 @@ export default function Dashboard() {
     },
     [oauthToken, oauthMerchantId, saveVenue]
   );
-
-  // ── Disconnect venue ──────────────────────────────────────────────────────
 
   const handleDisconnect = useCallback(
     async (venueId: number) => {
@@ -132,12 +131,10 @@ export default function Dashboard() {
     [deleteVenue]
   );
 
-  // ── Helpers ───────────────────────────────────────────────────────────────
-
   if (isLoading) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-background">
-        <div className="w-5 h-5 border border-foreground/20 border-t-foreground/60 rounded-full animate-spin"></div>
+      <div className="flex-1 flex items-center justify-center" style={{ backgroundColor: bg }}>
+        <Loader2 className="w-6 h-6 animate-spin" style={{ color: primary }} />
       </div>
     );
   }
@@ -150,8 +147,6 @@ export default function Dashboard() {
     return rightTs - leftTs;
   })[0] ?? null;
   const isSquareConnected = !!primaryVenue?.squareLocationId;
-  // Voice agent is served at /agent/ by the same Express server in production.
-  // Only use a separate port for local development (localhost/127.0.0.1).
   const isLocalDev = !import.meta.env.PROD &&
     (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
   const voiceAgentBaseUrl = isLocalDev
@@ -187,137 +182,152 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="flex-1 bg-background text-foreground">
-      <div className="max-w-3xl w-full mx-auto px-6 py-12 pt-28">
+    <div className="flex-1" style={{ backgroundColor: bg, color: text }}>
+      <div className="w-full max-w-[1200px] mx-auto px-6 lg:px-10 py-12 pt-28">
+
         {/* Header */}
-        <div className="mb-14">
+        <div className="mb-12">
           <div className="flex items-center justify-between">
-            <h1 className="text-2xl font-display font-medium tracking-tight text-foreground">
+            <h1 className="text-3xl font-bold tracking-tight" style={{ color: text }}>
               {auth.user.name.split(" ")[0]}
             </h1>
             <div className="flex items-center gap-3">
               <button
                 onClick={() => setLocation("/account")}
-                className="text-[13px] text-foreground/35 hover:text-foreground transition-colors flex items-center gap-1.5"
+                className="text-[13px] font-medium flex items-center gap-1.5 px-4 py-2 rounded-xl transition-colors hover:bg-black/[0.04]"
+                style={{ color: muted }}
               >
                 <Settings className="w-3.5 h-3.5" />
                 Account
               </button>
               <button
                 onClick={() => logout.mutate()}
-                className="text-[13px] font-medium flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
+                className="text-[13px] font-medium flex items-center gap-1.5 px-4 py-2 rounded-xl transition-colors hover:bg-[#2563EB]/5"
+                style={{ color: primary }}
               >
                 <LogOut className="w-3.5 h-3.5" />
                 Sign Out
               </button>
             </div>
           </div>
-          <p className="text-foreground/40 font-light text-[14px] mt-1">Manage your venue and voice agent</p>
-
+          <p className="text-[14px] mt-1" style={{ color: muted }}>Manage your venue and voice agent</p>
           {auth.subscription?.status === "trialing" && (
-            <p className="text-[12px] text-foreground/35 mt-3 tracking-wide">
+            <p className="text-[12px] mt-3 tracking-wide" style={{ color: "#9CA3AF" }}>
               Trial &middot; {getTrialDaysLeft()} days remaining
             </p>
           )}
         </div>
 
-        {/* ── Location Picker Modal ──────────────────────────────────── */}
+        {/* Location Picker Modal */}
         {showLocationPicker && locations.length > 0 && (
-          <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
-            <div className="bg-background border border-foreground/10 max-w-md w-full p-8">
-              <h2 className="text-lg font-display font-medium mb-1">Select a location</h2>
-              <p className="text-[13px] text-foreground/40 font-light mb-6">
-                Choose the Square location to connect.
-              </p>
+          <div className="fixed inset-0 z-50 bg-black/30 backdrop-blur-sm flex items-center justify-center p-4">
+            <div
+              className="max-w-md w-full rounded-2xl p-8"
+              style={{ backgroundColor: card, boxShadow: "0 25px 60px rgba(0,0,0,0.15)" }}
+            >
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h2 className="text-lg font-bold" style={{ color: text }}>Select a location</h2>
+                  <p className="text-[13px] mt-1" style={{ color: muted }}>
+                    Choose the Square location to connect.
+                  </p>
+                </div>
+                <button
+                  onClick={() => { setShowLocationPicker(false); setOauthToken(null); setLocations([]); }}
+                  className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-black/[0.04] transition-colors"
+                >
+                  <X className="w-4 h-4" style={{ color: muted }} />
+                </button>
+              </div>
               <div className="space-y-2 max-h-80 overflow-y-auto">
                 {locations.map((loc) => (
                   <button
                     key={loc.id}
                     onClick={() => handleSelectLocation(loc)}
                     disabled={saveVenue.isPending}
-                    className="w-full text-left p-4 border border-foreground/8 hover:border-foreground/20 transition-colors flex items-start gap-3 disabled:opacity-50"
+                    className="w-full text-left p-4 rounded-xl flex items-start gap-3 disabled:opacity-50 transition-all hover:-translate-y-0.5"
+                    style={{ backgroundColor: bg, boxShadow: neuShadow }}
                   >
-                    <MapPin className="w-4 h-4 mt-0.5 text-foreground/30 shrink-0" />
+                    <MapPin className="w-4 h-4 mt-0.5 shrink-0" style={{ color: primary }} />
                     <div>
-                      <div className="text-[14px] font-medium">{loc.name}</div>
-                      {loc.address && <div className="text-[12px] text-foreground/40 mt-0.5">{loc.address}</div>}
+                      <div className="text-[14px] font-semibold" style={{ color: text }}>{loc.name}</div>
+                      {loc.address && <div className="text-[12px] mt-0.5" style={{ color: muted }}>{loc.address}</div>}
                     </div>
                   </button>
                 ))}
               </div>
-              <button
-                className="w-full mt-4 text-[13px] text-foreground/40 hover:text-foreground transition-colors py-2"
-                onClick={() => {
-                  setShowLocationPicker(false);
-                  setOauthToken(null);
-                  setLocations([]);
-                }}
-              >
-                Cancel
-              </button>
             </div>
           </div>
         )}
 
-        {/* ── Cards ──────────────────────────────────────────────────── */}
-        <div className="space-y-6">
-          {/* POS Integrations */}
-          <div className="border border-foreground/8 p-8">
-            <div className="flex items-start justify-between mb-2">
-              <div>
-                <p className="text-[12px] tracking-[0.15em] uppercase text-foreground/30 mb-2">POS Integrations</p>
-                <p className="text-[14px] font-light text-foreground/50">
-                  Connect the point-of-sale that powers your venue.
-                </p>
-              </div>
+        {/* Cards grid */}
+        <div className="grid lg:grid-cols-2 gap-6">
+
+          {/* POS Integrations — spans full width */}
+          <div
+            className="lg:col-span-2 rounded-2xl p-8"
+            style={{ backgroundColor: card, boxShadow: neuShadow }}
+          >
+            <div className="mb-6">
+              <p className="text-[11px] font-bold tracking-[0.15em] uppercase mb-2" style={{ color: "#9CA3AF" }}>
+                POS Integrations
+              </p>
+              <p className="text-[14px]" style={{ color: muted }}>
+                Connect the point-of-sale that powers your venue.
+              </p>
             </div>
 
-            <div className="mt-6 grid sm:grid-cols-2 gap-3">
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {/* Square — live */}
-              <div className={`border p-5 rounded-lg ${isSquareConnected ? "border-primary/40 bg-primary/5" : "border-foreground/8"}`}>
-                <div className="flex items-center justify-between mb-1">
+              <div
+                className="rounded-xl p-5 transition-all"
+                style={{
+                  backgroundColor: isSquareConnected ? `${primary}08` : bg,
+                  boxShadow: neuInset,
+                  border: isSquareConnected ? `1px solid ${primary}30` : `1px solid ${border}`,
+                }}
+              >
+                <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
-                    <svg className="h-5 w-5 text-foreground/70" viewBox="0 0 64 64" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <svg className="h-5 w-5" style={{ color: text }} viewBox="0 0 64 64" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                       <path d="M10 0C4.477 0 0 4.477 0 10v44c0 5.523 4.477 10 10 10h44c5.523 0 10-4.477 10-10V10c0-5.523-4.477-10-10-10H10zm30.5 16h-17C20.462 16 18 18.462 18 21.5v17c0 3.038 2.462 5.5 5.5 5.5h17c3.038 0 5.5-2.462 5.5-5.5v-17c0-3.038-2.462-5.5-5.5-5.5zM38 34a4 4 0 01-4 4H30a4 4 0 01-4-4v-4a4 4 0 014-4h4a4 4 0 014 4v4z" />
                     </svg>
-                    <span className="text-[14px] font-medium">Square</span>
+                    <span className="text-[14px] font-semibold" style={{ color: text }}>Square</span>
                   </div>
                   {isSquareConnected && (
-                    <span className="text-[10px] tracking-wider uppercase text-primary flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-primary" />
-                      Connected
+                    <span className="text-[10px] font-bold tracking-wider uppercase flex items-center gap-1.5" style={{ color: primary }}>
+                      <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: primary }} />
+                      Live
                     </span>
                   )}
                 </div>
-                <p className="text-[12px] text-foreground/45 font-light mb-4 leading-relaxed">
-                  {isSquareConnected ? (
-                    <>{primaryVenue!.squareLocationName}</>
-                  ) : (
-                    "Full bi-directional sync: catalog, orders, inventory, payments."
-                  )}
+                <p className="text-[12px] mb-4 leading-relaxed" style={{ color: muted }}>
+                  {isSquareConnected
+                    ? primaryVenue!.squareLocationName
+                    : "Full bi-directional sync: catalog, orders, inventory, payments."}
                 </p>
                 {isSquareConnected ? (
                   <button
-                    className="text-[12px] text-foreground/35 hover:text-destructive transition-colors flex items-center gap-1.5"
+                    className="text-[12px] font-medium flex items-center gap-1.5 transition-colors"
+                    style={{ color: "#9CA3AF" }}
                     onClick={() => handleDisconnect(primaryVenue!.id)}
                     disabled={deleteVenue.isPending}
+                    onMouseEnter={(e) => (e.currentTarget.style.color = destructive)}
+                    onMouseLeave={(e) => (e.currentTarget.style.color = "#9CA3AF")}
                   >
-                    {deleteVenue.isPending ? (
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                    ) : (
-                      <Trash2 className="w-3 h-3" />
-                    )}
+                    {deleteVenue.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
                     Disconnect
                   </button>
                 ) : (
-                  <Button
-                    className="h-9 px-5 text-[12px]"
+                  <button
+                    className="h-9 px-5 rounded-xl text-[12px] font-semibold text-white transition-all hover:shadow-lg hover:shadow-blue-500/20"
+                    style={{ backgroundColor: primary }}
                     onClick={handleConnectSquare}
                     disabled={connecting}
                   >
-                    {connecting ? <Loader2 className="w-3 h-3 animate-spin mr-2" /> : null}
+                    {connecting ? <Loader2 className="w-3 h-3 animate-spin mr-2 inline" /> : null}
                     Connect
-                  </Button>
+                  </button>
                 )}
               </div>
 
@@ -327,58 +337,78 @@ export default function Dashboard() {
                 { name: "Clover", desc: "Clover Station, Mini, and Flex (Fiserv)." },
                 { name: "Lightspeed", desc: "Lightspeed Retail & Restaurant (K-Series)." },
                 { name: "Shopify POS", desc: "In-store and online unified commerce." },
-                { name: "GoDaddy Smart Terminal", desc: "Poynt-based countertop & mobile." },
-                { name: "Revel Systems", desc: "Enterprise iPad POS for QSR & retail." },
+                { name: "GoDaddy", desc: "Poynt-based countertop & mobile." },
+                { name: "Revel", desc: "Enterprise iPad POS for QSR & retail." },
               ].map((p) => (
-                <div key={p.name} className="border border-foreground/8 p-5 rounded-lg opacity-80">
-                  <div className="flex items-center justify-between mb-1">
+                <div
+                  key={p.name}
+                  className="rounded-xl p-5 opacity-70"
+                  style={{ backgroundColor: bg, boxShadow: neuInset, border: `1px solid ${border}` }}
+                >
+                  <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
-                      <div className="h-5 w-5 rounded-sm bg-foreground/8 flex items-center justify-center text-[10px] font-semibold text-foreground/50">
+                      <div
+                        className="h-5 w-5 rounded-md flex items-center justify-center text-[10px] font-bold"
+                        style={{ backgroundColor: `${border}`, color: muted }}
+                      >
                         {p.name.slice(0, 1)}
                       </div>
-                      <span className="text-[14px] font-medium">{p.name}</span>
+                      <span className="text-[14px] font-semibold" style={{ color: text }}>{p.name}</span>
                     </div>
-                    <span className="text-[10px] tracking-wider uppercase text-foreground/35">
+                    <span className="text-[10px] font-bold tracking-wider uppercase" style={{ color: "#D1D5DB" }}>
                       Soon
                     </span>
                   </div>
-                  <p className="text-[12px] text-foreground/45 font-light mb-4 leading-relaxed">
-                    {p.desc}
-                  </p>
-                  <Button
-                    variant="outline"
-                    className="h-9 px-5 text-[12px]"
+                  <p className="text-[12px] mb-4 leading-relaxed" style={{ color: muted }}>{p.desc}</p>
+                  <button
+                    className="h-9 px-5 rounded-xl text-[12px] font-medium cursor-not-allowed opacity-50"
+                    style={{ backgroundColor: bg, boxShadow: neuShadow, color: muted }}
                     disabled
                   >
                     Join waitlist
-                  </Button>
+                  </button>
                 </div>
               ))}
             </div>
 
             {isSquareConnected && primaryVenue?.connectedAt && (
-              <p className="text-[11px] text-foreground/25 mt-4">
+              <p className="text-[11px] mt-6" style={{ color: "#D1D5DB" }}>
                 Square connected {new Date(primaryVenue.connectedAt).toLocaleDateString()}
               </p>
             )}
           </div>
 
           {/* Voice Assistant */}
-          <div className={`border p-8 ${canUseAgent ? "border-foreground/8" : "border-foreground/5 opacity-60"}`}>
-            <div className="flex items-start gap-3 mb-2">
-              <ShoppingCart className="w-4 h-4 mt-0.5 text-foreground/30 shrink-0" />
-              <p className="text-[12px] tracking-[0.15em] uppercase text-foreground/30">Voice Assistant</p>
+          <div
+            className="rounded-2xl p-8 transition-all"
+            style={{
+              backgroundColor: card,
+              boxShadow: neuShadow,
+              opacity: canUseAgent ? 1 : 0.6,
+            }}
+          >
+            <div className="flex items-center gap-3 mb-2">
+              <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center"
+                style={{ backgroundColor: bg, boxShadow: neuInset }}
+              >
+                <ShoppingCart className="w-4 h-4" style={{ color: primary }} />
+              </div>
+              <p className="text-[11px] font-bold tracking-[0.15em] uppercase" style={{ color: "#9CA3AF" }}>
+                Voice Assistant
+              </p>
             </div>
-            <p className="text-[14px] text-foreground/50 font-light mb-8 leading-relaxed max-w-lg">
+            <p className="text-[14px] mb-8 leading-relaxed" style={{ color: muted }}>
               {!canUseAgent
                 ? (trialExpired ? "Trial expired. Subscribe to continue." : "Subscribe to enable your voice assistant.")
                 : isSquareConnected
-                  ? "Voice-powered POS and inventory management. Take orders, check stock, adjust counts, and more — all hands-free."
+                  ? "Voice-powered POS and inventory management. Take orders, check stock, adjust counts — all hands-free."
                   : "Connect Square first to enable your voice assistant."}
             </p>
 
-            <Button
-              className="h-10 px-7 text-[13px] group"
+            <button
+              className="h-11 px-8 rounded-xl text-[13px] font-semibold text-white transition-all hover:shadow-lg hover:shadow-blue-500/20 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
+              style={{ backgroundColor: primary }}
               disabled={!isSquareConnected || !canUseAgent}
               onClick={async () => {
                 if (!isSquareConnected || !primaryVenue) return;
@@ -399,19 +429,27 @@ export default function Dashboard() {
               }}
             >
               {canUseAgent ? "Launch your Assistant" : "Upgrade to unlock"}
-              <ExternalLink className="ml-2 w-3.5 h-3.5" />
-            </Button>
+              <ExternalLink className="w-3.5 h-3.5" />
+            </button>
           </div>
 
-
-
           {/* Subscription & Billing */}
-          <div className="border border-foreground/8 p-8">
-            <div className="flex items-start gap-3 mb-2">
-              <CreditCard className="w-4 h-4 mt-0.5 text-foreground/30 shrink-0" />
-              <p className="text-[12px] tracking-[0.15em] uppercase text-foreground/30">Subscription</p>
+          <div
+            className="rounded-2xl p-8"
+            style={{ backgroundColor: card, boxShadow: neuShadow }}
+          >
+            <div className="flex items-center gap-3 mb-2">
+              <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center"
+                style={{ backgroundColor: bg, boxShadow: neuInset }}
+              >
+                <CreditCard className="w-4 h-4" style={{ color: "#F59E0B" }} />
+              </div>
+              <p className="text-[11px] font-bold tracking-[0.15em] uppercase" style={{ color: "#9CA3AF" }}>
+                Subscription
+              </p>
             </div>
-            <p className="text-[14px] text-foreground/50 font-light mb-4 leading-relaxed">
+            <p className="text-[14px] mb-6 leading-relaxed" style={{ color: muted }}>
               {subStatus === "trialing" && !trialExpired && (
                 <>Free trial &middot; {getTrialDaysLeft()} days remaining</>
               )}
@@ -423,70 +461,98 @@ export default function Dashboard() {
             </p>
 
             {auth.subscription?.status === "active" ? (
-              <Button variant="outline" className="h-10 px-7 text-[13px]" onClick={handleManageSubscription}>
-                <Settings className="w-3.5 h-3.5 mr-2" />
+              <button
+                className="h-11 px-8 rounded-xl text-[13px] font-semibold inline-flex items-center gap-2 transition-all hover:-translate-y-0.5"
+                style={{ backgroundColor: bg, boxShadow: neuShadow, color: text }}
+                onClick={handleManageSubscription}
+              >
+                <Settings className="w-3.5 h-3.5" />
                 Manage billing
-              </Button>
+              </button>
             ) : (
-              <div className="flex gap-2 flex-wrap">
-                <Button className="h-10 px-6 text-[13px]" onClick={() => window.location.href = "/#pricing"}>
-                  View plans
-                </Button>
-              </div>
+              <button
+                className="h-11 px-8 rounded-xl text-[13px] font-semibold text-white transition-all hover:shadow-lg hover:shadow-blue-500/20 hover:-translate-y-0.5"
+                style={{ backgroundColor: primary }}
+                onClick={() => window.location.href = "/#pricing"}
+              >
+                View plans
+              </button>
             )}
           </div>
 
-          {/* Add to Home Screen */}
-          <div className="border border-foreground/8 p-8">
-            <div className="flex items-start gap-3 mb-2">
-              <Smartphone className="w-4 h-4 mt-0.5 text-foreground/30 shrink-0" />
-              <p className="text-[12px] tracking-[0.15em] uppercase text-foreground/30">Install App</p>
-            </div>
-            <p className="text-[14px] text-foreground/50 font-light mb-6 leading-relaxed max-w-lg">
-              Add the voice agent to your home screen for instant access — works like a native app, no App Store needed.
-            </p>
-
-            <div className="space-y-4">
+          {/* Add to Home Screen — spans full width */}
+          <div
+            className="lg:col-span-2 rounded-2xl p-8"
+            style={{ backgroundColor: card, boxShadow: neuShadow }}
+          >
+            <div className="flex items-center gap-3 mb-6">
+              <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center"
+                style={{ backgroundColor: bg, boxShadow: neuInset }}
+              >
+                <Smartphone className="w-4 h-4" style={{ color: "#8B5CF6" }} />
+              </div>
               <div>
-                <p className="text-[12px] tracking-[0.1em] uppercase text-foreground/30 mb-3 font-medium">iPhone &amp; iPad (Safari)</p>
-                <ol className="space-y-2.5 text-[13px] text-foreground/50 font-light">
-                  <li className="flex items-start gap-2.5">
-                    <span className="w-5 h-5 rounded-full border border-foreground/10 flex items-center justify-center text-[10px] text-foreground/40 shrink-0 mt-0.5">1</span>
-                    <span>Launch your assistant above</span>
-                  </li>
-                  <li className="flex items-start gap-2.5">
-                    <span className="w-5 h-5 rounded-full border border-foreground/10 flex items-center justify-center text-[10px] text-foreground/40 shrink-0 mt-0.5">2</span>
-                    <span>Tap the <Share className="inline w-3.5 h-3.5 -mt-0.5" /> Share button in Safari</span>
-                  </li>
-                  <li className="flex items-start gap-2.5">
-                    <span className="w-5 h-5 rounded-full border border-foreground/10 flex items-center justify-center text-[10px] text-foreground/40 shrink-0 mt-0.5">3</span>
-                    <span>Tap <strong>Add to Home Screen</strong> <PlusSquare className="inline w-3.5 h-3.5 -mt-0.5" /></span>
-                  </li>
-                  <li className="flex items-start gap-2.5">
-                    <span className="w-5 h-5 rounded-full border border-foreground/10 flex items-center justify-center text-[10px] text-foreground/40 shrink-0 mt-0.5">4</span>
-                    <span>Open the app from your home screen — it runs fullscreen</span>
-                  </li>
-                </ol>
-              </div>
-
-              <div className="border-t border-foreground/5 pt-4">
-                <p className="text-[12px] tracking-[0.1em] uppercase text-foreground/30 mb-3 font-medium">Android (Chrome)</p>
-                <ol className="space-y-2.5 text-[13px] text-foreground/50 font-light">
-                  <li className="flex items-start gap-2.5">
-                    <span className="w-5 h-5 rounded-full border border-foreground/10 flex items-center justify-center text-[10px] text-foreground/40 shrink-0 mt-0.5">1</span>
-                    <span>Launch the agent, then tap the <strong>&#8942;</strong> menu in Chrome</span>
-                  </li>
-                  <li className="flex items-start gap-2.5">
-                    <span className="w-5 h-5 rounded-full border border-foreground/10 flex items-center justify-center text-[10px] text-foreground/40 shrink-0 mt-0.5">2</span>
-                    <span>Tap <strong>Add to Home screen</strong> or <strong>Install app</strong></span>
-                  </li>
-                </ol>
-              </div>
-
-              <div className="border-t border-foreground/5 pt-4">
-                <p className="text-[12px] text-foreground/35 font-light leading-relaxed">
-                  If the connection to Square expires, open the app and tap the menu → Settings → <strong>Reconnect Square</strong>. No need to come back to the dashboard.
+                <p className="text-[11px] font-bold tracking-[0.15em] uppercase" style={{ color: "#9CA3AF" }}>
+                  Install App
                 </p>
+                <p className="text-[14px] mt-0.5" style={{ color: muted }}>
+                  Add the voice agent to your home screen for instant access.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-6">
+              <div className="rounded-xl p-6" style={{ backgroundColor: bg, boxShadow: neuInset }}>
+                <p className="text-[12px] font-bold tracking-[0.1em] uppercase mb-4" style={{ color: "#9CA3AF" }}>
+                  iPhone &amp; iPad (Safari)
+                </p>
+                <ol className="space-y-3 text-[13px]" style={{ color: muted }}>
+                  {[
+                    "Launch your assistant above",
+                    <>Tap the <Share className="inline w-3.5 h-3.5 -mt-0.5" /> Share button in Safari</>,
+                    <>Tap <strong style={{ color: text }}>Add to Home Screen</strong> <PlusSquare className="inline w-3.5 h-3.5 -mt-0.5" /></>,
+                    "Open the app from your home screen — it runs fullscreen",
+                  ].map((step, i) => (
+                    <li key={i} className="flex items-start gap-3">
+                      <span
+                        className="w-6 h-6 rounded-lg flex items-center justify-center text-[11px] font-bold shrink-0 mt-0.5"
+                        style={{ backgroundColor: `${primary}10`, color: primary }}
+                      >
+                        {i + 1}
+                      </span>
+                      <span>{step}</span>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+
+              <div className="rounded-xl p-6" style={{ backgroundColor: bg, boxShadow: neuInset }}>
+                <p className="text-[12px] font-bold tracking-[0.1em] uppercase mb-4" style={{ color: "#9CA3AF" }}>
+                  Android (Chrome)
+                </p>
+                <ol className="space-y-3 text-[13px]" style={{ color: muted }}>
+                  {[
+                    <>Launch the agent, then tap the <strong style={{ color: text }}>&#8942;</strong> menu in Chrome</>,
+                    <>Tap <strong style={{ color: text }}>Add to Home screen</strong> or <strong style={{ color: text }}>Install app</strong></>,
+                  ].map((step, i) => (
+                    <li key={i} className="flex items-start gap-3">
+                      <span
+                        className="w-6 h-6 rounded-lg flex items-center justify-center text-[11px] font-bold shrink-0 mt-0.5"
+                        style={{ backgroundColor: `${primary}10`, color: primary }}
+                      >
+                        {i + 1}
+                      </span>
+                      <span>{step}</span>
+                    </li>
+                  ))}
+                </ol>
+
+                <div className="mt-6 pt-4" style={{ borderTop: `1px solid ${border}` }}>
+                  <p className="text-[12px] leading-relaxed" style={{ color: "#9CA3AF" }}>
+                    If the connection to Square expires, open the app and tap the menu &rarr; Settings &rarr; <strong style={{ color: muted }}>Reconnect Square</strong>.
+                  </p>
+                </div>
               </div>
             </div>
           </div>

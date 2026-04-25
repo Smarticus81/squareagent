@@ -3,65 +3,87 @@ import { cn } from "@/lib/utils";
 interface LogoProps {
   className?: string;
   iconOnly?: boolean;
+  size?: "sm" | "md" | "lg";
 }
 
 /**
- * VoyceLab wordmark — liquid-amber sound-wave mark paired with a
- * lightly condensed Fraunces wordmark. The mark is a single speaker
- * glyph inside an amber "coin" with a faint top highlight, evoking
- * a freshly polished brass fitting.
+ * VoyceLabs logo — a glowing blue circle with concentric sound-wave arcs
+ * radiating from the center, paired with a clean sans-serif wordmark.
  */
-export function Logo({ className, iconOnly = false }: LogoProps) {
+export function Logo({ className, iconOnly = false, size = "md" }: LogoProps) {
+  const dims = { sm: 28, md: 34, lg: 44 }[size];
+  const textSize = { sm: "text-[15px]", md: "text-[18px]", lg: "text-[24px]" }[size];
+
   return (
-    <div className={cn("flex items-center gap-3 select-none", className)}>
-      <div className="relative w-8 h-8 flex items-center justify-center">
+    <div className={cn("flex items-center gap-2.5 select-none", className)}>
+      <div className="relative flex items-center justify-center" style={{ width: dims, height: dims }}>
+        {/* Ambient glow */}
+        <div
+          className="absolute inset-0 rounded-full blur-lg opacity-30"
+          style={{ backgroundColor: "#2563EB" }}
+        />
         <svg
-          width="32"
-          height="32"
-          viewBox="0 0 40 40"
+          width={dims}
+          height={dims}
+          viewBox="0 0 44 44"
           fill="none"
           xmlns="http://www.w3.org/2000/svg"
           aria-hidden="true"
-          className="drop-shadow-[0_0_12px_rgba(232,185,35,0.25)]"
         >
           <defs>
-            <linearGradient id="vl-coin" x1="0" y1="0" x2="40" y2="40" gradientUnits="userSpaceOnUse">
-              <stop offset="0%" stopColor="#F3CE57" />
-              <stop offset="55%" stopColor="#E8B923" />
-              <stop offset="100%" stopColor="#A87A12" />
+            <linearGradient id="vl-bg" x1="0" y1="0" x2="44" y2="44" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stopColor="#3B82F6" />
+              <stop offset="100%" stopColor="#1D4ED8" />
             </linearGradient>
-            <linearGradient id="vl-sheen" x1="0" y1="0" x2="0" y2="40" gradientUnits="userSpaceOnUse">
-              <stop offset="0%" stopColor="rgba(255,255,255,0.55)" />
-              <stop offset="40%" stopColor="rgba(255,255,255,0)" />
+            <linearGradient id="vl-sheen" x1="0" y1="0" x2="0" y2="44" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stopColor="rgba(255,255,255,0.35)" />
+              <stop offset="50%" stopColor="rgba(255,255,255,0)" />
             </linearGradient>
           </defs>
-          <circle cx="20" cy="20" r="18.5" fill="url(#vl-coin)" />
-          <circle cx="20" cy="20" r="18.5" fill="url(#vl-sheen)" />
-          {/* speaker / pulse glyph — single dot + two rings */}
-          <circle cx="20" cy="20" r="2.6" fill="#0C0F1A" />
+          {/* Base circle */}
+          <circle cx="22" cy="22" r="20" fill="url(#vl-bg)" />
+          <circle cx="22" cy="22" r="20" fill="url(#vl-sheen)" />
+          {/* Center dot */}
+          <circle cx="22" cy="22" r="3" fill="white" />
+          {/* Inner wave arcs */}
           <path
-            d="M13.2 15.5a8 8 0 0 1 0 9"
-            stroke="#0C0F1A"
+            d="M15.5 17a9 9 0 0 0 0 10"
+            stroke="white"
             strokeWidth="2"
             strokeLinecap="round"
             fill="none"
-            opacity="0.85"
+            opacity="0.9"
           />
           <path
-            d="M26.8 15.5a8 8 0 0 0 0 9"
-            stroke="#0C0F1A"
+            d="M28.5 17a9 9 0 0 1 0 10"
+            stroke="white"
             strokeWidth="2"
             strokeLinecap="round"
             fill="none"
-            opacity="0.85"
+            opacity="0.9"
           />
-          <circle cx="20" cy="20" r="18.5" fill="none" stroke="rgba(12,15,26,0.25)" strokeWidth="0.8" />
+          {/* Outer wave arcs */}
+          <path
+            d="M11.5 13.5a14 14 0 0 0 0 17"
+            stroke="white"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            fill="none"
+            opacity="0.4"
+          />
+          <path
+            d="M32.5 13.5a14 14 0 0 1 0 17"
+            stroke="white"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            fill="none"
+            opacity="0.4"
+          />
         </svg>
       </div>
       {!iconOnly && (
-        <span className="font-display text-[18px] tracking-[-0.01em] leading-none">
-          <span className="font-semibold text-[color:var(--color-cream)]">Voyce</span>
-          <span className="font-medium italic text-[color:var(--color-amber)]">Lab</span>
+        <span className={cn("font-bold tracking-tight leading-none", textSize)} style={{ color: "#111827" }}>
+          Voyce<span style={{ color: "#2563EB" }}>Labs</span>
         </span>
       )}
     </div>

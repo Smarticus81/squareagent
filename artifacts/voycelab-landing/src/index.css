@@ -1,15 +1,14 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500;9..144,600;9..144,700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 @import "tailwindcss";
 @import "tw-animate-css";
 
 @plugin "@tailwindcss/typography";
 
 /* ──────────────────────────────────────────────────────────────
-   VoyceLab — "Midnight Bar" design system
+   VoyceLabs — Light Neumorphic Operations Design System
    ──────────────────────────────────────────────────────────────
-   Midnight ink base, liquid amber accent, forest-sage support,
-   warm cream highlights, soft blood-orange alerts. Volumetric
-   glow and wet-glass reflection utilities live below.
+   Light textured base, AI blue primary, hospitality amber accent.
+   Soft neumorphic shadows, subtle depth, calm intelligence.
    ────────────────────────────────────────────────────────────── */
 
 @theme inline {
@@ -42,67 +41,66 @@
   --color-destructive: hsl(var(--destructive));
   --color-destructive-foreground: hsl(var(--destructive-foreground));
 
-  /* House colours (direct reference for ambient glows, rails, etc.) */
-  --color-amber: #E8B923;
-  --color-amber-deep: #C99318;
-  --color-amber-glow: rgba(232, 185, 35, 0.28);
-  --color-sage: #1C2A24;
-  --color-sage-deep: #121B17;
-  --color-cream: #F8F5EB;
-  --color-bloodorange: #D95A3B;
-  --color-midnight: #0C0F1A;
+  /* Direct-reference tokens */
+  --color-vl-blue: #2563EB;
+  --color-vl-blue-light: #3B82F6;
+  --color-vl-blue-glow: rgba(37, 99, 235, 0.15);
+  --color-vl-amber: #F59E0B;
+  --color-vl-amber-deep: #D97706;
+  --color-vl-surface: #F7F7F8;
+  --color-vl-card: #FFFFFF;
+  --color-vl-text: #111827;
+  --color-vl-muted: #6B7280;
 
   --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
-  --font-display: 'Fraunces', 'Times New Roman', serif;
 
-  --radius-sm: 0.25rem;
+  --radius-sm: 0.375rem;
   --radius-md: 0.5rem;
   --radius-lg: 0.75rem;
   --radius-xl: 1rem;
-  --radius-2xl: 1.5rem;
+  --radius-2xl: 1.25rem;
+  --radius-3xl: 1.5rem;
 }
 
 :root {
-  /* Midnight Bar — dark-first. Light mode intentionally omitted;
-     dark-by-default is the product's tonal home. */
-  --background: 224 28% 7%;           /* #0C0F1A — midnight ink */
-  --foreground: 40 32% 95%;           /* #F8F5EB — warm cream */
+  --background: 220 14% 97%;          /* #F7F7F8 */
+  --foreground: 221 39% 11%;          /* #111827 */
 
-  --card: 224 26% 9%;                 /* slight lift off the base */
-  --card-foreground: 40 28% 94%;
-  --card-border: 40 6% 16%;           /* hairline warm neutral */
+  --card: 0 0% 100%;                  /* #FFFFFF */
+  --card-foreground: 221 39% 11%;
+  --card-border: 220 13% 91%;
 
-  --popover: 224 28% 8%;
-  --popover-foreground: 40 28% 94%;
-  --popover-border: 40 6% 18%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 221 39% 11%;
+  --popover-border: 220 13% 91%;
 
-  --primary: 46 82% 53%;              /* #E8B923 — liquid amber */
-  --primary-foreground: 224 28% 7%;   /* ink on amber buttons */
+  --primary: 217 91% 60%;             /* #2563EB — AI blue */
+  --primary-foreground: 0 0% 100%;    /* white on blue */
 
-  --secondary: 224 20% 12%;
-  --secondary-foreground: 40 18% 72%;
+  --secondary: 220 14% 96%;           /* #F3F4F6 */
+  --secondary-foreground: 221 39% 11%;
 
-  --muted: 224 18% 12%;
-  --muted-foreground: 40 10% 62%;
+  --muted: 220 14% 96%;
+  --muted-foreground: 220 9% 46%;     /* #6B7280 */
 
-  --accent: 46 82% 53%;
-  --accent-foreground: 224 28% 7%;
+  --accent: 38 92% 50%;               /* #F59E0B — amber */
+  --accent-foreground: 221 39% 11%;
 
-  --destructive: 10 65% 54%;          /* soft blood-orange */
-  --destructive-foreground: 40 28% 94%;
+  --destructive: 0 84% 60%;           /* #EF4444 */
+  --destructive-foreground: 0 0% 100%;
 
-  --border: 40 6% 16%;
-  --input: 40 6% 18%;
-  --ring: 46 82% 53%;
+  --border: 220 13% 91%;              /* #E5E7EB */
+  --input: 220 13% 91%;
+  --ring: 217 91% 60%;
 
-  --radius: 0.625rem;
+  --radius: 0.75rem;
 
-  /* Liquid motion — spring feel, used by Framer's ease presets */
-  --ease-liquid: cubic-bezier(0.22, 1, 0.36, 1);
-  --ease-pour: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-smooth: cubic-bezier(0.22, 1, 0.36, 1);
+  --shadow-neu: 6px 6px 12px rgba(0,0,0,0.05), -6px -6px 12px rgba(255,255,255,0.9);
+  --shadow-neu-hover: 8px 8px 16px rgba(0,0,0,0.07), -8px -8px 16px rgba(255,255,255,0.95);
+  --shadow-neu-inset: inset 2px 2px 4px rgba(0,0,0,0.04), inset -2px -2px 4px rgba(255,255,255,0.7);
+  --shadow-neu-pressed: inset 3px 3px 6px rgba(0,0,0,0.06), inset -3px -3px 6px rgba(255,255,255,0.8);
 }
-
-.dark { color-scheme: dark; }
 
 @layer base {
   * {
@@ -111,67 +109,106 @@
 
   html, body {
     background: hsl(var(--background));
-    color-scheme: dark;
+    color-scheme: light;
   }
 
   body {
-    @apply font-sans antialiased text-foreground selection:bg-[color:var(--color-amber)]/25 selection:text-[color:var(--color-cream)];
-    background:
-      radial-gradient(1200px 600px at 15% -10%, rgba(232, 185, 35, 0.06), transparent 60%),
-      radial-gradient(900px 500px at 95% 105%, rgba(28, 42, 36, 0.45), transparent 60%),
-      hsl(var(--background));
+    @apply font-sans antialiased text-foreground;
+    /*
+     * Layered texture stack (bottom → top):
+     *  1. Base color
+     *  2. Ambient blue blob (top-left)
+     *  3. Ambient amber blob (bottom-right)
+     *  4. Linen crosshatch — two diagonal hairlines offset 45°/-45°
+     *  5. Dot grid — heavier than before so it's actually visible
+     *  6. SVG fractal noise — fine grain overlay
+     */
+    background-color: hsl(var(--background));
+    background-image:
+      /* 6 — fractal noise grain */
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='250' height='250'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E"),
+      /* 5 — dot grid */
+      radial-gradient(circle at 1px 1px, rgba(0,0,0,0.06) 1px, transparent 0),
+      /* 4b — diagonal hairline ↘ */
+      repeating-linear-gradient(
+        135deg,
+        transparent,
+        transparent 11px,
+        rgba(0,0,0,0.018) 11px,
+        rgba(0,0,0,0.018) 12px
+      ),
+      /* 4a — diagonal hairline ↗ */
+      repeating-linear-gradient(
+        45deg,
+        transparent,
+        transparent 11px,
+        rgba(0,0,0,0.018) 11px,
+        rgba(0,0,0,0.018) 12px
+      ),
+      /* 3 — amber blob */
+      radial-gradient(ellipse 60% 40% at 85% 90%, rgba(245,158,11,0.045), transparent 55%),
+      /* 2 — blue blob */
+      radial-gradient(ellipse 70% 50% at 10% 5%, rgba(37,99,235,0.05), transparent 55%);
+    background-size:
+      250px 250px,
+      20px 20px,
+      100% 100%,
+      100% 100%,
+      100% 100%,
+      100% 100%;
     background-attachment: fixed;
   }
 
   h1, h2, h3, h4, h5, h6 {
-    @apply font-display tracking-tight;
-    font-optical-sizing: auto;
+    @apply font-sans tracking-tight;
     font-feature-settings: "ss01", "ss02";
   }
 }
 
 @layer utilities {
-  /* Wet-glass reflection — faint top-edge highlight */
-  .wet-glass {
-    background:
-      linear-gradient(180deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0) 35%, rgba(0, 0, 0, 0.25) 100%),
-      hsl(var(--card));
+  /* Neumorphic raised surface */
+  .neu-raised {
+    background: hsl(var(--card));
+    box-shadow: var(--shadow-neu);
+    border-radius: var(--radius-2xl);
+  }
+
+  .neu-raised:hover {
+    box-shadow: var(--shadow-neu-hover);
+  }
+
+  /* Neumorphic inset / pressed surface */
+  .neu-inset {
+    background: hsl(var(--background));
+    box-shadow: var(--shadow-neu-inset);
+    border-radius: var(--radius-xl);
+  }
+
+  /* Blue glow — used under active AI elements */
+  .blue-glow {
     box-shadow:
-      inset 0 1px 0 0 rgba(248, 245, 235, 0.06),
-      inset 0 -1px 0 0 rgba(0, 0, 0, 0.4),
-      0 1px 0 0 rgba(0, 0, 0, 0.6),
-      0 24px 48px -24px rgba(0, 0, 0, 0.7);
+      0 0 0 1px rgba(37, 99, 235, 0.15),
+      0 0 20px 0 rgba(37, 99, 235, 0.10),
+      0 0 60px 0 rgba(37, 99, 235, 0.06);
   }
 
-  /* Liquid amber glow — used under the Bar Rail */
-  .amber-glow {
-    box-shadow:
-      0 0 0 1px rgba(232, 185, 35, 0.25),
-      0 0 20px 0 rgba(232, 185, 35, 0.18),
-      0 0 60px 0 rgba(232, 185, 35, 0.12);
-  }
-
-  .amber-text-glow {
-    text-shadow: 0 0 18px rgba(232, 185, 35, 0.35);
-  }
-
-  /* Film-grain overlay for cinematic surfaces */
-  .film-grain::after {
+  /* Subtle noise overlay for premium texture */
+  .noise-texture::after {
     content: "";
     position: absolute;
     inset: 0;
     pointer-events: none;
-    opacity: 0.05;
-    mix-blend-mode: overlay;
-    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 0.93  0 0 0 0 0.78  0 0 0 0.6 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+    opacity: 0.025;
+    mix-blend-mode: multiply;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
   }
 
-  /* Warm neutral hairline divider */
-  .hairline {
-    background-image: linear-gradient(90deg, transparent, rgba(248, 245, 235, 0.12), transparent);
+  /* Soft divider */
+  .soft-divider {
+    background-image: linear-gradient(90deg, transparent, rgba(0,0,0,0.06), transparent);
     height: 1px;
   }
 
-  /* Smooth, liquid scroll */
-  .liquid-scroll { scroll-behavior: smooth; }
+  /* Smooth scroll */
+  .smooth-scroll { scroll-behavior: smooth; }
 }

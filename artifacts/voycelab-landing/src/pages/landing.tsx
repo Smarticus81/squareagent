@@ -1,44 +1,95 @@
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, AudioLines, Layers, Mic, Volume2 } from "lucide-react";
-import { motion, useScroll, useTransform, useMotionValue, animate } from "framer-motion";
-import { useEffect, useRef, useState } from "react";
+import {
+  ArrowRight,
+  Mic,
+  BarChart3,
+  Package,
+  CalendarDays,
+  Zap,
+  Bell,
+  RefreshCw,
+  TrendingUp,
+  Clock,
+  Users,
+  ChevronRight,
+} from "lucide-react";
+import { motion, useScroll, useTransform } from "framer-motion";
+import { useRef } from "react";
 
-/* ── Animation variants ────────────────────────────────────── */
+/* ── Design tokens (light neumorphic) ───────────────────────── */
+const bg = "#F7F7F8";
+const primary = "#2563EB";
+const accent = "#F59E0B";
+const text = "#111827";
+const muted = "#6B7280";
+const cardBg = "#FFFFFF";
+const softShadow =
+  "6px 6px 12px rgba(0,0,0,0.05), -6px -6px 12px rgba(255,255,255,0.9)";
+const softShadowHover =
+  "8px 8px 16px rgba(0,0,0,0.07), -8px -8px 16px rgba(255,255,255,0.95)";
+const innerShadow =
+  "inset 2px 2px 4px rgba(0,0,0,0.04), inset -2px -2px 4px rgba(255,255,255,0.7)";
+
+/* ── Animation variants ─────────────────────────────────────── */
 const ease = [0.22, 1, 0.36, 1] as const;
+
 const fadeUp = {
-  hidden: { opacity: 0, y: 28 },
+  hidden: { opacity: 0, y: 32 },
   visible: (i: number) => ({
-    opacity: 1, y: 0,
+    opacity: 1,
+    y: 0,
     transition: { delay: i * 0.12, duration: 0.7, ease },
   }),
 };
 
 const stagger = {
   hidden: {},
-  visible: { transition: { staggerChildren: 0.15, delayChildren: 0.3 } },
+  visible: { transition: { staggerChildren: 0.12, delayChildren: 0.2 } },
 };
 
-/* ── Live waveform bars ────────────────────────────────────── */
-function WaveformBars({ count = 32, className = "" }: { count?: number; className?: string }) {
+/* Removed — floating handled inline */
+
+/* ── Pulsing dot ─────────────────────────────────────────────── */
+function PulseDot({ color = primary, size = 8, className = "" }: { color?: string; size?: number; className?: string }) {
   return (
-    <div className={`flex items-end justify-center gap-[3px] ${className}`}>
-      {Array.from({ length: count }).map((_, i) => (
+    <span className={`relative inline-flex ${className}`}>
+      <motion.span
+        animate={{ scale: [1, 1.8, 1], opacity: [0.6, 0, 0.6] }}
+        transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+        className="absolute inset-0 rounded-full"
+        style={{ backgroundColor: color, width: size, height: size }}
+      />
+      <span
+        className="relative rounded-full"
+        style={{ backgroundColor: color, width: size, height: size }}
+      />
+    </span>
+  );
+}
+
+/* ── Voice waveform visualization ────────────────────────────── */
+function VoiceWaveform({ barCount = 24, className = "" }: { barCount?: number; className?: string }) {
+  return (
+    <div className={`flex items-center justify-center gap-[3px] ${className}`}>
+      {Array.from({ length: barCount }).map((_, i) => (
         <motion.div
           key={i}
-          className="w-[3px] rounded-full bg-primary/30"
+          className="rounded-full"
+          style={{ width: 3, backgroundColor: primary }}
           animate={{
             height: [
-              `${12 + Math.random() * 16}px`,
-              `${28 + Math.random() * 52}px`,
-              `${12 + Math.random() * 16}px`,
+              `${4 + Math.random() * 8}px`,
+              `${16 + Math.random() * 32}px`,
+              `${4 + Math.random() * 8}px`,
             ],
+            opacity: [0.3, 0.7, 0.3],
           }}
           transition={{
-            duration: 1.8 + Math.random() * 1.4,
+            duration: 1.4 + Math.random() * 1.2,
             repeat: Infinity,
             ease: "easeInOut",
-            delay: i * 0.06,
+            delay: i * 0.05,
           }}
         />
       ))}
@@ -46,594 +97,1014 @@ function WaveformBars({ count = 32, className = "" }: { count?: number; classNam
   );
 }
 
-/* ── Animated counter ──────────────────────────────────────── */
-function Counter({ value, suffix = "" }: { value: number; suffix?: string }) {
-  const count = useMotionValue(0);
-  const [display, setDisplay] = useState("0");
-
-  useEffect(() => {
-    const controls = animate(count, value, {
-      duration: 2,
-      ease: "easeOut",
-      onUpdate: (v) => setDisplay(Math.round(v).toString()),
-    });
-    return controls.stop;
-  }, [value, count]);
-
-  return <>{display}{suffix}</>;
-}
-
-/* ── Bar Rail mockup ───────────────────────────────────────── */
-function BarRailMockup() {
+/* ── Floating card wrapper ───────────────────────────────────── */
+function FloatingCard({
+  children,
+  className = "",
+  delay = 0,
+  rotate = 0,
+  style = {},
+}: {
+  children: React.ReactNode;
+  className?: string;
+  delay?: number;
+  rotate?: number;
+  style?: React.CSSProperties;
+}) {
   return (
-    <div className="relative w-full max-w-[360px] mx-auto">
-      {/* Phone frame */}
-      <div className="relative bg-secondary border border-border rounded-2xl aspect-[9/16] overflow-hidden">
-        {/* Status bar */}
-        <div className="h-6 bg-background/50 flex items-center justify-between px-4">
-          <span className="text-[8px] text-foreground/40">9:41</span>
-          <div className="flex gap-1">
-            <div className="w-3 h-1.5 rounded-sm bg-foreground/20" />
-            <div className="w-3 h-1.5 rounded-sm bg-foreground/20" />
-          </div>
-        </div>
-
-        {/* Ghost conversation */}
-        <div className="flex-1 flex flex-col justify-end px-6 pt-12 pb-4 gap-3">
-          <motion.p
-            initial={{ opacity: 0 }}
-            whileInView={{ opacity: 0.3 }}
-            transition={{ delay: 0.6, duration: 1 }}
-            className="text-center text-[11px] text-foreground font-light"
-          >
-            two Hendricks gin and tonics
-          </motion.p>
-          <motion.p
-            initial={{ opacity: 0 }}
-            whileInView={{ opacity: 0.7 }}
-            transition={{ delay: 1.0, duration: 1 }}
-            className="text-center text-[13px] text-foreground font-normal"
-          >
-            Got it — 2 Hendricks G&T added. $28.00 total.
-          </motion.p>
-        </div>
-
-        {/* Bar rail at bottom */}
-        <div className="absolute bottom-0 left-0 right-0 p-4">
-          <motion.div
-            initial={{ scaleX: 0.3, opacity: 0 }}
-            whileInView={{ scaleX: 1, opacity: 1 }}
-            transition={{ delay: 0.3, duration: 1.2, ease: [0.22, 1, 0.36, 1] }}
-            className="h-[3px] rounded-full bg-gradient-to-r from-transparent via-primary/50 to-transparent"
-          />
-          <motion.div
-            initial={{ opacity: 0 }}
-            whileInView={{ opacity: 1 }}
-            transition={{ delay: 1.6, duration: 0.6 }}
-            className="mt-3 flex items-center justify-between"
-          >
-            <span className="text-[9px] tracking-[3px] text-primary/50 uppercase">listening</span>
-            <div className="flex gap-[2px]">
-              {Array.from({ length: 8 }).map((_, i) => (
-                <motion.div
-                  key={i}
-                  className="w-[2px] rounded-full bg-primary/40"
-                  animate={{ height: [`${3}px`, `${6 + Math.random() * 10}px`, `${3}px`] }}
-                  transition={{ duration: 0.8 + Math.random() * 0.6, repeat: Infinity, ease: "easeInOut", delay: i * 0.08 }}
-                />
-              ))}
-            </div>
-          </motion.div>
-        </div>
-      </div>
-    </div>
+    <motion.div
+      initial={{ opacity: 0, y: 40, rotate: rotate * 0.5 }}
+      animate={{ opacity: 1, y: [0, -8, 0], rotate }}
+      transition={{
+        opacity: { delay: 0.3 + delay * 0.15, duration: 0.9, ease },
+        rotate: { delay: 0.3 + delay * 0.15, duration: 0.9, ease },
+        y: { delay: 0.3 + delay * 0.15, duration: 5 + delay, repeat: Infinity, ease: "easeInOut" as const },
+      }}
+      className={`rounded-2xl p-5 ${className}`}
+      style={{
+        backgroundColor: cardBg,
+        boxShadow: softShadow,
+        ...style,
+      }}
+      whileHover={{ scale: 1.03, boxShadow: softShadowHover }}
+    >
+      {children}
+    </motion.div>
   );
 }
 
-/* ── Main landing page ─────────────────────────────────────── */
+/* ── Section wrapper ─────────────────────────────────────────── */
+function Section({
+  children,
+  className = "",
+  id,
+}: {
+  children: React.ReactNode;
+  className?: string;
+  id?: string;
+}) {
+  return (
+    <section id={id} className={`py-24 lg:py-32 ${className}`}>
+      <div className="max-w-6xl mx-auto px-6 lg:px-8">{children}</div>
+    </section>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   MAIN LANDING PAGE
+   ═══════════════════════════════════════════════════════════════ */
 export default function Landing() {
   const heroRef = useRef<HTMLDivElement>(null);
-  const { scrollYProgress } = useScroll({ target: heroRef, offset: ["start start", "end start"] });
-  const heroOpacity = useTransform(scrollYProgress, [0, 0.8], [1, 0]);
-  const heroScale = useTransform(scrollYProgress, [0, 0.8], [1, 0.96]);
+  const { scrollYProgress } = useScroll({
+    target: heroRef,
+    offset: ["start start", "end start"],
+  });
+  const heroOpacity = useTransform(scrollYProgress, [0, 0.7], [1, 0]);
+  const heroScale = useTransform(scrollYProgress, [0, 0.7], [1, 0.97]);
 
   return (
-    <div className="flex-1 bg-background text-foreground overflow-hidden">
-
-      {/* ── Hero — "Your Bar, In Sync" ─────────────────────── */}
+    <div style={{ backgroundColor: bg, color: text }} className="overflow-hidden font-sans">
+      {/* ── HERO ──────────────────────────────────────────────── */}
       <motion.section
         ref={heroRef}
         style={{ opacity: heroOpacity, scale: heroScale }}
-        className="relative min-h-[100vh] flex items-center justify-center overflow-hidden"
+        className="relative min-h-screen flex items-center overflow-hidden"
       >
-        {/* Atmospheric gradient layers */}
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_0%,_hsl(var(--primary)/0.15),_transparent_70%)]" />
-        <div className="absolute bottom-0 left-0 right-0 h-48 bg-gradient-to-t from-background to-transparent" />
+        {/* Background ambient */}
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            background: `
+              radial-gradient(ellipse 70% 50% at 30% 20%, rgba(37,99,235,0.06), transparent 60%),
+              radial-gradient(ellipse 50% 40% at 80% 70%, rgba(245,158,11,0.05), transparent 60%)
+            `,
+          }}
+        />
 
-        {/* Subtle waveform background */}
-        <div className="absolute bottom-24 left-0 right-0 opacity-40 pointer-events-none">
-          <WaveformBars count={48} className="h-20" />
-        </div>
-
-        <div className="max-w-4xl mx-auto px-6 text-center relative z-10 pt-20">
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 1, ease: [0.22, 1, 0.36, 1] }}
-            className="mb-8 flex items-center justify-center gap-3"
-          >
-            <motion.div
-              animate={{ scale: [1, 1.15, 1], opacity: [0.4, 0.7, 0.4] }}
-              transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
-              className="w-2 h-2 rounded-full bg-primary/60"
-            />
-            <span className="text-[11px] font-medium tracking-[0.35em] uppercase text-primary/70">
-              Voice-Powered Assistant
-            </span>
-            <motion.div
-              animate={{ scale: [1, 1.15, 1], opacity: [0.4, 0.7, 0.4] }}
-              transition={{ duration: 3, repeat: Infinity, ease: "easeInOut", delay: 1.5 }}
-              className="w-2 h-2 rounded-full bg-primary/60"
-            />
-          </motion.div>
-
-          <motion.h1
-            initial="hidden" animate="visible" custom={0} variants={fadeUp}
-            className="text-5xl md:text-7xl lg:text-8xl font-display font-semibold tracking-tight text-foreground leading-[1.02]"
-          >
-            Your Venue,
-            <br />
-            <span className="bg-clip-text text-transparent bg-gradient-to-r from-foreground via-primary to-primary/60">
-              In Sync
-            </span>
-          </motion.h1>
-
-          <motion.p
-            initial="hidden" animate="visible" custom={1} variants={fadeUp}
-            className="mt-8 text-lg md:text-xl text-foreground/60 max-w-lg mx-auto font-light leading-relaxed"
-          >
-            A voice agent that works at the speed of your venue.
-            Speak the order — it lands in your&nbsp;POS instantly.
-          </motion.p>
-
-          <motion.div
-            initial="hidden" animate="visible" custom={2} variants={fadeUp}
-            className="mt-12"
-          >
-            <Link href="/signup">
-              <Button size="lg" className="h-12 px-10 text-[15px] group">
-                Get Started
-                <ArrowRight className="ml-2 w-4 h-4 group-hover:translate-x-1 transition-transform" />
-              </Button>
-            </Link>
-            <p className="mt-4 text-[12px] text-foreground/40 font-light">
-              14 days free &middot; No credit card
-            </p>
-          </motion.div>
-        </div>
-      </motion.section>
-
-      {/* ── Social proof bar ──────────────────────────────────── */}
-      <section className="py-16 border-y border-border">
-        <div className="max-w-5xl mx-auto px-6">
-          <motion.div
-            initial="hidden" whileInView="visible" viewport={{ once: true }}
-            variants={stagger}
-            className="grid grid-cols-2 md:grid-cols-4 gap-8 md:gap-12"
-          >
-            {[
-              { value: 200, suffix: "+", label: "Venues" },
-              { value: 50, suffix: "K+", label: "Voice orders" },
-              { value: 400, suffix: "ms", label: "Avg. response" },
-              { value: 99.9, suffix: "%", label: "Uptime" },
-            ].map((stat, i) => (
-              <motion.div key={stat.label} variants={fadeUp} custom={i} className="text-center">
-                <div className="text-3xl md:text-4xl font-display font-semibold tracking-tight text-foreground">
-                  {stat.suffix === "%" ? "99.9%" : <Counter value={stat.value} suffix={stat.suffix} />}
-                </div>
-                <p className="text-[12px] text-foreground/50 font-light mt-1 tracking-wider uppercase">{stat.label}</p>
+        <div className="max-w-6xl mx-auto px-6 lg:px-8 w-full relative z-10 pt-24 pb-16">
+          <div className="grid lg:grid-cols-2 gap-16 items-center">
+            {/* Left — copy */}
+            <div>
+              <motion.div
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.8, ease }}
+                className="flex items-center gap-3 mb-8"
+              >
+                <PulseDot color={primary} size={8} />
+                <span
+                  className="text-xs font-semibold tracking-[0.2em] uppercase"
+                  style={{ color: primary }}
+                >
+                  AI-Powered Operations
+                </span>
               </motion.div>
-            ))}
-          </motion.div>
-        </div>
-      </section>
 
-      {/* ── How it works — visual story ───────────────────────── */}
-      <section className="py-24 lg:py-36">
-        <div className="max-w-5xl mx-auto px-6">
-          <div className="text-center mb-20">
-            <motion.p
-              initial="hidden" whileInView="visible" viewport={{ once: true }} custom={0} variants={fadeUp}
-              className="text-[11px] font-medium tracking-[0.3em] uppercase text-primary/60 mb-4"
-            >
-              How it works
-            </motion.p>
-            <motion.h2
-              initial="hidden" whileInView="visible" viewport={{ once: true }} custom={1} variants={fadeUp}
-              className="text-3xl md:text-5xl font-display font-semibold tracking-tight text-foreground"
-            >
-              Three moments. Zero&nbsp;friction.
-            </motion.h2>
-          </div>
+              <motion.h1
+                initial="hidden"
+                animate="visible"
+                custom={0}
+                variants={fadeUp}
+                className="text-5xl md:text-6xl lg:text-[3.75rem] font-bold leading-[1.08] tracking-tight"
+                style={{ color: text }}
+              >
+                Run your venue
+                <br />
+                operations on{" "}
+                <span
+                  className="bg-clip-text text-transparent"
+                  style={{
+                    backgroundImage: `linear-gradient(135deg, ${primary}, ${accent})`,
+                  }}
+                >
+                  autopilot
+                </span>
+              </motion.h1>
 
-          <div className="grid md:grid-cols-3 gap-4">
-            {[
-              {
-                n: "01",
-                title: "Speak naturally",
-                desc: "\"Four Fosters and two Amarula on tab twelve.\" Just talk — the agent understands context, corrections, and bar slang.",
-                visual: (
-                  <div className="flex items-center justify-center gap-[3px] h-16 mt-4 mb-2">
-                    {Array.from({ length: 16 }).map((_, i) => (
-                      <motion.div
+              <motion.p
+                initial="hidden"
+                animate="visible"
+                custom={1}
+                variants={fadeUp}
+                className="mt-6 text-lg leading-relaxed max-w-lg"
+                style={{ color: muted }}
+              >
+                VoyceLabs connects your POS, inventory, and events — then
+                executes tasks through voice-powered AI. Meet Bev, your venue's
+                intelligent operations agent.
+              </motion.p>
+
+              <motion.div
+                initial="hidden"
+                animate="visible"
+                custom={2}
+                variants={fadeUp}
+                className="mt-10 flex flex-wrap items-center gap-4"
+              >
+                <Link href="#demo">
+                  <button
+                    className="inline-flex items-center gap-2 h-13 px-8 rounded-xl text-[15px] font-semibold text-white transition-all hover:shadow-lg hover:shadow-blue-500/20 hover:-translate-y-0.5"
+                    style={{ backgroundColor: primary }}
+                  >
+                    See it in action
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                </Link>
+                <Link href="/signup">
+                  <button
+                    className="inline-flex items-center gap-2 h-13 px-8 rounded-xl text-[15px] font-semibold transition-all hover:-translate-y-0.5"
+                    style={{
+                      color: text,
+                      boxShadow: softShadow,
+                      backgroundColor: bg,
+                    }}
+                  >
+                    Get demo
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </Link>
+              </motion.div>
+            </div>
+
+            {/* Right — floating card composition */}
+            <div className="relative h-[520px] hidden lg:block">
+              {/* POS Revenue card */}
+              <FloatingCard
+                delay={0}
+                rotate={-2}
+                className="absolute top-4 left-8 w-[220px]"
+              >
+                <div className="flex items-center gap-3 mb-3">
+                  <div
+                    className="w-9 h-9 rounded-xl flex items-center justify-center"
+                    style={{ boxShadow: innerShadow, backgroundColor: bg }}
+                  >
+                    <TrendingUp className="w-4 h-4" style={{ color: primary }} />
+                  </div>
+                  <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: muted }}>
+                    POS Revenue
+                  </span>
+                </div>
+                <p className="text-3xl font-bold tracking-tight" style={{ color: text }}>
+                  $12,847
+                </p>
+                <p className="text-xs mt-1" style={{ color: "#16a34a" }}>
+                  +18.3% vs last week
+                </p>
+                {/* Mini sparkline */}
+                <div className="flex items-end gap-[3px] mt-3 h-8">
+                  {[40, 55, 35, 65, 50, 80, 70, 90, 75, 95].map((h, i) => (
+                    <motion.div
+                      key={i}
+                      className="flex-1 rounded-sm"
+                      style={{ backgroundColor: `${primary}20`, height: `${h}%` }}
+                      initial={{ height: 0 }}
+                      animate={{ height: `${h}%` }}
+                      transition={{ delay: 0.8 + i * 0.05, duration: 0.5, ease }}
+                    />
+                  ))}
+                </div>
+              </FloatingCard>
+
+              {/* Inventory Alert card */}
+              <FloatingCard
+                delay={1}
+                rotate={1.5}
+                className="absolute top-12 right-0 w-[230px]"
+              >
+                <div className="flex items-center gap-3 mb-3">
+                  <div
+                    className="w-9 h-9 rounded-xl flex items-center justify-center"
+                    style={{ boxShadow: innerShadow, backgroundColor: bg }}
+                  >
+                    <Package className="w-4 h-4" style={{ color: accent }} />
+                  </div>
+                  <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: muted }}>
+                    Inventory Alert
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 mt-1">
+                  <motion.div
+                    animate={{ scale: [1, 1.3, 1] }}
+                    transition={{ duration: 2, repeat: Infinity }}
+                    className="w-2 h-2 rounded-full"
+                    style={{ backgroundColor: "#EF4444" }}
+                  />
+                  <p className="text-sm font-medium" style={{ color: text }}>
+                    Low: Tito's Vodka
+                  </p>
+                </div>
+                <p className="text-xs mt-2" style={{ color: muted }}>
+                  3 bottles remaining — reorder threshold: 12
+                </p>
+                <div
+                  className="mt-3 rounded-lg h-2 overflow-hidden"
+                  style={{ backgroundColor: `${bg}` }}
+                >
+                  <motion.div
+                    className="h-full rounded-lg"
+                    style={{ backgroundColor: "#EF4444" }}
+                    initial={{ width: 0 }}
+                    animate={{ width: "25%" }}
+                    transition={{ delay: 1.2, duration: 0.8, ease }}
+                  />
+                </div>
+              </FloatingCard>
+
+              {/* Event card */}
+              <FloatingCard
+                delay={2}
+                rotate={-1}
+                className="absolute bottom-28 left-0 w-[210px]"
+              >
+                <div className="flex items-center gap-3 mb-3">
+                  <div
+                    className="w-9 h-9 rounded-xl flex items-center justify-center"
+                    style={{ boxShadow: innerShadow, backgroundColor: bg }}
+                  >
+                    <CalendarDays className="w-4 h-4" style={{ color: "#8B5CF6" }} />
+                  </div>
+                  <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: muted }}>
+                    Upcoming
+                  </span>
+                </div>
+                <p className="text-sm font-semibold" style={{ color: text }}>
+                  Wedding Reception
+                </p>
+                <p className="text-xs mt-1" style={{ color: muted }}>
+                  Saturday · 180 guests · Grand Ballroom
+                </p>
+                <div className="flex items-center gap-1.5 mt-3">
+                  <div className="flex -space-x-1.5">
+                    {[primary, accent, "#8B5CF6"].map((c, i) => (
+                      <div
                         key={i}
-                        className="w-[3px] rounded-full bg-primary/20"
-                        animate={{ height: [`${6}px`, `${14 + Math.random() * 30}px`, `${6}px`] }}
-                        transition={{ duration: 1.2 + Math.random(), repeat: Infinity, ease: "easeInOut", delay: i * 0.07 }}
+                        className="w-5 h-5 rounded-full border-2 border-white"
+                        style={{ backgroundColor: c }}
                       />
                     ))}
                   </div>
-                ),
-              },
-              {
-                n: "02",
-                title: "See instantly",
-                desc: "The order appears on your bar rail in real time. Confirm with a glance — no screens to tap, no menus to scroll.",
-                visual: (
-                  <div className="mt-4 mb-2 flex flex-col items-center gap-2">
-                    <motion.div
-                      initial={{ width: 0 }}
-                      whileInView={{ width: "80%" }}
-                      transition={{ delay: 0.5, duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
-                      className="h-[2px] rounded-full bg-primary/30"
-                    />
-                    <div className="flex items-center gap-3 text-[11px] text-foreground/50">
-                      <span>4× Foster's</span>
-                      <span className="w-0.5 h-0.5 rounded-full bg-foreground/15" />
-                      <span>2× Amarula</span>
-                    </div>
-                  </div>
-                ),
-              },
-              {
-                n: "03",
-                title: "Serve faster",
-                desc: "Order created in your POS, inventory updated, payment logged. You're already pouring the next drink.",
-                visual: (
-                  <motion.div
-                    initial={{ scale: 0.8, opacity: 0 }}
-                    whileInView={{ scale: 1, opacity: 1 }}
-                    transition={{ delay: 0.4, duration: 0.6 }}
-                    className="mt-4 mb-2 flex items-center justify-center"
-                  >
-                    <div className="w-10 h-10 border border-border rounded-lg flex items-center justify-center">
-                      <svg className="w-5 h-5 text-primary/60" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                      </svg>
-                    </div>
-                  </motion.div>
-                ),
-              },
-            ].map((step, i) => (
-              <motion.div
-                key={step.n}
-                initial="hidden" whileInView="visible" viewport={{ once: true, margin: "-60px" }}
-                custom={i} variants={fadeUp}
-                className="relative p-8 md:p-10 border border-border rounded-xl bg-card group hover:bg-secondary transition-colors"
-              >
-                <div className="flex items-center gap-3 mb-4">
-                  <span className="text-[40px] font-display font-semibold text-primary/20 leading-none">{step.n}</span>
+                  <span className="text-[10px]" style={{ color: muted }}>
+                    +4 staff assigned
+                  </span>
                 </div>
-                {step.visual}
-                <h3 className="text-[18px] font-display font-medium text-foreground mt-4">{step.title}</h3>
-                <p className="text-[14px] text-foreground/60 font-light mt-2 leading-relaxed">{step.desc}</p>
-              </motion.div>
-            ))}
+              </FloatingCard>
+
+              {/* Voice bubble — Bev */}
+              <FloatingCard
+                delay={3}
+                rotate={2}
+                className="absolute bottom-8 right-4 w-[260px]"
+                style={{
+                  backgroundColor: primary,
+                  boxShadow: `0 8px 32px rgba(37,99,235,0.25), 0 0 0 1px rgba(37,99,235,0.1)`,
+                }}
+              >
+                <div className="flex items-center gap-3">
+                  <motion.div
+                    animate={{ scale: [1, 1.1, 1] }}
+                    transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+                    className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center shrink-0"
+                  >
+                    <Mic className="w-4 h-4 text-white" />
+                  </motion.div>
+                  <div>
+                    <p className="text-[11px] font-semibold text-white/70 uppercase tracking-wider">
+                      Bev
+                    </p>
+                    <p className="text-sm font-medium text-white leading-snug">
+                      Reordering 2 cases of tequila from distributor.
+                    </p>
+                  </div>
+                </div>
+                {/* Thinking indicator */}
+                <div className="flex items-center gap-1 mt-3 ml-12">
+                  {[0, 0.2, 0.4].map((d) => (
+                    <motion.div
+                      key={d}
+                      className="w-1.5 h-1.5 rounded-full bg-white/40"
+                      animate={{ opacity: [0.3, 1, 0.3] }}
+                      transition={{ duration: 1.2, repeat: Infinity, delay: d }}
+                    />
+                  ))}
+                </div>
+              </FloatingCard>
+
+              {/* Ambient glow behind cards */}
+              <div
+                className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-80 h-80 rounded-full blur-3xl pointer-events-none"
+                style={{ backgroundColor: `${primary}08` }}
+              />
+            </div>
           </div>
         </div>
-      </section>
+      </motion.section>
 
-      {/* ── Features — 3 large blocks ─────────────────────────── */}
-      <section className="py-24 lg:py-36 border-t border-border">
-        <div className="max-w-5xl mx-auto px-6">
-          <div className="text-center mb-20">
+      {/* ── CONNECT EVERYTHING ────────────────────────────────── */}
+      <Section id="connect">
+        <div className="text-center mb-16">
+          <motion.p
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true }}
+            custom={0}
+            variants={fadeUp}
+            className="text-xs font-semibold tracking-[0.2em] uppercase mb-4"
+            style={{ color: primary }}
+          >
+            Integrations
+          </motion.p>
+          <motion.h2
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true }}
+            custom={1}
+            variants={fadeUp}
+            className="text-3xl md:text-5xl font-bold tracking-tight"
+            style={{ color: text }}
+          >
+            Connect everything.
+            <br />
+            <span style={{ color: muted }}>Control it all.</span>
+          </motion.h2>
+        </div>
+
+        {/* Integration flow */}
+        <motion.div
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true }}
+          variants={stagger}
+          className="flex flex-col md:flex-row items-center justify-center gap-6 md:gap-4"
+        >
+          {[
+            { icon: BarChart3, label: "POS Systems", color: primary, desc: "Square, Toast, Clover" },
+            { icon: Package, label: "Inventory", color: accent, desc: "Real-time stock levels" },
+            { icon: CalendarDays, label: "Events", color: "#8B5CF6", desc: "Schedules & bookings" },
+            { icon: Mic, label: "VoyceLabs", color: primary, desc: "AI Operations Hub" },
+          ].map((item, i) => (
+            <motion.div key={item.label} variants={fadeUp} custom={i} className="flex items-center gap-4">
+              <div
+                className="rounded-2xl p-6 flex flex-col items-center text-center w-[160px] transition-all hover:-translate-y-1"
+                style={{ backgroundColor: cardBg, boxShadow: softShadow }}
+              >
+                <div
+                  className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4"
+                  style={{ boxShadow: innerShadow, backgroundColor: bg }}
+                >
+                  <item.icon className="w-6 h-6" style={{ color: item.color }} />
+                </div>
+                <p className="text-sm font-semibold" style={{ color: text }}>
+                  {item.label}
+                </p>
+                <p className="text-[11px] mt-1" style={{ color: muted }}>
+                  {item.desc}
+                </p>
+                {item.label === "VoyceLabs" && (
+                  <PulseDot color={primary} size={6} className="mt-2" />
+                )}
+              </div>
+              {i < 3 && (
+                <motion.div
+                  initial={{ scaleX: 0 }}
+                  whileInView={{ scaleX: 1 }}
+                  transition={{ delay: 0.3 + i * 0.15, duration: 0.6, ease }}
+                  viewport={{ once: true }}
+                  className="hidden md:block"
+                >
+                  <div className="flex items-center gap-1">
+                    <div className="w-12 h-[2px] rounded-full" style={{ backgroundColor: `${primary}20` }} />
+                    <ChevronRight className="w-4 h-4" style={{ color: `${primary}40` }} />
+                  </div>
+                </motion.div>
+              )}
+            </motion.div>
+          ))}
+        </motion.div>
+      </Section>
+
+      {/* ── ASK ANYTHING (VOICE UI) ──────────────────────────── */}
+      <Section id="demo" className="relative overflow-hidden">
+        {/* Background accent */}
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            background: `radial-gradient(ellipse 60% 40% at 50% 50%, rgba(37,99,235,0.04), transparent)`,
+          }}
+        />
+
+        <div className="relative z-10">
+          <div className="text-center mb-16">
             <motion.p
-              initial="hidden" whileInView="visible" viewport={{ once: true }} custom={0} variants={fadeUp}
-              className="text-[11px] font-medium tracking-[0.3em] uppercase text-primary/60 mb-4"
+              initial="hidden"
+              whileInView="visible"
+              viewport={{ once: true }}
+              custom={0}
+              variants={fadeUp}
+              className="text-xs font-semibold tracking-[0.2em] uppercase mb-4"
+              style={{ color: primary }}
             >
-              Why VoyceLab
+              Voice Intelligence
             </motion.p>
             <motion.h2
-              initial="hidden" whileInView="visible" viewport={{ once: true }} custom={1} variants={fadeUp}
-              className="text-3xl md:text-5xl font-display font-semibold tracking-tight text-foreground"
+              initial="hidden"
+              whileInView="visible"
+              viewport={{ once: true }}
+              custom={1}
+              variants={fadeUp}
+              className="text-3xl md:text-5xl font-bold tracking-tight"
+              style={{ color: text }}
             >
-              Built for the pace<br className="hidden md:block" /> behind the bar
+              Ask anything.
+              <br />
+              <span style={{ color: muted }}>Get instant answers.</span>
             </motion.h2>
           </div>
 
-          {/* Feature 1: Fluid Voice */}
+          {/* Voice conversation mockup */}
           <motion.div
-            initial="hidden" whileInView="visible" viewport={{ once: true }} custom={0} variants={fadeUp}
-            className="grid md:grid-cols-2 gap-0 border border-border rounded-xl overflow-hidden mb-4"
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true }}
+            custom={2}
+            variants={fadeUp}
+            className="max-w-2xl mx-auto"
           >
-            <div className="p-10 md:p-14 flex flex-col justify-center">
-              <div className="flex items-center gap-3 mb-5">
-                <div className="w-10 h-10 border border-border rounded-lg flex items-center justify-center">
-                  <AudioLines className="w-5 h-5 text-primary/60" strokeWidth={1.5} />
+            <div
+              className="rounded-3xl p-8 md:p-12"
+              style={{ backgroundColor: cardBg, boxShadow: softShadow }}
+            >
+              {/* User query */}
+              <div className="flex items-start gap-4 mb-8">
+                <div
+                  className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+                  style={{ boxShadow: innerShadow, backgroundColor: bg }}
+                >
+                  <Users className="w-4 h-4" style={{ color: muted }} />
                 </div>
-                <span className="text-[11px] tracking-[0.2em] uppercase text-foreground/50 font-medium">Voice</span>
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ color: muted }}>
+                    You
+                  </p>
+                  <p className="text-lg font-medium" style={{ color: text }}>
+                    "Do we have enough liquor for Saturday?"
+                  </p>
+                </div>
               </div>
-              <h3 className="text-2xl md:text-3xl font-display font-semibold tracking-tight text-foreground leading-tight">
-                Fluid voice interaction
-              </h3>
-              <p className="text-[15px] text-foreground/60 font-light mt-4 leading-relaxed max-w-sm">
-                No rigid commands. Speak naturally — corrections, additions, bar slang. The agent adapts to your rhythm, not the other way around.
-              </p>
-            </div>
-            <div className="bg-secondary p-10 flex items-center justify-center min-h-[280px]">
-              <WaveformBars count={24} className="h-24" />
-            </div>
-          </motion.div>
 
-          {/* Feature 2: Multi-POS Integration */}
-          <motion.div
-            initial="hidden" whileInView="visible" viewport={{ once: true }} custom={1} variants={fadeUp}
-            className="grid md:grid-cols-2 gap-0 border border-border rounded-xl overflow-hidden mb-4"
-          >
-            <div className="bg-secondary p-10 flex items-center justify-center min-h-[280px] order-2 md:order-1">
-              <div className="grid grid-cols-3 gap-3 w-full max-w-[320px]">
-                {["Square", "Toast", "Clover", "Lightspeed", "Shopify", "GoDaddy"].map((name) => (
-                  <div
-                    key={name}
-                    className="aspect-square border border-border rounded-lg bg-background/50 flex items-center justify-center text-[11px] font-medium text-foreground/60 tracking-tight text-center px-1"
+              {/* Waveform divider */}
+              <div className="py-4">
+                <VoiceWaveform barCount={32} className="h-8" />
+              </div>
+
+              {/* AI response */}
+              <div className="flex items-start gap-4 mt-8">
+                <motion.div
+                  animate={{
+                    boxShadow: [
+                      `0 0 0 0 rgba(37,99,235,0)`,
+                      `0 0 20px 4px rgba(37,99,235,0.15)`,
+                      `0 0 0 0 rgba(37,99,235,0)`,
+                    ],
+                  }}
+                  transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+                  className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+                  style={{ backgroundColor: primary }}
+                >
+                  <Mic className="w-4 h-4 text-white" />
+                </motion.div>
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ color: primary }}>
+                    Bev
+                  </p>
+                  <p className="text-lg font-medium" style={{ color: text }}>
+                    "You're short 24 bottles for the 180-guest wedding.
+                  </p>
+                  <motion.p
+                    initial={{ opacity: 0 }}
+                    whileInView={{ opacity: 1 }}
+                    viewport={{ once: true }}
+                    transition={{ delay: 0.8, duration: 0.6 }}
+                    className="text-lg font-semibold mt-1"
+                    style={{ color: primary }}
                   >
-                    {name}
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="p-10 md:p-14 flex flex-col justify-center order-1 md:order-2">
-              <div className="flex items-center gap-3 mb-5">
-                <div className="w-10 h-10 border border-border rounded-lg flex items-center justify-center">
-                  <Layers className="w-5 h-5 text-primary/60" strokeWidth={1.5} />
+                    Reordering now."
+                  </motion.p>
+                  {/* Action tag */}
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    whileInView={{ opacity: 1, scale: 1 }}
+                    viewport={{ once: true }}
+                    transition={{ delay: 1.2, duration: 0.5 }}
+                    className="inline-flex items-center gap-2 mt-4 px-4 py-2 rounded-xl text-xs font-semibold"
+                    style={{ backgroundColor: `${primary}10`, color: primary }}
+                  >
+                    <Zap className="w-3 h-3" />
+                    Auto-reorder triggered
+                  </motion.div>
                 </div>
-                <span className="text-[11px] tracking-[0.2em] uppercase text-foreground/50 font-medium">Integration</span>
-              </div>
-              <h3 className="text-2xl md:text-3xl font-display font-semibold tracking-tight text-foreground leading-tight">
-                Works with your POS
-              </h3>
-              <p className="text-[15px] text-foreground/60 font-light mt-4 leading-relaxed max-w-sm">
-                Live today on Square. Toast, Clover, Lightspeed, Shopify POS, GoDaddy Smart Terminal, and Revel are on the way — one voice agent, every register.
-              </p>
-            </div>
-          </motion.div>
-
-          {/* Feature 3: Unified Agent */}
-          <motion.div
-            initial="hidden" whileInView="visible" viewport={{ once: true }} custom={2} variants={fadeUp}
-            className="grid md:grid-cols-2 gap-0 border border-border rounded-xl overflow-hidden"
-          >
-            <div className="p-10 md:p-14 flex flex-col justify-center">
-              <div className="flex items-center gap-3 mb-5">
-                <div className="w-10 h-10 border border-border rounded-lg flex items-center justify-center">
-                  <Volume2 className="w-5 h-5 text-primary/60" strokeWidth={1.5} />
-                </div>
-                <span className="text-[11px] tracking-[0.2em] uppercase text-foreground/50 font-medium">Intelligence</span>
-              </div>
-              <h3 className="text-2xl md:text-3xl font-display font-semibold tracking-tight text-foreground leading-tight">
-                All-in-one assistant
-              </h3>
-              <p className="text-[15px] text-foreground/60 font-light mt-4 leading-relaxed max-w-sm">
-                One voice assistant handles everything — take orders, check stock, adjust inventory, and process payments. All synced with your POS.
-              </p>
-            </div>
-            <div className="bg-secondary p-10 flex items-center justify-center min-h-[280px]">
-              <div className="flex flex-col items-center gap-6">
-                <div className="text-center">
-                  <div className="w-14 h-14 border border-border rounded-lg flex items-center justify-center mb-2">
-                    <Mic className="w-6 h-6 text-primary/40" strokeWidth={1.5} />
-                  </div>
-                  <span className="text-[10px] text-foreground/50 tracking-wider uppercase">Assistant</span>
-                </div>
-                <div className="w-16 h-[1px] bg-border" />
-                <span className="text-[10px] text-foreground/40 tracking-wider">One voice. Everything handled.</span>
               </div>
             </div>
           </motion.div>
         </div>
-      </section>
+      </Section>
 
-      {/* ── Product preview ────────────────────────────────────── */}
-      <section className="py-24 lg:py-36 border-t border-border">
-        <div className="max-w-5xl mx-auto px-6">
-          <div className="grid md:grid-cols-2 gap-16 items-center">
-            <motion.div
-              initial="hidden" whileInView="visible" viewport={{ once: true }} custom={0} variants={fadeUp}
-            >
-              <p className="text-[11px] font-medium tracking-[0.3em] uppercase text-primary/60 mb-4">
-                The Bar Rail
-              </p>
-              <h2 className="text-3xl md:text-4xl font-display font-semibold tracking-tight text-foreground leading-tight">
-                A UI that stays<br />out of your way
-              </h2>
-              <p className="text-[15px] text-foreground/60 font-light mt-5 leading-relaxed">
-                No dashboards. No complex menus. Just a thin, ambient rail at the bottom of your screen that pulses when listening, shimmers when thinking, and flows when speaking.
-              </p>
-              <p className="text-[15px] text-foreground/60 font-light mt-4 leading-relaxed">
-                It's the UI equivalent of a great bartender's shadow — always there, never in the way.
-              </p>
-            </motion.div>
-            <motion.div
-              initial="hidden" whileInView="visible" viewport={{ once: true }} custom={1} variants={fadeUp}
-            >
-              <BarRailMockup />
-            </motion.div>
-          </div>
-        </div>
-      </section>
-
-      {/* ── Testimonials ──────────────────────────────────────── */}
-      <section className="py-24 lg:py-36 border-t border-border">
-        <div className="max-w-5xl mx-auto px-6">
-          <div className="text-center mb-16">
-            <motion.h2
-              initial="hidden" whileInView="visible" viewport={{ once: true }} custom={0} variants={fadeUp}
-              className="text-3xl md:text-4xl font-display font-semibold tracking-tight text-foreground"
-            >
-              From the bar floor
-            </motion.h2>
-          </div>
-
-          <motion.div
-            initial="hidden" whileInView="visible" viewport={{ once: true }}
-            variants={stagger}
-            className="grid md:grid-cols-3 gap-4"
+      {/* ── IT ACTS AUTOMATICALLY ─────────────────────────────── */}
+      <Section>
+        <div className="text-center mb-16">
+          <motion.p
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true }}
+            custom={0}
+            variants={fadeUp}
+            className="text-xs font-semibold tracking-[0.2em] uppercase mb-4"
+            style={{ color: accent }}
           >
-            {[
-              {
-                quote: "We cut order time in half on our busiest nights. The bartenders love that they never have to stop pouring.",
-                name: "Marcus T.",
-                venue: "The Copper Fox, Austin",
-              },
-              {
-                quote: "I check stock levels by voice between rushes. It's like having an extra manager on shift.",
-                name: "Sarah K.",
-                venue: "Nightcap Lounge, Miami",
-              },
-              {
-                quote: "Set it up during happy hour, ran it through a Saturday rush. Haven't touched the old POS since.",
-                name: "James R.",
-                venue: "Warehouse 42, Brooklyn",
-              },
-            ].map((t, i) => (
-              <motion.div
-                key={t.name}
-                variants={fadeUp} custom={i}
-                className="p-8 border border-border rounded-xl bg-card"
-              >
-                <p className="text-[14px] text-foreground/70 font-light leading-relaxed italic">
-                  "{t.quote}"
+            Autonomous Actions
+          </motion.p>
+          <motion.h2
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true }}
+            custom={1}
+            variants={fadeUp}
+            className="text-3xl md:text-5xl font-bold tracking-tight"
+            style={{ color: text }}
+          >
+            It doesn't just answer.
+            <br />
+            <span style={{ color: muted }}>It acts.</span>
+          </motion.h2>
+        </div>
+
+        <motion.div
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true }}
+          variants={stagger}
+          className="grid md:grid-cols-3 gap-6"
+        >
+          {[
+            {
+              icon: RefreshCw,
+              title: "Auto reorder triggered",
+              desc: "Detected low stock on Tito's Vodka, Espolòn Tequila, and Hendricks Gin. Purchase order sent to distributor.",
+              color: primary,
+              tag: "Inventory",
+              tagColor: primary,
+            },
+            {
+              icon: Bell,
+              title: "Staff notified",
+              desc: "Bar manager and shift lead alerted via push notification. Saturday prep checklist updated with new delivery ETA.",
+              color: accent,
+              tag: "Comms",
+              tagColor: accent,
+            },
+            {
+              icon: Package,
+              title: "Inventory updated",
+              desc: "Expected quantities adjusted. Par levels recalculated for 180-guest event. Dashboard synced across all devices.",
+              color: "#16A34A",
+              tag: "System",
+              tagColor: "#16A34A",
+            },
+          ].map((card, i) => (
+            <motion.div
+              key={card.title}
+              variants={fadeUp}
+              custom={i}
+              className="rounded-2xl p-8 transition-all hover:-translate-y-1 group"
+              style={{ backgroundColor: cardBg, boxShadow: softShadow }}
+            >
+              <div className="flex items-center justify-between mb-6">
+                <div
+                  className="w-12 h-12 rounded-2xl flex items-center justify-center"
+                  style={{ boxShadow: innerShadow, backgroundColor: bg }}
+                >
+                  <card.icon className="w-5 h-5" style={{ color: card.color }} />
+                </div>
+                <span
+                  className="text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-full"
+                  style={{ backgroundColor: `${card.tagColor}10`, color: card.tagColor }}
+                >
+                  {card.tag}
+                </span>
+              </div>
+              <h3 className="text-lg font-bold mb-2" style={{ color: text }}>
+                {card.title}
+              </h3>
+              <p className="text-sm leading-relaxed" style={{ color: muted }}>
+                {card.desc}
+              </p>
+              {/* Progress indicator */}
+              <div className="mt-6 flex items-center gap-2">
+                <motion.div
+                  className="h-1 rounded-full flex-1"
+                  style={{ backgroundColor: `${bg}` }}
+                >
+                  <motion.div
+                    className="h-full rounded-full"
+                    style={{ backgroundColor: card.color }}
+                    initial={{ width: "0%" }}
+                    whileInView={{ width: "100%" }}
+                    viewport={{ once: true }}
+                    transition={{ delay: 0.5 + i * 0.2, duration: 1.5, ease }}
+                  />
+                </motion.div>
+                <motion.span
+                  initial={{ opacity: 0 }}
+                  whileInView={{ opacity: 1 }}
+                  viewport={{ once: true }}
+                  transition={{ delay: 1.5 + i * 0.2 }}
+                  className="text-[10px] font-bold uppercase tracking-wider"
+                  style={{ color: card.color }}
+                >
+                  Done
+                </motion.span>
+              </div>
+            </motion.div>
+          ))}
+        </motion.div>
+      </Section>
+
+      {/* ── LIVE OPERATIONS DASHBOARD ─────────────────────────── */}
+      <Section className="relative overflow-hidden">
+        <div className="text-center mb-16">
+          <motion.p
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true }}
+            custom={0}
+            variants={fadeUp}
+            className="text-xs font-semibold tracking-[0.2em] uppercase mb-4"
+            style={{ color: primary }}
+          >
+            Live Dashboard
+          </motion.p>
+          <motion.h2
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true }}
+            custom={1}
+            variants={fadeUp}
+            className="text-3xl md:text-5xl font-bold tracking-tight"
+            style={{ color: text }}
+          >
+            Your venue at a glance.
+          </motion.h2>
+        </div>
+
+        {/* Dashboard mockup */}
+        <motion.div
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true }}
+          custom={2}
+          variants={fadeUp}
+          className="rounded-3xl overflow-hidden"
+          style={{ backgroundColor: cardBg, boxShadow: `0 25px 60px rgba(0,0,0,0.08), ${softShadow}` }}
+        >
+          {/* Dashboard top bar */}
+          <div
+            className="flex items-center justify-between px-8 py-4 border-b"
+            style={{ borderColor: `${bg}` }}
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: "#EF4444" }} />
+              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: accent }} />
+              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: "#16A34A" }} />
+            </div>
+            <div className="flex items-center gap-2">
+              <PulseDot color="#16A34A" size={6} />
+              <span className="text-xs font-medium" style={{ color: muted }}>
+                Live · Grand Ballroom
+              </span>
+            </div>
+          </div>
+
+          <div className="p-6 md:p-8">
+            {/* Metrics row */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+              {[
+                { label: "Today's Revenue", value: "$8,423", change: "+12.4%", up: true },
+                { label: "Orders Processed", value: "347", change: "+8.1%", up: true },
+                { label: "Avg. Order Time", value: "1.2s", change: "-24%", up: true },
+                { label: "Active Staff", value: "12", change: "On shift", up: null },
+              ].map((m, i) => (
+                <motion.div
+                  key={m.label}
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ delay: 0.3 + i * 0.1, duration: 0.5, ease }}
+                  className="rounded-2xl p-5"
+                  style={{ boxShadow: innerShadow, backgroundColor: bg }}
+                >
+                  <p className="text-[11px] font-semibold uppercase tracking-wider mb-2" style={{ color: muted }}>
+                    {m.label}
+                  </p>
+                  <p className="text-2xl font-bold tracking-tight" style={{ color: text }}>
+                    {m.value}
+                  </p>
+                  {m.up !== null ? (
+                    <p className="text-xs font-medium mt-1" style={{ color: m.up ? "#16A34A" : "#EF4444" }}>
+                      {m.change}
+                    </p>
+                  ) : (
+                    <p className="text-xs font-medium mt-1" style={{ color: muted }}>
+                      {m.change}
+                    </p>
+                  )}
+                </motion.div>
+              ))}
+            </div>
+
+            <div className="grid md:grid-cols-3 gap-6">
+              {/* Sales chart */}
+              <div className="md:col-span-2 rounded-2xl p-6" style={{ boxShadow: innerShadow, backgroundColor: bg }}>
+                <div className="flex items-center justify-between mb-6">
+                  <p className="text-sm font-semibold" style={{ color: text }}>
+                    Hourly Sales
+                  </p>
+                  <span className="text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-full" style={{ backgroundColor: `${primary}10`, color: primary }}>
+                    Today
+                  </span>
+                </div>
+                <div className="flex items-end gap-[6px] h-32">
+                  {[20, 35, 25, 45, 40, 65, 55, 80, 70, 95, 85, 60, 75, 90, 50, 30].map((h, i) => (
+                    <motion.div
+                      key={i}
+                      className="flex-1 rounded-t-md"
+                      style={{
+                        backgroundColor: i >= 14 ? `${primary}20` : primary,
+                        opacity: i >= 14 ? 0.4 : 0.2 + (h / 120),
+                      }}
+                      initial={{ height: 0 }}
+                      whileInView={{ height: `${h}%` }}
+                      viewport={{ once: true }}
+                      transition={{ delay: 0.2 + i * 0.04, duration: 0.6, ease }}
+                    />
+                  ))}
+                </div>
+                <div className="flex justify-between mt-3">
+                  <span className="text-[10px]" style={{ color: muted }}>6AM</span>
+                  <span className="text-[10px]" style={{ color: muted }}>12PM</span>
+                  <span className="text-[10px]" style={{ color: muted }}>6PM</span>
+                  <span className="text-[10px]" style={{ color: muted }}>Now</span>
+                </div>
+              </div>
+
+              {/* Inventory levels */}
+              <div className="rounded-2xl p-6" style={{ boxShadow: innerShadow, backgroundColor: bg }}>
+                <p className="text-sm font-semibold mb-5" style={{ color: text }}>
+                  Inventory Status
                 </p>
-                <div className="mt-6">
-                  <p className="text-[13px] font-medium text-foreground/80">{t.name}</p>
-                  <p className="text-[12px] text-foreground/50 font-light">{t.venue}</p>
-                </div>
-              </motion.div>
-            ))}
-          </motion.div>
-        </div>
-      </section>
+                {[
+                  { name: "Vodka", pct: 72, color: "#16A34A" },
+                  { name: "Tequila", pct: 45, color: accent },
+                  { name: "Whiskey", pct: 88, color: primary },
+                  { name: "Gin", pct: 23, color: "#EF4444" },
+                  { name: "Rum", pct: 61, color: "#16A34A" },
+                ].map((item, i) => (
+                  <div key={item.name} className="mb-4 last:mb-0">
+                    <div className="flex justify-between mb-1.5">
+                      <span className="text-xs font-medium" style={{ color: text }}>
+                        {item.name}
+                      </span>
+                      <span className="text-[10px] font-bold" style={{ color: item.color }}>
+                        {item.pct}%
+                      </span>
+                    </div>
+                    <div
+                      className="h-1.5 rounded-full overflow-hidden"
+                      style={{ backgroundColor: `${item.color}15` }}
+                    >
+                      <motion.div
+                        className="h-full rounded-full"
+                        style={{ backgroundColor: item.color }}
+                        initial={{ width: 0 }}
+                        whileInView={{ width: `${item.pct}%` }}
+                        viewport={{ once: true }}
+                        transition={{ delay: 0.4 + i * 0.1, duration: 0.8, ease }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
 
-      {/* ── Pricing ───────────────────────────────────────────── */}
-      <section className="py-24 lg:py-36 border-t border-border">
-        <div className="max-w-4xl mx-auto px-6 text-center">
-          <motion.p
-            initial="hidden" whileInView="visible" viewport={{ once: true }} custom={0} variants={fadeUp}
-            className="text-[11px] font-medium tracking-[0.3em] uppercase text-primary/60 mb-4"
+            {/* Event timeline */}
+            <div className="mt-6 rounded-2xl p-6" style={{ boxShadow: innerShadow, backgroundColor: bg }}>
+              <div className="flex items-center justify-between mb-5">
+                <p className="text-sm font-semibold" style={{ color: text }}>
+                  Event Timeline
+                </p>
+                <Clock className="w-4 h-4" style={{ color: muted }} />
+              </div>
+              <div className="flex gap-4 overflow-x-auto pb-2">
+                {[
+                  { time: "2:00 PM", event: "Setup Complete", status: "done", color: "#16A34A" },
+                  { time: "4:00 PM", event: "Vendor Delivery", status: "done", color: "#16A34A" },
+                  { time: "5:30 PM", event: "Staff Briefing", status: "active", color: primary },
+                  { time: "6:00 PM", event: "Doors Open", status: "upcoming", color: muted },
+                  { time: "6:30 PM", event: "Cocktail Hour", status: "upcoming", color: muted },
+                  { time: "8:00 PM", event: "Dinner Service", status: "upcoming", color: muted },
+                ].map((ev, i) => (
+                  <motion.div
+                    key={ev.event}
+                    initial={{ opacity: 0, x: 20 }}
+                    whileInView={{ opacity: 1, x: 0 }}
+                    viewport={{ once: true }}
+                    transition={{ delay: 0.2 + i * 0.08, duration: 0.5, ease }}
+                    className="flex-shrink-0 flex items-center gap-3"
+                  >
+                    <div className="flex flex-col items-center">
+                      <div
+                        className="w-3 h-3 rounded-full border-2"
+                        style={{
+                          borderColor: ev.color,
+                          backgroundColor: ev.status === "done" ? ev.color : "transparent",
+                        }}
+                      />
+                      {i < 5 && (
+                        <div className="w-[2px] h-4" style={{ backgroundColor: `${muted}20` }} />
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold" style={{ color: ev.color }}>
+                        {ev.time}
+                      </p>
+                      <p
+                        className="text-xs font-medium whitespace-nowrap"
+                        style={{ color: ev.status === "upcoming" ? muted : text }}
+                      >
+                        {ev.event}
+                      </p>
+                    </div>
+                    {ev.status === "active" && <PulseDot color={primary} size={6} />}
+                  </motion.div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </motion.div>
+      </Section>
+
+      {/* ── FINAL CTA ─────────────────────────────────────────── */}
+      <section className="py-32 lg:py-40 relative overflow-hidden">
+        {/* Ambient background */}
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            background: `
+              radial-gradient(ellipse 60% 50% at 50% 100%, rgba(37,99,235,0.06), transparent 60%),
+              radial-gradient(ellipse 40% 30% at 20% 50%, rgba(245,158,11,0.04), transparent 50%)
+            `,
+          }}
+        />
+
+        <div className="max-w-3xl mx-auto px-6 text-center relative z-10">
+          <motion.div
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true }}
+            custom={0}
+            variants={fadeUp}
+            className="mb-8"
           >
-            Pricing
-          </motion.p>
+            <motion.div
+              animate={{
+                boxShadow: [
+                  `0 0 0 0 rgba(37,99,235,0)`,
+                  `0 0 40px 8px rgba(37,99,235,0.1)`,
+                  `0 0 0 0 rgba(37,99,235,0)`,
+                ],
+              }}
+              transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+              className="w-16 h-16 rounded-2xl mx-auto flex items-center justify-center"
+              style={{ backgroundColor: primary }}
+            >
+              <Mic className="w-7 h-7 text-white" />
+            </motion.div>
+          </motion.div>
+
           <motion.h2
-            initial="hidden" whileInView="visible" viewport={{ once: true }} custom={1} variants={fadeUp}
-            className="text-3xl md:text-4xl font-display font-semibold tracking-tight text-foreground mb-12"
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true }}
+            custom={1}
+            variants={fadeUp}
+            className="text-4xl md:text-6xl font-bold tracking-tight leading-tight"
+            style={{ color: text }}
           >
-            Simple, per-venue pricing
+            Let your venue
+            <br />
+            <span
+              className="bg-clip-text text-transparent"
+              style={{
+                backgroundImage: `linear-gradient(135deg, ${primary}, ${accent})`,
+              }}
+            >
+              run itself.
+            </span>
           </motion.h2>
 
-          <motion.div
-            initial="hidden" whileInView="visible" viewport={{ once: true }} custom={2} variants={fadeUp}
-            className="grid md:grid-cols-3 gap-4"
-          >
-            {/* Standard */}
-            <div className="border border-border rounded-xl bg-card p-8 md:p-10 flex flex-col">
-              <p className="text-[11px] tracking-[0.2em] uppercase text-foreground/50 font-medium mb-4">Standard</p>
-              <div className="mb-2">
-                <span className="text-5xl font-display font-semibold tracking-tight text-foreground">$29</span>
-                <span className="text-foreground/50 font-light ml-1 text-lg">/mo</span>
-              </div>
-              <p className="text-[13px] text-foreground/50 font-light mb-8">per venue</p>
-              <ul className="text-left space-y-3 mb-8 flex-1">
-                {["Unlimited voice orders", "Real-time POS sync", "Wake-word activation", "Any device with a mic"].map((f, i) => (
-                  <li key={i} className="text-[13px] text-foreground/60 font-light flex items-center gap-3">
-                    <span className="w-1.5 h-1.5 rounded-full bg-primary/40 shrink-0" />{f}
-                  </li>
-                ))}
-              </ul>
-              <Link href="/signup">
-                <Button variant="outline" size="lg" className="w-full h-11 text-[14px]">Start free trial</Button>
-              </Link>
-            </div>
-
-            {/* Plus */}
-            <div className="border-2 border-primary/30 rounded-xl bg-card p-8 md:p-10 flex flex-col relative shadow-lg shadow-primary/10">
-              <span className="absolute -top-3 left-1/2 -translate-x-1/2 text-[10px] tracking-[0.15em] uppercase bg-primary text-primary-foreground px-3 py-1 rounded-full font-medium">Popular</span>
-              <p className="text-[11px] tracking-[0.2em] uppercase text-foreground/50 font-medium mb-4">Plus</p>
-              <div className="mb-2">
-                <span className="text-5xl font-display font-semibold tracking-tight text-foreground">$49</span>
-                <span className="text-foreground/50 font-light ml-1 text-lg">/mo</span>
-              </div>
-              <p className="text-[13px] text-foreground/50 font-light mb-8">per venue</p>
-              <ul className="text-left space-y-3 mb-8 flex-1">
-                {["Everything in Standard", "Inventory management", "Low-stock alerts", "Priority support", "Early access to new features"].map((f, i) => (
-                  <li key={i} className="text-[13px] text-foreground/60 font-light flex items-center gap-3">
-                    <span className="w-1.5 h-1.5 rounded-full bg-primary/40 shrink-0" />{f}
-                  </li>
-                ))}
-              </ul>
-              <Link href="/signup">
-                <Button size="lg" className="w-full h-11 text-[14px]">Start free trial</Button>
-              </Link>
-            </div>
-
-            {/* Enterprise */}
-            <div className="border border-border rounded-xl bg-card p-8 md:p-10 flex flex-col">
-              <p className="text-[11px] tracking-[0.2em] uppercase text-foreground/50 font-medium mb-4">Enterprise</p>
-              <div className="mb-2">
-                <span className="text-5xl font-display font-semibold tracking-tight text-foreground">Custom</span>
-              </div>
-              <p className="text-[13px] text-foreground/50 font-light mb-8">multi-venue pricing</p>
-              <ul className="text-left space-y-3 mb-8 flex-1">
-                {["Everything in Plus", "Multi-venue management", "Dedicated support", "Custom integrations"].map((f, i) => (
-                  <li key={i} className="text-[13px] text-foreground/60 font-light flex items-center gap-3">
-                    <span className="w-1.5 h-1.5 rounded-full bg-primary/40 shrink-0" />{f}
-                  </li>
-                ))}
-              </ul>
-              <Link href="/signup">
-                <Button variant="outline" size="lg" className="w-full h-11 text-[14px]">Contact us</Button>
-              </Link>
-            </div>
-          </motion.div>
-          <p className="text-[12px] text-foreground/40 mt-4 font-light">14-day free trial &middot; No credit card required</p>
-        </div>
-      </section>
-
-      {/* ── Final CTA ─────────────────────────────────────────── */}
-      <section className="py-28 lg:py-40 border-t border-border relative overflow-hidden">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_60%_40%_at_50%_100%,_hsl(var(--primary)/0.1),_transparent_70%)]" />
-        <div className="max-w-2xl mx-auto px-6 text-center relative z-10">
-          <motion.h2
-            initial="hidden" whileInView="visible" viewport={{ once: true }} custom={0} variants={fadeUp}
-            className="text-3xl md:text-5xl font-display font-semibold tracking-tight text-foreground mb-5"
-          >
-            Ready to speed up<br />your bar?
-          </motion.h2>
           <motion.p
-            initial="hidden" whileInView="visible" viewport={{ once: true }} custom={1} variants={fadeUp}
-            className="text-foreground/60 font-light mb-10 max-w-md mx-auto text-lg"
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true }}
+            custom={2}
+            variants={fadeUp}
+            className="mt-6 text-lg max-w-md mx-auto leading-relaxed"
+            style={{ color: muted }}
           >
-            Set up in under two minutes. Connect your POS, speak your first order, and&nbsp;go.
+            Connect your systems, activate Bev, and watch your operations transform in minutes — not months.
           </motion.p>
+
           <motion.div
-            initial="hidden" whileInView="visible" viewport={{ once: true }} custom={2} variants={fadeUp}
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true }}
+            custom={3}
+            variants={fadeUp}
+            className="mt-10 flex flex-wrap items-center justify-center gap-4"
           >
             <Link href="/signup">
-              <Button size="lg" className="h-12 px-10 text-[15px] group">
-                Get started free
-                <ArrowRight className="ml-2 w-4 h-4 group-hover:translate-x-1 transition-transform" />
-              </Button>
+              <button
+                className="inline-flex items-center gap-2 h-14 px-10 rounded-xl text-base font-semibold text-white transition-all hover:shadow-lg hover:shadow-blue-500/20 hover:-translate-y-0.5"
+                style={{ backgroundColor: primary }}
+              >
+                Start free trial
+                <ArrowRight className="w-5 h-5" />
+              </button>
+            </Link>
+            <Link href="/signup">
+              <button
+                className="inline-flex items-center gap-2 h-14 px-10 rounded-xl text-base font-semibold transition-all hover:-translate-y-0.5"
+                style={{
+                  color: text,
+                  boxShadow: softShadow,
+                  backgroundColor: cardBg,
+                }}
+              >
+                Book a demo
+              </button>
             </Link>
           </motion.div>
+
+          <motion.p
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true }}
+            custom={4}
+            variants={fadeUp}
+            className="mt-6 text-xs"
+            style={{ color: `${muted}90` }}
+          >
+            14 days free &middot; No credit card required &middot; Setup in 2 minutes
+          </motion.p>
         </div>
       </section>
     </div>

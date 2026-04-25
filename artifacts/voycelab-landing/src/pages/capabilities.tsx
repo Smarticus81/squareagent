@@ -6,7 +6,16 @@ import {
   Volume2, Zap, ChevronRight,
 } from "lucide-react";
 
-/* ── Animation ─────────────────────────────────────────────── */
+/* ── Design tokens ────────────────────────────────────────────── */
+const bg = "#F7F7F8";
+const card = "#FFFFFF";
+const text = "#111827";
+const muted = "#6B7280";
+const primary = "#2563EB";
+const neuShadow = "6px 6px 12px rgba(0,0,0,0.05), -6px -6px 12px rgba(255,255,255,0.9)";
+const neuInset = "inset 2px 2px 4px rgba(0,0,0,0.04), inset -2px -2px 4px rgba(255,255,255,0.7)";
+
+/* ── Animation ──���──────────────────────────────────────────── */
 const ease = [0.22, 1, 0.36, 1] as const;
 const fadeUp = {
   hidden: { opacity: 0, y: 24 },
@@ -16,7 +25,7 @@ const fadeUp = {
   }),
 };
 
-/* ── Data ──────────────────────────────────────────────────── */
+/* ── Data ─────���────────────────────────────────────────────── */
 
 interface VoiceExample {
   phrase: string;
@@ -34,6 +43,7 @@ interface DomainSection {
   subtitle: string;
   icon: React.ReactNode;
   color: string;
+  bgColor: string;
   tools: ToolInfo[];
 }
 
@@ -42,15 +52,16 @@ const domains: DomainSection[] = [
     title: "Point of Sale",
     subtitle: "Build and manage orders in real time — items appear on your POS as you speak.",
     icon: <ShoppingCart className="w-5 h-5" />,
-    color: "text-emerald-400",
+    color: "#16A34A",
+    bgColor: "#16A34A10",
     tools: [
       {
         name: "add_item",
         description: "Add an item to the current order by name. Supports quantities and fuzzy matching against your catalog.",
         examples: [
-          { phrase: "Two Fosters and a Bud Light", description: "Adds 2× Fosters + 1× Bud Light" },
-          { phrase: "Tab a Corona", description: "Adds 1× Corona to the order" },
-          { phrase: "Another round of IPAs — make it three", description: "Adds 3× IPA" },
+          { phrase: "Two Fosters and a Bud Light", description: "Adds 2x Fosters + 1x Bud Light" },
+          { phrase: "Tab a Corona", description: "Adds 1x Corona to the order" },
+          { phrase: "Another round of IPAs — make it three", description: "Adds 3x IPA" },
         ],
       },
       {
@@ -58,7 +69,7 @@ const domains: DomainSection[] = [
         description: "Remove an item from the current order. Specify quantity to remove just some.",
         examples: [
           { phrase: "Take off the Bud Light", description: "Removes Bud Light from order" },
-          { phrase: "86 one of the Fosters", description: "Removes 1× Fosters" },
+          { phrase: "86 one of the Fosters", description: "Removes 1x Fosters" },
           { phrase: "Scratch the last item", description: "Removes the most recent item" },
         ],
       },
@@ -113,7 +124,8 @@ const domains: DomainSection[] = [
     title: "Inventory Management",
     subtitle: "Track stock levels, receive shipments, and catch low-stock items before you run out.",
     icon: <Package className="w-5 h-5" />,
-    color: "text-blue-400",
+    color: "#2563EB",
+    bgColor: "#2563EB10",
     tools: [
       {
         name: "check_inventory",
@@ -186,7 +198,8 @@ const domains: DomainSection[] = [
     title: "Catalog Management",
     subtitle: "Create, update, and organize your Square catalog entirely by voice.",
     icon: <BookOpen className="w-5 h-5" />,
-    color: "text-violet-400",
+    color: "#8B5CF6",
+    bgColor: "#8B5CF610",
     tools: [
       {
         name: "create_item",
@@ -200,9 +213,9 @@ const domains: DomainSection[] = [
         name: "update_item",
         description: "Change an existing item's name or price in the catalog.",
         examples: [
-          { phrase: "Change the IPA price to nine fifty", description: "Updates IPA → $9.50" },
+          { phrase: "Change the IPA price to nine fifty", description: "Updates IPA to $9.50" },
           { phrase: "Rename Bud Light to Bud Light Lime", description: "Updates name" },
-          { phrase: "Bump the Margarita up to fourteen", description: "Price → $14.00" },
+          { phrase: "Bump the Margarita up to fourteen", description: "Price to $14.00" },
         ],
       },
       {
@@ -252,7 +265,8 @@ const domains: DomainSection[] = [
     title: "Orders & Sales",
     subtitle: "Review past orders, check open tickets, and pull sales reports on demand.",
     icon: <ClipboardList className="w-5 h-5" />,
-    color: "text-amber-400",
+    color: "#F59E0B",
+    bgColor: "#F59E0B10",
     tools: [
       {
         name: "list_orders",
@@ -293,7 +307,8 @@ const domains: DomainSection[] = [
     title: "Locations",
     subtitle: "View all your Square locations and their details.",
     icon: <MapPin className="w-5 h-5" />,
-    color: "text-rose-400",
+    color: "#EF4444",
+    bgColor: "#EF444410",
     tools: [
       {
         name: "list_locations",
@@ -309,7 +324,8 @@ const domains: DomainSection[] = [
     title: "Customers",
     subtitle: "Search, create, and manage customer profiles right from your voice.",
     icon: <Users className="w-5 h-5" />,
-    color: "text-cyan-400",
+    color: "#0891B2",
+    bgColor: "#0891B210",
     tools: [
       {
         name: "search_customer",
@@ -349,7 +365,8 @@ const domains: DomainSection[] = [
     title: "Payments",
     subtitle: "View recent payments, issue refunds, and cancel pending transactions.",
     icon: <CreditCard className="w-5 h-5" />,
-    color: "text-green-400",
+    color: "#16A34A",
+    bgColor: "#16A34A10",
     tools: [
       {
         name: "list_payments",
@@ -381,7 +398,8 @@ const domains: DomainSection[] = [
     title: "Team & Shifts",
     subtitle: "See who's working, clock people in and out, and manage your team.",
     icon: <UserCog className="w-5 h-5" />,
-    color: "text-orange-400",
+    color: "#EA580C",
+    bgColor: "#EA580C10",
     tools: [
       {
         name: "list_team",
@@ -422,7 +440,8 @@ const domains: DomainSection[] = [
     title: "Reports & Analytics",
     subtitle: "Pull detailed reports — hourly breakdowns, top sellers, and daily summaries.",
     icon: <BarChart3 className="w-5 h-5" />,
-    color: "text-pink-400",
+    color: "#DB2777",
+    bgColor: "#DB277710",
     tools: [
       {
         name: "hourly_sales",
@@ -458,12 +477,12 @@ const slangGuide = [
   { phrase: "86 it", meaning: "Remove an item / mark as out of stock" },
   { phrase: "Ring it up", meaning: "Submit the current order" },
   { phrase: "Close it out", meaning: "Finalize and submit" },
-  { phrase: "Tab it / Tab a …", meaning: "Add to the current order" },
+  { phrase: "Tab it / Tab a ...", meaning: "Add to the current order" },
   { phrase: "What's on the ticket?", meaning: "Read back the current order" },
   { phrase: "What's the damage?", meaning: "Get the order total" },
   { phrase: "Comp it", meaning: "Apply a 100% discount" },
   { phrase: "Who's on?", meaning: "Check who's clocked in" },
-  { phrase: "We got a case of …", meaning: "Add 24 units to inventory" },
+  { phrase: "We got a case of ...", meaning: "Add 24 units to inventory" },
   { phrase: "Start fresh", meaning: "Clear the entire order" },
   { phrase: "Send it to the terminal", meaning: "Push order to card reader" },
   { phrase: "They want to tap", meaning: "Send to terminal for contactless" },
@@ -477,7 +496,7 @@ const timePeriods = [
 
 /* ── Components ────────────────────────────────────────────── */
 
-function ToolCard({ tool, index }: { tool: ToolInfo; index: number }) {
+function ToolCard({ tool, domainColor, index }: { tool: ToolInfo; domainColor: string; index: number }) {
   return (
     <motion.div
       custom={index}
@@ -485,25 +504,32 @@ function ToolCard({ tool, index }: { tool: ToolInfo; index: number }) {
       initial="hidden"
       whileInView="visible"
       viewport={{ once: true, margin: "-40px" }}
-      className="rounded-xl border border-foreground/[0.06] bg-foreground/[0.02] p-5"
+      className="rounded-2xl p-6 transition-all hover:-translate-y-0.5"
+      style={{ backgroundColor: card, boxShadow: neuShadow }}
     >
-      <div className="flex items-start gap-3 mb-3">
-        <code className="text-[12px] font-mono px-2 py-0.5 rounded-md bg-primary/10 text-primary shrink-0">
+      <div className="mb-3">
+        <code
+          className="text-[12px] font-mono px-2.5 py-1 rounded-lg font-semibold"
+          style={{ backgroundColor: `${domainColor}10`, color: domainColor }}
+        >
           {tool.name}
         </code>
       </div>
-      <p className="text-[13px] text-foreground/60 font-light leading-relaxed mb-4">
+      <p className="text-[13px] leading-relaxed mb-4" style={{ color: muted }}>
         {tool.description}
       </p>
-      <div className="space-y-2">
+      <div className="space-y-2.5">
         {tool.examples.map((ex, j) => (
           <div key={j} className="flex items-start gap-2.5 group">
-            <Mic className="w-3 h-3 mt-[5px] text-foreground/20 group-hover:text-primary/60 transition-colors shrink-0" />
+            <Mic
+              className="w-3 h-3 mt-[5px] shrink-0 transition-colors"
+              style={{ color: "#D1D5DB" }}
+            />
             <div className="min-w-0">
-              <p className="text-[13px] text-foreground/80 font-medium leading-snug">
+              <p className="text-[13px] font-medium leading-snug" style={{ color: text }}>
                 "{ex.phrase}"
               </p>
-              <p className="text-[11px] text-foreground/40 font-light mt-0.5">
+              <p className="text-[11px] mt-0.5" style={{ color: "#9CA3AF" }}>
                 {ex.description}
               </p>
             </div>
@@ -514,7 +540,7 @@ function ToolCard({ tool, index }: { tool: ToolInfo; index: number }) {
   );
 }
 
-function DomainBlock({ domain, index }: { domain: DomainSection; index: number }) {
+function DomainBlock({ domain }: { domain: DomainSection }) {
   return (
     <motion.section
       initial="hidden"
@@ -526,20 +552,25 @@ function DomainBlock({ domain, index }: { domain: DomainSection; index: number }
     >
       <motion.div custom={0} variants={fadeUp} className="mb-6">
         <div className="flex items-center gap-3 mb-2">
-          <div className={`${domain.color}`}>{domain.icon}</div>
-          <h2 className="font-display font-semibold text-xl tracking-tight">{domain.title}</h2>
-          <span className="text-[11px] text-foreground/30 font-light ml-auto">
+          <div
+            className="w-10 h-10 rounded-xl flex items-center justify-center"
+            style={{ backgroundColor: domain.bgColor, color: domain.color }}
+          >
+            {domain.icon}
+          </div>
+          <h2 className="font-bold text-xl tracking-tight" style={{ color: text }}>{domain.title}</h2>
+          <span className="text-[11px] font-medium ml-auto px-2.5 py-0.5 rounded-lg" style={{ backgroundColor: bg, color: "#9CA3AF" }}>
             {domain.tools.length} {domain.tools.length === 1 ? "tool" : "tools"}
           </span>
         </div>
-        <p className="text-[13px] text-foreground/50 font-light leading-relaxed max-w-2xl">
+        <p className="text-[13px] leading-relaxed max-w-2xl" style={{ color: muted }}>
           {domain.subtitle}
         </p>
       </motion.div>
 
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-4 sm:grid-cols-2">
         {domain.tools.map((tool, i) => (
-          <ToolCard key={tool.name} tool={tool} index={i + 1} />
+          <ToolCard key={tool.name} tool={tool} domainColor={domain.color} index={i + 1} />
         ))}
       </div>
     </motion.section>
@@ -552,15 +583,19 @@ export default function Capabilities() {
   const totalTools = domains.reduce((sum, d) => sum + d.tools.length, 0);
 
   return (
-    <div className="pt-28 pb-20">
-      <div className="max-w-5xl mx-auto px-6 lg:px-8">
+    <div className="pt-28 pb-20" style={{ backgroundColor: bg, color: text }}>
+      <div className="w-full max-w-[1200px] mx-auto px-6 lg:px-10">
 
-        {/* ── Back link ─────────────────────────────────────── */}
-        <Link href="/" className="inline-flex items-center gap-1.5 text-[12px] text-foreground/40 hover:text-foreground/70 transition-colors mb-10">
+        {/* Back link */}
+        <Link
+          href="/"
+          className="inline-flex items-center gap-1.5 text-[12px] font-medium mb-10 transition-colors"
+          style={{ color: "#9CA3AF" }}
+        >
           <ArrowLeft className="w-3.5 h-3.5" /> Back to home
         </Link>
 
-        {/* ── Hero ──────────────────────────────────────────── */}
+        {/* Hero */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -568,90 +603,95 @@ export default function Capabilities() {
           className="mb-16"
         >
           <div className="flex items-center gap-2.5 mb-4">
-            <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
-              <Volume2 className="w-4 h-4 text-primary" />
+            <div
+              className="w-9 h-9 rounded-xl flex items-center justify-center"
+              style={{ backgroundColor: `${primary}10` }}
+            >
+              <Volume2 className="w-4 h-4" style={{ color: primary }} />
             </div>
-            <span className="text-[11px] font-medium tracking-[0.15em] uppercase text-foreground/40">
+            <span className="text-[11px] font-bold tracking-[0.15em] uppercase" style={{ color: "#9CA3AF" }}>
               Voice Command Reference
             </span>
           </div>
-          <h1 className="font-display font-bold text-3xl sm:text-4xl tracking-tight mb-4">
-            Everything VoyceLab Can Do
+          <h1 className="font-bold text-3xl sm:text-4xl tracking-tight mb-4" style={{ color: text }}>
+            Everything VoyceLabs Can Do
           </h1>
-          <p className="text-[15px] text-foreground/50 font-light leading-relaxed max-w-2xl">
+          <p className="text-[15px] leading-relaxed max-w-2xl" style={{ color: muted }}>
             {totalTools} voice-powered tools across {domains.length} domains — ordering, inventory, catalog management,
             customers, payments, team scheduling, and analytics. All accessible through natural conversation.
           </p>
         </motion.div>
 
-        {/* ── Quick nav ─────────────────────────────────────── */}
+        {/* Quick nav */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.3, duration: 0.5 }}
-          className="mb-16 p-5 rounded-xl border border-foreground/[0.06] bg-foreground/[0.02]"
+          className="mb-16 rounded-2xl p-6"
+          style={{ backgroundColor: card, boxShadow: neuShadow }}
         >
-          <p className="text-[11px] font-medium tracking-[0.15em] uppercase text-foreground/30 mb-3">Jump to</p>
+          <p className="text-[11px] font-bold tracking-[0.15em] uppercase mb-4" style={{ color: "#9CA3AF" }}>
+            Jump to
+          </p>
           <div className="flex flex-wrap gap-2">
             {domains.map((d) => (
               <a
                 key={d.title}
                 href={`#${d.title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
-                className="inline-flex items-center gap-1.5 text-[12px] font-medium px-3 py-1.5 rounded-lg bg-foreground/[0.04] text-foreground/60 hover:text-foreground hover:bg-foreground/[0.08] transition-colors"
+                className="inline-flex items-center gap-2 text-[12px] font-semibold px-3.5 py-2 rounded-xl transition-all hover:-translate-y-0.5"
+                style={{ backgroundColor: bg, boxShadow: neuInset, color: muted }}
               >
-                <span className={d.color}>{d.icon}</span>
+                <span style={{ color: d.color }}>{d.icon}</span>
                 {d.title}
-                <span className="text-foreground/25 text-[11px]">{d.tools.length}</span>
+                <span className="text-[11px]" style={{ color: "#D1D5DB" }}>{d.tools.length}</span>
               </a>
             ))}
           </div>
         </motion.div>
 
-        {/* ── How it works ──────────────────────────────────── */}
+        {/* How it works */}
         <motion.div
           initial={{ opacity: 0, y: 16 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.6, ease }}
-          className="mb-16 p-6 rounded-xl border border-primary/10 bg-primary/[0.03]"
+          className="mb-16 rounded-2xl p-8"
+          style={{ backgroundColor: `${primary}05`, boxShadow: neuShadow, border: `1px solid ${primary}15` }}
         >
-          <div className="flex items-center gap-2.5 mb-4">
-            <MessageSquare className="w-4 h-4 text-primary" />
-            <h2 className="font-display font-semibold text-lg">How Voice Commands Work</h2>
+          <div className="flex items-center gap-2.5 mb-6">
+            <MessageSquare className="w-5 h-5" style={{ color: primary }} />
+            <h2 className="font-bold text-lg" style={{ color: text }}>How Voice Commands Work</h2>
           </div>
-          <div className="grid sm:grid-cols-3 gap-6 text-[13px] text-foreground/60 font-light leading-relaxed">
-            <div>
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-[11px] font-semibold text-primary">1</div>
-                <span className="font-medium text-foreground/80">Speak naturally</span>
+          <div className="grid sm:grid-cols-3 gap-8 text-[13px] leading-relaxed" style={{ color: muted }}>
+            {[
+              { n: "1", title: "Speak naturally", desc: "No rigid commands — just talk like you would to a coworker. VoyceLabs understands bartender slang, casual language, and context." },
+              { n: "2", title: "AI picks the tool", desc: "VoyceLabs's AI understands your intent and automatically selects the right tool — no menus, no tapping, no button hunting." },
+              { n: "3", title: "Your POS executes", desc: "The action runs directly against your connected POS — orders appear on the terminal, inventory updates in real time." },
+            ].map((step) => (
+              <div key={step.n}>
+                <div className="flex items-center gap-2.5 mb-3">
+                  <div
+                    className="w-7 h-7 rounded-lg flex items-center justify-center text-[12px] font-bold"
+                    style={{ backgroundColor: `${primary}15`, color: primary }}
+                  >
+                    {step.n}
+                  </div>
+                  <span className="font-semibold" style={{ color: text }}>{step.title}</span>
+                </div>
+                <p>{step.desc}</p>
               </div>
-              <p>No rigid commands — just talk like you would to a coworker. VoyceLab understands bartender slang, casual language, and context.</p>
-            </div>
-            <div>
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-[11px] font-semibold text-primary">2</div>
-                <span className="font-medium text-foreground/80">AI picks the tool</span>
-              </div>
-              <p>VoyceLab's AI understands your intent and automatically selects the right tool — no menus, no tapping, no button hunting.</p>
-            </div>
-            <div>
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-[11px] font-semibold text-primary">3</div>
-                <span className="font-medium text-foreground/80">Your POS executes</span>
-              </div>
-              <p>The action runs directly against your connected POS — orders appear on the terminal, inventory updates in real time, reports pull live data.</p>
-            </div>
+            ))}
           </div>
         </motion.div>
 
-        {/* ── Domain sections ───────────────────────────────── */}
-        <div className="space-y-16">
-          {domains.map((domain, i) => (
-            <DomainBlock key={domain.title} domain={domain} index={i} />
+        {/* Domain sections */}
+        <div className="space-y-20">
+          {domains.map((domain) => (
+            <DomainBlock key={domain.title} domain={domain} />
           ))}
         </div>
 
-        {/* ── Bartender Slang Guide ─────────────────────────── */}
+        {/* Bartender Slang Guide */}
         <motion.section
           initial="hidden"
           whileInView="visible"
@@ -662,54 +702,68 @@ export default function Capabilities() {
         >
           <motion.div custom={0} variants={fadeUp} className="mb-6">
             <div className="flex items-center gap-3 mb-2">
-              <Zap className="w-5 h-5 text-primary" />
-              <h2 className="font-display font-semibold text-xl tracking-tight">Bartender Slang Guide</h2>
+              <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center"
+                style={{ backgroundColor: `${primary}10` }}
+              >
+                <Zap className="w-5 h-5" style={{ color: primary }} />
+              </div>
+              <h2 className="font-bold text-xl tracking-tight" style={{ color: text }}>Bartender Slang Guide</h2>
             </div>
-            <p className="text-[13px] text-foreground/50 font-light leading-relaxed max-w-2xl">
-              VoyceLab understands how bartenders actually talk. Here's a cheat sheet of slang that works out of the box.
+            <p className="text-[13px] leading-relaxed max-w-2xl" style={{ color: muted }}>
+              VoyceLabs understands how bartenders actually talk. Here's a cheat sheet of slang that works out of the box.
             </p>
           </motion.div>
 
-          <div className="grid sm:grid-cols-2 gap-2">
+          <div className="grid sm:grid-cols-2 gap-3">
             {slangGuide.map((item, i) => (
               <motion.div
                 key={item.phrase}
                 custom={i}
                 variants={fadeUp}
-                className="flex items-center gap-3 px-4 py-3 rounded-lg border border-foreground/[0.06] bg-foreground/[0.02]"
+                className="flex items-center gap-3 px-5 py-3.5 rounded-xl transition-all hover:-translate-y-0.5"
+                style={{ backgroundColor: card, boxShadow: neuShadow }}
               >
-                <code className="text-[12px] font-mono text-primary shrink-0 min-w-[140px]">
+                <code
+                  className="text-[12px] font-mono shrink-0 min-w-[140px] font-semibold"
+                  style={{ color: primary }}
+                >
                   "{item.phrase}"
                 </code>
-                <ChevronRight className="w-3 h-3 text-foreground/20 shrink-0" />
-                <span className="text-[12px] text-foreground/50 font-light">{item.meaning}</span>
+                <ChevronRight className="w-3 h-3 shrink-0" style={{ color: "#D1D5DB" }} />
+                <span className="text-[12px]" style={{ color: muted }}>{item.meaning}</span>
               </motion.div>
             ))}
           </div>
         </motion.section>
 
-        {/* ── Time periods ──────────────────────────────────── */}
+        {/* Time periods */}
         <motion.section
           initial={{ opacity: 0, y: 16 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.6, ease }}
-          className="mt-16 p-6 rounded-xl border border-foreground/[0.06] bg-foreground/[0.02]"
+          className="mt-16 rounded-2xl p-8"
+          style={{ backgroundColor: card, boxShadow: neuShadow }}
         >
-          <h3 className="font-display font-semibold text-base mb-3">Supported Time Periods for Reports</h3>
-          <p className="text-[13px] text-foreground/50 font-light mb-4">
+          <h3 className="font-bold text-base mb-3" style={{ color: text }}>Supported Time Periods for Reports</h3>
+          <p className="text-[13px] mb-4" style={{ color: muted }}>
             Use any of these naturally when asking for sales reports, item performance, or daily summaries:
           </p>
           <div className="flex flex-wrap gap-2">
             {timePeriods.map((p) => (
-              <span key={p} className="text-[12px] font-mono px-3 py-1.5 rounded-lg bg-foreground/[0.04] text-foreground/60">
+              <span
+                key={p}
+                className="text-[12px] font-mono font-medium px-3.5 py-2 rounded-xl"
+                style={{ backgroundColor: bg, boxShadow: neuInset, color: muted }}
+              >
                 "{p}"
               </span>
             ))}
           </div>
         </motion.section>
 
-        {/* ── CTA ───────────────────────────────────────────── */}
+        {/* CTA */}
         <motion.div
           initial={{ opacity: 0, y: 16 }}
           whileInView={{ opacity: 1, y: 0 }}
@@ -717,14 +771,17 @@ export default function Capabilities() {
           transition={{ duration: 0.6, ease }}
           className="mt-20 text-center"
         >
-          <h2 className="font-display font-semibold text-2xl tracking-tight mb-3">
+          <h2 className="font-bold text-2xl tracking-tight mb-3" style={{ color: text }}>
             Ready to go hands-free?
           </h2>
-          <p className="text-[13px] text-foreground/50 font-light mb-6 max-w-md mx-auto">
+          <p className="text-[13px] mb-8 max-w-md mx-auto" style={{ color: muted }}>
             Connect your POS and start running your venue with your voice. Free 14-day trial.
           </p>
           <Link href="/signup">
-            <button className="inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-primary text-primary-foreground font-medium text-[14px] hover:opacity-90 transition-opacity">
+            <button
+              className="inline-flex items-center gap-2 h-12 px-8 rounded-xl text-[14px] font-semibold text-white transition-all hover:shadow-lg hover:shadow-blue-500/20 hover:-translate-y-0.5"
+              style={{ backgroundColor: primary }}
+            >
               Get Started Free
               <ChevronRight className="w-4 h-4" />
             </button>
