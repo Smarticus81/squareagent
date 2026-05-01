@@ -1,21 +1,24 @@
 import { useEffect, useMemo } from "react";
-import { useLocation } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { useVenues } from "@/hooks/use-venues";
 import { VoiceRail } from "@/components/voice-rail";
 import {
+  ArrowRight,
+  ArrowUpRight,
   Loader2,
   Mic,
   Plug,
+  Settings as Cog,
   Sparkles,
 } from "lucide-react";
 
 /**
- * Command — readiness, not metrics.
+ * Command — the launchpad.
  *
- * Shows: assistant readiness, connected service health, connection issues,
- * launch button. No latency chips, no technical engine names — those live
- * behind Settings → Advanced.
+ * One job: tell the user the single next action they need to take, and give
+ * them one button to do it. No fake metrics, no duplicated status. State
+ * drives the headline, the copy, and the primary CTA.
  */
 export default function Command() {
   const [, setLocation] = useLocation();
@@ -26,24 +29,16 @@ export default function Command() {
     if (!isLoading && !isFetching && !auth?.user) setLocation("/login");
   }, [isLoading, isFetching, auth, setLocation]);
 
-  const primaryVenue = useMemo(() => {
-    return (
+  const primaryVenue = useMemo(
+    () =>
       (venues ?? [])
         .slice()
         .sort(
           (l, r) =>
             new Date(r.connectedAt ?? 0).getTime() - new Date(l.connectedAt ?? 0).getTime(),
-        )[0] ?? null
-    );
-  }, [venues]);
-
-  const isConnected = !!primaryVenue?.squareLocationId;
-  const status = auth?.subscription?.status ?? "trialing";
-  const trialExpired =
-    status === "trialing" &&
-    auth?.subscription?.trialEndsAt &&
-    new Date(auth.subscription.trialEndsAt) < new Date();
-  const canUse = !trialExpired && (status === "trialing" || status === "active");
+        )[0] ?? null,
+    [venues],
+  );
 
   if (isLoading) {
     return (
@@ -52,193 +47,258 @@ export default function Command() {
       </div>
     );
   }
-
   if (!auth?.user) return null;
 
-  const assistantCount = isConnected ? 1 : 0;
-  const headline = `${assistantCount} assistant${assistantCount === 1 ? "" : "s"} ${
-    isConnected ? "ready" : "to set up"
-  }.`;
+  const isConnected = !!primaryVenue?.squareLocationId;
+  const status = auth?.subscription?.status ?? "trialing";
+  const trialEndsAt = auth?.subscription?.trialEndsAt ? new Date(auth.subscription.trialEndsAt) : null;
+  const trialActive = status === "trialing" && (!trialEndsAt || trialEndsAt > new Date());
+  const trialExpired = status === "trialing" && trialEndsAt && trialEndsAt < new Date();
+  const planActive = status === "active";
+
+  const firstName = auth.user.name.split(" ")[0] || "there";
+
+  /* ── Drive the primary action from real state ─────────────────────────── */
+  const primary = (() => {
+    if (venuesError) {
+      return {
+        kind: "error" as const,
+        eyebrow: "Connection issue",
+        title: "We couldn't load your venues.",
+        body: venuesError.message,
+        ctaLabel: "Try again",
+        ctaAction: () => window.location.reload(),
+      };
+    }
+    if (trialExpired) {
+      return {
+        kind: "upgrade" as const,
+        eyebrow: "Trial ended",
+        title: "Pick a plan to keep using your assistant.",
+        body: "Your 14-day trial has ended. Upgrade to keep Bev on the floor.",
+        ctaLabel: "Choose a plan",
+        ctaAction: async () => {
+          const token = localStorage.getItem("voycelab_token") || "";
+          const res = await fetch("/api/subscriptions/portal", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          }).catch(() => null);
+          if (res?.ok) {
+            const { url } = await res.json();
+            window.location.href = url;
+          }
+        },
+      };
+    }
+    if (!isConnected) {
+      return {
+        kind: "connect" as const,
+        eyebrow: venuesLoading ? "Loading..." : "Step 1 of 2",
+        title: "Connect Square to get started.",
+        body: "VoyceLab works inside your POS. Link Square to give your assistant something to control.",
+        ctaLabel: "Connect Square",
+        ctaAction: () => setLocation("/services"),
+      };
+    }
+    return {
+      kind: "open" as const,
+      eyebrow: planActive ? "Plan active" : trialActive ? "Trial active" : "Ready",
+      title: "Bev is ready on the floor.",
+      body: `${primaryVenue?.squareLocationName ?? "Your venue"} · Bar · Fastest live voice`,
+      ctaLabel: "Open Bev",
+      ctaAction: () => launchAssistant(primaryVenue?.id),
+    };
+  })();
 
   return (
-    <div className="flex-1 pt-24 pb-24">
-      <div className="w-full max-w-[1200px] mx-auto px-6 lg:px-10">
-        {/* Hero readiness statement */}
-        <div className="mb-12">
-          <p className="vl-eyebrow">Hello, {auth.user.name.split(" ")[0]}</p>
-          <h1
-            className="vl-display text-[44px] md:text-[64px] mt-3"
-            style={{ color: "var(--color-vl-ivory)" }}
-          >
-            {headline}
-            <br />
-            <span style={{ color: "rgba(245,239,227,0.45)" }}>
-              {isConnected ? "Square synced." : "Square not connected yet."}{" "}
-              {status === "trialing" && !trialExpired
-                ? "Trial active."
-                : status === "active"
-                ? "Plan active."
-                : "Trial ended."}
-            </span>
+    <div className="flex-1 pt-24 pb-16">
+      <div className="w-full max-w-[960px] mx-auto px-6 lg:px-10">
+        {/* Greeting */}
+        <div className="mb-8 md:mb-10">
+          <p className="vl-eyebrow">Console</p>
+          <h1 className="text-[28px] md:text-[34px] font-semibold tracking-tight mt-2" style={{ color: "var(--color-vl-ivory)" }}>
+            Hello, {firstName}.
           </h1>
         </div>
 
-        {venuesError && (
+        {/* Single intent card — the one thing that matters right now */}
+        <article
+          className="relative overflow-hidden rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#14161C] to-[#0B0D12] p-7 md:p-10"
+        >
           <div
-            className="vl-panel p-4 mb-6 text-[13px]"
-            style={{ color: "var(--color-vl-danger)" }}
-          >
-            Connected service is unavailable right now: {venuesError.message}
-          </div>
-        )}
-
-        {/* Live status panel */}
-        <div className="vl-panel vl-edge-brass p-7 md:p-9 mb-12">
-          <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
-            <div className="flex items-center gap-3 flex-wrap">
-              <span className="vl-chip" style={{ color: "var(--color-vl-brass2)" }}>
-                <span
-                  className="w-1.5 h-1.5 rounded-full"
-                  style={{ backgroundColor: "var(--color-vl-brass2)" }}
-                />
-                Assistant
-              </span>
-              <span
-                className="vl-chip"
-                style={{
-                  color: isConnected ? "var(--color-vl-success)" : "rgba(245,239,227,0.55)",
-                  borderColor: isConnected ? "rgba(53,194,117,0.4)" : undefined,
-                }}
-              >
-                <span
-                  className="w-1.5 h-1.5 rounded-full"
-                  style={{
-                    backgroundColor: isConnected ? "var(--color-vl-success)" : "rgba(245,239,227,0.4)",
-                  }}
-                />
-                {isConnected ? "Square synced" : "Square not connected"}
-              </span>
-              <span className="vl-chip">Bar</span>
+            aria-hidden
+            className="absolute inset-0 pointer-events-none"
+            style={{
+              background:
+                primary.kind === "open"
+                  ? "radial-gradient(ellipse 70% 80% at 80% 0%, rgba(90,160,255,0.10), transparent 60%)"
+                  : primary.kind === "upgrade"
+                  ? "radial-gradient(ellipse 70% 80% at 80% 0%, rgba(224,82,82,0.10), transparent 60%)"
+                  : "radial-gradient(ellipse 70% 80% at 80% 0%, rgba(245,166,35,0.08), transparent 60%)",
+            }}
+          />
+          <div className="relative flex flex-col md:flex-row md:items-end md:justify-between gap-8">
+            <div className="max-w-xl">
+              <p className="vl-eyebrow" style={{
+                color: primary.kind === "upgrade"
+                  ? "var(--color-vl-danger)"
+                  : primary.kind === "open"
+                  ? "var(--color-vl-success)"
+                  : "var(--color-vl-brass2)",
+              }}>
+                {primary.eyebrow}
+              </p>
+              <h2 className="text-[28px] md:text-[36px] font-semibold tracking-tight mt-3 leading-[1.1]" style={{ color: "var(--color-vl-ivory)" }}>
+                {primary.title}
+              </h2>
+              <p className="mt-3 text-[14px] leading-relaxed" style={{ color: "rgba(245,239,227,0.62)" }}>
+                {primary.body}
+              </p>
             </div>
             <button
-              disabled={!canUse || !isConnected}
-              onClick={() => launchAssistant(primaryVenue?.id)}
-              className="vl-btn-primary inline-flex items-center gap-2 text-[14px] disabled:opacity-50 disabled:cursor-not-allowed"
+              type="button"
+              onClick={() => primary.ctaAction?.()}
+              className="vl-btn-primary inline-flex items-center gap-2 text-[14px] px-6 py-3 shrink-0"
             >
-              <Mic className="w-4 h-4" /> Open assistant
+              {primary.kind === "open" ? <Mic className="w-4 h-4" /> : null}
+              {primary.ctaLabel}
+              <ArrowRight className="w-4 h-4" />
             </button>
           </div>
 
-          <VoiceRail state={isConnected ? "ready" : "offline"} intensity={isConnected ? 0.6 : 0.3} />
-
-          <div className="mt-6 grid sm:grid-cols-3 gap-px bg-white/[0.06]">
-            <Stat label="Conversations today" value="2" hint="Last: 11 minutes ago" />
-            <Stat label="Waiting for approval" value="0" hint="Nothing pending" />
-            <Stat label="Needs attention" value="0" hint="All actions reached Square" />
-          </div>
-        </div>
-
-        {/* Two-up: assistant / connected service */}
-        <div className="grid lg:grid-cols-2 gap-3">
-          <div className="vl-panel p-7">
-            <div className="flex items-center justify-between mb-4">
-              <p className="vl-eyebrow">Your assistant</p>
-              <span className="vl-chip">{isConnected ? "Ready" : "Pending"}</span>
+          {primary.kind === "open" && (
+            <div className="relative mt-10 pt-7 border-t border-white/[0.06]">
+              <VoiceRail state="ready" intensity={0.55} />
             </div>
-            <h2
-              className="text-[24px] font-semibold tracking-tight"
-              style={{ color: "var(--color-vl-ivory)" }}
-            >
-              Bev
-            </h2>
-            <p
-              className="text-[14px] mt-2 leading-relaxed"
-              style={{ color: "rgba(245,239,227,0.6)" }}
-            >
-              {isConnected
-                ? `Connected to ${primaryVenue?.squareLocationName ?? "your Square location"}. Bar room setting. Fastest live voice.`
-                : "Name your first assistant and connect a service."}
-            </p>
-            <div className="mt-6 flex flex-wrap gap-2">
-              <button
-                onClick={() => setLocation("/assistants")}
-                className="vl-btn-ghost inline-flex items-center gap-2 text-[13px]"
-              >
-                <Sparkles className="w-3.5 h-3.5" /> Open assistants
-              </button>
-              <button
-                onClick={() => setLocation("/assistants/new")}
-                className="vl-btn-ghost inline-flex items-center gap-2 text-[13px]"
-              >
-                + Create your assistant
-              </button>
-            </div>
-          </div>
+          )}
 
-          <div className="vl-panel p-7">
-            <div className="flex items-center justify-between mb-4">
-              <p className="vl-eyebrow">Connected service</p>
-              <span
-                className="vl-chip"
-                style={{
-                  color: isConnected ? "var(--color-vl-success)" : "rgba(245,239,227,0.55)",
-                  borderColor: isConnected ? "rgba(53,194,117,0.4)" : undefined,
-                }}
-              >
-                {isConnected ? "Available" : "Not connected"}
+          {primary.kind === "connect" && (
+            <div className="relative mt-10 pt-7 border-t border-white/[0.06] grid sm:grid-cols-2 gap-6">
+              <Step n="1" active label="Connect Square" body="OAuth to your merchant and pick a location." />
+              <Step n="2" label="Create your assistant" body="Name it, pick a voice, choose what it can do." />
+            </div>
+          )}
+        </article>
+
+        {/* Trial countdown strip — only when useful */}
+        {trialActive && trialEndsAt && (
+          <div className="mt-4 flex items-center justify-between gap-4 px-5 py-3 rounded-xl border border-white/[0.06]">
+            <p className="text-[12.5px]" style={{ color: "rgba(245,239,227,0.62)" }}>
+              Trial ends {trialEndsAt.toLocaleDateString()} ·{" "}
+              <span style={{ color: "var(--color-vl-ivory)" }}>
+                {Math.max(0, Math.ceil((trialEndsAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24)))} days left
               </span>
-            </div>
-            <h2
-              className="text-[24px] font-semibold tracking-tight"
-              style={{ color: "var(--color-vl-ivory)" }}
-            >
-              Square
-            </h2>
-            <p
-              className="text-[14px] mt-2 leading-relaxed"
-              style={{ color: "rgba(245,239,227,0.6)" }}
-            >
-              {venuesLoading
-                ? "Checking…"
-                : isConnected
-                ? `${primaryVenue?.squareLocationName ?? "Connected location"} · Synced`
-                : "Connect Square to give your assistant something to control."}
             </p>
-            <div className="mt-6 flex flex-wrap gap-2">
-              <button
-                onClick={() => setLocation("/services")}
-                className="vl-btn-ghost inline-flex items-center gap-2 text-[13px]"
-              >
-                <Plug className="w-3.5 h-3.5" />{" "}
-                {isConnected ? "Manage services" : "Connect Square"}
-              </button>
-                  
-            </div>
+            <Link href="/settings" className="text-[12px] inline-flex items-center gap-1" style={{ color: "var(--color-vl-brass2)" }}>
+              Manage billing <ArrowUpRight className="w-3 h-3" />
+            </Link>
           </div>
-        </div>
+        )}
 
-        
+        {/* Three tight rows — not a dashboard, a router */}
+        <nav className="mt-12 border-t border-white/[0.06]">
+          <RouterRow
+            icon={<Sparkles className="w-3.5 h-3.5" />}
+            label="Assistant"
+            detail={isConnected ? "Bev · Bar · Fastest live voice" : "Not configured yet"}
+            hint="Rename, retune, or change what it can do."
+            href="/assistants"
+            cta={isConnected ? "Configure" : "Set up"}
+          />
+          <RouterRow
+            icon={<Plug className="w-3.5 h-3.5" />}
+            label="Integrations"
+            detail={
+              isConnected
+                ? `${primaryVenue?.squareLocationName ?? "Square"} · Synced`
+                : "No services connected"
+            }
+            hint="Connect Square, disconnect, or add a location."
+            href="/services"
+            cta={isConnected ? "Manage" : "Connect"}
+          />
+          <RouterRow
+            icon={<Cog className="w-3.5 h-3.5" />}
+            label="Account"
+            detail={`${auth.user.email} · ${planActive ? "Plan active" : trialActive ? "Trial" : "Trial ended"}`}
+            hint="Profile, password, and billing."
+            href="/settings"
+            cta="Open"
+            last
+          />
+        </nav>
       </div>
     </div>
   );
 }
 
-function Stat({ label, value, hint }: { label: string; value: string; hint: string }) {
+function Step({ n, active, label, body }: { n: string; active?: boolean; label: string; body: string }) {
   return (
-    <div className="bg-[#0E1015] p-5">
-      <p className="vl-eyebrow" style={{ color: "rgba(140,145,154,0.7)" }}>
-        {label}
-      </p>
-      <p
-        className="vl-display text-[36px] mt-2"
-        style={{ color: "var(--color-vl-ivory)" }}
+    <div className="flex items-start gap-4">
+      <div
+        className="w-8 h-8 rounded-full border flex items-center justify-center text-[11px] font-mono shrink-0"
+        style={{
+          borderColor: active ? "rgba(224,183,106,0.6)" : "rgba(245,239,227,0.14)",
+          color: active ? "var(--color-vl-brass2)" : "rgba(245,239,227,0.5)",
+          background: active ? "rgba(224,183,106,0.06)" : "transparent",
+        }}
       >
-        {value}
-      </p>
-      <p className="text-[12px] mt-1" style={{ color: "rgba(245,239,227,0.5)" }}>
-        {hint}
-      </p>
+        {n}
+      </div>
+      <div>
+        <p className="text-[14px] font-semibold" style={{ color: "var(--color-vl-ivory)" }}>
+          {label}
+        </p>
+        <p className="text-[12.5px] mt-1 leading-relaxed" style={{ color: "rgba(245,239,227,0.55)" }}>
+          {body}
+        </p>
+      </div>
     </div>
+  );
+}
+
+function RouterRow({
+  icon,
+  label,
+  detail,
+  hint,
+  href,
+  cta,
+  last,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  detail: string;
+  hint: string;
+  href: string;
+  cta: string;
+  last?: boolean;
+}) {
+  return (
+    <Link
+      href={href}
+      className={`group flex items-center gap-6 py-5 px-1 ${last ? "" : "border-b border-white/[0.06]"} transition-colors hover:bg-white/[0.015]`}
+    >
+      <div className="flex items-center gap-3 shrink-0 w-44" style={{ color: "rgba(245,239,227,0.55)" }}>
+        <span style={{ color: "var(--color-vl-brass2)" }}>{icon}</span>
+        <span className="vl-eyebrow">{label}</span>
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-[14px] font-medium truncate" style={{ color: "var(--color-vl-ivory)" }}>
+          {detail}
+        </p>
+        <p className="text-[12px] mt-0.5" style={{ color: "rgba(245,239,227,0.45)" }}>
+          {hint}
+        </p>
+      </div>
+      <span
+        className="text-[12px] inline-flex items-center gap-1 shrink-0 transition-colors group-hover:text-[color:var(--color-vl-ivory)]"
+        style={{ color: "rgba(245,239,227,0.55)" }}
+      >
+        {cta}
+        <ArrowRight className="w-3.5 h-3.5" />
+      </span>
+    </Link>
   );
 }
 

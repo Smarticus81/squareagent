@@ -205,8 +205,8 @@ export default function SetupScreen() {
             </Text>
             <Text style={styles.authSub}>
               {authMode === "login"
-                ? "Log in with the account you created on the VoyceLab dashboard."
-                : "Create an account to get started with voice-powered ordering."}
+                ? "Sign in with your VoyceLab account to put your venue on voice."
+                : "Create your account and give your venue its voice-powered assistant."}
             </Text>
 
             {authMode === "signup" && (

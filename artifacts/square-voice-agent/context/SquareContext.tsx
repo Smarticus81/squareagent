@@ -358,7 +358,7 @@ export function SquareProvider({ children }: { children: ReactNode }) {
 
   const isConfigured = !!(accessToken && locationId);
 
-  // ── VoyceLab Account Auth (native login/signup) ──────────────────────────────
+  // ── VoyceLab Account Auth (native login/signup) ─────────────────────────────
 
   /** Fetch the user's venues list from the API */
   async function loadVenues(tok: string): Promise<void> {

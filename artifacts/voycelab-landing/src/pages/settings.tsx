@@ -1,9 +1,15 @@
 import { useEffect, useState } from "react";
-import { useLocation } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
-import { Loader2, Settings as Cog, ChevronDown } from "lucide-react";
-import { roomSettings } from "@/lib/tokens";
+import { ArrowLeft, ArrowRight, ArrowUpRight, CheckCircle2, Loader2 } from "lucide-react";
 
+/**
+ * Settings — account only.
+ *
+ * Three things live here: who you are, your password, your plan.
+ * Assistant config lives on /assistants. Integrations live on /services.
+ * Nothing else belongs on this page.
+ */
 export default function Settings() {
   const [, setLocation] = useLocation();
   const { data: auth, isLoading, refetch } = useAuth();
@@ -11,16 +17,14 @@ export default function Settings() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [profileLoading, setProfileLoading] = useState(false);
-  const [profileMsg, setProfileMsg] = useState("");
+  const [profileMsg, setProfileMsg] = useState<null | { tone: "ok" | "error"; text: string }>(null);
 
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [pwLoading, setPwLoading] = useState(false);
-  const [pwMsg, setPwMsg] = useState("");
+  const [pwMsg, setPwMsg] = useState<null | { tone: "ok" | "error"; text: string }>(null);
 
-  const [defaultRoom, setDefaultRoom] = useState("bar");
-  const [defaultApprovalLevel, setDefaultApprovalLevel] = useState("standard");
-  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [billingLoading, setBillingLoading] = useState(false);
 
   useEffect(() => {
     if (!isLoading && !auth?.user) setLocation("/login");
@@ -50,10 +54,13 @@ export default function Settings() {
     };
   };
 
+  const profileDirty = (name || "") !== (auth.user.name || "") || (email || "") !== (auth.user.email || "");
+
   const handleProfileUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!profileDirty) return;
     setProfileLoading(true);
-    setProfileMsg("");
+    setProfileMsg(null);
     try {
       const res = await fetch("/api/auth/profile", {
         method: "PATCH",
@@ -62,10 +69,10 @@ export default function Settings() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Could not save your profile.");
-      setProfileMsg("Profile updated.");
+      setProfileMsg({ tone: "ok", text: "Saved." });
       refetch();
     } catch (err) {
-      setProfileMsg(err instanceof Error ? err.message : "Could not save your profile.");
+      setProfileMsg({ tone: "error", text: err instanceof Error ? err.message : "Could not save your profile." });
     } finally {
       setProfileLoading(false);
     }
@@ -73,8 +80,9 @@ export default function Settings() {
 
   const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!currentPassword || !newPassword) return;
     setPwLoading(true);
-    setPwMsg("");
+    setPwMsg(null);
     try {
       const res = await fetch("/api/auth/change-password", {
         method: "POST",
@@ -83,17 +91,18 @@ export default function Settings() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Could not change your password.");
-      setPwMsg("Password updated.");
+      setPwMsg({ tone: "ok", text: "Password updated." });
       setCurrentPassword("");
       setNewPassword("");
     } catch (err) {
-      setPwMsg(err instanceof Error ? err.message : "Could not change your password.");
+      setPwMsg({ tone: "error", text: err instanceof Error ? err.message : "Could not change your password." });
     } finally {
       setPwLoading(false);
     }
   };
 
   const handleManageBilling = async () => {
+    setBillingLoading(true);
     try {
       const res = await fetch("/api/subscriptions/portal", {
         method: "POST",
@@ -104,53 +113,75 @@ export default function Settings() {
       window.location.href = url;
     } catch (e) {
       console.error(e);
+      setBillingLoading(false);
     }
   };
 
+  const status = auth.subscription?.status ?? "trialing";
+  const trialEndsAt = auth.subscription?.trialEndsAt ? new Date(auth.subscription.trialEndsAt) : null;
+  const trialActive = status === "trialing" && (!trialEndsAt || trialEndsAt > new Date());
+  const trialExpired = status === "trialing" && trialEndsAt && trialEndsAt < new Date();
+  const planActive = status === "active";
+  const daysLeft = trialEndsAt
+    ? Math.max(0, Math.ceil((trialEndsAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
+    : 0;
+
   return (
     <div className="flex-1 pt-24 pb-24">
-      <div className="w-full max-w-[900px] mx-auto px-6 lg:px-10">
-        <div className="mb-10 flex items-center gap-3">
-          <Cog className="w-5 h-5" style={{ color: "var(--color-vl-brass2)" }} />
-          <p className="vl-eyebrow">Settings</p>
-        </div>
+      <div className="w-full max-w-[760px] mx-auto px-6 lg:px-10">
+        {/* Back to the console */}
+        <Link
+          href="/command"
+          className="inline-flex items-center gap-1.5 text-[12px] mb-5 transition-colors"
+          style={{ color: "rgba(245,239,227,0.55)" }}
+        >
+          <ArrowLeft className="w-3.5 h-3.5" /> Console
+        </Link>
 
-        <div className="space-y-3">
-          {/* Account */}
-          <SettingCard title="Account" subtitle="Your name and email on the console.">
+        <p className="vl-eyebrow">Account</p>
+        <h1 className="text-[28px] md:text-[32px] font-semibold tracking-tight mt-2" style={{ color: "var(--color-vl-ivory)" }}>
+          Your account
+        </h1>
+        <p className="text-[14px] mt-2" style={{ color: "rgba(245,239,227,0.55)" }}>
+          Manage how you sign in and what you pay for.
+        </p>
+
+        <div className="mt-10 divide-y divide-white/[0.06] border-t border-b border-white/[0.06]">
+          {/* Profile */}
+          <Section title="Profile" description="Your name and email on the console.">
             <form onSubmit={handleProfileUpdate} className="grid sm:grid-cols-2 gap-4">
               <Field label="Name">
-                <input value={name} onChange={(e) => setName(e.target.value)} className="vl-input" />
+                <input value={name} onChange={(e) => setName(e.target.value)} className="vl-compact-input" />
               </Field>
               <Field label="Email">
-                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="vl-input" />
+                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="vl-compact-input" />
               </Field>
-              <div className="sm:col-span-2 flex items-center gap-3">
-                <button type="submit" disabled={profileLoading} className="vl-btn-primary inline-flex items-center gap-2 text-[13px]">
-                  {profileLoading && <Loader2 className="w-4 h-4 animate-spin" />}
-                  Save profile
+              <div className="sm:col-span-2 flex items-center gap-4 mt-1">
+                <button
+                  type="submit"
+                  disabled={profileLoading || !profileDirty}
+                  className="vl-btn-primary inline-flex items-center gap-2 text-[13px] disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {profileLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  Save changes
                 </button>
                 {profileMsg && (
-                  <span
-                    className="text-[12px]"
-                    style={{ color: profileMsg.includes("updated") ? "var(--color-vl-success)" : "var(--color-vl-danger)" }}
-                  >
-                    {profileMsg}
-                  </span>
+                  <InlineStatus tone={profileMsg.tone} text={profileMsg.text} />
                 )}
               </div>
             </form>
-          </SettingCard>
+          </Section>
 
-          {/* Security */}
-          <SettingCard title="Security" subtitle="Change your password.">
+          {/* Password */}
+          <Section title="Password" description="At least 8 characters.">
             <form onSubmit={handlePasswordChange} className="grid sm:grid-cols-2 gap-4">
               <Field label="Current password">
                 <input
                   type="password"
                   value={currentPassword}
                   onChange={(e) => setCurrentPassword(e.target.value)}
-                  className="vl-input"
+                  className="vl-compact-input"
+                  autoComplete="current-password"
                 />
               </Field>
               <Field label="New password">
@@ -159,170 +190,127 @@ export default function Settings() {
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   minLength={8}
-                  className="vl-input"
+                  className="vl-compact-input"
+                  autoComplete="new-password"
                 />
               </Field>
-              <div className="sm:col-span-2 flex items-center gap-3">
-                <button type="submit" disabled={pwLoading} className="vl-btn-ghost inline-flex items-center gap-2 text-[13px]">
-                  {pwLoading && <Loader2 className="w-4 h-4 animate-spin" />}
-                  Change password
+              <div className="sm:col-span-2 flex items-center gap-4 mt-1">
+                <button
+                  type="submit"
+                  disabled={pwLoading || !currentPassword || !newPassword}
+                  className="vl-btn-ghost inline-flex items-center gap-2 text-[13px] disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {pwLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  Update password
                 </button>
-                {pwMsg && (
-                  <span
-                    className="text-[12px]"
-                    style={{ color: pwMsg.includes("updated") ? "var(--color-vl-success)" : "var(--color-vl-danger)" }}
-                  >
-                    {pwMsg}
-                  </span>
-                )}
+                {pwMsg && <InlineStatus tone={pwMsg.tone} text={pwMsg.text} />}
               </div>
             </form>
-          </SettingCard>
+          </Section>
 
-          {/* Assistant defaults */}
-          <SettingCard title="Assistant defaults" subtitle="Apply to new assistants. You can override per assistant.">
-            <div className="grid sm:grid-cols-2 gap-4">
-              <Field label="Default room setting">
-                <select value={defaultRoom} onChange={(e) => setDefaultRoom(e.target.value)} className="vl-input">
-                  {roomSettings.map((m) => (
-                    <option key={m.value} value={m.value}>{m.label}</option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Default approval rule">
-                <select value={defaultApprovalLevel} onChange={(e) => setDefaultApprovalLevel(e.target.value)} className="vl-input">
-                  <option value="loose">Loose · only sensitive actions ask</option>
-                  <option value="standard">Standard · risky actions ask</option>
-                  <option value="strict">Strict · everything that changes asks</option>
-                </select>
-              </Field>
-            </div>
-          </SettingCard>
-
-          {/* Connected services pointer */}
-          <SettingCard title="Connected services" subtitle="Manage Square and other connections.">
-            <button onClick={() => setLocation("/services")} className="vl-btn-ghost text-[13px]">
-              Open connected services
-            </button>
-          </SettingCard>
-
-          {/* Team access */}
-          <SettingCard title="Team access" subtitle="Invite people who can open and manage your assistants.">
-            <p className="text-[13px]" style={{ color: "rgba(245,239,227,0.6)" }}>
-              Team access is on the way. Today you and admins on your account can manage assistants.
-            </p>
-          </SettingCard>
-
-          {/* Billing */}
-          <SettingCard title="Billing" subtitle="Plan and trial status.">
-            <div className="flex items-center justify-between flex-wrap gap-3">
-              <p className="text-[13px]" style={{ color: "rgba(245,239,227,0.7)" }}>
-                {auth.subscription?.status === "trialing" ? (
-                  <>
-                    Free trial · {auth.subscription?.plan ?? "trial"} · Ends{" "}
-                    {auth.subscription?.trialEndsAt
-                      ? new Date(auth.subscription.trialEndsAt).toLocaleDateString()
-                      : "—"}
-                  </>
-                ) : auth.subscription?.status === "active" ? (
-                  <>Active · {auth.subscription?.plan ?? "—"}</>
-                ) : (
-                  <>{auth.subscription?.status ?? "No plan"}</>
-                )}
-              </p>
-              <button onClick={handleManageBilling} className="vl-btn-ghost text-[13px]">Manage billing</button>
-            </div>
-          </SettingCard>
-
-          {/* Advanced — disclosed */}
-          <section className="vl-panel">
-            <button
-              type="button"
-              onClick={() => setAdvancedOpen((v) => !v)}
-              className="w-full p-7 flex items-center justify-between text-left"
-            >
+          {/* Billing — the one place where intent to upgrade lives */}
+          <Section title="Billing" description="Your plan and trial.">
+            <div className="flex items-start justify-between gap-6 flex-wrap">
               <div>
-                <h2 className="text-[18px] font-semibold tracking-tight" style={{ color: "var(--color-vl-ivory)" }}>
-                  Advanced
-                </h2>
-                <p className="text-[13px] mt-1" style={{ color: "rgba(245,239,227,0.6)" }}>
-                  Developer connection keys, voice provider details, diagnostics. Hidden from the default journey.
+                <p className="text-[15px] font-medium" style={{ color: "var(--color-vl-ivory)" }}>
+                  {planActive
+                    ? `${capitalize(auth.subscription?.plan ?? "Plan")} · Active`
+                    : trialActive
+                    ? `Free trial · ${capitalize(auth.subscription?.plan ?? "trial")}`
+                    : trialExpired
+                    ? "Trial ended"
+                    : capitalize(status)}
+                </p>
+                <p className="text-[12.5px] mt-1" style={{ color: "rgba(245,239,227,0.55)" }}>
+                  {planActive
+                    ? "Your plan renews automatically."
+                    : trialActive && trialEndsAt
+                    ? `${daysLeft} days left · Ends ${trialEndsAt.toLocaleDateString()}`
+                    : trialExpired
+                    ? "Upgrade to keep using your assistant."
+                    : "Pick a plan to get started."}
                 </p>
               </div>
-              <ChevronDown
-                className="w-4 h-4 transition-transform"
-                style={{ transform: advancedOpen ? "rotate(180deg)" : "none", color: "rgba(245,239,227,0.55)" }}
-              />
-            </button>
-            {advancedOpen && (
-              <div className="px-7 pb-7 space-y-4 text-[13px]" style={{ color: "rgba(245,239,227,0.7)" }}>
-                <div>
-                  <p className="vl-eyebrow mb-1.5">Voice provider details</p>
-                  <p>
-                    Server-side keys (OPENAI_API_KEY, GEMINI_API_KEY, ELEVENLABS_API_KEY, DEEPGRAM_API_KEY, LIVEKIT_*) are configured by environment. Availability shows up automatically in the voice option picker.
-                  </p>
-                </div>
-                <div>
-                  <p className="vl-eyebrow mb-1.5">Custom connection</p>
-                  <p>
-                    Bridge a custom system over REST or webhook. Contact support to enable for your account.
-                  </p>
-                </div>
-                <div>
-                  <p className="vl-eyebrow mb-1.5">Diagnostics</p>
-                  <p>
-                    Connection logs, response times, and event traces live here when needed. Not shown in the default UI.
-                  </p>
-                </div>
-                <div>
-                  <p className="vl-eyebrow mb-1.5">Data retention</p>
-                  <p>
-                    Conversations are kept for 90 days by default. Contact support to extend.
-                  </p>
-                </div>
-              </div>
-            )}
-          </section>
+              <button
+                onClick={handleManageBilling}
+                disabled={billingLoading}
+                className={
+                  trialExpired
+                    ? "vl-btn-primary inline-flex items-center gap-2 text-[13px]"
+                    : "vl-btn-ghost inline-flex items-center gap-2 text-[13px]"
+                }
+              >
+                {billingLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                {trialExpired ? "Choose a plan" : planActive ? "Manage billing" : "Upgrade"}
+                <ArrowUpRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </Section>
+        </div>
+
+        {/* Post-settings nudge back to the work */}
+        <div className="mt-12">
+          <p className="vl-eyebrow mb-3">Keep going</p>
+          <div className="grid sm:grid-cols-2 gap-3">
+            <NextLink
+              href="/services"
+              title="Connected services"
+              hint="Square and other integrations."
+            />
+            <NextLink
+              href="/command"
+              title="Back to the console"
+              hint="Open your assistant."
+            />
+          </div>
         </div>
       </div>
 
       <style>{`
-        .vl-input {
+        .vl-compact-input {
           width: 100%;
-          height: 44px;
-          padding: 0 14px;
-          border-radius: 12px;
-          background: rgba(245,239,227,0.04);
-          border: 1px solid rgba(245,239,227,0.12);
+          height: 40px;
+          padding: 0 12px;
+          border-radius: 10px;
+          background: rgba(245,239,227,0.035);
+          border: 1px solid rgba(245,239,227,0.10);
           color: var(--color-vl-ivory);
-          font-size: 14px;
+          font-size: 13.5px;
           outline: none;
-          transition: border-color .2s ease, background .2s ease;
+          transition: border-color .15s ease, background .15s ease;
         }
-        .vl-input::placeholder { color: rgba(245,239,227,0.32); }
-        .vl-input:focus { border-color: rgba(124,110,245,0.7); background: rgba(245,239,227,0.06); }
-        select.vl-input { appearance: none; }
+        .vl-compact-input::placeholder { color: rgba(245,239,227,0.3); }
+        .vl-compact-input:focus {
+          border-color: rgba(124,110,245,0.6);
+          background: rgba(245,239,227,0.055);
+        }
       `}</style>
     </div>
   );
 }
 
-function SettingCard({
+function Section({
   title,
-  subtitle,
+  description,
   children,
 }: {
   title: string;
-  subtitle?: string;
+  description?: string;
   children: React.ReactNode;
 }) {
   return (
-    <section className="vl-panel p-7">
-      <h2 className="text-[18px] font-semibold tracking-tight" style={{ color: "var(--color-vl-ivory)" }}>{title}</h2>
-      {subtitle && (
-        <p className="text-[13px] mt-1 mb-5" style={{ color: "rgba(245,239,227,0.6)" }}>{subtitle}</p>
-      )}
-      {children}
+    <section className="py-7 grid md:grid-cols-[220px_1fr] gap-6 md:gap-10">
+      <div>
+        <h2 className="text-[15px] font-semibold" style={{ color: "var(--color-vl-ivory)" }}>
+          {title}
+        </h2>
+        {description && (
+          <p className="text-[12.5px] mt-1 leading-relaxed" style={{ color: "rgba(245,239,227,0.5)" }}>
+            {description}
+          </p>
+        )}
+      </div>
+      <div>{children}</div>
     </section>
   );
 }
@@ -330,8 +318,48 @@ function SettingCard({
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="vl-eyebrow block mb-1.5">{label}</span>
+      <span className="block text-[11px] uppercase tracking-[0.14em] mb-1.5" style={{ color: "rgba(245,239,227,0.45)" }}>
+        {label}
+      </span>
       {children}
     </label>
   );
+}
+
+function InlineStatus({ tone, text }: { tone: "ok" | "error"; text: string }) {
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 text-[12px]"
+      style={{
+        color: tone === "ok" ? "var(--color-vl-success)" : "var(--color-vl-danger)",
+      }}
+    >
+      {tone === "ok" && <CheckCircle2 className="w-3.5 h-3.5" />}
+      {text}
+    </span>
+  );
+}
+
+function NextLink({ href, title, hint }: { href: string; title: string; hint: string }) {
+  return (
+    <Link
+      href={href}
+      className="group flex items-center justify-between gap-4 px-5 py-4 rounded-xl border border-white/[0.06] transition-colors hover:border-white/[0.14] hover:bg-white/[0.015]"
+    >
+      <div>
+        <p className="text-[14px] font-medium" style={{ color: "var(--color-vl-ivory)" }}>
+          {title}
+        </p>
+        <p className="text-[12px] mt-0.5" style={{ color: "rgba(245,239,227,0.5)" }}>
+          {hint}
+        </p>
+      </div>
+      <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" style={{ color: "rgba(245,239,227,0.5)" }} />
+    </Link>
+  );
+}
+
+function capitalize(s: string) {
+  if (!s) return s;
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }

@@ -81,7 +81,7 @@ function buildInstructions(catalog: CatalogItem[], order: OrderItem[]): string {
       ? order.map((i) => `  - ${i.quantity}x ${i.item_name} @ $${i.price.toFixed(2)}`).join("\n")
       : "  (empty)";
 
-  return `You are VoyceLab, a comprehensive voice assistant for bars and venues running on Square. You have FULL access to the Square platform — ordering, inventory, catalog management, customer profiles, payments, team management, reporting, and more.
+  return `You are VoyceLab, the voice operating assistant for modern venues running on Square. You have FULL access to the Square platform — ordering, inventory, catalog management, customer profiles, payments, team management, reporting, and more.
 
 Catalog:
 ${catalogStr}

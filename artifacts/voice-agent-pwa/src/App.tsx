@@ -311,17 +311,29 @@ export default function App() {
           <Menu size={18} />
         </button>
         <div className="brand-row">
-          <svg width="22" height="22" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-            <line x1="3" y1="28" x2="37" y2="28" stroke="rgba(245,239,227,0.55)" strokeWidth="1.5" strokeLinecap="round"/>
-            <path d="M7 22 Q12 8 20 8" stroke="#E0B76A" strokeWidth="1.5" strokeLinecap="round" fill="none" opacity="0.55"/>
-            <path d="M33 22 Q28 12 20 12" stroke="#E0B76A" strokeWidth="1.5" strokeLinecap="round" fill="none" opacity="0.55"/>
-            <path d="M11 24 Q15 14 20 14" stroke="#E0B76A" strokeWidth="2" strokeLinecap="round" fill="none"/>
-            <path d="M29 24 Q25 16 20 16" stroke="#E0B76A" strokeWidth="2" strokeLinecap="round" fill="none"/>
-            <circle cx="20" cy="28" r="2.4" fill="#F5EFE3"/>
-            <circle cx="20" cy="28" r="4.6" stroke="#E0B76A" strokeWidth="1.2" opacity="0.45"/>
+          <svg width="24" height="22" viewBox="0 0 62 58" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <defs>
+              <linearGradient id="vl-top-blue" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#5AA0FF"/>
+                <stop offset="100%" stopColor="#1F4FE0"/>
+              </linearGradient>
+              <linearGradient id="vl-top-gold" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#FFD34A"/>
+                <stop offset="100%" stopColor="#F5A623"/>
+              </linearGradient>
+            </defs>
+            <circle cx="3" cy="30" r="2.4" fill="url(#vl-top-blue)"/>
+            <rect x="7" y="22" width="5" height="16" rx="2.5" fill="url(#vl-top-blue)"/>
+            <rect x="15" y="14" width="5" height="32" rx="2.5" fill="url(#vl-top-blue)"/>
+            <rect x="23" y="6" width="5" height="48" rx="2.5" fill="url(#vl-top-blue)"/>
+            <rect x="31" y="6" width="5" height="48" rx="2.5" fill="url(#vl-top-gold)"/>
+            <rect x="39" y="14" width="5" height="32" rx="2.5" fill="url(#vl-top-gold)"/>
+            <rect x="47" y="22" width="5" height="16" rx="2.5" fill="url(#vl-top-gold)"/>
+            <rect x="55" y="26" width="5" height="8" rx="2.5" fill="url(#vl-top-gold)"/>
+            <path d="M25 5.5 Q33 0 40 5.5" stroke="#FF8A2B" strokeWidth="2.4" strokeLinecap="round" fill="none"/>
           </svg>
           <span className="brand-text" style={{ color: "var(--logo-text)" }}>
-            Voyce<span style={{ fontWeight: 400, opacity: 0.78 }}>Lab</span>
+            Voyce<span style={{ fontWeight: 500, opacity: 0.92 }}>Lab</span>
           </span>
         </div>
         {orderCount > 0 ? (
@@ -340,15 +352,30 @@ export default function App() {
 
       {/* ── Conversation area ────────────────────────────────── */}
       <div className="content">
-        {/* Subtle watermark — new mark */}
+        {/* Subtle watermark — equalizer mark */}
         <div className="watermark">
-          <svg width="160" height="160" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-            <line x1="3" y1="28" x2="37" y2="28" stroke="#E0B76A" strokeWidth="1.2" strokeLinecap="round" opacity="0.10"/>
-            <path d="M7 22 Q12 8 20 8" stroke="#E0B76A" strokeWidth="1.6" strokeLinecap="round" fill="none" opacity="0.08"/>
-            <path d="M33 22 Q28 12 20 12" stroke="#E0B76A" strokeWidth="1.6" strokeLinecap="round" fill="none" opacity="0.08"/>
-            <path d="M11 24 Q15 14 20 14" stroke="#E0B76A" strokeWidth="2" strokeLinecap="round" fill="none" opacity="0.10"/>
-            <path d="M29 24 Q25 16 20 16" stroke="#E0B76A" strokeWidth="2" strokeLinecap="round" fill="none" opacity="0.10"/>
-            <circle cx="20" cy="28" r="2.4" fill="#E0B76A" opacity="0.14"/>
+          <svg width="180" height="168" viewBox="0 0 62 58" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <defs>
+              <linearGradient id="vl-wm-blue" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#5AA0FF"/>
+                <stop offset="100%" stopColor="#1F4FE0"/>
+              </linearGradient>
+              <linearGradient id="vl-wm-gold" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#FFD34A"/>
+                <stop offset="100%" stopColor="#F5A623"/>
+              </linearGradient>
+            </defs>
+            <g opacity="0.08">
+              <circle cx="3" cy="30" r="2.4" fill="url(#vl-wm-blue)"/>
+              <rect x="7" y="22" width="5" height="16" rx="2.5" fill="url(#vl-wm-blue)"/>
+              <rect x="15" y="14" width="5" height="32" rx="2.5" fill="url(#vl-wm-blue)"/>
+              <rect x="23" y="6" width="5" height="48" rx="2.5" fill="url(#vl-wm-blue)"/>
+              <rect x="31" y="6" width="5" height="48" rx="2.5" fill="url(#vl-wm-gold)"/>
+              <rect x="39" y="14" width="5" height="32" rx="2.5" fill="url(#vl-wm-gold)"/>
+              <rect x="47" y="22" width="5" height="16" rx="2.5" fill="url(#vl-wm-gold)"/>
+              <rect x="55" y="26" width="5" height="8" rx="2.5" fill="url(#vl-wm-gold)"/>
+              <path d="M25 5.5 Q33 0 40 5.5" stroke="#FF8A2B" strokeWidth="2.4" strokeLinecap="round" fill="none"/>
+            </g>
           </svg>
         </div>
         <div className="convo-area">

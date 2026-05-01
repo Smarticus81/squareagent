@@ -1,7 +1,7 @@
 {
   "name": "VoyceLab Voice Agent",
   "short_name": "VoyceLab",
-  "description": "The voice layer for modern venue operations.",
+  "description": "The voice operating assistant for modern venues.",
   "start_url": ".",
   "display": "standalone",
   "orientation": "portrait",

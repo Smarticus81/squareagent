@@ -5,10 +5,10 @@ import { LogOut, Menu, X } from "lucide-react";
 import { useState } from "react";
 
 const APP_NAV = [
-  { href: "/command", label: "Command" },
+  { href: "/command", label: "Console" },
   { href: "/assistants", label: "Assistants" },
-  { href: "/services", label: "Connected services" },
-  { href: "/settings", label: "Settings" },
+  { href: "/services", label: "Integrations" },
+  { href: "/settings", label: "Account" },
 ];
 
 // Landing has no brochure nav — the page itself is the journey.
@@ -43,17 +43,17 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 {(isAppPage ? APP_NAV : LANDING_NAV).map((item) => {
                   const active = isAppPage && location.startsWith(item.href);
                   return (
-                    <a
+                    <Link
                       key={item.href}
                       href={item.href}
-                      className="text-[13px] font-medium px-3 py-1.5 rounded-full transition-colors"
+                      className="text-[13px] font-medium px-3 py-1.5 rounded-full transition-colors hover:bg-white/5"
                       style={{
                         color: active ? "var(--color-vl-ivory)" : "rgba(245,239,227,0.62)",
                         background: active ? "rgba(245,239,227,0.06)" : "transparent",
                       }}
                     >
                       {item.label}
-                    </a>
+                    </Link>
                   );
                 })}
               </nav>
@@ -110,7 +110,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             {mobileOpen && (
               <div className="md:hidden border-t border-white/10 px-6 py-4 flex flex-col gap-2">
                 {(isAppPage ? APP_NAV : LANDING_NAV).map((item) => (
-                  <a
+                  <Link
                     key={item.href}
                     href={item.href}
                     onClick={() => setMobileOpen(false)}
@@ -118,7 +118,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     style={{ color: "rgba(245,239,227,0.78)" }}
                   >
                     {item.label}
-                  </a>
+                  </Link>
                 ))}
               </div>
             )}
@@ -143,17 +143,18 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 links={[
                   { href: "/assistants/new", label: "Create your assistant" },
                   { href: "/command", label: "Console" },
-                  { href: "/services", label: "Connected services" },
-                ]}
-              />
-              <FooterCol
-                title="Trust"
-                links={[
-                  { href: "/settings", label: "Approval rules" },
+                  { href: "/services", label: "Integrations" },
                 ]}
               />
               <FooterCol
                 title="Account"
+                links={[
+                  { href: "/settings", label: "Settings" },
+                  { href: "/settings", label: "Billing" },
+                ]}
+              />
+              <FooterCol
+                title="Start"
                 links={[
                   { href: "/login", label: "Sign in" },
                   { href: "/signup", label: "Create account" },

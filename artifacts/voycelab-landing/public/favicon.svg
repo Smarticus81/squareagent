@@ -1,20 +1,21 @@
-<svg width="180" height="180" viewBox="0 0 180 180" fill="none" xmlns="http://www.w3.org/2000/svg">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 62 58" fill="none" aria-hidden="true">
   <defs>
-    <linearGradient id="vl-bg" x1="0" y1="0" x2="180" y2="180" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#111318"/>
-      <stop offset="100%" stop-color="#07080A"/>
+    <linearGradient id="b" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#5AA0FF" />
+      <stop offset="100%" stop-color="#1F4FE0" />
     </linearGradient>
-    <linearGradient id="vl-brass" x1="0" y1="36" x2="0" y2="144" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#E0B76A"/>
-      <stop offset="100%" stop-color="#C69A52"/>
+    <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FFD34A" />
+      <stop offset="100%" stop-color="#F5A623" />
     </linearGradient>
   </defs>
-  <rect width="180" height="180" rx="42" fill="url(#vl-bg)"/>
-  <line x1="22" y1="124" x2="158" y2="124" stroke="rgba(245,239,227,0.6)" stroke-width="6" stroke-linecap="round"/>
-  <path d="M40 100 Q60 36 90 36" stroke="url(#vl-brass)" stroke-width="6" stroke-linecap="round" fill="none" opacity="0.55"/>
-  <path d="M140 100 Q120 52 90 52" stroke="url(#vl-brass)" stroke-width="6" stroke-linecap="round" fill="none" opacity="0.55"/>
-  <path d="M52 108 Q72 60 90 60" stroke="url(#vl-brass)" stroke-width="8" stroke-linecap="round" fill="none"/>
-  <path d="M128 108 Q108 68 90 68" stroke="url(#vl-brass)" stroke-width="8" stroke-linecap="round" fill="none"/>
-  <circle cx="90" cy="124" r="12" fill="#F5EFE3"/>
-  <circle cx="90" cy="124" r="22" stroke="url(#vl-brass)" stroke-width="4" fill="none" opacity="0.55"/>
+  <circle cx="3" cy="30" r="2.4" fill="url(#b)" />
+  <rect x="7" y="22" width="5" height="16" rx="2.5" fill="url(#b)" />
+  <rect x="15" y="14" width="5" height="32" rx="2.5" fill="url(#b)" />
+  <rect x="23" y="6" width="5" height="48" rx="2.5" fill="url(#b)" />
+  <rect x="31" y="6" width="5" height="48" rx="2.5" fill="url(#g)" />
+  <rect x="39" y="14" width="5" height="32" rx="2.5" fill="url(#g)" />
+  <rect x="47" y="22" width="5" height="16" rx="2.5" fill="url(#g)" />
+  <rect x="55" y="26" width="5" height="8" rx="2.5" fill="url(#g)" />
+  <path d="M25 5.5 Q33 0 40 5.5" stroke="#FF8A2B" stroke-width="2.4" stroke-linecap="round" fill="none" />
 </svg>

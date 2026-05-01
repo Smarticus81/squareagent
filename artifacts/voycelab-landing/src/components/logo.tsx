@@ -10,9 +10,9 @@ interface LogoProps {
 /**
  * VoyceLab — symbol mark.
  *
- * A horizontal rail under a central signal node, flanked by two asymmetric
- * sound arcs. The negative space between the upper arc and the rail forms
- * a quiet "V". No microphone cliché.
+ * An equalizer silhouette: a small leading pulse, four ascending blue bars,
+ * four descending gold bars, and a single warm crest arcing over the peak.
+ * Rendered as pure SVG so it blends on any canvas without a visible edge.
  */
 export function LogoMark({
   size = 32,
@@ -23,91 +23,72 @@ export function LogoMark({
   variant?: "dark" | "light" | "mono";
   className?: string;
 }) {
-  // Stroke + node colors — brass on dark, graphite on light, ink on mono.
-  const stroke = variant === "light" ? "#111318" : variant === "mono" ? "currentColor" : "#E0B76A";
-  const node = variant === "light" ? "#07080A" : variant === "mono" ? "currentColor" : "#F5EFE3";
-  const rail = variant === "light" ? "rgba(17,19,24,0.55)" : variant === "mono" ? "currentColor" : "rgba(245,239,227,0.55)";
+  const width = Math.round(size * (62 / 58));
+  const uid = `vl-${variant}`;
 
   return (
     <svg
-      className={className}
-      width={size}
+      className={cn("block select-none", className)}
+      width={width}
       height={size}
-      viewBox="0 0 40 40"
+      viewBox="0 0 62 58"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden="true"
     >
-      {/* Rail — the signature horizontal line */}
-      <line
-        x1="3"
-        y1="28"
-        x2="37"
-        y2="28"
-        stroke={rail}
-        strokeWidth="1.5"
-        strokeLinecap="round"
-      />
-      {/* Outer arc, left — wider, lighter */}
+      <defs>
+        <linearGradient id={`${uid}-blue`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#5AA0FF" />
+          <stop offset="100%" stopColor="#1F4FE0" />
+        </linearGradient>
+        <linearGradient id={`${uid}-gold`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#FFD34A" />
+          <stop offset="100%" stopColor="#F5A623" />
+        </linearGradient>
+      </defs>
+
+      <circle cx="3" cy="30" r="2.4" fill={`url(#${uid}-blue)`} />
+      <rect x="7" y="22" width="5" height="16" rx="2.5" fill={`url(#${uid}-blue)`} />
+      <rect x="15" y="14" width="5" height="32" rx="2.5" fill={`url(#${uid}-blue)`} />
+      <rect x="23" y="6" width="5" height="48" rx="2.5" fill={`url(#${uid}-blue)`} />
+      <rect x="31" y="6" width="5" height="48" rx="2.5" fill={`url(#${uid}-gold)`} />
+      <rect x="39" y="14" width="5" height="32" rx="2.5" fill={`url(#${uid}-gold)`} />
+      <rect x="47" y="22" width="5" height="16" rx="2.5" fill={`url(#${uid}-gold)`} />
+      <rect x="55" y="26" width="5" height="8" rx="2.5" fill={`url(#${uid}-gold)`} />
+
+      {/* Warm crest arcing across the peak of the wave */}
       <path
-        d="M7 22 Q12 8 20 8"
-        stroke={stroke}
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        fill="none"
-        opacity="0.55"
-      />
-      {/* Outer arc, right — asymmetric, slightly tighter */}
-      <path
-        d="M33 22 Q28 12 20 12"
-        stroke={stroke}
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        fill="none"
-        opacity="0.55"
-      />
-      {/* Inner arcs — the quiet "V" sits between these and the rail */}
-      <path
-        d="M11 24 Q15 14 20 14"
-        stroke={stroke}
-        strokeWidth="2"
+        d="M25 5.5 Q33 0 40 5.5"
+        stroke="#FF8A2B"
+        strokeWidth="2.4"
         strokeLinecap="round"
         fill="none"
       />
-      <path
-        d="M29 24 Q25 16 20 16"
-        stroke={stroke}
-        strokeWidth="2"
-        strokeLinecap="round"
-        fill="none"
-      />
-      {/* Signal node */}
-      <circle cx="20" cy="28" r="2.4" fill={node} />
-      <circle cx="20" cy="28" r="4.6" stroke={stroke} strokeWidth="1.2" opacity="0.45" />
     </svg>
   );
 }
 
 /**
- * Horizontal lockup — symbol + wordmark.
+ * Horizontal lockup — symbol + wordmark, rendered in the site's own typography
+ * so it blends naturally into any surface.
  */
 export function Logo({ className, iconOnly = false, size = "md", variant = "dark" }: LogoProps) {
   const dim = { sm: 22, md: 28, lg: 36, xl: 48 }[size];
-  const text = { sm: "text-[14px]", md: "text-[16px]", lg: "text-[20px]", xl: "text-[28px]" }[size];
+  const text = { sm: "text-[16px]", md: "text-[19px]", lg: "text-[24px]", xl: "text-[32px]" }[size];
   const wordColor =
-    variant === "light" ? "#07080A" : variant === "mono" ? "currentColor" : "#F5EFE3";
+    variant === "light" ? "#0B1120" : variant === "mono" ? "currentColor" : "#F5EFE3";
+
+  if (iconOnly) return <LogoMark size={dim} variant={variant} className={className} />;
 
   return (
-    <div className={cn("flex items-center gap-2.5 select-none", className)}>
+    <div className={cn("inline-flex items-center gap-2.5 select-none", className)}>
       <LogoMark size={dim} variant={variant} />
-      {!iconOnly && (
-        <span
-          className={cn("font-semibold tracking-[-0.01em] leading-none", text)}
-          style={{ color: wordColor, fontFeatureSettings: '"ss01"' }}
-        >
-          Voyce<span style={{ fontWeight: 400, opacity: 0.78 }}>Lab</span>
-        </span>
-      )}
+      <span
+        className={cn("font-semibold tracking-[-0.02em] leading-none", text)}
+        style={{ color: wordColor }}
+      >
+        Voyce<span style={{ fontWeight: 500, opacity: 0.92 }}>Lab</span>
+      </span>
     </div>
   );
 }

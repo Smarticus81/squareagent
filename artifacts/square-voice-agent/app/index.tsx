@@ -378,18 +378,30 @@ export default function MainScreen() {
         </Pressable>
 
         <View style={s.brandRow}>
-          <Svg width={22} height={22} viewBox="0 0 40 40">
-            <Path d="M3 28 L37 28" stroke="rgba(245,239,227,0.55)" strokeWidth={1.5} strokeLinecap="round" />
-            <Path d="M7 22 Q12 8 20 8" stroke="#E0B76A" strokeWidth={1.5} strokeLinecap="round" fill="none" opacity={0.55} />
-            <Path d="M33 22 Q28 12 20 12" stroke="#E0B76A" strokeWidth={1.5} strokeLinecap="round" fill="none" opacity={0.55} />
-            <Path d="M11 24 Q15 14 20 14" stroke="#E0B76A" strokeWidth={2} strokeLinecap="round" fill="none" />
-            <Path d="M29 24 Q25 16 20 16" stroke="#E0B76A" strokeWidth={2} strokeLinecap="round" fill="none" />
-            <Circle cx={20} cy={28} r={2.4} fill="#F5EFE3" />
-            <Circle cx={20} cy={28} r={4.6} stroke="#E0B76A" strokeWidth={1.2} opacity={0.45} fill="none" />
+          <Svg width={24} height={22} viewBox="0 0 62 58">
+            <Defs>
+              <SvgLinearGradient id="vl-top-blue" x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0%" stopColor="#5AA0FF" />
+                <Stop offset="100%" stopColor="#1F4FE0" />
+              </SvgLinearGradient>
+              <SvgLinearGradient id="vl-top-gold" x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0%" stopColor="#FFD34A" />
+                <Stop offset="100%" stopColor="#F5A623" />
+              </SvgLinearGradient>
+            </Defs>
+            <Circle cx={3} cy={30} r={2.4} fill="url(#vl-top-blue)" />
+            <Rect x={7} y={22} width={5} height={16} rx={2.5} fill="url(#vl-top-blue)" />
+            <Rect x={15} y={14} width={5} height={32} rx={2.5} fill="url(#vl-top-blue)" />
+            <Rect x={23} y={6} width={5} height={48} rx={2.5} fill="url(#vl-top-blue)" />
+            <Rect x={31} y={6} width={5} height={48} rx={2.5} fill="url(#vl-top-gold)" />
+            <Rect x={39} y={14} width={5} height={32} rx={2.5} fill="url(#vl-top-gold)" />
+            <Rect x={47} y={22} width={5} height={16} rx={2.5} fill="url(#vl-top-gold)" />
+            <Rect x={55} y={26} width={5} height={8} rx={2.5} fill="url(#vl-top-gold)" />
+            <Path d="M25 5.5 Q33 0 40 5.5" stroke="#FF8A2B" strokeWidth={2.4} strokeLinecap="round" fill="none" />
           </Svg>
           <View style={s.brandWords}>
             <Text style={[s.brandVoyce, { color: t.logoText }]}>Voyce</Text>
-            <Text style={[s.brandLabs, { color: t.logoText, opacity: 0.78 }]}>Lab</Text>
+            <Text style={[s.brandLabs, { color: t.logoText, opacity: 0.92 }]}>Lab</Text>
           </View>
         </View>
 
@@ -404,15 +416,28 @@ export default function MainScreen() {
 
       {/* ── Content (conversation area fills space) ──────────────── */}
       <View style={s.content}>
-        {/* Watermark */}
+        {/* Watermark — equalizer mark */}
         <View style={s.watermark} pointerEvents="none">
-          <Svg width={120} height={120} viewBox="0 0 36 36">
-            <Circle cx={18} cy={18} r={17} fill="#7C6EF5" opacity={0.07} />
-            <Circle cx={18} cy={18} r={2.2} fill="#7C6EF5" opacity={0.12} />
-            <Path d="M11.5 14.5a6.5 6.5 0 0 1 0 7" stroke="#7C6EF5" strokeWidth={1.8} strokeLinecap="round" fill="none" opacity={0.12} />
-            <Path d="M24.5 14.5a6.5 6.5 0 0 0 0 7" stroke="#7C6EF5" strokeWidth={1.8} strokeLinecap="round" fill="none" opacity={0.12} />
-            <Path d="M8 11a11 11 0 0 1 0 14" stroke="#7C6EF5" strokeWidth={1.6} strokeLinecap="round" fill="none" opacity={0.08} />
-            <Path d="M28 11a11 11 0 0 0 0 14" stroke="#7C6EF5" strokeWidth={1.6} strokeLinecap="round" fill="none" opacity={0.08} />
+          <Svg width={170} height={158} viewBox="0 0 62 58" opacity={0.08}>
+            <Defs>
+              <SvgLinearGradient id="vl-wm-blue" x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0%" stopColor="#5AA0FF" />
+                <Stop offset="100%" stopColor="#1F4FE0" />
+              </SvgLinearGradient>
+              <SvgLinearGradient id="vl-wm-gold" x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0%" stopColor="#FFD34A" />
+                <Stop offset="100%" stopColor="#F5A623" />
+              </SvgLinearGradient>
+            </Defs>
+            <Circle cx={3} cy={30} r={2.4} fill="url(#vl-wm-blue)" />
+            <Rect x={7} y={22} width={5} height={16} rx={2.5} fill="url(#vl-wm-blue)" />
+            <Rect x={15} y={14} width={5} height={32} rx={2.5} fill="url(#vl-wm-blue)" />
+            <Rect x={23} y={6} width={5} height={48} rx={2.5} fill="url(#vl-wm-blue)" />
+            <Rect x={31} y={6} width={5} height={48} rx={2.5} fill="url(#vl-wm-gold)" />
+            <Rect x={39} y={14} width={5} height={32} rx={2.5} fill="url(#vl-wm-gold)" />
+            <Rect x={47} y={22} width={5} height={16} rx={2.5} fill="url(#vl-wm-gold)" />
+            <Rect x={55} y={26} width={5} height={8} rx={2.5} fill="url(#vl-wm-gold)" />
+            <Path d="M25 5.5 Q33 0 40 5.5" stroke="#FF8A2B" strokeWidth={2.4} strokeLinecap="round" fill="none" />
           </Svg>
         </View>
 
@@ -717,7 +742,7 @@ const s = StyleSheet.create({
   brandRow:     { flexDirection: "row", alignItems: "center", gap: 8 },
   brandWords:   { flexDirection: "row", alignItems: "baseline" },
   brandVoyce:     { fontFamily: "Inter_500Medium", fontSize: 15, letterSpacing: -0.2, fontWeight: "600" },
-  brandLabs:     { fontFamily: "Inter_400Regular", fontSize: 15, letterSpacing: -0.2, fontWeight: "400" },
+  brandLabs:     { fontFamily: "Inter_500Medium", fontSize: 15, letterSpacing: -0.2, fontWeight: "500" },
   orderBadge:   { minWidth: 24, height: 24, borderRadius: 8, borderWidth: 0.5, alignItems: "center", justifyContent: "center", paddingHorizontal: 6 },
   orderBadgeNum:{ fontFamily: "Inter_500Medium", fontSize: 12 },
 

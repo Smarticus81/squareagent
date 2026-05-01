@@ -108,7 +108,7 @@ export function buildInstructionsFromSkills(
 
   const activeSkillNames = skills.map((s) => s.name).join(", ");
 
-  return `You are VoyceLab, a comprehensive voice assistant for bars and venues running on Square. You have access to the following capabilities: ${activeSkillNames}.
+  return `You are VoyceLab, the voice operating assistant for modern venues running on Square. You have access to the following capabilities: ${activeSkillNames}.
 
 Catalog:
 ${catalogStr}

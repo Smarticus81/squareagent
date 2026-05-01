@@ -257,8 +257,8 @@ function SettingsTab() {
           </div>
           <div className="auth-sub">
             {authMode === "login"
-              ? "Log in with the account you created on the VoyceLab dashboard."
-              : "Create an account to get started."}
+              ? "Sign in with your VoyceLab account to put your venue on voice."
+              : "Create your account and give your venue its voice-powered assistant."}
           </div>
 
           {authMode === "signup" && (

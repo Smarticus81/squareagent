@@ -1,20 +1,27 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
   <defs>
-    <linearGradient id="vl-bg" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+    <linearGradient id="bg" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
       <stop offset="0%" stop-color="#111318"/>
       <stop offset="100%" stop-color="#07080A"/>
     </linearGradient>
-    <linearGradient id="vl-brass" x1="0" y1="100" x2="0" y2="420" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#E0B76A"/>
-      <stop offset="100%" stop-color="#C69A52"/>
+    <linearGradient id="blue" x1="0" y1="160" x2="0" y2="400" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#5AA0FF"/>
+      <stop offset="100%" stop-color="#1F4FE0"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" y1="160" x2="0" y2="400" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFD34A"/>
+      <stop offset="100%" stop-color="#F5A623"/>
     </linearGradient>
   </defs>
-  <rect width="512" height="512" rx="102" fill="url(#vl-bg)"/>
-  <line x1="60" y1="356" x2="452" y2="356" stroke="rgba(245,239,227,0.55)" stroke-width="14" stroke-linecap="round"/>
-  <path d="M108 274 Q168 96 256 96" stroke="url(#vl-brass)" stroke-width="14" stroke-linecap="round" fill="none" opacity="0.55"/>
-  <path d="M404 274 Q344 140 256 140" stroke="url(#vl-brass)" stroke-width="14" stroke-linecap="round" fill="none" opacity="0.55"/>
-  <path d="M144 296 Q204 160 256 160" stroke="url(#vl-brass)" stroke-width="22" stroke-linecap="round" fill="none"/>
-  <path d="M368 296 Q308 184 256 184" stroke="url(#vl-brass)" stroke-width="22" stroke-linecap="round" fill="none"/>
-  <circle cx="256" cy="356" r="32" fill="#F5EFE3"/>
-  <circle cx="256" cy="356" r="58" stroke="url(#vl-brass)" stroke-width="10" fill="none" opacity="0.5"/>
+  <rect width="512" height="512" rx="100" fill="url(#bg)"/>
+  <g transform="translate(72 128)">
+    <circle cx="24" cy="128" r="20" fill="url(#blue)"/>
+    <rect x="58" y="74" width="40" height="108" rx="20" fill="url(#blue)"/>
+    <rect x="122" y="20" width="40" height="216" rx="20" fill="url(#blue)"/>
+    <rect x="186" y="-22" width="40" height="300" rx="20" fill="url(#blue)"/>
+    <rect x="250" y="-22" width="40" height="300" rx="20" fill="url(#gold)"/>
+    <rect x="314" y="20" width="40" height="216" rx="20" fill="url(#gold)"/>
+    <rect x="378" y="74" width="40" height="108" rx="20" fill="url(#gold)"/>
+    <path d="M200 -28 Q270 -66 290 -28" stroke="#FF8A2B" stroke-width="18" stroke-linecap="round" fill="none"/>
+  </g>
 </svg>

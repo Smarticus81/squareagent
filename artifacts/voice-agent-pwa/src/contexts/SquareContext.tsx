@@ -179,7 +179,7 @@ export function SquareProvider({ children }: { children: ReactNode }) {
     loadCatalog();
   }, [credentialsReady, accessToken, locationId]);
 
-  // ── VoyceLab Account Auth ─────────────────────────────────────────────────────
+  // ── VoyceLab Account Auth ────────────────────────────────────────────────────
 
   async function loadVenues(tok: string): Promise<void> {
     try {

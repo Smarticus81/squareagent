@@ -1,18 +1,16 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { motion } from "framer-motion";
-import { ArrowRight, Mic } from "lucide-react";
-import { VoiceRail } from "@/components/voice-rail";
-import { LogoMark } from "@/components/logo";
+import { ArrowRight, ArrowUpRight } from "lucide-react";
 import { voyceCopy } from "@/lib/tokens";
 
 const ease = [0.22, 1, 0.36, 1] as const;
 const fadeUp = {
-  hidden: { opacity: 0, y: 24 },
+  hidden: { opacity: 0, y: 14 },
   visible: (i: number) => ({
     opacity: 1,
     y: 0,
-    transition: { delay: i * 0.08, duration: 0.7, ease },
+    transition: { delay: i * 0.05, duration: 0.55, ease },
   }),
 };
 
@@ -22,25 +20,24 @@ export default function Landing() {
 
   const trimmed = name.trim();
   const start = () => {
-    const target = "/assistants/new";
     if (trimmed) sessionStorage.setItem("voycelab.pending_assistant_name", trimmed);
-    navigate(target);
+    navigate("/assistants/new");
   };
+  const canStart = trimmed.length > 0;
 
   return (
     <div className="relative">
-      <Hero name={name} setName={setName} onStart={start} canStart={trimmed.length > 0} />
-      <WhatTeamsAsk />
-      <VenueValue />
-      <HowItWorks />
-      <FinalStart name={name} setName={setName} onStart={start} canStart={trimmed.length > 0} />
+      <Hero name={name} setName={setName} onStart={start} canStart={canStart} />
+      <AskRow />
+      <Products />
+      <Steps />
+      <Closer name={name} setName={setName} onStart={start} canStart={canStart} />
+      <InputStyles />
     </div>
   );
 }
 
-/* ─────────────────────────────────────────────────────────────────
-   1 — Hero
-   ───────────────────────────────────────────────────────────────── */
+/* ───────────────── Hero — single viewport, compact ───────────────── */
 function Hero({
   name,
   setName,
@@ -53,31 +50,17 @@ function Hero({
   canStart: boolean;
 }) {
   return (
-    <section className="relative min-h-[100svh] flex items-center pt-24 overflow-hidden">
+    <section className="relative pt-28 pb-14 md:pt-32 md:pb-20 overflow-hidden">
       <div
         aria-hidden
         className="absolute inset-0 pointer-events-none"
         style={{
           background:
-            "radial-gradient(ellipse 70% 50% at 50% 30%, rgba(124,110,245,0.10), transparent 60%), radial-gradient(ellipse 60% 40% at 50% 90%, rgba(255,106,42,0.08), transparent 60%)",
+            "radial-gradient(ellipse 55% 45% at 50% 25%, rgba(90,160,255,0.07), transparent 60%), radial-gradient(ellipse 60% 40% at 50% 95%, rgba(245,166,35,0.06), transparent 60%)",
         }}
       />
-      <div
-        aria-hidden
-        className="absolute top-16 inset-x-0 h-px"
-        style={{
-          background: "linear-gradient(90deg, transparent, rgba(224,183,106,0.45), transparent)",
-        }}
-      />
-
-      <div className="relative z-10 w-full max-w-[1100px] mx-auto px-6 lg:px-10 py-16">
-        <motion.p
-          initial="hidden"
-          animate="visible"
-          custom={0}
-          variants={fadeUp}
-          className="vl-eyebrow"
-        >
+      <div className="relative max-w-[1120px] mx-auto px-6 lg:px-10">
+        <motion.p initial="hidden" animate="visible" custom={0} variants={fadeUp} className="vl-eyebrow">
           The voice operating assistant for modern venues
         </motion.p>
 
@@ -86,7 +69,7 @@ function Hero({
           animate="visible"
           custom={1}
           variants={fadeUp}
-          className="vl-display mt-6 text-[44px] sm:text-[60px] md:text-[80px] max-w-5xl"
+          className="vl-display mt-4 text-[40px] sm:text-[52px] md:text-[64px] max-w-[900px]"
           style={{ color: "var(--color-vl-ivory)" }}
         >
           {voyceCopy.tagline}
@@ -97,8 +80,8 @@ function Hero({
           animate="visible"
           custom={2}
           variants={fadeUp}
-          className="mt-6 text-[17px] md:text-[19px] max-w-2xl leading-relaxed"
-          style={{ color: "rgba(245,239,227,0.66)" }}
+          className="mt-5 text-[15px] md:text-[16px] max-w-xl leading-relaxed"
+          style={{ color: "rgba(245,239,227,0.62)" }}
         >
           {voyceCopy.promise}
         </motion.p>
@@ -112,28 +95,23 @@ function Hero({
           animate="visible"
           custom={3}
           variants={fadeUp}
-          className="mt-10 flex flex-col sm:flex-row items-stretch gap-3 max-w-xl"
+          className="mt-7 flex items-center gap-2 max-w-md"
         >
-          <label className="flex-1 vl-input-shell">
-            <span className="vl-eyebrow" style={{ color: "rgba(224,183,106,0.85)" }}>
-              Name your assistant
-            </span>
-            <input
-              autoFocus
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Bev, Kora, Friday, Barback, Ruby..."
-              className="vl-input-naked"
-              maxLength={32}
-            />
-          </label>
+          <input
+            autoFocus
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Name your assistant"
+            className="vl-compact-input flex-1"
+            maxLength={32}
+          />
           <button
             type="submit"
             disabled={!canStart}
-            className="vl-btn-primary inline-flex items-center justify-center gap-2 text-[14px] disabled:opacity-50 disabled:cursor-not-allowed"
+            className="vl-btn-primary inline-flex items-center gap-2 text-[13px] px-5 py-2.5 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Get started
-            <ArrowRight className="w-4 h-4" />
+            <ArrowRight className="w-3.5 h-3.5" />
           </button>
         </motion.form>
 
@@ -142,253 +120,196 @@ function Hero({
           animate="visible"
           custom={4}
           variants={fadeUp}
-          className="mt-3 text-[12px]"
-          style={{ color: "rgba(245,239,227,0.5)" }}
+          className="mt-2.5 text-[11px]"
+          style={{ color: "rgba(245,239,227,0.42)" }}
         >
           14-day trial. No card required.
         </motion.p>
 
         <motion.div
-          initial={{ opacity: 0, y: 30 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5, duration: 0.9, ease }}
-          className="mt-16"
+          initial="hidden"
+          animate="visible"
+          custom={5}
+          variants={fadeUp}
+          className="mt-12 md:mt-16"
         >
-          <VenuePreview name={name || "Kora"} />
+          <HeroSample name={name || "Bev"} />
         </motion.div>
       </div>
     </section>
   );
 }
 
-function VenuePreview({ name }: { name: string }) {
+function HeroSample({ name }: { name: string }) {
+  const lines = [
+    { who: "You", text: "How much Tito's do we have left?" },
+    { who: name, text: "4 bottles. Stage 3 for tonight's wedding, keep one in reserve." },
+  ];
   return (
-    <div className="vl-panel vl-edge-brass relative overflow-hidden">
-      <div
-        aria-hidden
-        className="absolute inset-x-0 top-0 h-px"
-        style={{ background: "linear-gradient(90deg, transparent, rgba(224,183,106,0.55), transparent)" }}
-      />
-      <div className="flex flex-wrap items-center justify-between gap-4 px-6 py-4 border-b border-white/[0.06]">
-        <div className="flex items-center gap-3 flex-wrap">
-          <span className="vl-chip" style={{ color: "var(--color-vl-brass2)" }}>
-            <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: "var(--color-vl-brass2)" }} />
-            {name}
-          </span>
-          <span className="vl-chip">
-            <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: "var(--color-vl-success)" }} />
-            Live
-          </span>
-        </div>
-        <div className="vl-chip" style={{ color: "rgba(245,239,227,0.55)" }}>
-          Listening
-        </div>
-      </div>
-
-      <div className="px-6 py-10 md:py-14">
-        <VoiceRail state="listening" intensity={0.8} />
-      </div>
-
-      <div className="grid md:grid-cols-2 gap-px bg-white/[0.06]">
-        <div className="bg-[#0E1015] p-6">
-          <p className="vl-eyebrow mb-3" style={{ color: "rgba(140,145,154,0.8)" }}>You said</p>
-          <p className="text-[15px] leading-relaxed" style={{ color: "var(--color-vl-ivory)" }}>
-            How much Tito's do we have left?
-          </p>
-          <p className="vl-eyebrow mt-5 mb-3" style={{ color: "rgba(140,145,154,0.8)" }}>{name}</p>
-          <p className="text-[15px] leading-relaxed" style={{ color: "var(--color-vl-brass2)" }}>
-            You have 4 bottles on hand. Based on tonight's 180-person wedding and similar events, you should stage 3 and keep 1 in reserve.
-          </p>
-        </div>
-        <div className="bg-[#0E1015] p-6 flex flex-col justify-between">
-          <div>
-            <p className="vl-eyebrow mb-3" style={{ color: "rgba(140,145,154,0.8)" }}>Also asked tonight</p>
-            <div className="space-y-2.5">
-              {[
-                "What bar package is this wedding on?",
-                "Are signature cocktails included?",
-                "How much did Bar 2 sell so far?",
-              ].map((q) => (
-                <p key={q} className="text-[13px] leading-relaxed" style={{ color: "rgba(245,239,227,0.5)" }}>
-                  "{q}"
-                </p>
-              ))}
-            </div>
+    <div className="grid md:grid-cols-[1fr_auto_1fr] gap-6 md:gap-10 items-center">
+      <div className="space-y-2">
+        {lines.map((l) => (
+          <div key={l.who} className="flex items-baseline gap-3 text-[14px] leading-snug">
+            <span
+              className="font-mono text-[10px] uppercase tracking-[0.2em] shrink-0 w-14"
+              style={{ color: "rgba(245,239,227,0.4)" }}
+            >
+              {l.who.slice(0, 8)}
+            </span>
+            <span style={{ color: l.who === "You" ? "var(--color-vl-ivory)" : "var(--color-vl-brass2)" }}>
+              {l.text}
+            </span>
           </div>
-          <p className="text-[12px] mt-5" style={{ color: "rgba(245,239,227,0.4)" }}>
-            Answers come from your POS, inventory, and event data.
-          </p>
-        </div>
+        ))}
+      </div>
+      <div className="hidden md:block w-px h-16 bg-white/10" aria-hidden />
+      <div className="grid grid-cols-3 gap-4 text-[11px] tracking-[0.15em] uppercase">
+        {[
+          { label: "Events", value: "3 tonight" },
+          { label: "Inventory", value: "Synced" },
+          { label: "Sales", value: "$4.2k" },
+        ].map((s) => (
+          <div key={s.label} className="border-l border-white/10 pl-3">
+            <p style={{ color: "rgba(245,239,227,0.42)" }}>{s.label}</p>
+            <p className="mt-1 text-[12px] font-medium tracking-normal normal-case" style={{ color: "var(--color-vl-ivory)" }}>
+              {s.value}
+            </p>
+          </div>
+        ))}
       </div>
     </div>
   );
 }
 
-/* ─────────────────────────────────────────────────────────────────
-   2 — What teams actually ask
-   ───────────────────────────────────────────────────────────────── */
-function WhatTeamsAsk() {
-  const questions = [
-    { q: "What does tonight's event include?", context: "Events" },
-    { q: "Do we need to restock beer before cocktail hour?", context: "Inventory" },
-    { q: "Which bartender is selling the most?", context: "Sales" },
-    { q: "What bar package is tonight's wedding on?", context: "Packages" },
-    { q: "Can we add a champagne toast?", context: "Client requests" },
-    { q: "What do I need to know for tonight?", context: "Briefing" },
-    { q: "Are we on pace to hit the minimum?", context: "Revenue" },
-    { q: "Which events are draining premium liquor?", context: "Analysis" },
+/* ───────────────── Ask row — dense single-line sampler ───────────────── */
+function AskRow() {
+  const asks = [
+    "What's tonight's bar package?",
+    "Are we low on beer before cocktail hour?",
+    "Which bartender is selling the most?",
+    "Can we add a champagne toast?",
+    "How much did Bar 2 sell so far?",
+    "What's in the signature cocktail?",
   ];
-
   return (
-    <Section
-      eyebrow="Real questions from real venues"
-      title="Your team already asks these. Now they get answers."
-    >
-      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        {questions.map((item, i) => (
-          <motion.div
-            key={item.q}
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true }}
-            custom={i}
-            variants={fadeUp}
-            className="vl-panel p-5"
-          >
-            <p className="vl-eyebrow mb-3" style={{ color: "rgba(224,183,106,0.7)" }}>{item.context}</p>
-            <p className="text-[14px] leading-relaxed" style={{ color: "var(--color-vl-ivory)" }}>
-              "{item.q}"
-            </p>
-          </motion.div>
+    <section className="relative border-y border-white/[0.06] py-4">
+      <div className="max-w-[1120px] mx-auto px-6 lg:px-10 flex items-center gap-6 overflow-x-auto whitespace-nowrap scrollbar-hide">
+        <span className="vl-eyebrow shrink-0">Asks</span>
+        {asks.map((q) => (
+          <span key={q} className="text-[13px] shrink-0" style={{ color: "rgba(245,239,227,0.55)" }}>
+            <span className="mr-1.5" style={{ color: "var(--color-vl-brass2)" }}>›</span>
+            {q}
+          </span>
         ))}
       </div>
-    </Section>
+    </section>
   );
 }
 
-/* ─────────────────────────────────────────────────────────────────
-   3 — Venue value: why this matters
-   ───────────────────────────────────────────────────────────────── */
-function VenueValue() {
-  const values = [
+/* ───────────────── Products / capabilities — tight grid ───────────────── */
+function Products() {
+  const items = [
     {
-      title: "Less chaos during events",
-      body: "Fewer interruptions, fewer mistakes, faster decisions. One place to ask instead of chasing managers, checking spreadsheets, or digging through emails.",
+      label: "Events",
+      title: "Every detail, on voice.",
+      body: "Package type, guest count, signature drinks, client notes — served conversationally instead of buried in PDFs.",
     },
     {
-      title: "More revenue per event",
-      body: "Surface upsell opportunities, track consumption against minimums, and catch premium add-on moments your team is too busy to notice.",
+      label: "Inventory",
+      title: "Counts without counting.",
+      body: "Ask what you have, what you're burning, and what to reorder. Inventory becomes intelligence, not a clipboard.",
     },
     {
-      title: "Better inventory control",
-      body: "Know what you started with, what you sold, what should be left, and what needs reordering. Inventory becomes intelligence, not a counting problem.",
+      label: "Sales",
+      title: "POS data, spoken.",
+      body: "Hourly pace, top movers, guest spend, minimum tracking — without opening a dashboard.",
     },
     {
-      title: "Faster staff onboarding",
-      body: "New bartenders and event staff ask the same questions every shift. The assistant gives venue-specific answers without interrupting a manager.",
-    },
-    {
-      title: "Cleaner event execution",
-      body: "Package details, guest counts, bar hours, signature drinks, client notes, restrictions — all available conversationally, not buried in PDFs.",
-    },
-    {
-      title: "Less dependence on one person",
-      body: "Every venue has someone who knows everything. VoyceLab captures that knowledge and makes it available to the whole team.",
+      label: "Operations",
+      title: "One place to ask.",
+      body: "Fewer interruptions, fewer mistakes, faster decisions. Your team stops chasing the manager.",
     },
   ];
 
   return (
-    <Section
-      eyebrow="Why venues use VoyceLab"
-      title="Your venue runs smoother, sells more, and wastes less."
-    >
-      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-px bg-white/[0.06] vl-panel overflow-hidden">
-        {values.map((v, i) => (
-          <motion.div
-            key={v.title}
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true }}
-            custom={i}
-            variants={fadeUp}
-            className="bg-[#0D0F14] p-8 md:p-10"
+    <section className="py-16 md:py-20">
+      <div className="max-w-[1120px] mx-auto px-6 lg:px-10">
+        <div className="flex items-end justify-between mb-8 md:mb-10 gap-6">
+          <div>
+            <p className="vl-eyebrow">Capabilities</p>
+            <h2 className="vl-display text-[28px] md:text-[36px] mt-3 max-w-xl" style={{ color: "var(--color-vl-ivory)" }}>
+              A voice that understands your venue.
+            </h2>
+          </div>
+          <Link
+            href="/signup"
+            className="hidden md:inline-flex items-center gap-1 text-[12px] shrink-0"
+            style={{ color: "var(--color-vl-brass2)" }}
           >
-            <h3 className="text-[20px] font-semibold tracking-tight" style={{ color: "var(--color-vl-ivory)" }}>
-              {v.title}
-            </h3>
-            <p className="mt-3 text-[14px] leading-relaxed" style={{ color: "rgba(245,239,227,0.6)" }}>
-              {v.body}
-            </p>
-          </motion.div>
-        ))}
+            Start trial <ArrowUpRight className="w-3 h-3" />
+          </Link>
+        </div>
+
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-px bg-white/[0.06] border border-white/[0.06] rounded-xl overflow-hidden">
+          {items.map((item, i) => (
+            <motion.article
+              key={item.label}
+              initial="hidden"
+              whileInView="visible"
+              viewport={{ once: true, margin: "-80px" }}
+              custom={i}
+              variants={fadeUp}
+              className="bg-[#0B0D12] p-5 md:p-6 min-h-[180px] flex flex-col"
+            >
+              <p className="vl-eyebrow">{item.label}</p>
+              <h3 className="text-[17px] font-semibold tracking-tight mt-3" style={{ color: "var(--color-vl-ivory)" }}>
+                {item.title}
+              </h3>
+              <p className="mt-2 text-[13px] leading-relaxed" style={{ color: "rgba(245,239,227,0.56)" }}>
+                {item.body}
+              </p>
+            </motion.article>
+          ))}
+        </div>
       </div>
-    </Section>
+    </section>
   );
 }
 
-/* ─────────────────────────────────────────────────────────────────
-   4 — How it works (minimal)
-   ───────────────────────────────────────────────────────────────── */
-function HowItWorks() {
+/* ───────────────── Steps — inline, one line per step ───────────────── */
+function Steps() {
   const steps = [
-    {
-      step: "01",
-      title: "Name your assistant",
-      body: "Give it a name your team will actually use. Bev, Friday, Barback — whatever fits.",
-    },
-    {
-      step: "02",
-      title: "Connect your systems",
-      body: "Link your POS, inventory, and event data. It works inside what you already run on.",
-    },
-    {
-      step: "03",
-      title: "Set the rules",
-      body: "Choose what it can look up, what it can do, and what needs approval first.",
-    },
-    {
-      step: "04",
-      title: "Ask it anything",
-      body: "Your team talks to it. It answers, takes action, and helps run the night.",
-    },
+    { n: "01", t: "Name", d: "Pick a name your team will use." },
+    { n: "02", t: "Connect", d: "Link your POS, inventory, and event data." },
+    { n: "03", t: "Rules", d: "Choose what it can do and what asks first." },
+    { n: "04", t: "Ask", d: "Your team talks to it on the floor." },
   ];
-
   return (
-    <Section
-      eyebrow="How it works"
-      title="Running in minutes, not weeks."
-    >
-      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        {steps.map((s, i) => (
-          <motion.div
-            key={s.step}
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true }}
-            custom={i}
-            variants={fadeUp}
-            className="vl-panel p-6"
-          >
-            <p className="text-[32px] font-semibold tracking-tight" style={{ color: "rgba(224,183,106,0.3)" }}>
-              {s.step}
-            </p>
-            <h3 className="text-[17px] font-semibold mt-3" style={{ color: "var(--color-vl-ivory)" }}>
-              {s.title}
-            </h3>
-            <p className="mt-2 text-[13px] leading-relaxed" style={{ color: "rgba(245,239,227,0.55)" }}>
-              {s.body}
-            </p>
-          </motion.div>
-        ))}
+    <section className="pb-16 md:pb-20">
+      <div className="max-w-[1120px] mx-auto px-6 lg:px-10">
+        <p className="vl-eyebrow mb-6">How it works</p>
+        <ol className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 border-t border-white/[0.06]">
+          {steps.map((s) => (
+            <li key={s.n} className="pt-5 lg:border-l lg:first:border-l-0 lg:pl-6 border-white/[0.06]">
+              <p className="font-mono text-[11px] tracking-[0.2em]" style={{ color: "rgba(224,183,106,0.7)" }}>
+                {s.n}
+              </p>
+              <p className="mt-2 text-[14px] font-semibold" style={{ color: "var(--color-vl-ivory)" }}>
+                {s.t}
+              </p>
+              <p className="mt-1 text-[12.5px] leading-relaxed" style={{ color: "rgba(245,239,227,0.55)" }}>
+                {s.d}
+              </p>
+            </li>
+          ))}
+        </ol>
       </div>
-    </Section>
+    </section>
   );
 }
 
-/* ─────────────────────────────────────────────────────────────────
-   Final CTA
-   ───────────────────────────────────────────────────────────────── */
-function FinalStart({
+/* ───────────────── Closer — compact CTA ───────────────── */
+function Closer({
   name,
   setName,
   onStart,
@@ -400,65 +321,55 @@ function FinalStart({
   canStart: boolean;
 }) {
   return (
-    <section id="start" className="relative py-32 lg:py-40">
+    <section className="relative py-20 border-t border-white/[0.06]">
       <div
         aria-hidden
         className="absolute inset-0 pointer-events-none"
         style={{
           background:
-            "radial-gradient(ellipse 60% 50% at 50% 100%, rgba(124,110,245,0.10), transparent 60%), radial-gradient(ellipse 60% 50% at 50% 0%, rgba(224,183,106,0.06), transparent 60%)",
+            "radial-gradient(ellipse 50% 60% at 50% 100%, rgba(90,160,255,0.08), transparent 60%)",
         }}
       />
-      <div className="relative max-w-3xl mx-auto px-6 text-center">
-        <LogoMark size={56} className="mx-auto" />
-        <h2 className="vl-display mt-8 text-[40px] md:text-[60px]" style={{ color: "var(--color-vl-ivory)" }}>
-          Give your venue a voice.
-        </h2>
-        <p className="mt-5 text-[16px] max-w-xl mx-auto leading-relaxed" style={{ color: "rgba(245,239,227,0.62)" }}>
-          Name your assistant, connect your systems, and let your team start asking. You can change everything later.
-        </p>
+      <div className="relative max-w-[1120px] mx-auto px-6 lg:px-10 grid md:grid-cols-[1fr_auto] items-end gap-8">
+        <div>
+          <p className="vl-eyebrow">Get started</p>
+          <h2 className="vl-display text-[32px] md:text-[44px] mt-3 max-w-xl" style={{ color: "var(--color-vl-ivory)" }}>
+            Give your venue a voice.
+          </h2>
+          <p className="mt-3 text-[14px] max-w-md" style={{ color: "rgba(245,239,227,0.6)" }}>
+            Name your assistant, connect your systems, and let your team start asking.
+          </p>
+        </div>
         <form
           onSubmit={(e) => {
             e.preventDefault();
             if (canStart) onStart();
           }}
-          className="mt-9 flex flex-col sm:flex-row items-stretch gap-3 max-w-lg mx-auto text-left"
+          className="flex items-center gap-2 md:w-[380px]"
         >
-          <label className="flex-1 vl-input-shell">
-            <span className="vl-eyebrow" style={{ color: "rgba(224,183,106,0.85)" }}>
-              Assistant name
-            </span>
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Bev, Kora, Friday..."
-              className="vl-input-naked"
-              maxLength={32}
-            />
-          </label>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Assistant name"
+            className="vl-compact-input flex-1"
+            maxLength={32}
+          />
           <button
             type="submit"
             disabled={!canStart}
-            className="vl-btn-primary inline-flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="vl-btn-primary inline-flex items-center gap-2 text-[13px] px-5 py-2.5 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Get started
-            <ArrowRight className="w-4 h-4" />
+            Start
+            <ArrowRight className="w-3.5 h-3.5" />
           </button>
         </form>
-        <p className="mt-5 text-[12px]" style={{ color: "rgba(245,239,227,0.5)" }}>
-          Already have an account?{" "}
-          <Link href="/login" className="underline" style={{ color: "var(--color-vl-brass2)" }}>
-            Open your console
-          </Link>
-        </p>
-
-        <div className="mt-10 inline-flex items-center justify-center gap-2 text-[12px]" style={{ color: "rgba(245,239,227,0.5)" }}>
-          <Mic className="w-3.5 h-3.5" />
-          {voyceCopy.conversion}
-        </div>
       </div>
-
-      <InputStyles />
+      <div className="relative max-w-[1120px] mx-auto px-6 lg:px-10 mt-6 text-[12px]" style={{ color: "rgba(245,239,227,0.45)" }}>
+        Already have an account?{" "}
+        <Link href="/login" className="underline" style={{ color: "var(--color-vl-brass2)" }}>
+          Open your console
+        </Link>
+      </div>
     </section>
   );
 }
@@ -466,90 +377,22 @@ function FinalStart({
 function InputStyles() {
   return (
     <style>{`
-      .vl-input-shell {
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-        padding: 12px 16px;
-        border-radius: 14px;
-        border: 1px solid rgba(245,239,227,0.14);
+      .vl-compact-input {
+        height: 42px;
+        padding: 0 14px;
         background: rgba(245,239,227,0.04);
-        cursor: text;
+        border: 1px solid rgba(245,239,227,0.12);
+        border-radius: 10px;
+        color: var(--color-vl-ivory);
+        font-size: 14px;
+        font-weight: 500;
+        outline: 0;
         transition: border-color .2s ease, background .2s ease;
       }
-      .vl-input-shell:focus-within {
-        border-color: rgba(124,110,245,0.7);
-        background: rgba(245,239,227,0.06);
-      }
-      .vl-input-naked {
-        background: transparent;
-        border: 0;
-        outline: 0;
-        font-size: 16px;
-        font-weight: 500;
-        color: var(--color-vl-ivory);
-        font-family: inherit;
-        padding: 0;
-      }
-      .vl-input-naked::placeholder { color: rgba(245,239,227,0.35); font-weight: 400; }
+      .vl-compact-input::placeholder { color: rgba(245,239,227,0.35); font-weight: 400; }
+      .vl-compact-input:focus { border-color: rgba(90,160,255,0.55); background: rgba(245,239,227,0.06); }
+      .scrollbar-hide::-webkit-scrollbar { display: none; }
+      .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
     `}</style>
-  );
-}
-
-function Section({
-  id,
-  eyebrow,
-  title,
-  intro,
-  children,
-}: {
-  id?: string;
-  eyebrow: string;
-  title: string;
-  intro?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section id={id} className="relative py-24 lg:py-28">
-      <div className="max-w-[1100px] mx-auto px-6 lg:px-10">
-        <div className="max-w-3xl mb-12 lg:mb-16">
-          <motion.p
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true }}
-            custom={0}
-            variants={fadeUp}
-            className="vl-eyebrow"
-          >
-            {eyebrow}
-          </motion.p>
-          <motion.h2
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true }}
-            custom={1}
-            variants={fadeUp}
-            className="vl-display text-[36px] md:text-[52px] mt-3"
-            style={{ color: "var(--color-vl-ivory)" }}
-          >
-            {title}
-          </motion.h2>
-          {intro && (
-            <motion.p
-              initial="hidden"
-              whileInView="visible"
-              viewport={{ once: true }}
-              custom={2}
-              variants={fadeUp}
-              className="text-[16px] mt-4 leading-relaxed max-w-2xl"
-              style={{ color: "rgba(245,239,227,0.62)" }}
-            >
-              {intro}
-            </motion.p>
-          )}
-        </div>
-        {children}
-      </div>
-    </section>
   );
 }
