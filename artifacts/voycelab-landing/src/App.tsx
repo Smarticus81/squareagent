@@ -12,8 +12,6 @@ import Command from "@/pages/command";
 import Assistants from "@/pages/assistants";
 import CreateAssistant from "@/pages/create-assistant";
 import ConnectedServices from "@/pages/connected-services";
-import Conversations from "@/pages/conversations";
-import Routines from "@/pages/routines";
 import Settings from "@/pages/settings";
 import NotFound from "@/pages/not-found";
 
@@ -45,16 +43,12 @@ function Router() {
         <Route path="/assistants" component={Assistants} />
         <Route path="/assistants/new" component={CreateAssistant} />
         <Route path="/services" component={ConnectedServices} />
-        <Route path="/conversations" component={Conversations} />
-        <Route path="/routines" component={Routines} />
         <Route path="/settings" component={Settings} />
         {/* Legacy redirects so existing links still resolve */}
         <Route path="/dashboard" component={Command} />
         <Route path="/agents" component={Assistants} />
         <Route path="/agents/new" component={CreateAssistant} />
         <Route path="/agent-setup" component={CreateAssistant} />
-        <Route path="/sessions" component={Conversations} />
-        <Route path="/workflows" component={Routines} />
         <Route path="/account" component={Settings} />
         <Route component={NotFound} />
       </Switch>

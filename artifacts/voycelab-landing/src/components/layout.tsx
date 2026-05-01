@@ -8,8 +8,6 @@ const APP_NAV = [
   { href: "/command", label: "Command" },
   { href: "/assistants", label: "Assistants" },
   { href: "/services", label: "Connected services" },
-  { href: "/conversations", label: "Conversations" },
-  { href: "/routines", label: "Routines" },
   { href: "/settings", label: "Settings" },
 ];
 
@@ -92,7 +90,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       </Link>
                       <Link href="/signup" className="inline-block">
                         <button className="vl-btn-primary text-[13px] py-2 px-5">
-                          Create your assistant
+                          Get started
                         </button>
                       </Link>
                     </>
@@ -137,7 +135,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <div>
                 <Logo size="md" />
                 <p className="text-[13px] mt-4 max-w-[320px] leading-relaxed" style={{ color: "rgba(245,239,227,0.55)" }}>
-                  The voice layer for modern venue operations. Bolt onto Square or another connected service. Speak. Confirm. Sync.
+                  The voice operating assistant for modern venues. Ask about events, inventory, sales, packages, and operations.
                 </p>
               </div>
               <FooterCol
@@ -152,7 +150,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 title="Trust"
                 links={[
                   { href: "/settings", label: "Approval rules" },
-                  { href: "/conversations", label: "Conversations" },
                 ]}
               />
               <FooterCol
@@ -165,8 +162,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
             </div>
             <div className="vl-line my-10" />
             <div className="flex flex-col sm:flex-row justify-between items-center gap-2 text-[11px]" style={{ color: "rgba(245,239,227,0.45)" }}>
-              <p className="tracking-wider">© {new Date().getFullYear()} VoyceLab. Speak. Confirm. Sync.</p>
-              <p className="tracking-[0.2em] uppercase">Voice layer · Not a POS</p>
+              <p className="tracking-wider">© {new Date().getFullYear()} VoyceLab</p>
+              <p className="tracking-[0.2em] uppercase">Ask your venue anything</p>
             </div>
           </div>
         </footer>

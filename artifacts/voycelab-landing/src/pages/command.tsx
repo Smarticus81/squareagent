@@ -4,22 +4,18 @@ import { useAuth } from "@/hooks/use-auth";
 import { useVenues } from "@/hooks/use-venues";
 import { VoiceRail } from "@/components/voice-rail";
 import {
-  ArrowRight,
-  CheckCircle2,
-  AlertTriangle,
   Loader2,
   Mic,
   Plug,
-  ScrollText,
   Sparkles,
 } from "lucide-react";
 
 /**
  * Command — readiness, not metrics.
  *
- * Shows: assistant readiness, connected service health, recent conversations,
- * items needing approval, connection issues, launch button. No latency chips,
- * no technical engine names — those live behind Settings → Advanced.
+ * Shows: assistant readiness, connected service health, connection issues,
+ * launch button. No latency chips, no technical engine names — those live
+ * behind Settings → Advanced.
  */
 export default function Command() {
   const [, setLocation] = useLocation();
@@ -216,58 +212,12 @@ export default function Command() {
                 <Plug className="w-3.5 h-3.5" />{" "}
                 {isConnected ? "Manage services" : "Connect Square"}
               </button>
-              <button
-                onClick={() => setLocation("/conversations")}
-                className="vl-btn-ghost inline-flex items-center gap-2 text-[13px]"
-              >
-                <ScrollText className="w-3.5 h-3.5" /> Conversations
-              </button>
+                  
             </div>
           </div>
         </div>
 
-        {/* Recent conversations */}
-        <div className="mt-12">
-          <div className="flex items-center justify-between mb-4">
-            <p className="vl-eyebrow">Recent conversations</p>
-            <button
-              onClick={() => setLocation("/conversations")}
-              className="text-[12px] inline-flex items-center gap-1"
-              style={{ color: "rgba(245,239,227,0.55)" }}
-            >
-              View all <ArrowRight className="w-3 h-3" />
-            </button>
-          </div>
-          <div className="vl-panel divide-y divide-white/[0.05]">
-            {(isConnected
-              ? RECENT_SAMPLE
-              : [
-                  {
-                    when: "—",
-                    assistant: "Bev",
-                    note: "Connect Square to start your first conversation.",
-                    state: "offline" as const,
-                  },
-                ]
-            ).map((row, i) => (
-              <div key={i} className="flex items-center gap-4 px-6 py-4">
-                <span style={{ width: 110, color: "rgba(245,239,227,0.5)", fontSize: 12 }}>
-                  {row.when}
-                </span>
-                <span className="vl-chip" style={{ color: "var(--color-vl-brass2)" }}>
-                  {row.assistant}
-                </span>
-                <span
-                  className="text-[13px] flex-1"
-                  style={{ color: "rgba(245,239,227,0.78)" }}
-                >
-                  {row.note}
-                </span>
-                <ConversationState state={row.state} />
-              </div>
-            ))}
-          </div>
-        </div>
+        
       </div>
     </div>
   );
@@ -291,69 +241,6 @@ function Stat({ label, value, hint }: { label: string; value: string; hint: stri
     </div>
   );
 }
-
-function ConversationState({
-  state,
-}: {
-  state: "synced" | "waiting_approval" | "needs_attention" | "offline";
-}) {
-  if (state === "synced")
-    return (
-      <span
-        className="inline-flex items-center gap-1 text-[12px]"
-        style={{ color: "var(--color-vl-success)" }}
-      >
-        <CheckCircle2 className="w-3.5 h-3.5" />
-        Synced
-      </span>
-    );
-  if (state === "waiting_approval")
-    return (
-      <span
-        className="inline-flex items-center gap-1 text-[12px]"
-        style={{ color: "var(--color-vl-warning)" }}
-      >
-        <Loader2 className="w-3.5 h-3.5" />
-        Waiting for approval
-      </span>
-    );
-  if (state === "needs_attention")
-    return (
-      <span
-        className="inline-flex items-center gap-1 text-[12px]"
-        style={{ color: "var(--color-vl-danger)" }}
-      >
-        <AlertTriangle className="w-3.5 h-3.5" />
-        Needs attention
-      </span>
-    );
-  return (
-    <span className="text-[12px]" style={{ color: "rgba(245,239,227,0.4)" }}>
-      —
-    </span>
-  );
-}
-
-const RECENT_SAMPLE = [
-  {
-    when: "11 min ago",
-    assistant: "Bev",
-    note: "Added 2 ranch waters · sent to terminal",
-    state: "synced" as const,
-  },
-  {
-    when: "2 hr ago",
-    assistant: "Bev",
-    note: "Hourly sales summary · 6 PM hour: $1,247",
-    state: "synced" as const,
-  },
-  {
-    when: "Today, 4:08 PM",
-    assistant: "Bev",
-    note: "Stock check: Tito's vodka · 4 bottles remaining",
-    state: "synced" as const,
-  },
-];
 
 async function launchAssistant(venueId: number | undefined) {
   if (!venueId) return;

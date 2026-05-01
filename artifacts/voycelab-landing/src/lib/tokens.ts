@@ -38,10 +38,10 @@ export const voyceTokens = {
 
 export const voyceCopy = {
   brand: "VoyceLab",
-  tagline: "Create a voice assistant for the systems you already use.",
+  tagline: "Ask your venue anything.",
   promise:
-    "Name your assistant, connect Square or another service, choose what it can do, and test a command before you launch.",
-  conversion: "I named my assistant, connected my service, tested a command, and saw it work.",
+    "VoyceLab gives venues a voice-powered assistant that understands their events, POS, inventory, bar packages, and operations — so teams can get answers, take action, and run smoother events without digging through dashboards.",
+  conversion: "Your venue can finally talk to its own operations.",
 } as const;
 
 /* ─────────────────────────────────────────────────────────────────

@@ -1,15 +1,10 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { motion } from "framer-motion";
-import { ArrowRight, Check, Mic, Volume2 } from "lucide-react";
+import { ArrowRight, Mic } from "lucide-react";
 import { VoiceRail } from "@/components/voice-rail";
 import { LogoMark } from "@/components/logo";
-import {
-  voyceCopy,
-  roomSettings,
-  voiceOptions,
-  connectedServices,
-} from "@/lib/tokens";
+import { voyceCopy } from "@/lib/tokens";
 
 const ease = [0.22, 1, 0.36, 1] as const;
 const fadeUp = {
@@ -21,13 +16,6 @@ const fadeUp = {
   }),
 };
 
-/**
- * Landing — not a brochure. A guided start.
- *
- * The user names their assistant on the homepage. That commit carries them
- * through the rest of setup. Every section is the next step in the journey,
- * not a generic feature card.
- */
 export default function Landing() {
   const [, navigate] = useLocation();
   const [name, setName] = useState("");
@@ -42,17 +30,16 @@ export default function Landing() {
   return (
     <div className="relative">
       <Hero name={name} setName={setName} onStart={start} canStart={trimmed.length > 0} />
-      <UnderstandPreview />
-      <ChooseWhatItCanDo />
-      <RoomAndVoice />
-      <ConnectedHonestly />
+      <WhatTeamsAsk />
+      <VenueValue />
+      <HowItWorks />
       <FinalStart name={name} setName={setName} onStart={start} canStart={trimmed.length > 0} />
     </div>
   );
 }
 
 /* ─────────────────────────────────────────────────────────────────
-   1 — Arrive: opening scene + name input.
+   1 — Hero
    ───────────────────────────────────────────────────────────────── */
 function Hero({
   name,
@@ -91,7 +78,7 @@ function Hero({
           variants={fadeUp}
           className="vl-eyebrow"
         >
-          Voice assistants for connected services
+          The voice operating assistant for modern venues
         </motion.p>
 
         <motion.h1
@@ -116,7 +103,6 @@ function Hero({
           {voyceCopy.promise}
         </motion.p>
 
-        {/* The first decision: name your assistant */}
         <motion.form
           onSubmit={(e) => {
             e.preventDefault();
@@ -136,7 +122,7 @@ function Hero({
               autoFocus
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Bev, Kora, Friday, Barback, Ruby…"
+              placeholder="Bev, Kora, Friday, Barback, Ruby..."
               className="vl-input-naked"
               maxLength={32}
             />
@@ -146,7 +132,7 @@ function Hero({
             disabled={!canStart}
             className="vl-btn-primary inline-flex items-center justify-center gap-2 text-[14px] disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Create your assistant
+            Get started
             <ArrowRight className="w-4 h-4" />
           </button>
         </motion.form>
@@ -159,25 +145,23 @@ function Hero({
           className="mt-3 text-[12px]"
           style={{ color: "rgba(245,239,227,0.5)" }}
         >
-          14-day trial. No card required. Choose any name — you can change it later.
+          14-day trial. No card required.
         </motion.p>
 
-        {/* Live preview that mirrors the conversion moment */}
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.5, duration: 0.9, ease }}
           className="mt-16"
         >
-          <LivePreview name={name || "Kora"} />
+          <VenuePreview name={name || "Kora"} />
         </motion.div>
       </div>
     </section>
   );
 }
 
-/* The hero canvas — a working preview, not a brochure card. */
-function LivePreview({ name }: { name: string }) {
+function VenuePreview({ name }: { name: string }) {
   return (
     <div className="vl-panel vl-edge-brass relative overflow-hidden">
       <div
@@ -189,19 +173,15 @@ function LivePreview({ name }: { name: string }) {
         <div className="flex items-center gap-3 flex-wrap">
           <span className="vl-chip" style={{ color: "var(--color-vl-brass2)" }}>
             <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: "var(--color-vl-brass2)" }} />
-            Assistant · {name}
+            {name}
           </span>
           <span className="vl-chip">
             <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: "var(--color-vl-success)" }} />
-            Square synced
-          </span>
-          <span className="vl-chip">
-            <Volume2 className="w-3 h-3" />
-            Bar
+            Live
           </span>
         </div>
         <div className="vl-chip" style={{ color: "rgba(245,239,227,0.55)" }}>
-          Ready
+          Listening
         </div>
       </div>
 
@@ -213,40 +193,30 @@ function LivePreview({ name }: { name: string }) {
         <div className="bg-[#0E1015] p-6">
           <p className="vl-eyebrow mb-3" style={{ color: "rgba(140,145,154,0.8)" }}>You said</p>
           <p className="text-[15px] leading-relaxed" style={{ color: "var(--color-vl-ivory)" }}>
-            Add two ranch waters.
+            How much Tito's do we have left?
           </p>
           <p className="vl-eyebrow mt-5 mb-3" style={{ color: "rgba(140,145,154,0.8)" }}>{name}</p>
           <p className="text-[15px] leading-relaxed" style={{ color: "var(--color-vl-brass2)" }}>
-            Added. Should I send this to Square Terminal?
+            You have 4 bottles on hand. Based on tonight's 180-person wedding and similar events, you should stage 3 and keep 1 in reserve.
           </p>
         </div>
-        <div className="bg-[#0E1015] p-6">
-          <p className="vl-eyebrow mb-3" style={{ color: "rgba(140,145,154,0.8)" }}>Approval</p>
-          <div className="flex items-center gap-3">
-            <button
-              className="flex-1 inline-flex items-center justify-center gap-2 py-3 rounded-xl text-[14px] font-semibold"
-              style={{
-                background: "rgba(53,194,117,0.14)",
-                color: "var(--color-vl-success)",
-                border: "1px solid rgba(53,194,117,0.4)",
-              }}
-            >
-              <Check className="w-4 h-4" />
-              Confirm
-            </button>
-            <button
-              className="flex-1 inline-flex items-center justify-center gap-2 py-3 rounded-xl text-[14px] font-semibold"
-              style={{
-                background: "rgba(224,82,82,0.10)",
-                color: "var(--color-vl-danger)",
-                border: "1px solid rgba(224,82,82,0.32)",
-              }}
-            >
-              Cancel
-            </button>
+        <div className="bg-[#0E1015] p-6 flex flex-col justify-between">
+          <div>
+            <p className="vl-eyebrow mb-3" style={{ color: "rgba(140,145,154,0.8)" }}>Also asked tonight</p>
+            <div className="space-y-2.5">
+              {[
+                "What bar package is this wedding on?",
+                "Are signature cocktails included?",
+                "How much did Bar 2 sell so far?",
+              ].map((q) => (
+                <p key={q} className="text-[13px] leading-relaxed" style={{ color: "rgba(245,239,227,0.5)" }}>
+                  "{q}"
+                </p>
+              ))}
+            </div>
           </div>
-          <p className="text-[12px] mt-4" style={{ color: "rgba(245,239,227,0.55)" }}>
-            Sensitive actions always ask first. You set what asks and what runs.
+          <p className="text-[12px] mt-5" style={{ color: "rgba(245,239,227,0.4)" }}>
+            Answers come from your POS, inventory, and event data.
           </p>
         </div>
       </div>
@@ -255,44 +225,39 @@ function LivePreview({ name }: { name: string }) {
 }
 
 /* ─────────────────────────────────────────────────────────────────
-   2 — Understand: a single quiet section, not a feature grid.
+   2 — What teams actually ask
    ───────────────────────────────────────────────────────────────── */
-function UnderstandPreview() {
+function WhatTeamsAsk() {
+  const questions = [
+    { q: "What does tonight's event include?", context: "Events" },
+    { q: "Do we need to restock beer before cocktail hour?", context: "Inventory" },
+    { q: "Which bartender is selling the most?", context: "Sales" },
+    { q: "What bar package is tonight's wedding on?", context: "Packages" },
+    { q: "Can we add a champagne toast?", context: "Client requests" },
+    { q: "What do I need to know for tonight?", context: "Briefing" },
+    { q: "Are we on pace to hit the minimum?", context: "Revenue" },
+    { q: "Which events are draining premium liquor?", context: "Analysis" },
+  ];
+
   return (
     <Section
-      eyebrow="What you get"
-      title="A useful assistant — bounded, named, and ready."
-      intro="Your assistant only acts inside the services you connect. You decide what runs and what asks first."
+      eyebrow="Real questions from real venues"
+      title="Your team already asks these. Now they get answers."
     >
-      <div className="grid md:grid-cols-3 gap-px bg-white/[0.06] vl-panel overflow-hidden">
-        {[
-          {
-            title: "It works inside your service",
-            body: "Connect Square or another service. The assistant uses what you already have.",
-          },
-          {
-            title: "It only does what you allow",
-            body: "Choose actions, decide which ones ask first, mark sensitive things as not allowed.",
-          },
-          {
-            title: "It asks before sensitive things",
-            body: "Submitting orders, sending to terminal, refunds — all guarded by approval.",
-          },
-        ].map((b, i) => (
+      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        {questions.map((item, i) => (
           <motion.div
-            key={b.title}
+            key={item.q}
             initial="hidden"
             whileInView="visible"
             viewport={{ once: true }}
             custom={i}
             variants={fadeUp}
-            className="bg-[#0D0F14] p-8 md:p-10 min-h-[200px]"
+            className="vl-panel p-5"
           >
-            <h3 className="text-[22px] font-semibold tracking-tight" style={{ color: "var(--color-vl-ivory)" }}>
-              {b.title}
-            </h3>
-            <p className="mt-3 text-[14px] leading-relaxed" style={{ color: "rgba(245,239,227,0.6)" }}>
-              {b.body}
+            <p className="vl-eyebrow mb-3" style={{ color: "rgba(224,183,106,0.7)" }}>{item.context}</p>
+            <p className="text-[14px] leading-relaxed" style={{ color: "var(--color-vl-ivory)" }}>
+              "{item.q}"
             </p>
           </motion.div>
         ))}
@@ -302,189 +267,126 @@ function UnderstandPreview() {
 }
 
 /* ─────────────────────────────────────────────────────────────────
-   3 — Choose what it can do: a preview of the action chooser.
+   3 — Venue value: why this matters
    ───────────────────────────────────────────────────────────────── */
-function ChooseWhatItCanDo() {
+function VenueValue() {
+  const values = [
+    {
+      title: "Less chaos during events",
+      body: "Fewer interruptions, fewer mistakes, faster decisions. One place to ask instead of chasing managers, checking spreadsheets, or digging through emails.",
+    },
+    {
+      title: "More revenue per event",
+      body: "Surface upsell opportunities, track consumption against minimums, and catch premium add-on moments your team is too busy to notice.",
+    },
+    {
+      title: "Better inventory control",
+      body: "Know what you started with, what you sold, what should be left, and what needs reordering. Inventory becomes intelligence, not a counting problem.",
+    },
+    {
+      title: "Faster staff onboarding",
+      body: "New bartenders and event staff ask the same questions every shift. The assistant gives venue-specific answers without interrupting a manager.",
+    },
+    {
+      title: "Cleaner event execution",
+      body: "Package details, guest counts, bar hours, signature drinks, client notes, restrictions — all available conversationally, not buried in PDFs.",
+    },
+    {
+      title: "Less dependence on one person",
+      body: "Every venue has someone who knows everything. VoyceLab captures that knowledge and makes it available to the whole team.",
+    },
+  ];
+
   return (
     <Section
-      eyebrow="Choose what it can do"
-      title="Your assistant only does what you allow."
-      intro="Group actions in plain language. Mark what runs without asking, what asks first, and what is not allowed."
+      eyebrow="Why venues use VoyceLab"
+      title="Your venue runs smoother, sells more, and wastes less."
+    >
+      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-px bg-white/[0.06] vl-panel overflow-hidden">
+        {values.map((v, i) => (
+          <motion.div
+            key={v.title}
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true }}
+            custom={i}
+            variants={fadeUp}
+            className="bg-[#0D0F14] p-8 md:p-10"
+          >
+            <h3 className="text-[20px] font-semibold tracking-tight" style={{ color: "var(--color-vl-ivory)" }}>
+              {v.title}
+            </h3>
+            <p className="mt-3 text-[14px] leading-relaxed" style={{ color: "rgba(245,239,227,0.6)" }}>
+              {v.body}
+            </p>
+          </motion.div>
+        ))}
+      </div>
+    </Section>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   4 — How it works (minimal)
+   ───────────────────────────────────────────────────────────────── */
+function HowItWorks() {
+  const steps = [
+    {
+      step: "01",
+      title: "Name your assistant",
+      body: "Give it a name your team will actually use. Bev, Friday, Barback — whatever fits.",
+    },
+    {
+      step: "02",
+      title: "Connect your systems",
+      body: "Link your POS, inventory, and event data. It works inside what you already run on.",
+    },
+    {
+      step: "03",
+      title: "Set the rules",
+      body: "Choose what it can look up, what it can do, and what needs approval first.",
+    },
+    {
+      step: "04",
+      title: "Ask it anything",
+      body: "Your team talks to it. It answers, takes action, and helps run the night.",
+    },
+  ];
+
+  return (
+    <Section
+      eyebrow="How it works"
+      title="Running in minutes, not weeks."
     >
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        {[
-          {
-            label: "Look up",
-            desc: "Information your assistant can read but never change.",
-            example: "Search menu · Check stock · Get sales summary",
-            tone: "no_approval" as const,
-          },
-          {
-            label: "Prepare",
-            desc: "Help build something the user will confirm.",
-            example: "Add an item · Prepare checkout",
-            tone: "ask_first" as const,
-          },
-          {
-            label: "Act",
-            desc: "Real changes in the connected service.",
-            example: "Submit order · Send to terminal · Adjust stock",
-            tone: "ask_first" as const,
-          },
-          {
-            label: "Sensitive",
-            desc: "Changes that affect money, catalog, or your team.",
-            example: "Refunds · Delete · Catalog edits",
-            tone: "not_allowed" as const,
-          },
-        ].map((g, i) => {
-          const toneColor =
-            g.tone === "no_approval"
-              ? "var(--color-vl-success)"
-              : g.tone === "ask_first"
-              ? "var(--color-vl-brass2)"
-              : "var(--color-vl-danger)";
-          const toneLabel =
-            g.tone === "no_approval" ? "No approval needed" : g.tone === "ask_first" ? "Ask first" : "Not allowed by default";
-          return (
-            <motion.div
-              key={g.label}
-              initial="hidden"
-              whileInView="visible"
-              viewport={{ once: true }}
-              custom={i}
-              variants={fadeUp}
-              className="vl-panel p-5"
-            >
-              <p className="vl-eyebrow">{g.label}</p>
-              <p className="mt-3 text-[14px] leading-relaxed" style={{ color: "rgba(245,239,227,0.7)" }}>
-                {g.desc}
-              </p>
-              <p className="mt-3 text-[12px]" style={{ color: "rgba(245,239,227,0.5)" }}>
-                {g.example}
-              </p>
-              <p className="mt-5 text-[11px] inline-flex items-center gap-1.5" style={{ color: toneColor }}>
-                <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: toneColor }} />
-                {toneLabel}
-              </p>
-            </motion.div>
-          );
-        })}
+        {steps.map((s, i) => (
+          <motion.div
+            key={s.step}
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true }}
+            custom={i}
+            variants={fadeUp}
+            className="vl-panel p-6"
+          >
+            <p className="text-[32px] font-semibold tracking-tight" style={{ color: "rgba(224,183,106,0.3)" }}>
+              {s.step}
+            </p>
+            <h3 className="text-[17px] font-semibold mt-3" style={{ color: "var(--color-vl-ivory)" }}>
+              {s.title}
+            </h3>
+            <p className="mt-2 text-[13px] leading-relaxed" style={{ color: "rgba(245,239,227,0.55)" }}>
+              {s.body}
+            </p>
+          </motion.div>
+        ))}
       </div>
     </Section>
   );
 }
 
 /* ─────────────────────────────────────────────────────────────────
-   4 — Tune how it listens, choose voice — combined preview.
-   ───────────────────────────────────────────────────────────────── */
-function RoomAndVoice() {
-  return (
-    <Section
-      eyebrow="Tune for the room"
-      title="Choose the room. Choose the voice."
-      intro="Pick a room setting — quiet to nightclub. Pick a voice option by outcome, not provider name."
-    >
-      <div className="grid lg:grid-cols-2 gap-3">
-        <div className="vl-panel p-6">
-          <p className="vl-eyebrow mb-4">Room setting</p>
-          <div className="grid sm:grid-cols-2 gap-2">
-            {roomSettings.slice(0, 4).map((m) => (
-              <div key={m.value} className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl border border-white/[0.06]">
-                <div>
-                  <p className="text-[13px] font-semibold" style={{ color: "var(--color-vl-ivory)" }}>{m.label}</p>
-                  <p className="text-[11px] mt-0.5" style={{ color: "rgba(245,239,227,0.55)" }}>{m.listens}</p>
-                </div>
-                <RoomIntensity level={m.intensity} />
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="vl-panel p-6">
-          <p className="vl-eyebrow mb-4">Voice option</p>
-          <div className="space-y-2">
-            {voiceOptions.slice(0, 4).map((v) => (
-              <div key={v.id} className="px-4 py-3 rounded-xl border border-white/[0.06]">
-                <p className="text-[13px] font-semibold" style={{ color: "var(--color-vl-ivory)" }}>{v.label}</p>
-                <p className="text-[11px] mt-0.5" style={{ color: "rgba(245,239,227,0.55)" }}>{v.description}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </Section>
-  );
-}
-
-function RoomIntensity({ level }: { level: number }) {
-  return (
-    <div className="flex items-end gap-[2px]">
-      {[0.2, 0.4, 0.6, 0.8].map((threshold) => (
-        <div
-          key={threshold}
-          className="w-1 rounded-full"
-          style={{
-            height: 6 + threshold * 12,
-            background: level >= threshold ? "var(--color-vl-brass2)" : "rgba(245,239,227,0.18)",
-          }}
-        />
-      ))}
-    </div>
-  );
-}
-
-/* ─────────────────────────────────────────────────────────────────
-   5 — Connected services, honest list.
-   ───────────────────────────────────────────────────────────────── */
-function ConnectedHonestly() {
-  return (
-    <Section
-      eyebrow="Connected services"
-      title="Bolt onto the systems you already use."
-      intro="Your assistant does not replace your system. It works inside it."
-    >
-      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        {connectedServices.map((p, i) => {
-          const live = p.status === "live";
-          return (
-            <motion.div
-              key={p.id}
-              initial="hidden"
-              whileInView="visible"
-              viewport={{ once: true }}
-              custom={i}
-              variants={fadeUp}
-              className="vl-panel p-5"
-              style={{ opacity: live ? 1 : 0.78 }}
-            >
-              <div className="flex items-center justify-between mb-2.5">
-                <span className="text-[15px] font-semibold" style={{ color: "var(--color-vl-ivory)" }}>{p.name}</span>
-                {live ? (
-                  <span
-                    className="vl-chip"
-                    style={{ color: "var(--color-vl-success)", borderColor: "rgba(53,194,117,0.4)" }}
-                  >
-                    <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: "var(--color-vl-success)" }} />
-                    Available
-                  </span>
-                ) : (
-                  <span className="vl-chip" style={{ color: "rgba(245,239,227,0.5)" }}>Request access</span>
-                )}
-              </div>
-              <p className="text-[13px] leading-relaxed" style={{ color: "rgba(245,239,227,0.55)" }}>
-                {p.description}
-              </p>
-            </motion.div>
-          );
-        })}
-      </div>
-    </Section>
-  );
-}
-
-/* ─────────────────────────────────────────────────────────────────
-   Final start — repeat the prompt at the end so we close the loop.
+   Final CTA
    ───────────────────────────────────────────────────────────────── */
 function FinalStart({
   name,
@@ -510,10 +412,10 @@ function FinalStart({
       <div className="relative max-w-3xl mx-auto px-6 text-center">
         <LogoMark size={56} className="mx-auto" />
         <h2 className="vl-display mt-8 text-[40px] md:text-[60px]" style={{ color: "var(--color-vl-ivory)" }}>
-          Name yours and start.
+          Give your venue a voice.
         </h2>
         <p className="mt-5 text-[16px] max-w-xl mx-auto leading-relaxed" style={{ color: "rgba(245,239,227,0.62)" }}>
-          You can change everything later. We will walk you through connecting Square, choosing what it can do, tuning the room, and testing a command.
+          Name your assistant, connect your systems, and let your team start asking. You can change everything later.
         </p>
         <form
           onSubmit={(e) => {
@@ -529,7 +431,7 @@ function FinalStart({
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Bev, Kora, Friday…"
+              placeholder="Bev, Kora, Friday..."
               className="vl-input-naked"
               maxLength={32}
             />
@@ -539,7 +441,7 @@ function FinalStart({
             disabled={!canStart}
             className="vl-btn-primary inline-flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Create your assistant
+            Get started
             <ArrowRight className="w-4 h-4" />
           </button>
         </form>
@@ -561,7 +463,6 @@ function FinalStart({
   );
 }
 
-/* Shared shell for the inline-named-input on the landing only. */
 function InputStyles() {
   return (
     <style>{`
