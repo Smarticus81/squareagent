@@ -1,18 +1,18 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { useVenues } from "@/hooks/use-venues";
 import { VoiceRail, type RailState } from "@/components/voice-rail";
 import {
   roomSettings,
-  voiceOptions,
   connectedServices,
   actionGroups,
   approvalLabels,
   defaultApprovals,
+  voicePipelineCategories,
+  DEFAULT_PIPELINE_PROVIDER,
   type ApprovalLevel,
   type RoomSettingValue,
-  type VoiceOptionId,
 } from "@/lib/tokens";
 import {
   ArrowLeft,
@@ -21,7 +21,10 @@ import {
   Copy,
   ExternalLink,
   Loader2,
+  Pause,
+  Play,
   Sparkles,
+  Volume2,
 } from "lucide-react";
 
 interface ConnectedServiceProvider {
@@ -30,6 +33,23 @@ interface ConnectedServiceProvider {
   description: string;
   status: "available" | "needs_configuration" | "request_access" | "unavailable";
   isImplemented: boolean;
+}
+
+interface PipelineReport {
+  provider: string;
+  displayName: string;
+  category: string;
+  status: "available" | "needs_configuration" | "request_access" | "experimental" | "unavailable";
+  reason?: string;
+  missing?: string[];
+  shortDescription?: string;
+  recommendedFor: string[];
+  requiredCredentials: string[];
+  isFallback: boolean;
+  isExperimental: boolean;
+  notes?: string;
+  sampleVoices: string[];
+  sampleAvailable: boolean;
 }
 
 const STEPS = [
@@ -57,11 +77,15 @@ export default function CreateAssistant() {
   const [serviceId, setServiceId] = useState<string>("square");
   const [venueId, setVenueId] = useState<number | null>(null);
   const [room, setRoom] = useState<RoomSettingValue>("bar");
-  const [voiceOption, setVoiceOption] = useState<VoiceOptionId>("fastest_realtime");
-  const [approvals, setApprovals] = useState<Record<string, ApprovalLevel>>(defaultApprovals);
-  const [showAdvancedVoice, setShowAdvancedVoice] = useState(false);
+  const [pipelineProvider, setPipelineProvider] = useState<string>(DEFAULT_PIPELINE_PROVIDER);
+  const [pipelineVoice, setPipelineVoice] = useState<string>("");
+  const [thinkingLevel, setThinkingLevel] = useState<"minimal" | "low" | "medium" | "high">("minimal");
+  const [proactiveAudio, setProactiveAudio] = useState<boolean>(true);
+  const [approvals, setApprovals] = useState<Record<string, ApprovalLevel>>(defaultApprovals());
 
   const [providers, setProviders] = useState<ConnectedServiceProvider[]>([]);
+  const [pipelines, setPipelines] = useState<PipelineReport[]>([]);
+  const [pipelinesLoading, setPipelinesLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedId, setSavedId] = useState<string | null>(null);
@@ -78,6 +102,56 @@ export default function CreateAssistant() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+    fetch("/api/v1/voice-pipelines")
+      .then((r) => r.json())
+      .then((d) => {
+        if (cancelled) return;
+        const raw: PipelineReport[] = Array.isArray(d?.pipelines) ? d.pipelines : [];
+        // Defensive normalization: older api-server builds may not return the new
+        // sample fields; fall back to safe defaults so the wizard never crashes.
+        const list: PipelineReport[] = raw.map((p) => ({
+          ...p,
+          sampleVoices: Array.isArray(p.sampleVoices) ? p.sampleVoices : [],
+          sampleAvailable: Boolean(p.sampleAvailable),
+          recommendedFor: Array.isArray(p.recommendedFor) ? p.recommendedFor : [],
+          requiredCredentials: Array.isArray(p.requiredCredentials) ? p.requiredCredentials : [],
+        }));
+        setPipelines(list);
+        setPipelineProvider((prev) => {
+          const current = list.find((p) => p.provider === prev);
+          if (!current || current.status === "needs_configuration" || current.status === "unavailable") {
+            const firstAvailable = list.find(
+              (p) => p.status === "available" && !p.isFallback,
+            );
+            if (firstAvailable) return firstAvailable.provider;
+          }
+          return prev;
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setPipelines([]);
+      })
+      .finally(() => {
+        if (!cancelled) setPipelinesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const current = pipelines.find((p) => p.provider === pipelineProvider);
+    if (!current) return;
+    const voices = current.sampleVoices ?? [];
+    if (voices.length === 0) {
+      setPipelineVoice((v) => (v === "" ? v : ""));
+      return;
+    }
+    setPipelineVoice((v) => (voices.includes(v) ? v : voices[0]));
+  }, [pipelineProvider, pipelines]);
+
+  useEffect(() => {
     if (!venueId && venues && venues.length > 0) setVenueId(venues[0].id);
   }, [venues, venueId]);
 
@@ -92,14 +166,16 @@ export default function CreateAssistant() {
   );
   const allowedCount = allowedActionIds.length;
 
-  // Map UI voice option → engineering voice provider id.
-  const internalProviderFromOption: Record<VoiceOptionId, string> = {
-    fastest_realtime: "openai_realtime_webrtc",
-    best_in_noise: "deepgram_voice_agent",
-    best_voice_quality: "elevenlabs_agents",
-    enterprise_control: "livekit_agents",
-    fallback_manual: "websocket_relay",
-  };
+  const selectedPipeline = useMemo(
+    () => pipelines.find((p) => p.provider === pipelineProvider) ?? null,
+    [pipelines, pipelineProvider],
+  );
+
+  const isGeminiPipeline = pipelineProvider.startsWith("google_gemini_");
+  const isGemini31 = pipelineProvider === "google_gemini_3_1_flash_live";
+  const isGemini25 =
+    pipelineProvider === "google_gemini_2_5_flash_native_audio" ||
+    pipelineProvider === "google_gemini_live_native_audio";
 
   // Engineering tool ids for the chosen actions — kept internal.
   const allowedTools = useMemo(() => {
@@ -111,6 +187,14 @@ export default function CreateAssistant() {
     }
     return Array.from(set);
   }, [approvals]);
+
+  function buildPipelineConfig(): Record<string, unknown> {
+    const cfg: Record<string, unknown> = {};
+    if (pipelineVoice) cfg.voice = pipelineVoice;
+    if (isGemini31) cfg.thinkingLevel = thinkingLevel;
+    if (isGemini25) cfg.proactiveAudio = proactiveAudio;
+    return cfg;
+  }
 
   async function save() {
     if (!venueId) return setError("Choose a venue first.");
@@ -127,8 +211,8 @@ export default function CreateAssistant() {
           connectedServiceId: serviceId || undefined,
           displayName: assistantName,
           wakePhrase: `Hey ${assistantName}`,
-          voicePipelineProvider: internalProviderFromOption[voiceOption],
-          voicePipelineConfig: {},
+          voicePipelineProvider: pipelineProvider,
+          voicePipelineConfig: buildPipelineConfig(),
           noiseMode: room,
           allowedTools,
           confirmationPolicy: { approvals },
@@ -220,7 +304,7 @@ export default function CreateAssistant() {
               name={assistantName}
               service={connectedServices.find((s) => s.id === serviceId)?.name ?? "Square"}
               room={roomSettings.find((r) => r.value === room)?.label ?? "Bar"}
-              voice={voiceOptions.find((v) => v.id === voiceOption)?.label ?? "Fastest live voice"}
+              voice={selectedPipeline?.displayName ?? "Choose a voice engine"}
               railState={railState}
               railIntensity={railIntensity}
               hint={STEPS[step - 1].subtitle}
@@ -398,46 +482,39 @@ export default function CreateAssistant() {
 
             {step === 5 && (
               <StepShell
-                title="Choose the voice experience."
-                subtitle="Pick by outcome. The right technology will be selected for you."
+                title="Pick your voice engine."
+                subtitle="Each assistant runs on a specific provider. Tap any engine to hear it speak the same line, then pick the one your room deserves."
               >
-                <div className="space-y-2">
-                  {voiceOptions.map((p) => (
-                    <button
-                      key={p.id}
-                      onClick={() => setVoiceOption(p.id)}
-                      className="w-full text-left vl-panel p-5 transition-colors"
-                      style={{
-                        borderColor: voiceOption === p.id ? "rgba(124,110,245,0.6)" : undefined,
-                        background: voiceOption === p.id ? "rgba(124,110,245,0.06)" : undefined,
-                      }}
-                    >
-                      <p className="text-[15px] font-semibold" style={{ color: "var(--color-vl-ivory)" }}>{p.label}</p>
-                      <p className="text-[13px] mt-1" style={{ color: "rgba(245,239,227,0.62)" }}>{p.description}</p>
-                    </button>
-                  ))}
-                </div>
-                <button
-                  type="button"
-                  className="vl-eyebrow mt-6 cursor-pointer"
-                  onClick={() => setShowAdvancedVoice((v) => !v)}
-                >
-                  {showAdvancedVoice ? "Hide" : "Show"} advanced details
-                </button>
-                {showAdvancedVoice && (
-                  <div className="vl-panel p-4 mt-3 text-[12px]" style={{ color: "rgba(245,239,227,0.6)" }}>
-                    <p>
-                      Voice option: <strong style={{ color: "var(--color-vl-ivory)" }}>{voiceOptions.find((v) => v.id === voiceOption)?.label}</strong>
-                    </p>
-                    <p className="mt-1">
-                      Engine candidates: {voiceOptions.find((v) => v.id === voiceOption)?.advancedNote}
-                    </p>
-                    <p className="mt-2 text-[11px]">
-                      Provider details live in <span className="underline">Settings → Advanced</span>. The default summary stays human.
-                    </p>
+                {pipelinesLoading ? (
+                  <div className="vl-panel p-8 flex items-center justify-center gap-3">
+                    <Loader2 className="w-4 h-4 animate-spin" style={{ color: "var(--color-vl-brass2)" }} />
+                    <span className="text-[13px]" style={{ color: "rgba(245,239,227,0.62)" }}>Loading available engines…</span>
                   </div>
+                ) : (
+                  <PipelinePicker
+                    pipelines={pipelines}
+                    selected={pipelineProvider}
+                    onSelect={(provider) => setPipelineProvider(provider)}
+                    selectedVoice={pipelineVoice}
+                    onSelectVoice={(v) => setPipelineVoice(v)}
+                  />
                 )}
-                <Nav onBack={() => setStep(4)} onNext={() => setStep(6)} canNext />
+
+                {selectedPipeline && (selectedPipeline.provider.startsWith("google_gemini_") || selectedPipeline.provider.startsWith("openai_")) && (
+                  <PipelineConfigPanel
+                    selected={selectedPipeline}
+                    voice={pipelineVoice}
+                    onVoice={setPipelineVoice}
+                    isGemini31={isGemini31}
+                    isGemini25={isGemini25}
+                    thinkingLevel={thinkingLevel}
+                    onThinkingLevel={setThinkingLevel}
+                    proactiveAudio={proactiveAudio}
+                    onProactiveAudio={setProactiveAudio}
+                  />
+                )}
+
+                <Nav onBack={() => setStep(4)} onNext={() => setStep(6)} canNext={!!selectedPipeline && selectedPipeline.status !== "needs_configuration" && selectedPipeline.status !== "unavailable"} />
               </StepShell>
             )}
 
@@ -485,7 +562,8 @@ export default function CreateAssistant() {
                     <Summary k="Assistant" v={assistantName} />
                     <Summary k="Connected service" v={connectedServices.find((s) => s.id === serviceId)?.name ?? "Square"} />
                     <Summary k="Room setting" v={roomSettings.find((r) => r.value === room)?.label ?? "Bar"} />
-                    <Summary k="Voice option" v={voiceOptions.find((v) => v.id === voiceOption)?.label ?? ""} />
+                    <Summary k="Voice engine" v={selectedPipeline?.displayName ?? ""} />
+                    {pipelineVoice && <Summary k="Voice character" v={pipelineVoice} />}
                     <Summary k="Can do" v={`${allowedCount} actions`} />
                     <Summary k="Will ask first" v={`${askFirstCount} actions`} />
                   </dl>
@@ -861,4 +939,421 @@ async function copyLaunchLink(venueId: number) {
   } catch (e) {
     console.error(e);
   }
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   Pipeline picker — full registry, grouped by category, in plain sight.
+   ───────────────────────────────────────────────────────────────── */
+
+function PipelinePicker({
+  pipelines,
+  selected,
+  onSelect,
+  selectedVoice,
+  onSelectVoice,
+}: {
+  pipelines: PipelineReport[];
+  selected: string;
+  onSelect: (provider: string) => void;
+  selectedVoice: string;
+  onSelectVoice: (voice: string) => void;
+}) {
+  const grouped = useMemo(() => {
+    const buckets = new Map<string, PipelineReport[]>();
+    for (const p of pipelines) {
+      const list = buckets.get(p.category) ?? [];
+      list.push(p);
+      buckets.set(p.category, list);
+    }
+    return voicePipelineCategories
+      .map((cat) => ({ cat, items: (buckets.get(cat.id) ?? []).sort(comparePipelines) }))
+      .filter((g) => g.items.length > 0);
+  }, [pipelines]);
+
+  return (
+    <div className="space-y-7">
+      {grouped.map(({ cat, items }) => (
+        <div key={cat.id}>
+          <div className="flex items-baseline justify-between gap-3 mb-2">
+            <p className="vl-eyebrow">{cat.label}</p>
+            <p className="text-[11px]" style={{ color: "rgba(245,239,227,0.45)" }}>{items.length} option{items.length === 1 ? "" : "s"}</p>
+          </div>
+          <p className="text-[12.5px] mb-3" style={{ color: "rgba(245,239,227,0.55)" }}>{cat.blurb}</p>
+          <div className="grid sm:grid-cols-2 gap-2">
+            {items.map((p) => (
+              <PipelineCard
+                key={p.provider}
+                pipeline={p}
+                active={selected === p.provider}
+                onSelect={() => onSelect(p.provider)}
+                voice={selected === p.provider ? selectedVoice : ""}
+                onVoice={onSelectVoice}
+              />
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function comparePipelines(a: PipelineReport, b: PipelineReport): number {
+  const rank = (p: PipelineReport) => {
+    if (p.status === "available") return 0;
+    if (p.status === "experimental") return 1;
+    if (p.status === "request_access") return 2;
+    if (p.status === "needs_configuration") return 3;
+    return 4;
+  };
+  const dr = rank(a) - rank(b);
+  if (dr !== 0) return dr;
+  return a.displayName.localeCompare(b.displayName);
+}
+
+function PipelineCard({
+  pipeline,
+  active,
+  onSelect,
+  voice,
+  onVoice,
+}: {
+  pipeline: PipelineReport;
+  active: boolean;
+  onSelect: () => void;
+  voice: string;
+  onVoice: (voice: string) => void;
+}) {
+  const disabled = pipeline.status === "needs_configuration" || pipeline.status === "unavailable";
+  const tone =
+    pipeline.status === "available"
+      ? "var(--color-vl-success)"
+      : pipeline.status === "experimental"
+      ? "var(--color-vl-brass2)"
+      : pipeline.status === "request_access"
+      ? "var(--color-vl-voice)"
+      : "var(--color-vl-danger)";
+  const statusLabel: Record<typeof pipeline.status, string> = {
+    available: "Available",
+    experimental: "Preview",
+    request_access: "Request access",
+    needs_configuration: "Needs setup",
+    unavailable: "Unavailable",
+  } as Record<typeof pipeline.status, string>;
+
+  return (
+    <div
+      className="vl-panel p-5 transition-colors"
+      style={{
+        opacity: disabled ? 0.55 : 1,
+        borderColor: active ? "rgba(124,110,245,0.6)" : undefined,
+        background: active ? "rgba(124,110,245,0.06)" : undefined,
+      }}
+    >
+      <button
+        type="button"
+        onClick={disabled ? undefined : onSelect}
+        className="w-full text-left"
+        disabled={disabled}
+        style={{ cursor: disabled ? "not-allowed" : "pointer" }}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <p className="text-[15px] font-semibold" style={{ color: "var(--color-vl-ivory)" }}>{pipeline.displayName}</p>
+              <span
+                className="vl-chip"
+                style={{ color: tone, borderColor: `${tone}55`, fontSize: 10 }}
+              >
+                {statusLabel[pipeline.status] ?? pipeline.status}
+              </span>
+              {pipeline.isFallback && (
+                <span className="vl-chip" style={{ fontSize: 10 }}>Fallback</span>
+              )}
+            </div>
+            {pipeline.shortDescription && (
+              <p className="text-[12.5px] mt-1.5 leading-snug" style={{ color: "rgba(245,239,227,0.62)" }}>
+                {pipeline.shortDescription}
+              </p>
+            )}
+            {disabled && pipeline.reason && (
+              <p className="text-[11.5px] mt-2" style={{ color: "rgba(245,239,227,0.5)" }}>
+                {pipeline.reason}
+              </p>
+            )}
+          </div>
+          <span
+            className="w-4 h-4 rounded-full flex items-center justify-center shrink-0"
+            style={{
+              background: active ? "var(--color-vl-voice)" : "transparent",
+              border: "1px solid rgba(245,239,227,0.3)",
+            }}
+          >
+            {active && <Check className="w-3 h-3 text-white" />}
+          </span>
+        </div>
+      </button>
+      {pipeline.sampleAvailable && (pipeline.sampleVoices?.length ?? 0) > 0 && (
+        <div className="mt-3 flex items-center justify-between gap-3 flex-wrap">
+          <SamplePlayer
+            provider={pipeline.provider}
+            voice={active && voice ? voice : pipeline.sampleVoices[0]}
+            disabled={disabled}
+          />
+          {active && (
+            <select
+              value={voice || pipeline.sampleVoices[0]}
+              onChange={(e) => onVoice(e.target.value)}
+              aria-label="Voice character"
+              style={{
+                height: 28,
+                padding: "0 8px",
+                borderRadius: 999,
+                background: "rgba(245,239,227,0.04)",
+                border: "1px solid rgba(245,239,227,0.18)",
+                color: "var(--color-vl-ivory)",
+                fontSize: 11.5,
+                outline: 0,
+              }}
+            >
+              {pipeline.sampleVoices.map((v) => (
+                <option key={v} value={v}>
+                  {v}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   Sample player — synthesizes a real audio clip on demand and plays it.
+   ───────────────────────────────────────────────────────────────── */
+
+function SamplePlayer({
+  provider,
+  voice,
+  disabled,
+}: {
+  provider: string;
+  voice: string;
+  disabled: boolean;
+}) {
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [state, setState] = useState<"idle" | "loading" | "playing" | "error">("idle");
+  const [errorText, setErrorText] = useState<string>("");
+
+  useEffect(() => {
+    return () => {
+      const a = audioRef.current;
+      if (a) {
+        a.pause();
+        a.src = "";
+        audioRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    setState("idle");
+    const a = audioRef.current;
+    if (a) {
+      a.pause();
+      a.src = "";
+      audioRef.current = null;
+    }
+  }, [provider, voice]);
+
+  async function play() {
+    if (disabled) return;
+    if (state === "playing") {
+      audioRef.current?.pause();
+      setState("idle");
+      return;
+    }
+    setState("loading");
+    setErrorText("");
+    try {
+      const url = `/api/v1/voice-pipelines/${encodeURIComponent(provider)}/sample?voice=${encodeURIComponent(voice)}`;
+      const res = await fetch(url);
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
+        throw new Error(body.error?.message ?? `Sample HTTP ${res.status}`);
+      }
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const audio = new Audio(objectUrl);
+      audio.onended = () => {
+        URL.revokeObjectURL(objectUrl);
+        setState("idle");
+      };
+      audio.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        setState("error");
+        setErrorText("Playback failed");
+      };
+      audioRef.current = audio;
+      await audio.play();
+      setState("playing");
+    } catch (e) {
+      setState("error");
+      setErrorText(e instanceof Error ? e.message : "Sample failed");
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={play}
+      disabled={disabled || state === "loading"}
+      className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border transition-colors text-[12px]"
+      style={{
+        borderColor: state === "playing" ? "rgba(124,110,245,0.6)" : "rgba(245,239,227,0.18)",
+        background: state === "playing" ? "rgba(124,110,245,0.08)" : "rgba(245,239,227,0.025)",
+        color: "var(--color-vl-ivory)",
+        opacity: disabled ? 0.5 : 1,
+      }}
+    >
+      {state === "loading" ? (
+        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+      ) : state === "playing" ? (
+        <Pause className="w-3.5 h-3.5" />
+      ) : state === "error" ? (
+        <Volume2 className="w-3.5 h-3.5" style={{ color: "var(--color-vl-danger)" }} />
+      ) : (
+        <Play className="w-3.5 h-3.5" />
+      )}
+      <span>{state === "error" ? errorText || "Try again" : state === "playing" ? "Playing" : "Hear sample"}</span>
+    </button>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   Pipeline config panel — voice character + provider-specific knobs.
+   ───────────────────────────────────────────────────────────────── */
+
+function PipelineConfigPanel({
+  selected,
+  voice,
+  onVoice,
+  isGemini31,
+  isGemini25,
+  thinkingLevel,
+  onThinkingLevel,
+  proactiveAudio,
+  onProactiveAudio,
+}: {
+  selected: PipelineReport;
+  voice: string;
+  onVoice: (v: string) => void;
+  isGemini31: boolean;
+  isGemini25: boolean;
+  thinkingLevel: "minimal" | "low" | "medium" | "high";
+  onThinkingLevel: (v: "minimal" | "low" | "medium" | "high") => void;
+  proactiveAudio: boolean;
+  onProactiveAudio: (v: boolean) => void;
+}) {
+  if (selected.status === "needs_configuration" || selected.status === "unavailable") return null;
+  return (
+    <div className="vl-panel p-5 mt-2">
+      <div className="flex items-baseline justify-between gap-3 mb-3">
+        <p className="vl-eyebrow">Tune {selected.displayName}</p>
+        <p className="text-[11px]" style={{ color: "rgba(245,239,227,0.45)" }}>Optional</p>
+      </div>
+
+      {(selected.sampleVoices?.length ?? 0) > 0 && (
+        <div className="mb-4">
+          <label className="block text-[11px] uppercase tracking-[0.14em] mb-2" style={{ color: "rgba(245,239,227,0.55)" }}>
+            Voice character
+          </label>
+          <div className="flex flex-wrap gap-2">
+            {selected.sampleVoices.map((v) => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => onVoice(v)}
+                className="px-3 py-1.5 rounded-full text-[12px] transition-colors"
+                style={{
+                  borderColor: voice === v ? "rgba(124,110,245,0.6)" : "rgba(245,239,227,0.18)",
+                  background: voice === v ? "rgba(124,110,245,0.10)" : "rgba(245,239,227,0.025)",
+                  color: "var(--color-vl-ivory)",
+                  border: `1px solid ${voice === v ? "rgba(124,110,245,0.6)" : "rgba(245,239,227,0.18)"}`,
+                }}
+              >
+                {v}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {isGemini31 && (
+        <div className="mb-3">
+          <label className="block text-[11px] uppercase tracking-[0.14em] mb-2" style={{ color: "rgba(245,239,227,0.55)" }}>
+            Thinking depth
+          </label>
+          <p className="text-[11.5px] mb-2" style={{ color: "rgba(245,239,227,0.5)" }}>
+            Lower = faster first reply. Higher = better reasoning on multi-step requests like splitting a tab or upselling.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {(["minimal", "low", "medium", "high"] as const).map((lvl) => (
+              <button
+                key={lvl}
+                type="button"
+                onClick={() => onThinkingLevel(lvl)}
+                className="px-3 py-1.5 rounded-full text-[12px] capitalize transition-colors"
+                style={{
+                  borderColor: thinkingLevel === lvl ? "rgba(224,183,106,0.6)" : "rgba(245,239,227,0.18)",
+                  background: thinkingLevel === lvl ? "rgba(224,183,106,0.10)" : "rgba(245,239,227,0.025)",
+                  color: "var(--color-vl-ivory)",
+                  border: `1px solid ${thinkingLevel === lvl ? "rgba(224,183,106,0.6)" : "rgba(245,239,227,0.18)"}`,
+                }}
+              >
+                {lvl}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {isGemini25 && (
+        <div className="flex items-start justify-between gap-3 py-2">
+          <div className="flex-1 min-w-0">
+            <p className="text-[13px] font-medium" style={{ color: "var(--color-vl-ivory)" }}>Proactive audio</p>
+            <p className="text-[11.5px] mt-1" style={{ color: "rgba(245,239,227,0.55)" }}>
+              When on, the assistant ignores ambient chatter and only responds to speech that's clearly directed at it. Recommended for busy bars.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => onProactiveAudio(!proactiveAudio)}
+            className="shrink-0 inline-flex items-center"
+            aria-pressed={proactiveAudio}
+            aria-label="Toggle proactive audio"
+          >
+            <span
+              className="w-9 h-5 rounded-full relative transition-colors"
+              style={{
+                background: proactiveAudio ? "rgba(124,110,245,0.6)" : "rgba(245,239,227,0.18)",
+              }}
+            >
+              <span
+                className="absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform"
+                style={{ left: proactiveAudio ? "18px" : "2px" }}
+              />
+            </span>
+          </button>
+        </div>
+      )}
+
+      {selected.notes && (
+        <p className="text-[11.5px] mt-3 leading-relaxed" style={{ color: "rgba(245,239,227,0.5)" }}>
+          {selected.notes}
+        </p>
+      )}
+
+    </div>
+  );
 }

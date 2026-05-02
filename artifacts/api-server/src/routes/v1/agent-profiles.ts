@@ -15,6 +15,8 @@ import {
   defaultWakePhraseFor,
 } from "@workspace/voicelab-core/agent-profile";
 import { DEFAULT_CONFIRMATION_POLICY } from "@workspace/voicelab-core/confirmation";
+import { planAllowsPipeline } from "@workspace/voicelab-core/pricing";
+import type { VoicePipelineProvider } from "@workspace/voicelab-core/voice-pipeline";
 
 const router = Router();
 router.use(v1RequireAuth as never, requireDb);
@@ -90,6 +92,21 @@ router.post("/", async (req: Request, res: Response) => {
     jsonError(res, 404, "venue_not_found", "Venue not found or not owned by user.");
     return;
   }
+
+  // Pipeline-tier gating: prevent picking a pipeline that's not unlocked
+  // by the user's current subscription plan. This is enforced server-side
+  // so the wizard can't bypass it by sending a different provider.
+  const plan = (req as Request & { subscription?: { plan?: string } }).subscription?.plan ?? "trial";
+  if (!planAllowsPipeline(plan, body.voicePipelineProvider as VoicePipelineProvider)) {
+    jsonError(
+      res,
+      402,
+      "pipeline_not_in_plan",
+      `The "${body.voicePipelineProvider}" voice engine is not included in your "${plan}" plan. Upgrade to unlock it.`,
+    );
+    return;
+  }
+
   const wakePhrase = body.wakePhrase ?? defaultWakePhraseFor(body.displayName);
 
   const [row] = await db
@@ -151,6 +168,18 @@ router.patch("/:id", async (req: Request, res: Response) => {
   if (!(await userOwnsOrganization(user.id, existing.organizationId))) {
     jsonError(res, 403, "forbidden", "Access denied.");
     return;
+  }
+  if (parsed.data.voicePipelineProvider) {
+    const plan = (req as Request & { subscription?: { plan?: string } }).subscription?.plan ?? "trial";
+    if (!planAllowsPipeline(plan, parsed.data.voicePipelineProvider as VoicePipelineProvider)) {
+      jsonError(
+        res,
+        402,
+        "pipeline_not_in_plan",
+        `The "${parsed.data.voicePipelineProvider}" voice engine is not included in your "${plan}" plan. Upgrade to unlock it.`,
+      );
+      return;
+    }
   }
   const updates: Record<string, unknown> = { ...parsed.data, updatedAt: new Date() };
   // Drop undefined keys so we don't overwrite columns with null.

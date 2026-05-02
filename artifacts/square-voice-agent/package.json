@@ -4,7 +4,7 @@
   "private": true,
   "packageManager": "pnpm@9.15.9",
   "engines": {
-    "node": "22"
+    "node": ">=20"
   },
   "main": "expo-router/entry",
   "scripts": {

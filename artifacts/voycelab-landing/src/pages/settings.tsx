@@ -102,6 +102,13 @@ export default function Settings() {
   };
 
   const handleManageBilling = async () => {
+    // Trial / pre-checkout users go to /pricing to pick a plan; anyone with
+    // an active Stripe subscription goes to the Stripe customer portal.
+    const status = auth?.subscription?.status;
+    if (status !== "active") {
+      setLocation("/pricing");
+      return;
+    }
     setBillingLoading(true);
     try {
       const res = await fetch("/api/subscriptions/portal", {

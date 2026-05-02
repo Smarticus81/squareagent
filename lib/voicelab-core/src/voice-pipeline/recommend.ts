@@ -64,15 +64,18 @@ export function recommendVoicePipeline(
   let candidates: VoicePipelineProvider[];
   let baseReason: string;
 
-  // 1. Noisy environments take priority — recommend Flux + Cartesia.
+  // 1. Noisy environments take priority. Gemini 3.1 Flash Live ships with
+  //    the strongest background-noise rejection in this class, so prefer it
+  //    when its credentials are present, then fall back to modular STT+TTS.
   if (environment === "nightclub" || environment === "bar") {
     candidates = [
+      "google_gemini_3_1_flash_live",
       "deepgram_flux_cartesia",
       "livekit_agents",
       "openai_realtime_webrtc",
       "push_to_talk_text_fallback",
     ];
-    baseReason = `noise mode=${environment}: prefer modular pipeline with strong turn detection and noise tolerance`;
+    baseReason = `noise mode=${environment}: prefer native-audio model with best-in-class noise rejection or modular pipeline with strong turn detection`;
   }
   // 2. Enterprise observability.
   else if (input.requiresEnterpriseObservability) {
@@ -109,7 +112,8 @@ export function recommendVoicePipeline(
   else {
     candidates = [
       "openai_realtime_webrtc",
-      "google_gemini_live_native_audio",
+      "google_gemini_3_1_flash_live",
+      "google_gemini_2_5_flash_native_audio",
       "deepgram_voice_agent_api",
       "push_to_talk_text_fallback",
     ];

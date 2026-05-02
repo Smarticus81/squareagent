@@ -102,43 +102,59 @@ export const roomSettings = [
 export type RoomSettingValue = typeof roomSettings[number]["value"];
 
 /* ─────────────────────────────────────────────────────────────────
-   Voice options — outcome-based, no provider names by default.
+   Voice pipeline categories — displayed in plain sight in the wizard.
+   The pipeline registry is fetched live from /api/v1/voice-pipelines;
+   these tokens drive the section headers, ordering, and copy.
    ───────────────────────────────────────────────────────────────── */
 
-export const voiceOptions = [
-  {
-    id: "fastest_realtime",
-    label: "Fastest live voice",
-    description: "Quickest replies, ideal for fast service.",
-    advancedNote: "OpenAI Realtime · Gemini Live",
-  },
-  {
-    id: "best_in_noise",
-    label: "Best for loud rooms",
-    description: "Prioritizes clear listening, shorter responses, and extra approvals before sensitive actions.",
-    advancedNote: "Deepgram Voice Agent · Cartesia + Deepgram",
-  },
-  {
-    id: "best_voice_quality",
-    label: "Most natural voice",
-    description: "Studio-grade voice for tasting rooms and front-of-house.",
-    advancedNote: "ElevenLabs Agents · Cartesia Sonic",
-  },
-  {
-    id: "enterprise_control",
-    label: "Most controlled setup",
-    description: "Self-hosted live voice with team access and full audit history.",
-    advancedNote: "LiveKit Agents · Pipecat · Custom",
-  },
-  {
-    id: "fallback_manual",
-    label: "Text and push-to-talk fallback",
-    description: "When networks misbehave or the room is too loud, your team can fall back to push-to-talk.",
-    advancedNote: "WebSocket relay · Browser STT",
-  },
-] as const;
+export interface VoicePipelineCategoryDisplay {
+  id:
+    | "native_realtime_speech_to_speech"
+    | "managed_voice_agent_api"
+    | "realtime_orchestration_framework"
+    | "modular_cascaded_pipeline"
+    | "browser_or_manual_fallback";
+  label: string;
+  blurb: string;
+  /** Sort order in the wizard, lowest first. */
+  order: number;
+}
 
-export type VoiceOptionId = typeof voiceOptions[number]["id"];
+export const voicePipelineCategories: VoicePipelineCategoryDisplay[] = [
+  {
+    id: "native_realtime_speech_to_speech",
+    label: "Native realtime voice",
+    blurb: "End-to-end audio-to-audio models. Lowest latency, best barge-in, the default for most venues.",
+    order: 1,
+  },
+  {
+    id: "managed_voice_agent_api",
+    label: "Managed voice agent",
+    blurb: "Fully hosted voice agent platforms with custom voices and SDKs.",
+    order: 2,
+  },
+  {
+    id: "realtime_orchestration_framework",
+    label: "Self-hosted orchestration",
+    blurb: "Production media infrastructure with full audit, telephony future, and enterprise control.",
+    order: 3,
+  },
+  {
+    id: "modular_cascaded_pipeline",
+    label: "Modular STT + LLM + TTS",
+    blurb: "Pick best-in-class components for each stage. Tunable for very noisy or specialty rooms.",
+    order: 4,
+  },
+  {
+    id: "browser_or_manual_fallback",
+    label: "Manual & fallback",
+    blurb: "Always-on fallbacks. Push-to-talk when networks misbehave or the room is too loud for any AI.",
+    order: 5,
+  },
+];
+
+/** Default pipeline if the API hasn't responded yet — keeps the wizard usable offline. */
+export const DEFAULT_PIPELINE_PROVIDER = "openai_realtime_webrtc" as const;
 
 /* ─────────────────────────────────────────────────────────────────
    Connected services

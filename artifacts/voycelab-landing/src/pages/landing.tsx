@@ -31,9 +31,37 @@ export default function Landing() {
       <AskRow />
       <Products />
       <Steps />
+      <PricingCallout />
       <Closer name={name} setName={setName} onStart={start} canStart={canStart} />
       <InputStyles />
     </div>
+  );
+}
+
+function PricingCallout() {
+  return (
+    <section className="border-t border-white/[0.06] py-14 md:py-16">
+      <div className="max-w-[1120px] mx-auto px-6 lg:px-10">
+        <div className="grid md:grid-cols-[1fr_auto] gap-6 items-end">
+          <div>
+            <p className="vl-eyebrow">Pricing in plain sight</p>
+            <h2 className="vl-display text-[28px] md:text-[36px] mt-3 max-w-2xl" style={{ color: "var(--color-vl-ivory)" }}>
+              Starter at $79. Professional at $199. Premium at $499.
+            </h2>
+            <p className="mt-3 text-[14px] max-w-xl leading-relaxed" style={{ color: "rgba(245,239,227,0.62)" }}>
+              Every plan includes voice minutes, real Square access, and a real production-grade voice engine. Pick yours by venue count and how many engines you want to A/B on the floor.
+            </p>
+          </div>
+          <Link
+            href="/pricing"
+            className="vl-btn-primary inline-flex items-center gap-2 text-[13px] px-5 py-2.5"
+          >
+            See all plans
+            <ArrowUpRight className="w-3.5 h-3.5" />
+          </Link>
+        </div>
+      </div>
+    </section>
   );
 }
 

@@ -37,9 +37,9 @@ describe("connected-service registry", () => {
 });
 
 describe("voice-pipeline registry", () => {
-  it("lists 16 voice pipeline providers across all categories", () => {
+  it("lists 18 voice pipeline providers across all categories", () => {
     const list = listVoicePipelineProviders();
-    expect(list.length).toBe(16);
+    expect(list.length).toBe(18);
   });
 
   it("filters by category", () => {
@@ -48,6 +48,8 @@ describe("voice-pipeline registry", () => {
       expect.arrayContaining([
         "openai_realtime_webrtc",
         "openai_realtime_server_ws",
+        "google_gemini_3_1_flash_live",
+        "google_gemini_2_5_flash_native_audio",
         "google_gemini_live_native_audio",
         "hume_evi_3",
       ]),

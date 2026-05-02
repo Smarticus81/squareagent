@@ -128,27 +128,6 @@ class UnconfiguredVoicePipelineAdapter implements VoicePipelineAdapter {
 
 export const VOICE_PIPELINE_UNCONFIGURED_SPECS: UnconfiguredAdapterSpec[] = [
   {
-    provider: "google_gemini_live_native_audio",
-    category: "native_realtime_speech_to_speech",
-    displayName: "Google Gemini Live (native audio)",
-    recommendedFor: ["best_voice_quality", "best_turn_taking"],
-    requiredEnv: ["GOOGLE_GEMINI_API_KEY"],
-    configuredStatus: "experimental",
-    notImplementedNote:
-      "Adapter scaffold. Server-to-server WebSocket bridge to Gemini Live not yet wired.",
-    capabilities: {
-      supportsNativeAudio: true,
-      supportsRealtimeToolCalling: true,
-      supportsBargeIn: true,
-      supportsServerVAD: true,
-      supportsTurnDetection: true,
-      supportsMultilingual: true,
-      supportsMobile: true,
-      supportsBrowser: true,
-      requiresServerRelay: true,
-    },
-  },
-  {
     provider: "hume_evi_3",
     category: "native_realtime_speech_to_speech",
     displayName: "Hume EVI 3",

@@ -11,9 +11,10 @@ const APP_NAV = [
   { href: "/settings", label: "Account" },
 ];
 
-// Landing has no brochure nav — the page itself is the journey.
-// We keep one tiny anchor so people can skim to the start CTA at the bottom.
-const LANDING_NAV: { href: string; label: string }[] = [];
+// Landing nav — minimal, but Pricing is plain-sight to anonymous visitors.
+const LANDING_NAV: { href: string; label: string }[] = [
+  { href: "/pricing", label: "Pricing" },
+];
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
@@ -144,13 +145,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   { href: "/assistants/new", label: "Create your assistant" },
                   { href: "/command", label: "Console" },
                   { href: "/services", label: "Integrations" },
+                  { href: "/pricing", label: "Pricing" },
                 ]}
               />
               <FooterCol
                 title="Account"
                 links={[
                   { href: "/settings", label: "Settings" },
-                  { href: "/settings", label: "Billing" },
+                  { href: "/pricing", label: "Plans & billing" },
                 ]}
               />
               <FooterCol

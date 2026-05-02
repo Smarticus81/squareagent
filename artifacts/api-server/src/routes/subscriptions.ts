@@ -11,8 +11,45 @@ import Stripe from "stripe";
 import { db, subscriptionsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { requireAuth } from "./auth";
+import { PLANS } from "@workspace/voicelab-core/pricing";
 
 const router = Router();
+
+// ── GET /plans — public, used by /pricing page and signup flows ───────────────
+
+router.get("/plans", (_req: Request, res: Response) => {
+  res.json({
+    plans: PLANS.map((p) => {
+      const stripeMonthly = p.stripeMonthlyPriceEnvVar
+        ? process.env[p.stripeMonthlyPriceEnvVar] ?? null
+        : null;
+      const stripeYearly = p.stripeYearlyPriceEnvVar
+        ? process.env[p.stripeYearlyPriceEnvVar] ?? null
+        : null;
+      return {
+        id: p.id,
+        name: p.name,
+        tagline: p.tagline,
+        monthlyPriceUsd: p.monthlyPriceUsd,
+        yearlyPriceUsdPerMonth: p.yearlyPriceUsdPerMonth,
+        highlighted: p.highlighted ?? false,
+        ribbon: p.ribbon ?? null,
+        cta: p.cta,
+        trialDays: p.trialDays ?? null,
+        maxVenues: p.maxVenues,
+        maxAssistants: p.maxAssistants,
+        includedVoiceMinutes: p.includedVoiceMinutes,
+        overagePerMinuteUsd: p.overagePerMinuteUsd,
+        skillTiers: p.skillTiers,
+        allowedPipelines: p.allowedPipelines,
+        bullets: p.bullets,
+        stripeMonthlyPriceId: stripeMonthly,
+        stripeYearlyPriceId: stripeYearly,
+        stripeReady: !!(stripeMonthly || stripeYearly),
+      };
+    }),
+  });
+});
 
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY ?? "";
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET ?? "";
@@ -25,15 +62,28 @@ const PUBLIC_BASE_URL =
   process.env.PUBLIC_BASE_URL ??
   (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : "http://localhost:3000");
 
-/** Map price IDs from env to plan names */
+/**
+ * Map price IDs from env to plan names. Both legacy plan ids
+ * (pos_only / inventory_only / complete) and the new pricing tier ids
+ * (starter / professional / premium) are supported simultaneously so
+ * existing subscriptions keep resolving while the new pricing rolls out.
+ */
 const PLAN_PRICE_MAP: Record<string, string> = {
+  // New pricing tiers (monthly + yearly).
+  [process.env.STRIPE_PRICE_STARTER_MONTHLY ?? "price_starter_monthly"]: "starter",
+  [process.env.STRIPE_PRICE_STARTER_YEARLY ?? "price_starter_yearly"]: "starter",
+  [process.env.STRIPE_PRICE_PROFESSIONAL_MONTHLY ?? "price_professional_monthly"]: "professional",
+  [process.env.STRIPE_PRICE_PROFESSIONAL_YEARLY ?? "price_professional_yearly"]: "professional",
+  [process.env.STRIPE_PRICE_PREMIUM_MONTHLY ?? "price_premium_monthly"]: "premium",
+  [process.env.STRIPE_PRICE_PREMIUM_YEARLY ?? "price_premium_yearly"]: "premium",
+  // Legacy aliases.
   [process.env.STRIPE_PRICE_POS_ONLY ?? "price_pos_only"]: "pos_only",
   [process.env.STRIPE_PRICE_INVENTORY_ONLY ?? "price_inventory_only"]: "inventory_only",
   [process.env.STRIPE_PRICE_COMPLETE ?? "price_complete"]: "complete",
 };
 
 function planFromPriceId(priceId: string): string {
-  return PLAN_PRICE_MAP[priceId] ?? "complete";
+  return PLAN_PRICE_MAP[priceId] ?? "professional";
 }
 
 // ── POST /checkout — Create Stripe Checkout Session ───────────────────────────

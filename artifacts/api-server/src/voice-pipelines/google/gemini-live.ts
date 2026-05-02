@@ -1,0 +1,344 @@
+/**
+ * Google Gemini Live API adapter.
+ *
+ * Implements the BidiGenerateContent stateful WebSocket session against
+ *   wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent
+ *
+ * The browser client cannot hold the long-lived authenticated session to
+ * Google directly with the org's API key, so we mint a server-relayed
+ * session: createSession returns a `ws_relay` handshake pointing at the
+ * VoyceLab gateway path /api/realtime/gemini, and the gateway opens the
+ * upstream Gemini WebSocket on behalf of the client. The relay logic
+ * itself lives in routes/ws-relay.ts so it can share auth, plan checks,
+ * and Square credential lookup with the OpenAI relay.
+ *
+ * One adapter class is registered three times with different model IDs:
+ *   - google_gemini_3_1_flash_live              -> gemini-3.1-flash-live-preview
+ *   - google_gemini_2_5_flash_native_audio      -> gemini-live-2.5-flash-native-audio
+ *   - google_gemini_live_native_audio (legacy)  -> gemini-live-2.5-flash-native-audio
+ */
+
+import type {
+  VoicePipelineAdapter,
+  VoicePipelineAvailability,
+  VoicePipelineCloseContext,
+  VoicePipelineEnvContext,
+  VoicePipelineProvider,
+  VoicePipelineSession,
+  VoicePipelineSessionContext,
+} from "@workspace/voicelab-core/voice-pipeline";
+
+export interface GeminiLiveAdapterSpec {
+  provider: VoicePipelineProvider;
+  displayName: string;
+  recommendedFor: VoicePipelineAdapter["recommendedFor"];
+  /** Resource name suffix; full string sent to Gemini is `models/<modelId>`. */
+  modelId: string;
+  /** Adapter-level marker that influences the relay's default config. */
+  capabilityProfile: "preview_3_1" | "ga_2_5";
+}
+
+function readApiKey(): string {
+  return process.env.GOOGLE_GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY ?? "";
+}
+
+/**
+ * Cache the result of a real generation probe so the wizard shows a
+ * truthful availability for each Gemini provider. We can't tell from key
+ * format alone whether the underlying GCP project has been granted
+ * access to the Generative Language API — a key that lists models can
+ * still be denied at generation time. The probe sends one tiny text
+ * request and remembers the verdict for a few minutes.
+ */
+type ProbeVerdict =
+  | { ok: true }
+  | { ok: false; status: number; reason: string };
+
+let probeCache: { verdict: ProbeVerdict; expiresAt: number } | null = null;
+const PROBE_TTL_MS = 5 * 60 * 1000;
+
+async function probeGeminiAccess(): Promise<ProbeVerdict> {
+  if (probeCache && probeCache.expiresAt > Date.now()) return probeCache.verdict;
+  const apiKey = readApiKey();
+  if (!apiKey) {
+    const verdict: ProbeVerdict = { ok: false, status: 0, reason: "GOOGLE_GEMINI_API_KEY not set" };
+    probeCache = { verdict, expiresAt: Date.now() + PROBE_TTL_MS };
+    return verdict;
+  }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5000);
+  try {
+    const res = await fetch(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+      {
+        method: "POST",
+        headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
+        signal: controller.signal,
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: "ok" }] }],
+          generationConfig: { maxOutputTokens: 1 },
+        }),
+      },
+    );
+    if (res.ok) {
+      const verdict: ProbeVerdict = { ok: true };
+      probeCache = { verdict, expiresAt: Date.now() + PROBE_TTL_MS };
+      return verdict;
+    }
+    let reason = `HTTP ${res.status}`;
+    try {
+      const body = (await res.json()) as { error?: { message?: string; status?: string } };
+      if (body.error?.message) reason = body.error.message;
+      if (body.error?.status) reason = `${body.error.status}: ${reason}`;
+    } catch {
+      // ignore
+    }
+    const verdict: ProbeVerdict = { ok: false, status: res.status, reason };
+    probeCache = { verdict, expiresAt: Date.now() + PROBE_TTL_MS };
+    return verdict;
+  } catch (e) {
+    const reason = e instanceof Error ? e.message : "probe failed";
+    const verdict: ProbeVerdict = { ok: false, status: 0, reason };
+    probeCache = { verdict, expiresAt: Date.now() + 30 * 1000 };
+    return verdict;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/** Reset the probe cache. Useful after the operator updates the key. */
+export function invalidateGeminiAccessProbe(): void {
+  probeCache = null;
+}
+
+export class GoogleGeminiLiveAdapter implements VoicePipelineAdapter {
+  readonly provider: VoicePipelineProvider;
+  readonly category = "native_realtime_speech_to_speech" as const;
+  readonly displayName: string;
+  readonly recommendedFor: VoicePipelineAdapter["recommendedFor"];
+  readonly modelId: string;
+  readonly capabilityProfile: GeminiLiveAdapterSpec["capabilityProfile"];
+
+  readonly supportsNativeAudio = true;
+  readonly supportsRealtimeToolCalling = true;
+  readonly supportsBargeIn = true;
+  readonly supportsServerVAD = true;
+  readonly supportsClientVAD = true;
+  readonly supportsTurnDetection = true;
+  readonly supportsNoiseSuppression = true;
+  readonly supportsWakeWord = false;
+  readonly supportsMultilingual = true;
+  readonly supportsMobile = true;
+  readonly supportsBrowser = true;
+
+  readonly requiresServerRelay = true;
+  readonly requiresEphemeralToken = false;
+  readonly requiresProviderAgentConfig = false;
+
+  constructor(spec: GeminiLiveAdapterSpec) {
+    this.provider = spec.provider;
+    this.displayName = spec.displayName;
+    this.recommendedFor = spec.recommendedFor;
+    this.modelId = spec.modelId;
+    this.capabilityProfile = spec.capabilityProfile;
+  }
+
+  async availability(_ctx: VoicePipelineEnvContext): Promise<VoicePipelineAvailability> {
+    if (!readApiKey()) {
+      return {
+        status: "needs_configuration",
+        reason: "GOOGLE_GEMINI_API_KEY not set on the server.",
+        missing: ["GOOGLE_GEMINI_API_KEY"],
+      };
+    }
+    // Real probe — a key that lists models can still be denied at
+    // generation time if the Google Cloud project hasn't enabled
+    // billing or hasn't been granted Generative Language API access.
+    // We surface that clearly so the wizard doesn't promise an engine
+    // we can't actually start a session with.
+    const probe = await probeGeminiAccess();
+    if (!probe.ok) {
+      const isPermissionIssue = probe.status === 403 || /PERMISSION_DENIED/i.test(probe.reason);
+      return {
+        status: "needs_configuration",
+        reason: isPermissionIssue
+          ? `Google denied this project access to the Gemini API. Enable billing on the GCP project tied to the API key, or generate a new key from a billed AI Studio project. Raw error: ${probe.reason}`
+          : `Gemini availability probe failed: ${probe.reason}`,
+        missing: ["GOOGLE_GEMINI_API_KEY"],
+      };
+    }
+    return {
+      status: this.capabilityProfile === "preview_3_1" ? "experimental" : "available",
+      reason:
+        this.capabilityProfile === "preview_3_1"
+          ? "Preview model. Production-ready relay implemented; pricing and quotas may shift while in preview."
+          : undefined,
+    };
+  }
+
+  async createSession(ctx: VoicePipelineSessionContext): Promise<VoicePipelineSession> {
+    if (!readApiKey()) {
+      throw new Error("GOOGLE_GEMINI_API_KEY missing");
+    }
+    const sessionId = `gemini-${ctx.userId}-${Date.now()}`;
+    return {
+      sessionId,
+      provider: this.provider,
+      clientHandshake: {
+        kind: "ws_relay",
+        payload: {
+          path: "/api/realtime/gemini",
+          query: {
+            sessionId,
+            agentProfileId: ctx.agentProfileId,
+            modelId: this.modelId,
+          },
+        },
+      },
+      capabilities: {
+        nativeAudio: true,
+        realtimeToolCalling: true,
+        bargeIn: true,
+        serverVAD: true,
+      },
+    };
+  }
+
+  async closeSession(_ctx: VoicePipelineCloseContext): Promise<void> {
+    // Cleanup happens in ws-relay on socket close.
+  }
+}
+
+/**
+ * Convert a VoyceLab ToolDefinition (OpenAI/JSON-Schema shape) into the
+ * Gemini Live `Tool.functionDeclarations` shape. The schemas are largely
+ * compatible — Gemini uses the same JSON-Schema subset and the same
+ * `name`, `description`, `parameters` keys — so this is a 1:1 pass-through.
+ */
+export interface GeminiFunctionDeclaration {
+  name: string;
+  description: string;
+  parameters: Record<string, unknown>;
+}
+
+export function toolDefinitionsToGeminiTools(
+  definitions: ReadonlyArray<{
+    type?: string;
+    name: string;
+    description?: string;
+    parameters?: unknown;
+  }>,
+): { functionDeclarations: GeminiFunctionDeclaration[] }[] {
+  const decls: GeminiFunctionDeclaration[] = definitions.map((t) => ({
+    name: t.name,
+    description: t.description ?? "",
+    parameters: (t.parameters as Record<string, unknown>) ?? {
+      type: "object",
+      properties: {},
+    },
+  }));
+  return [{ functionDeclarations: decls }];
+}
+
+/**
+ * Build the `setup` payload that opens a Gemini Live session for a given
+ * agent. Used by the WS relay route.
+ */
+export interface GeminiSetupOptions {
+  modelId: string;
+  instructions: string;
+  tools: ReadonlyArray<{
+    type?: string;
+    name: string;
+    description?: string;
+    parameters?: unknown;
+  }>;
+  capabilityProfile: GeminiLiveAdapterSpec["capabilityProfile"];
+  /** ISO-639 / BCP-47 language codes for ASR; first wins for output. */
+  inputLanguageCodes?: string[];
+  /** Whether to enable Proactive Audio (2.5 native only). */
+  proactiveAudio?: boolean;
+  /** Thinking depth for 3.1 Flash Live. */
+  thinkingLevel?: "minimal" | "low" | "medium" | "high";
+  /** Output voice (for native audio). Optional — Gemini uses defaults. */
+  voiceName?: string;
+}
+
+export function buildGeminiLiveSetupMessage(opts: GeminiSetupOptions): Record<string, unknown> {
+  const generationConfig: Record<string, unknown> = {
+    responseModalities: ["AUDIO"],
+    speechConfig: opts.voiceName
+      ? { voiceConfig: { prebuiltVoiceConfig: { voiceName: opts.voiceName } } }
+      : undefined,
+  };
+  if (opts.thinkingLevel && opts.capabilityProfile === "preview_3_1") {
+    (generationConfig as Record<string, unknown>).thinkingConfig = {
+      thinkingLevel: opts.thinkingLevel.toUpperCase(),
+    };
+  }
+  // Drop undefined so we don't send literal nulls.
+  for (const k of Object.keys(generationConfig)) {
+    if (generationConfig[k] === undefined) delete generationConfig[k];
+  }
+
+  const setup: Record<string, unknown> = {
+    model: `models/${opts.modelId}`,
+    generationConfig,
+    systemInstruction: {
+      parts: [{ text: opts.instructions }],
+    },
+    tools: toolDefinitionsToGeminiTools(opts.tools),
+    inputAudioTranscription:
+      opts.inputLanguageCodes && opts.inputLanguageCodes.length > 0
+        ? { languageCodes: opts.inputLanguageCodes }
+        : {},
+    outputAudioTranscription: {},
+  };
+
+  // Proactive audio: lets the model stay silent on irrelevant speech. Only
+  // valid on the 2.5 GA native-audio model per the public schema.
+  if (opts.proactiveAudio && opts.capabilityProfile === "ga_2_5") {
+    setup.proactivity = { proactiveAudio: true };
+  }
+
+  return { setup };
+}
+
+export const GEMINI_LIVE_ENDPOINT =
+  "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent";
+
+export function buildGeminiLiveUrl(): string {
+  const apiKey = readApiKey();
+  if (!apiKey) throw new Error("GOOGLE_GEMINI_API_KEY missing");
+  return `${GEMINI_LIVE_ENDPOINT}?key=${encodeURIComponent(apiKey)}`;
+}
+
+export const GEMINI_LIVE_ADAPTER_SPECS: GeminiLiveAdapterSpec[] = [
+  {
+    provider: "google_gemini_3_1_flash_live",
+    displayName: "Gemini 3.1 Flash Live",
+    recommendedFor: [
+      "lowest_latency_browser",
+      "lowest_latency_mobile",
+      "noisy_bar",
+      "best_turn_taking",
+      "best_tool_control",
+    ],
+    modelId: "gemini-3.1-flash-live-preview",
+    capabilityProfile: "preview_3_1",
+  },
+  {
+    provider: "google_gemini_2_5_flash_native_audio",
+    displayName: "Gemini 2.5 Flash Native Audio",
+    recommendedFor: ["best_voice_quality", "best_turn_taking", "enterprise_observability"],
+    modelId: "gemini-live-2.5-flash-native-audio",
+    capabilityProfile: "ga_2_5",
+  },
+  {
+    provider: "google_gemini_live_native_audio",
+    displayName: "Gemini Live (legacy alias)",
+    recommendedFor: ["best_voice_quality", "best_turn_taking"],
+    modelId: "gemini-live-2.5-flash-native-audio",
+    capabilityProfile: "ga_2_5",
+  },
+];

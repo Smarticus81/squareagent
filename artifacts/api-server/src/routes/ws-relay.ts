@@ -20,9 +20,24 @@ import {
   type LiveSession,
 } from "../lib/square-helpers";
 import { ALL_TOOLS, executeToolCall, toolCount } from "../tools";
+import {
+  buildGeminiLiveSetupMessage,
+  buildGeminiLiveUrl,
+} from "../voice-pipelines/google/gemini-live";
 
 const JWT_SECRET = process.env.JWT_SECRET ?? "voycelab-dev-secret-change-in-production";
 const OPENAI_REALTIME_MODEL = "gpt-realtime-mini";
+
+type RelayKind = "openai" | "gemini";
+
+interface RelayCtx {
+  userId: number;
+  venueId: number | null;
+  squareToken: string;
+  squareLocationId: string;
+  kind: RelayKind;
+  geminiModelId: string | null;
+}
 
 // ── Auth helper ───────────────────────────────────────────────────────────────
 
@@ -140,14 +155,18 @@ export function attachWebSocketRelay(server: Server): void {
   server.on("upgrade", async (req: IncomingMessage, socket, head) => {
     const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
 
-    // Only handle /api/realtime WebSocket upgrades
-    if (url.pathname !== "/api/realtime") {
+    // Route by path: OpenAI relay on /api/realtime, Gemini relay on /api/realtime/gemini
+    let kind: RelayKind;
+    if (url.pathname === "/api/realtime") kind = "openai";
+    else if (url.pathname === "/api/realtime/gemini") kind = "gemini";
+    else {
       socket.destroy();
       return;
     }
 
     const token = url.searchParams.get("token");
     const venueIdStr = url.searchParams.get("venueId");
+    const geminiModelId = url.searchParams.get("modelId");
 
     if (!token) {
       socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
@@ -183,21 +202,23 @@ export function attachWebSocketRelay(server: Server): void {
     }
 
     wss.handleUpgrade(req, socket, head, (clientWs) => {
-      wss.emit("connection", clientWs, req, {
+      const ctx: RelayCtx = {
         userId: auth.userId,
         venueId: venueIdStr ? Number(venueIdStr) : null,
         squareToken,
         squareLocationId,
-      });
+        kind,
+        geminiModelId,
+      };
+      wss.emit("connection", clientWs, req, ctx);
     });
   });
 
-  wss.on("connection", (clientWs: WebSocket, _req: IncomingMessage, ctx: {
-    userId: number;
-    venueId: number | null;
-    squareToken: string;
-    squareLocationId: string;
-  }) => {
+  wss.on("connection", (clientWs: WebSocket, _req: IncomingMessage, ctx: RelayCtx) => {
+    if (ctx.kind === "gemini") {
+      handleGeminiRelay(clientWs, ctx);
+      return;
+    }
     const apiKey = process.env.OPENAI_API_KEY ?? process.env.AI_INTEGRATIONS_OPENAI_API_KEY ?? "";
     if (!apiKey) {
       clientWs.send(JSON.stringify({ type: "error", error: { message: "OpenAI API key not configured" } }));
@@ -387,5 +408,211 @@ export function attachWebSocketRelay(server: Server): void {
     });
   });
 
-  console.log("[WS-Relay] WebSocket relay attached for /api/realtime");
+  console.log("[WS-Relay] WebSocket relay attached for /api/realtime and /api/realtime/gemini");
+}
+
+// ── Gemini Live relay (BidiGenerateContent over WebSocket) ────────────────────
+
+function handleGeminiRelay(clientWs: WebSocket, ctx: RelayCtx): void {
+  const apiKey = process.env.GOOGLE_GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY ?? "";
+  if (!apiKey) {
+    clientWs.send(JSON.stringify({ type: "error", error: { message: "GOOGLE_GEMINI_API_KEY not configured" } }));
+    clientWs.close();
+    return;
+  }
+
+  const modelId = ctx.geminiModelId ?? "gemini-live-2.5-flash-native-audio";
+  const capabilityProfile: "preview_3_1" | "ga_2_5" =
+    modelId.includes("3.1-flash-live") ? "preview_3_1" : "ga_2_5";
+
+  let catalog: CatalogItem[] = [];
+  let order: OrderItem[] = [];
+  const session: LiveSession = { items: [] };
+  let sessionSquareToken = ctx.squareToken;
+  let sessionLocationId = ctx.squareLocationId;
+  let inputLanguageCodes: string[] | undefined;
+  let proactiveAudio = capabilityProfile === "ga_2_5";
+  let thinkingLevel: "minimal" | "low" | "medium" | "high" = "minimal";
+  let voiceName: string | undefined;
+
+  console.log(`[WS-Relay/Gemini] Connected for user ${ctx.userId} model=${modelId}`);
+
+  const upstreamUrl = (() => {
+    try {
+      return buildGeminiLiveUrl();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "url build failed";
+      clientWs.send(JSON.stringify({ type: "error", error: { message: msg } }));
+      clientWs.close();
+      return null;
+    }
+  })();
+  if (!upstreamUrl) return;
+
+  const upstream = new WebSocket(upstreamUrl);
+  let upstreamReady = false;
+  let setupSent = false;
+  let pendingFromClient: string[] = [];
+
+  function sendSetup(): void {
+    const setup = buildGeminiLiveSetupMessage({
+      modelId,
+      instructions: buildInstructions(catalog, order),
+      tools: ALL_TOOLS,
+      capabilityProfile,
+      inputLanguageCodes,
+      proactiveAudio,
+      thinkingLevel,
+      voiceName,
+    });
+    upstream.send(JSON.stringify(setup));
+    setupSent = true;
+  }
+
+  upstream.on("open", () => {
+    console.log(`[WS-Relay/Gemini] Upstream connected user=${ctx.userId}`);
+    upstreamReady = true;
+    sendSetup();
+  });
+
+  upstream.on("message", async (data, isBinary) => {
+    const raw = isBinary ? data.toString() : data.toString();
+    let event: Record<string, unknown>;
+    try {
+      event = JSON.parse(raw);
+    } catch {
+      if (clientWs.readyState === WebSocket.OPEN) clientWs.send(raw);
+      return;
+    }
+
+    // Setup ack — flush any queued client messages.
+    if (event.setupComplete !== undefined) {
+      console.log(`[WS-Relay/Gemini] Setup complete for user=${ctx.userId}, ${toolCount()} tools registered`);
+      for (const msg of pendingFromClient) upstream.send(msg);
+      pendingFromClient = [];
+      if (clientWs.readyState === WebSocket.OPEN) clientWs.send(raw);
+      return;
+    }
+
+    // Tool calls — execute server-side, post results back.
+    const toolCall = event.toolCall as
+      | { functionCalls?: Array<{ id?: string; name?: string; args?: Record<string, unknown> }> }
+      | undefined;
+    if (toolCall && Array.isArray(toolCall.functionCalls)) {
+      const responses: Array<{ id: string; name: string; response: { result?: string; error?: string } }> = [];
+      for (const fc of toolCall.functionCalls) {
+        const name = String(fc.name ?? "");
+        const id = String(fc.id ?? "");
+        const args = (fc.args ?? {}) as Record<string, unknown>;
+        console.log(`[WS-Relay/Gemini] Tool call: ${name}(${JSON.stringify(args)})`);
+        try {
+          const { result, command } = await executeToolCall(
+            name,
+            args,
+            { catalog, order, squareToken: sessionSquareToken, squareLocationId: sessionLocationId, session },
+          );
+          responses.push({ id, name, response: { result } });
+          if (command && clientWs.readyState === WebSocket.OPEN) {
+            clientWs.send(JSON.stringify({ type: "x.order_command", command }));
+          }
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : "tool call failed";
+          console.error(`[WS-Relay/Gemini] Tool error: ${msg}`);
+          responses.push({ id, name, response: { error: msg } });
+        }
+      }
+      upstream.send(JSON.stringify({ toolResponse: { functionResponses: responses } }));
+      // Forward to client too so the UI can show the tool call event.
+      if (clientWs.readyState === WebSocket.OPEN) clientWs.send(raw);
+      return;
+    }
+
+    // Forward all other messages (serverContent / transcripts / goAway / etc.)
+    if (clientWs.readyState === WebSocket.OPEN) clientWs.send(raw);
+  });
+
+  upstream.on("error", (err) => {
+    console.error(`[WS-Relay/Gemini] Upstream error: ${err.message}`);
+    if (clientWs.readyState === WebSocket.OPEN) {
+      clientWs.send(JSON.stringify({ type: "error", error: { message: "Voice service connection failed" } }));
+      clientWs.close();
+    }
+  });
+
+  upstream.on("close", () => {
+    console.log(`[WS-Relay/Gemini] Upstream closed user=${ctx.userId}`);
+    if (clientWs.readyState === WebSocket.OPEN) clientWs.close();
+  });
+
+  clientWs.on("message", (data) => {
+    const raw = data.toString();
+    let event: Record<string, unknown>;
+    try {
+      event = JSON.parse(raw);
+    } catch {
+      if (upstreamReady && setupSent) upstream.send(raw);
+      else pendingFromClient.push(raw);
+      return;
+    }
+
+    // Custom context update from the PWA — refresh local state and re-send setup.
+    if (event.type === "x.context_update") {
+      if (Array.isArray(event.catalog)) catalog = event.catalog as CatalogItem[];
+      if (Array.isArray(event.order)) order = event.order as OrderItem[];
+      if (event.squareToken) sessionSquareToken = String(event.squareToken);
+      if (event.squareLocationId) sessionLocationId = String(event.squareLocationId);
+      if (Array.isArray(event.languageCodes)) inputLanguageCodes = event.languageCodes as string[];
+      if (typeof event.proactiveAudio === "boolean") proactiveAudio = event.proactiveAudio;
+      if (
+        typeof event.thinkingLevel === "string" &&
+        ["minimal", "low", "medium", "high"].includes(event.thinkingLevel)
+      ) {
+        thinkingLevel = event.thinkingLevel as typeof thinkingLevel;
+      }
+      if (typeof event.voice === "string") voiceName = event.voice;
+
+      // Gemini Live's `setup` is only valid as the first message. To apply
+      // updated instructions mid-session we send a clientContent turn that
+      // re-injects the system prompt as a high-priority user note. This is
+      // honest with the API: we don't pretend to mutate the original setup.
+      if (upstreamReady && setupSent) {
+        upstream.send(
+          JSON.stringify({
+            clientContent: {
+              turns: [
+                {
+                  role: "user",
+                  parts: [
+                    {
+                      text: `[Updated context]\n${buildInstructions(catalog, order)}`,
+                    },
+                  ],
+                },
+              ],
+              turnComplete: false,
+            },
+          }),
+        );
+      }
+      return;
+    }
+
+    if (upstreamReady && setupSent) upstream.send(raw);
+    else pendingFromClient.push(raw);
+  });
+
+  clientWs.on("close", () => {
+    console.log(`[WS-Relay/Gemini] Client disconnected user=${ctx.userId}`);
+    if (session.squareOrderId) {
+      cancelLiveOrder(session, sessionSquareToken, sessionLocationId).catch(() => {});
+    }
+    if (upstream.readyState === WebSocket.OPEN || upstream.readyState === WebSocket.CONNECTING) {
+      upstream.close();
+    }
+  });
+
+  clientWs.on("error", (err) => {
+    console.error(`[WS-Relay/Gemini] Client WS error: ${err.message}`);
+    if (upstream.readyState === WebSocket.OPEN) upstream.close();
+  });
 }

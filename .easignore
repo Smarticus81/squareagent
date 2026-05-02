@@ -1,0 +1,63 @@
+# EAS Build ignore — keeps the upload focused on the Expo app.
+#
+# Why this exists:
+# 1. Without this file, EAS uploads the entire pnpm workspace and runs
+#    `pnpm install --frozen-lockfile` at the repo root. That fails with
+#      EACCES: permission denied, mkdir 'artifacts/api-server/node_modules'
+#    because the EAS Linux worker can't symlink workspace deps into the peer
+#    package node_modules dirs.
+# 2. We keep `pnpm-workspace.yaml` so pnpm can resolve `catalog:` versions used
+#    by the Expo app (react, react-dom, zod, @tanstack/react-query).
+# 3. We drop `pnpm-lock.yaml` so pnpm runs a non-frozen install scoped to the
+#    one workspace package present on disk (artifacts/square-voice-agent),
+#    avoiding "lockfile out of sync" errors and the multi-package symlinking
+#    that triggered the EACCES.
+# 4. The Expo app declares `node-linker=hoisted` in its local `.npmrc`, so the
+#    install runs as flat copies — no per-package symlinks at all.
+
+# Force a clean, single-package install on EAS workers
+pnpm-lock.yaml
+
+# Other workspace artifacts (server, web, PWA) — not used by the Expo app
+artifacts/api-server/
+artifacts/voycelab-landing/
+artifacts/voice-agent-pwa/
+
+# Server-only libraries (square-voice-agent has zero @workspace/* deps)
+lib/
+
+# Caches and build outputs
+node_modules/
+**/node_modules/
+**/dist/
+**/build/
+**/.expo/
+**/.next/
+**/.cache/
+
+# Local environment and secrets
+.env
+.env.*
+
+# Tooling
+.git/
+.cursor/
+.claude/
+.vscode/
+
+# Logs and OS junk
+*.log
+*.tsbuildinfo
+.DS_Store
+Thumbs.db
+
+# Repo-level docs / scripts unused by the Expo build
+CLAUDE.md
+RAILWAY.md
+README.md
+railway.json
+nixpacks.toml
+start-all.bat
+tsconfig.base.json
+tsconfig.json
+scripts/

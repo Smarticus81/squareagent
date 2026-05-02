@@ -13,7 +13,8 @@
     "./voice-pipeline": "./src/voice-pipeline/index.ts",
     "./agent-profile": "./src/agent-profile/index.ts",
     "./noise": "./src/noise/index.ts",
-    "./confirmation": "./src/confirmation/index.ts"
+    "./confirmation": "./src/confirmation/index.ts",
+    "./pricing": "./src/pricing/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --build",

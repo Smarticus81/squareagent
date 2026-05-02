@@ -43,15 +43,43 @@ export const VOICE_PIPELINE_PROVIDERS: Record<
     recommendedFor: ["enterprise_observability", "lowest_latency_mobile", "telephony_future"],
     requiredCredentials: ["OPENAI_API_KEY"],
   },
+  google_gemini_3_1_flash_live: {
+    provider: "google_gemini_3_1_flash_live",
+    category: "native_realtime_speech_to_speech",
+    displayName: "Gemini 3.1 Flash Live",
+    shortDescription:
+      "Google's newest native audio-to-audio model. 90+ languages, tunable thinking, async function calling, 90.8% on ComplexFuncBench Audio. Best background-noise rejection in this class.",
+    recommendedFor: [
+      "lowest_latency_browser",
+      "lowest_latency_mobile",
+      "noisy_bar",
+      "best_turn_taking",
+      "best_tool_control",
+    ],
+    requiredCredentials: ["GOOGLE_GEMINI_API_KEY"],
+    notes:
+      "Preview model gemini-3.1-flash-live-preview. Stateful WebSocket session, 16kHz PCM in / 24kHz PCM out, native barge-in.",
+  },
+  google_gemini_2_5_flash_native_audio: {
+    provider: "google_gemini_2_5_flash_native_audio",
+    category: "native_realtime_speech_to_speech",
+    displayName: "Gemini 2.5 Flash Native Audio",
+    shortDescription:
+      "GA model with Proactive Audio (only responds when addressed) and Affective Dialog (responds to user emotional tone). Stable and production-ready.",
+    recommendedFor: ["best_voice_quality", "best_turn_taking", "enterprise_observability"],
+    requiredCredentials: ["GOOGLE_GEMINI_API_KEY"],
+    notes:
+      "GA model gemini-live-2.5-flash-native-audio. Recommended when stability matters more than the absolute latest preview.",
+  },
   google_gemini_live_native_audio: {
     provider: "google_gemini_live_native_audio",
     category: "native_realtime_speech_to_speech",
-    displayName: "Google Gemini Live (native audio)",
+    displayName: "Gemini Live (legacy alias)",
     shortDescription:
-      "Native realtime voice with multimodal future, function calling, and affective audio.",
+      "Legacy alias retained for backward compatibility. New profiles should pick Gemini 3.1 Flash Live or Gemini 2.5 Flash Native Audio.",
     recommendedFor: ["best_voice_quality", "best_turn_taking"],
     requiredCredentials: ["GOOGLE_GEMINI_API_KEY"],
-    isExperimental: true,
+    notes: "Routes through the same adapter as Gemini 2.5 Flash Native Audio.",
   },
   hume_evi_3: {
     provider: "hume_evi_3",

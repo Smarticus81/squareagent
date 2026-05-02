@@ -56,7 +56,7 @@ app.use("/api/auth/signup", rateLimit({
   message: { error: "Too many signup attempts. Please try again later." },
 }));
 
-app.use("/api/realtime", rateLimit({
+app.use(["/api/realtime", "/api/realtime/gemini"], rateLimit({
   windowMs: 60 * 1000,
   max: 30,
   standardHeaders: true,

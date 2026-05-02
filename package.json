@@ -4,7 +4,7 @@
   "license": "MIT",
   "packageManager": "pnpm@9.15.9",
   "engines": {
-    "node": "22"
+    "node": ">=20"
   },
   "scripts": {
     "build": "pnpm run typecheck && pnpm -r --if-present run build",

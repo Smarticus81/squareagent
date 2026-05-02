@@ -13,6 +13,7 @@ import Assistants from "@/pages/assistants";
 import CreateAssistant from "@/pages/create-assistant";
 import ConnectedServices from "@/pages/connected-services";
 import Settings from "@/pages/settings";
+import Pricing from "@/pages/pricing";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient({
@@ -44,6 +45,8 @@ function Router() {
         <Route path="/assistants/new" component={CreateAssistant} />
         <Route path="/services" component={ConnectedServices} />
         <Route path="/settings" component={Settings} />
+        <Route path="/pricing" component={Pricing} />
+        <Route path="/plans" component={Pricing} />
         {/* Legacy redirects so existing links still resolve */}
         <Route path="/dashboard" component={Command} />
         <Route path="/agents" component={Assistants} />
