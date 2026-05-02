@@ -12,7 +12,12 @@ import {
 import { OpenAiRealtimeWebRtcAdapter } from "./openai/realtime-webrtc";
 import { OpenAiRealtimeServerWsAdapter } from "./openai/realtime-server-ws";
 import { GoogleGeminiLiveAdapter, GEMINI_LIVE_ADAPTER_SPECS } from "./google/gemini-live";
-import { UNCONFIGURED_VOICE_PIPELINE_ADAPTERS } from "./unconfigured";
+import { ElevenLabsAgentsAdapter } from "./elevenlabs/agents";
+import { HumeEvi3Adapter } from "./hume/evi-3";
+import { DeepgramVoiceAgentAdapter } from "./deepgram/voice-agent-api";
+import { LiveKitAgentsAdapter } from "./livekit/agents";
+import { PipecatGatewayAdapter } from "./pipecat/gateway";
+import { ModularCascadedAdapter, MODULAR_ADAPTER_SPECS } from "./modular/cascaded";
 import { BrowserSpeechApiAdapter } from "./fallback/browser-speech-api";
 import { PushToTalkTextAdapter, TextOnlyAdapter } from "./fallback/push-to-talk";
 
@@ -25,7 +30,12 @@ function register(adapter: VoicePipelineAdapter): void {
 register(new OpenAiRealtimeWebRtcAdapter());
 register(new OpenAiRealtimeServerWsAdapter());
 for (const spec of GEMINI_LIVE_ADAPTER_SPECS) register(new GoogleGeminiLiveAdapter(spec));
-for (const a of UNCONFIGURED_VOICE_PIPELINE_ADAPTERS) register(a);
+register(new HumeEvi3Adapter());
+register(new ElevenLabsAgentsAdapter());
+register(new DeepgramVoiceAgentAdapter());
+register(new LiveKitAgentsAdapter());
+register(new PipecatGatewayAdapter());
+for (const spec of MODULAR_ADAPTER_SPECS) register(new ModularCascadedAdapter(spec));
 register(new BrowserSpeechApiAdapter());
 register(new PushToTalkTextAdapter());
 register(new TextOnlyAdapter());

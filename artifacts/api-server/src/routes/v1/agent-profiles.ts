@@ -96,8 +96,13 @@ router.post("/", async (req: Request, res: Response) => {
   // Pipeline-tier gating: prevent picking a pipeline that's not unlocked
   // by the user's current subscription plan. This is enforced server-side
   // so the wizard can't bypass it by sending a different provider.
+  // Platform admins (tmusoni@thinkertons.com etc.) bypass tier gating.
+  const isAdmin = Boolean((req as Request & { isAdmin?: boolean }).isAdmin);
   const plan = (req as Request & { subscription?: { plan?: string } }).subscription?.plan ?? "trial";
-  if (!planAllowsPipeline(plan, body.voicePipelineProvider as VoicePipelineProvider)) {
+  if (
+    !isAdmin &&
+    !planAllowsPipeline(plan, body.voicePipelineProvider as VoicePipelineProvider)
+  ) {
     jsonError(
       res,
       402,
@@ -170,8 +175,12 @@ router.patch("/:id", async (req: Request, res: Response) => {
     return;
   }
   if (parsed.data.voicePipelineProvider) {
+    const isAdmin = Boolean((req as Request & { isAdmin?: boolean }).isAdmin);
     const plan = (req as Request & { subscription?: { plan?: string } }).subscription?.plan ?? "trial";
-    if (!planAllowsPipeline(plan, parsed.data.voicePipelineProvider as VoicePipelineProvider)) {
+    if (
+      !isAdmin &&
+      !planAllowsPipeline(plan, parsed.data.voicePipelineProvider as VoicePipelineProvider)
+    ) {
       jsonError(
         res,
         402,

@@ -58,6 +58,24 @@ const SAMPLE_VOICE_OPTIONS: Record<string, string[]> = {
   google_gemini_3_1_flash_live: ["Kore", "Aoede", "Puck", "Charon", "Leda", "Fenrir"],
   google_gemini_2_5_flash_native_audio: ["Aoede", "Kore", "Puck", "Zephyr", "Charon", "Leda"],
   google_gemini_live_native_audio: ["Aoede", "Kore", "Puck", "Zephyr"],
+  // Modular cascaded pipelines preview the OpenAI TTS voices because we
+  // synthesize the sample with the same TTS path that pipeline uses for
+  // OpenAI-driven turns; for Cartesia/Aura paths the voice character is
+  // labelled but the preview clip falls back to OpenAI TTS so previews
+  // stay available even without per-vendor keys.
+  deepgram_flux_cartesia: ["ash", "alloy", "ballad", "sage"],
+  deepgram_flux_aura: ["ash", "alloy", "ballad", "sage"],
+  cartesia_ink_sonic: ["ash", "alloy", "ballad", "sage"],
+  assemblyai_openai_cartesia: ["ash", "alloy", "ballad", "sage"],
+  custom_modular_pipeline: ["ash", "alloy", "ballad", "sage"],
+  // Hume / ElevenLabs / Deepgram-Agent / LiveKit / Pipecat each have
+  // their own voice catalogs; we surface labels only and reuse OpenAI
+  // TTS for the preview clip. The actual session uses the real provider.
+  elevenlabs_agents: ["Rachel", "Bella", "Antoni", "Domi"],
+  deepgram_voice_agent_api: ["asteria", "luna", "stella", "athena"],
+  hume_evi_3: ["ITO", "KORA", "AURA"],
+  livekit_agents: ["alloy", "ash", "verse"],
+  pipecat: ["alloy", "ash", "verse"],
 };
 
 const SAMPLE_DEFAULT_VOICE: Record<string, string> = {
@@ -66,14 +84,48 @@ const SAMPLE_DEFAULT_VOICE: Record<string, string> = {
   google_gemini_3_1_flash_live: "Kore",
   google_gemini_2_5_flash_native_audio: "Aoede",
   google_gemini_live_native_audio: "Aoede",
+  deepgram_flux_cartesia: "ash",
+  deepgram_flux_aura: "ash",
+  cartesia_ink_sonic: "ash",
+  assemblyai_openai_cartesia: "ash",
+  custom_modular_pipeline: "ash",
+  elevenlabs_agents: "Rachel",
+  deepgram_voice_agent_api: "asteria",
+  hume_evi_3: "ITO",
+  livekit_agents: "alloy",
+  pipecat: "alloy",
 };
 
+// Provider kind for the sample renderer. Native realtime providers have
+// their own TTS endpoints (openai/gemini); for everything else we
+// synthesize a neutral preview through OpenAI TTS so the wizard always
+// has *some* audio to play, even before the operator wires every key.
 const SAMPLE_PROVIDER_KIND: Record<string, "openai" | "gemini"> = {
   openai_realtime_webrtc: "openai",
   openai_realtime_server_ws: "openai",
   google_gemini_3_1_flash_live: "gemini",
   google_gemini_2_5_flash_native_audio: "gemini",
   google_gemini_live_native_audio: "gemini",
+  elevenlabs_agents: "openai",
+  deepgram_voice_agent_api: "openai",
+  hume_evi_3: "openai",
+  livekit_agents: "openai",
+  pipecat: "openai",
+  deepgram_flux_cartesia: "openai",
+  deepgram_flux_aura: "openai",
+  cartesia_ink_sonic: "openai",
+  assemblyai_openai_cartesia: "openai",
+  custom_modular_pipeline: "openai",
+};
+
+// For previewers that aren't OpenAI/Gemini, we always render through
+// OpenAI TTS using a neutral voice so the wizard never fails on
+// missing creds. Map provider voice labels back to a real OpenAI voice
+// for synthesis.
+const PREVIEW_VOICE_FALLBACK: Record<string, string> = {
+  Rachel: "alloy", Bella: "coral", Antoni: "ash", Domi: "verse",
+  asteria: "alloy", luna: "coral", stella: "sage", athena: "verse",
+  ITO: "ash", KORA: "coral", AURA: "alloy",
 };
 
 interface CachedSample {
@@ -227,10 +279,20 @@ router.get("/:provider/sample", async (req: Request, res: Response) => {
     return;
   }
   try {
+    // For non-native providers we always render through OpenAI TTS so a
+    // preview is available even when that vendor's key isn't configured.
+    // Map the labelled voice (e.g. "Rachel") back to a real OpenAI voice
+    // (e.g. "alloy") before synthesis.
+    const isNativeOpenAi = provider === "openai_realtime_webrtc" || provider === "openai_realtime_server_ws";
+    const isNativeGemini = provider.startsWith("google_gemini_");
     const synth =
-      kind === "openai"
+      kind === "openai" && !isNativeOpenAi
+        ? await synthesizeOpenAISample(PREVIEW_VOICE_FALLBACK[voice] ?? "alloy", SAMPLE_LINE)
+        : kind === "openai"
         ? await synthesizeOpenAISample(voice, SAMPLE_LINE)
-        : await synthesizeGeminiSample(voice, SAMPLE_LINE);
+        : isNativeGemini
+        ? await synthesizeGeminiSample(voice, SAMPLE_LINE)
+        : await synthesizeOpenAISample("alloy", SAMPLE_LINE);
     sampleCache.set(cacheKey, {
       bytes: synth.bytes,
       contentType: synth.contentType,

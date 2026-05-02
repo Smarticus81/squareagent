@@ -6,6 +6,7 @@ export const UserSchema = z.object({
   id: z.number(),
   email: z.string().email(),
   name: z.string(),
+  isAdmin: z.boolean().optional(),
 });
 
 export const SubscriptionSchema = z.object({
@@ -21,12 +22,14 @@ export const AuthResponseSchema = z.object({
   user: UserSchema,
   subscription: SubscriptionSchema.nullable().optional(),
   trialEndsAt: z.string().nullable().optional(),
+  isAdmin: z.boolean().optional(),
 });
 
 export const MeResponseSchema = z.object({
   user: UserSchema,
   subscription: SubscriptionSchema.nullable().optional(),
   organizationId: z.string().nullable().optional(),
+  isAdmin: z.boolean().optional(),
 });
 
 export type User = z.infer<typeof UserSchema>;

@@ -162,7 +162,18 @@ export const RecommendVoicePipelineResponse = z.object({
 export const CreateAgentProfileRequest = z.object({
   organizationId: z.string().uuid(),
   venueId: z.number().int().positive(),
-  connectedServiceId: z.string().uuid().optional(),
+  // Optional foreign key to service_connections.id. Only accept UUIDs;
+  // empty strings or provider slugs ("square", "toast", …) are coerced to
+  // undefined so the server stores NULL instead of failing validation.
+  connectedServiceId: z
+    .string()
+    .optional()
+    .transform((v) => {
+      if (!v) return undefined;
+      const isUuid =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+      return isUuid ? v : undefined;
+    }),
   displayName: z.string().min(1).max(60),
   wakePhrase: z.string().min(1).max(60).optional(),
   voicePipelineProvider: VoicePipelineProvider,

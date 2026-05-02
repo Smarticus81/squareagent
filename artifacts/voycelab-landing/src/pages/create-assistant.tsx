@@ -199,16 +199,31 @@ export default function CreateAssistant() {
   async function save() {
     if (!venueId) return setError("Choose a venue first.");
     if (!assistantName.trim()) return setError("Give your assistant a name.");
+    if (!auth?.organizationId) {
+      return setError(
+        "Your account isn't fully set up yet. Reload the page and try again — the server is provisioning your organization.",
+      );
+    }
     setSaving(true);
     setError(null);
     try {
+      const token = localStorage.getItem("voycelab_token") || "";
+      // connectedServiceId is a foreign key to service_connections.id (UUID).
+      // The wizard's serviceId is the provider slug ("square") — treat it as
+      // a hint, not a foreign key. Only forward real UUIDs.
+      const isUuid =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(serviceId);
+      const connectedServiceId = isUuid ? serviceId : undefined;
       const res = await fetch("/api/v1/agent-profiles", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({
-          organizationId: auth?.organizationId ?? "",
+          organizationId: auth.organizationId,
           venueId,
-          connectedServiceId: serviceId || undefined,
+          ...(connectedServiceId ? { connectedServiceId } : {}),
           displayName: assistantName,
           wakePhrase: `Hey ${assistantName}`,
           voicePipelineProvider: pipelineProvider,
@@ -220,8 +235,16 @@ export default function CreateAssistant() {
         }),
       });
       if (!res.ok) {
-        const body = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
-        throw new Error(body.error?.message ?? "Could not save your assistant.");
+        const body = (await res.json().catch(() => ({}))) as { error?: { message?: string; code?: string } };
+        const code = body.error?.code ?? "";
+        const baseMsg = body.error?.message ?? `Could not save your assistant. (HTTP ${res.status})`;
+        const friendly =
+          code === "pipeline_not_in_plan"
+            ? `${baseMsg} Visit /pricing to upgrade.`
+            : code === "venue_not_found"
+            ? "We couldn't find that venue. Reload the page and try again."
+            : baseMsg;
+        throw new Error(friendly);
       }
       const body = await res.json().catch(() => ({}));
       setSavedId(body?.id ?? "assistant");

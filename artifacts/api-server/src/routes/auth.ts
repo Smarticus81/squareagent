@@ -19,6 +19,99 @@ const DEFAULT_SECRET = "voycelab-dev-secret-change-in-production";
 export const JWT_SECRET = process.env.JWT_SECRET ?? DEFAULT_SECRET;
 const SESSION_DAYS = 30;
 
+/**
+ * Platform admin emails — never-expiring trial, every pipeline unlocked,
+ * every skill tier on, no plan gating. Configurable via ADMIN_EMAILS env
+ * (comma-separated). Compared case-insensitively.
+ */
+const FAR_FUTURE = new Date("9999-12-31T23:59:59Z");
+const ADMIN_EMAILS = (process.env.ADMIN_EMAILS ?? "tmusoni@thinkertons.com")
+  .split(",")
+  .map((s) => s.trim().toLowerCase())
+  .filter(Boolean);
+
+export function isAdminEmail(email: string | null | undefined): boolean {
+  if (!email) return false;
+  return ADMIN_EMAILS.includes(email.toLowerCase());
+}
+
+/**
+ * Synthetic admin subscription used by middleware when the DB row hasn't
+ * caught up yet. Stored shape matches `subscriptionsTable.$inferSelect`
+ * for downstream consumers (ws-relay, requirePlan, agent-profiles).
+ */
+export function buildAdminSubscription(userId: number): {
+  id: number;
+  userId: number;
+  stripeCustomerId: string | null;
+  stripeSubscriptionId: string | null;
+  plan: string;
+  status: string;
+  trialEndsAt: Date | null;
+  currentPeriodEnd: Date | null;
+  cancelAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+} {
+  return {
+    id: -1,
+    userId,
+    stripeCustomerId: null,
+    stripeSubscriptionId: null,
+    plan: "premium",
+    status: "active",
+    trialEndsAt: null,
+    currentPeriodEnd: FAR_FUTURE,
+    cancelAt: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+}
+
+/**
+ * Make sure an admin user has a subscription row that reflects platform
+ * admin status. Idempotent and safe to call on every authenticated request.
+ */
+async function ensureAdminSubscription(userId: number): Promise<void> {
+  if (!db) return;
+  try {
+    const [existing] = await db
+      .select()
+      .from(subscriptionsTable)
+      .where(eq(subscriptionsTable.userId, userId));
+    if (!existing) {
+      await db.insert(subscriptionsTable).values({
+        userId,
+        plan: "premium",
+        status: "active",
+        trialEndsAt: null,
+        currentPeriodEnd: FAR_FUTURE,
+      });
+      return;
+    }
+    const needsUpdate =
+      existing.plan !== "premium" ||
+      existing.status !== "active" ||
+      existing.trialEndsAt !== null ||
+      !existing.currentPeriodEnd ||
+      existing.currentPeriodEnd.getTime() < FAR_FUTURE.getTime();
+    if (needsUpdate) {
+      await db
+        .update(subscriptionsTable)
+        .set({
+          plan: "premium",
+          status: "active",
+          trialEndsAt: null,
+          currentPeriodEnd: FAR_FUTURE,
+          updatedAt: new Date(),
+        })
+        .where(eq(subscriptionsTable.userId, userId));
+    }
+  } catch (e) {
+    console.error("[Auth] ensureAdminSubscription failed:", e instanceof Error ? e.message : e);
+  }
+}
+
 /** Fail hard if running in production with the default secret */
 export function assertJwtSecret(): void {
   if (JWT_SECRET === DEFAULT_SECRET && process.env.NODE_ENV === "production") {
@@ -71,10 +164,20 @@ export async function requireAuth(req: Request, res: Response, next: Function): 
     const [user] = await db.select().from(usersTable).where(eq(usersTable.id, payload.sub));
     if (!user) { res.status(401).json({ error: "User not found" }); return; }
 
-    // Attach subscription for downstream plan checks
-    const [subscription] = await db.select().from(subscriptionsTable).where(eq(subscriptionsTable.userId, user.id));
+    const isAdmin = isAdminEmail(user.email);
+    if (isAdmin) {
+      // Idempotently mirror the admin entitlements into the DB so that
+      // any downstream code reading subscriptions directly (PWA, Expo
+      // app, Stripe sync) sees the same source of truth.
+      await ensureAdminSubscription(user.id);
+    }
+
+    let [subscription] = await db.select().from(subscriptionsTable).where(eq(subscriptionsTable.userId, user.id));
+    if (!subscription && isAdmin) subscription = buildAdminSubscription(user.id) as never;
+
     (req as any).user = user;
     (req as any).subscription = subscription ?? null;
+    (req as any).isAdmin = isAdmin;
     next();
   } catch (e: any) {
     console.error("[Auth] Session lookup error:", e.message);
@@ -85,6 +188,8 @@ export async function requireAuth(req: Request, res: Response, next: Function): 
 /** Middleware: require an active subscription (trial or paid). */
 export function requirePlan() {
   return (req: Request, res: Response, next: Function): void => {
+    if ((req as any).isAdmin) { next(); return; }
+
     const sub = (req as any).subscription;
     if (!sub) { res.status(403).json({ error: "No active subscription" }); return; }
 
@@ -128,13 +233,14 @@ router.post("/signup", async (req: Request, res: Response): Promise<void> => {
       name: name.trim(),
     }).returning();
 
-    // Create 14-day free trial subscription
-    const trialEndsAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
+    const isAdmin = isAdminEmail(user.email);
+    const trialEndsAt = isAdmin ? null : new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
     await db.insert(subscriptionsTable).values({
       userId: user.id,
-      plan: "trial",
-      status: "trialing",
+      plan: isAdmin ? "premium" : "trial",
+      status: isAdmin ? "active" : "trialing",
       trialEndsAt,
+      currentPeriodEnd: isAdmin ? FAR_FUTURE : null,
     });
 
     const sessionId = crypto.randomUUID();
@@ -144,8 +250,9 @@ router.post("/signup", async (req: Request, res: Response): Promise<void> => {
     const token = signToken(user.id, sessionId);
     res.json({
       token,
-      user: { id: user.id, email: user.email, name: user.name },
+      user: { id: user.id, email: user.email, name: user.name, isAdmin },
       trialEndsAt,
+      isAdmin,
     });
   } catch (e: any) {
     console.error("[Auth] Signup error:", e.message);
@@ -173,11 +280,15 @@ router.post("/login", async (req: Request, res: Response): Promise<void> => {
 
     const token = signToken(user.id, sessionId);
 
-    const [subscription] = await db.select().from(subscriptionsTable).where(eq(subscriptionsTable.userId, user.id));
+    const isAdmin = isAdminEmail(user.email);
+    if (isAdmin) await ensureAdminSubscription(user.id);
+    let [subscription] = await db.select().from(subscriptionsTable).where(eq(subscriptionsTable.userId, user.id));
+    if (!subscription && isAdmin) subscription = buildAdminSubscription(user.id) as never;
     res.json({
       token,
-      user: { id: user.id, email: user.email, name: user.name },
+      user: { id: user.id, email: user.email, name: user.name, isAdmin },
       subscription: subscription ?? null,
+      isAdmin,
     });
   } catch (e: any) {
     console.error("[Auth] Login error:", e.message);
@@ -190,9 +301,11 @@ router.get("/me", requireAuth as any, async (req: Request, res: Response): Promi
   if (!ensureAuthStore(res)) return;
 
   const user = (req as any).user;
+  const isAdmin: boolean = Boolean((req as any).isAdmin);
 
   try {
-    const [subscription] = await db.select().from(subscriptionsTable).where(eq(subscriptionsTable.userId, user.id));
+    let [subscription] = await db.select().from(subscriptionsTable).where(eq(subscriptionsTable.userId, user.id));
+    if (!subscription && isAdmin) subscription = buildAdminSubscription(user.id) as never;
     // Best-effort organization lookup — the wizard needs this to create agent profiles.
     let organizationId: string | null = null;
     try {
@@ -203,9 +316,10 @@ router.get("/me", requireAuth as any, async (req: Request, res: Response): Promi
       // Tables may not yet be migrated; the wizard will surface an actionable error.
     }
     res.json({
-      user: { id: user.id, email: user.email, name: user.name },
+      user: { id: user.id, email: user.email, name: user.name, isAdmin },
       subscription: subscription ?? null,
       organizationId,
+      isAdmin,
     });
   } catch (e: any) {
     console.error("[Auth] Current user lookup error:", e.message);

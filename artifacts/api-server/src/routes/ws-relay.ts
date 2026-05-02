@@ -24,11 +24,23 @@ import {
   buildGeminiLiveSetupMessage,
   buildGeminiLiveUrl,
 } from "../voice-pipelines/google/gemini-live";
+import {
+  buildHumeWsUrl,
+  buildHumeSessionSettings,
+} from "../voice-pipelines/hume/evi-3";
+import {
+  buildDeepgramAgentWsUrl,
+  buildDeepgramAgentSettings,
+  deepgramAgentAuthHeaders,
+} from "../voice-pipelines/deepgram/voice-agent-api";
+import {
+  handleModularRelay,
+} from "../voice-pipelines/modular/relay";
 
 const JWT_SECRET = process.env.JWT_SECRET ?? "voycelab-dev-secret-change-in-production";
 const OPENAI_REALTIME_MODEL = "gpt-realtime-mini";
 
-type RelayKind = "openai" | "gemini";
+type RelayKind = "openai" | "gemini" | "hume" | "deepgram-agent" | "modular";
 
 interface RelayCtx {
   userId: number;
@@ -37,11 +49,25 @@ interface RelayCtx {
   squareLocationId: string;
   kind: RelayKind;
   geminiModelId: string | null;
+  /** Modular query params (sttVendor, llmVendor, ttsVendor, llmModel, agentProfileId, ...) */
+  query: Record<string, string>;
 }
 
 // ── Auth helper ───────────────────────────────────────────────────────────────
 
-async function authenticateToken(token: string): Promise<{ userId: number; subscription: any } | null> {
+const ADMIN_EMAILS = (process.env.ADMIN_EMAILS ?? "tmusoni@thinkertons.com")
+  .split(",")
+  .map((s) => s.trim().toLowerCase())
+  .filter(Boolean);
+
+function isAdminEmail(email: string | null | undefined): boolean {
+  if (!email) return false;
+  return ADMIN_EMAILS.includes(email.toLowerCase());
+}
+
+async function authenticateToken(
+  token: string,
+): Promise<{ userId: number; subscription: any; isAdmin: boolean } | null> {
   try {
     const payload = jwt.verify(token, JWT_SECRET) as unknown as { sub: number; sid: string };
     if (!payload?.sub || !payload?.sid) return null;
@@ -53,13 +79,18 @@ async function authenticateToken(token: string): Promise<{ userId: number; subsc
     if (!user) return null;
 
     const [subscription] = await db.select().from(subscriptionsTable).where(eq(subscriptionsTable.userId, user.id));
-    return { userId: user.id, subscription: subscription ?? null };
+    return {
+      userId: user.id,
+      subscription: subscription ?? null,
+      isAdmin: isAdminEmail(user.email),
+    };
   } catch {
     return null;
   }
 }
 
-function checkPlan(subscription: any): string | null {
+function checkPlan(subscription: any, isAdmin: boolean): string | null {
+  if (isAdmin) return null;
   if (!subscription) return "No active subscription";
 
   if (subscription.status === "trialing") {
@@ -155,13 +186,19 @@ export function attachWebSocketRelay(server: Server): void {
   server.on("upgrade", async (req: IncomingMessage, socket, head) => {
     const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
 
-    // Route by path: OpenAI relay on /api/realtime, Gemini relay on /api/realtime/gemini
+    // Route by path. Each pipeline that needs a server-side relay gets
+    // its own subpath; the upstream protocol is provider-specific so we
+    // dispatch to a dedicated handler.
     let kind: RelayKind;
-    if (url.pathname === "/api/realtime") kind = "openai";
-    else if (url.pathname === "/api/realtime/gemini") kind = "gemini";
-    else {
-      socket.destroy();
-      return;
+    switch (url.pathname) {
+      case "/api/realtime": kind = "openai"; break;
+      case "/api/realtime/gemini": kind = "gemini"; break;
+      case "/api/realtime/hume": kind = "hume"; break;
+      case "/api/realtime/deepgram-agent": kind = "deepgram-agent"; break;
+      case "/api/realtime/modular": kind = "modular"; break;
+      default:
+        socket.destroy();
+        return;
     }
 
     const token = url.searchParams.get("token");
@@ -182,8 +219,8 @@ export function attachWebSocketRelay(server: Server): void {
       return;
     }
 
-    // Check subscription plan
-    const planError = checkPlan(auth.subscription);
+    // Check subscription plan (admins bypass)
+    const planError = checkPlan(auth.subscription, auth.isAdmin);
     if (planError) {
       socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
       socket.destroy();
@@ -201,6 +238,11 @@ export function attachWebSocketRelay(server: Server): void {
       }
     }
 
+    const queryParams: Record<string, string> = {};
+    url.searchParams.forEach((value, key) => {
+      queryParams[key] = value;
+    });
+
     wss.handleUpgrade(req, socket, head, (clientWs) => {
       const ctx: RelayCtx = {
         userId: auth.userId,
@@ -209,6 +251,7 @@ export function attachWebSocketRelay(server: Server): void {
         squareLocationId,
         kind,
         geminiModelId,
+        query: queryParams,
       };
       wss.emit("connection", clientWs, req, ctx);
     });
@@ -217,6 +260,23 @@ export function attachWebSocketRelay(server: Server): void {
   wss.on("connection", (clientWs: WebSocket, _req: IncomingMessage, ctx: RelayCtx) => {
     if (ctx.kind === "gemini") {
       handleGeminiRelay(clientWs, ctx);
+      return;
+    }
+    if (ctx.kind === "hume") {
+      handleHumeRelay(clientWs, ctx);
+      return;
+    }
+    if (ctx.kind === "deepgram-agent") {
+      handleDeepgramAgentRelay(clientWs, ctx);
+      return;
+    }
+    if (ctx.kind === "modular") {
+      handleModularRelay({
+        clientWs,
+        ctx,
+        executeToolCall,
+        cancelLiveOrder,
+      });
       return;
     }
     const apiKey = process.env.OPENAI_API_KEY ?? process.env.AI_INTEGRATIONS_OPENAI_API_KEY ?? "";
@@ -408,7 +468,10 @@ export function attachWebSocketRelay(server: Server): void {
     });
   });
 
-  console.log("[WS-Relay] WebSocket relay attached for /api/realtime and /api/realtime/gemini");
+  console.log(
+    "[WS-Relay] WebSocket relay attached for /api/realtime, /api/realtime/gemini, " +
+      "/api/realtime/hume, /api/realtime/deepgram-agent, /api/realtime/modular",
+  );
 }
 
 // ── Gemini Live relay (BidiGenerateContent over WebSocket) ────────────────────
@@ -613,6 +676,298 @@ function handleGeminiRelay(clientWs: WebSocket, ctx: RelayCtx): void {
 
   clientWs.on("error", (err) => {
     console.error(`[WS-Relay/Gemini] Client WS error: ${err.message}`);
+    if (upstream.readyState === WebSocket.OPEN) upstream.close();
+  });
+}
+
+// ── Hume EVI 3 relay ──────────────────────────────────────────────────────────
+
+function handleHumeRelay(clientWs: WebSocket, ctx: RelayCtx): void {
+  if (!process.env.HUME_API_KEY) {
+    clientWs.send(JSON.stringify({ type: "error", error: { message: "HUME_API_KEY not configured" } }));
+    clientWs.close();
+    return;
+  }
+  let catalog: CatalogItem[] = [];
+  let order: OrderItem[] = [];
+  const session: LiveSession = { items: [] };
+  let sessionSquareToken = ctx.squareToken;
+  let sessionLocationId = ctx.squareLocationId;
+  let voice: string | undefined;
+
+  const url = (() => {
+    try {
+      return buildHumeWsUrl(ctx.query.configId);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "url build failed";
+      clientWs.send(JSON.stringify({ type: "error", error: { message } }));
+      clientWs.close();
+      return null;
+    }
+  })();
+  if (!url) return;
+
+  const upstream = new WebSocket(url);
+  let upstreamReady = false;
+  let pendingFromClient: string[] = [];
+
+  console.log(`[WS-Relay/Hume] Connected user=${ctx.userId}`);
+
+  function sendSettings(): void {
+    const settings = buildHumeSessionSettings(buildInstructions(catalog, order), ALL_TOOLS);
+    if (voice) (settings as Record<string, unknown>).voice = { name: voice };
+    upstream.send(JSON.stringify(settings));
+  }
+
+  upstream.on("open", () => {
+    upstreamReady = true;
+    sendSettings();
+    for (const m of pendingFromClient) upstream.send(m);
+    pendingFromClient = [];
+  });
+
+  upstream.on("message", async (data) => {
+    const raw = data.toString();
+    let event: Record<string, unknown>;
+    try {
+      event = JSON.parse(raw);
+    } catch {
+      if (clientWs.readyState === WebSocket.OPEN) clientWs.send(raw);
+      return;
+    }
+
+    if (event.type === "tool_call") {
+      const name = String(event.name ?? "");
+      const id = String(event.tool_call_id ?? event.id ?? "");
+      let args: Record<string, unknown> = {};
+      try {
+        args = typeof event.parameters === "string"
+          ? JSON.parse(String(event.parameters))
+          : (event.parameters as Record<string, unknown>) ?? {};
+      } catch { /* leave args empty */ }
+      console.log(`[WS-Relay/Hume] Tool call: ${name}(${JSON.stringify(args)})`);
+      try {
+        const { result, command } = await executeToolCall(
+          name,
+          args,
+          { catalog, order, squareToken: sessionSquareToken, squareLocationId: sessionLocationId, session },
+        );
+        upstream.send(JSON.stringify({
+          type: "tool_response",
+          tool_call_id: id,
+          content: result,
+        }));
+        if (command && clientWs.readyState === WebSocket.OPEN) {
+          clientWs.send(JSON.stringify({ type: "x.order_command", command }));
+        }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "tool call failed";
+        upstream.send(JSON.stringify({
+          type: "tool_error",
+          tool_call_id: id,
+          error: msg,
+        }));
+      }
+      if (clientWs.readyState === WebSocket.OPEN) clientWs.send(raw);
+      return;
+    }
+
+    if (clientWs.readyState === WebSocket.OPEN) clientWs.send(raw);
+  });
+
+  upstream.on("error", (err) => {
+    console.error(`[WS-Relay/Hume] Upstream error: ${err.message}`);
+    if (clientWs.readyState === WebSocket.OPEN) {
+      clientWs.send(JSON.stringify({ type: "error", error: { message: "Voice service connection failed" } }));
+      clientWs.close();
+    }
+  });
+
+  upstream.on("close", () => {
+    if (clientWs.readyState === WebSocket.OPEN) clientWs.close();
+  });
+
+  clientWs.on("message", (data) => {
+    const raw = data.toString();
+    let event: Record<string, unknown>;
+    try {
+      event = JSON.parse(raw);
+    } catch {
+      if (upstreamReady) upstream.send(raw);
+      else pendingFromClient.push(raw);
+      return;
+    }
+    if (event.type === "x.context_update") {
+      if (Array.isArray(event.catalog)) catalog = event.catalog as CatalogItem[];
+      if (Array.isArray(event.order)) order = event.order as OrderItem[];
+      if (event.squareToken) sessionSquareToken = String(event.squareToken);
+      if (event.squareLocationId) sessionLocationId = String(event.squareLocationId);
+      if (typeof event.voice === "string") voice = event.voice;
+      if (upstreamReady) sendSettings();
+      return;
+    }
+    if (upstreamReady) upstream.send(raw);
+    else pendingFromClient.push(raw);
+  });
+
+  clientWs.on("close", () => {
+    if (session.squareOrderId) {
+      cancelLiveOrder(session, sessionSquareToken, sessionLocationId).catch(() => {});
+    }
+    if (upstream.readyState === WebSocket.OPEN || upstream.readyState === WebSocket.CONNECTING) upstream.close();
+  });
+
+  clientWs.on("error", (err) => {
+    console.error(`[WS-Relay/Hume] Client WS error: ${err.message}`);
+    if (upstream.readyState === WebSocket.OPEN) upstream.close();
+  });
+}
+
+// ── Deepgram Voice Agent API relay ────────────────────────────────────────────
+
+function handleDeepgramAgentRelay(clientWs: WebSocket, ctx: RelayCtx): void {
+  if (!process.env.DEEPGRAM_API_KEY) {
+    clientWs.send(JSON.stringify({ type: "error", error: { message: "DEEPGRAM_API_KEY not configured" } }));
+    clientWs.close();
+    return;
+  }
+  let catalog: CatalogItem[] = [];
+  let order: OrderItem[] = [];
+  const session: LiveSession = { items: [] };
+  let sessionSquareToken = ctx.squareToken;
+  let sessionLocationId = ctx.squareLocationId;
+  let voice: string | undefined;
+
+  const upstream = new WebSocket(buildDeepgramAgentWsUrl(), {
+    headers: deepgramAgentAuthHeaders(),
+  });
+  let upstreamReady = false;
+  let pendingFromClient: Array<string | Buffer> = [];
+
+  console.log(`[WS-Relay/DG-Agent] Connected user=${ctx.userId}`);
+
+  function sendSettings(): void {
+    const settings = buildDeepgramAgentSettings({
+      instructions: buildInstructions(catalog, order),
+      tools: ALL_TOOLS,
+      voice,
+    });
+    upstream.send(JSON.stringify(settings));
+  }
+
+  upstream.on("open", () => {
+    upstreamReady = true;
+    sendSettings();
+    for (const m of pendingFromClient) upstream.send(m);
+    pendingFromClient = [];
+  });
+
+  upstream.on("message", async (data, isBinary) => {
+    if (isBinary) {
+      // Binary frames are TTS audio chunks — forward to client as-is.
+      if (clientWs.readyState === WebSocket.OPEN) clientWs.send(data);
+      return;
+    }
+    const raw = data.toString();
+    let event: Record<string, unknown>;
+    try {
+      event = JSON.parse(raw);
+    } catch {
+      if (clientWs.readyState === WebSocket.OPEN) clientWs.send(raw);
+      return;
+    }
+    if (event.type === "FunctionCallRequest") {
+      const id = String(event.function_call_id ?? "");
+      const name = String(event.function_name ?? "");
+      let args: Record<string, unknown> = {};
+      try {
+        args = typeof event.input === "string"
+          ? JSON.parse(String(event.input))
+          : (event.input as Record<string, unknown>) ?? {};
+      } catch { /* ignore */ }
+      console.log(`[WS-Relay/DG-Agent] Tool call: ${name}(${JSON.stringify(args)})`);
+      try {
+        const { result, command } = await executeToolCall(
+          name,
+          args,
+          { catalog, order, squareToken: sessionSquareToken, squareLocationId: sessionLocationId, session },
+        );
+        upstream.send(JSON.stringify({
+          type: "FunctionCallResponse",
+          function_call_id: id,
+          output: result,
+        }));
+        if (command && clientWs.readyState === WebSocket.OPEN) {
+          clientWs.send(JSON.stringify({ type: "x.order_command", command }));
+        }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "tool call failed";
+        upstream.send(JSON.stringify({
+          type: "FunctionCallResponse",
+          function_call_id: id,
+          output: `Error: ${msg}`,
+        }));
+      }
+      if (clientWs.readyState === WebSocket.OPEN) clientWs.send(raw);
+      return;
+    }
+    if (clientWs.readyState === WebSocket.OPEN) clientWs.send(raw);
+  });
+
+  upstream.on("error", (err) => {
+    console.error(`[WS-Relay/DG-Agent] Upstream error: ${err.message}`);
+    if (clientWs.readyState === WebSocket.OPEN) {
+      clientWs.send(JSON.stringify({ type: "error", error: { message: "Voice service connection failed" } }));
+      clientWs.close();
+    }
+  });
+
+  upstream.on("close", () => {
+    if (clientWs.readyState === WebSocket.OPEN) clientWs.close();
+  });
+
+  clientWs.on("message", (data, isBinary) => {
+    if (isBinary) {
+      if (upstreamReady) upstream.send(data);
+      else pendingFromClient.push(data as Buffer);
+      return;
+    }
+    const raw = data.toString();
+    let event: Record<string, unknown>;
+    try {
+      event = JSON.parse(raw);
+    } catch {
+      if (upstreamReady) upstream.send(raw);
+      else pendingFromClient.push(raw);
+      return;
+    }
+    if (event.type === "x.context_update") {
+      if (Array.isArray(event.catalog)) catalog = event.catalog as CatalogItem[];
+      if (Array.isArray(event.order)) order = event.order as OrderItem[];
+      if (event.squareToken) sessionSquareToken = String(event.squareToken);
+      if (event.squareLocationId) sessionLocationId = String(event.squareLocationId);
+      if (typeof event.voice === "string") voice = event.voice;
+      if (upstreamReady) {
+        upstream.send(JSON.stringify({
+          type: "UpdatePrompt",
+          prompt: buildInstructions(catalog, order),
+        }));
+      }
+      return;
+    }
+    if (upstreamReady) upstream.send(raw);
+    else pendingFromClient.push(raw);
+  });
+
+  clientWs.on("close", () => {
+    if (session.squareOrderId) {
+      cancelLiveOrder(session, sessionSquareToken, sessionLocationId).catch(() => {});
+    }
+    if (upstream.readyState === WebSocket.OPEN || upstream.readyState === WebSocket.CONNECTING) upstream.close();
+  });
+
+  clientWs.on("error", (err) => {
+    console.error(`[WS-Relay/DG-Agent] Client WS error: ${err.message}`);
     if (upstream.readyState === WebSocket.OPEN) upstream.close();
   });
 }
