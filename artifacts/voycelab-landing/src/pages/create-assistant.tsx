@@ -89,6 +89,27 @@ export default function CreateAssistant() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedId, setSavedId] = useState<string | null>(null);
+  const [openAiStatus, setOpenAiStatus] = useState<{
+    ok: boolean;
+    reason: string;
+    message?: string;
+  } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/v1/voice-pipelines/openai-status")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (cancelled || !d) return;
+        setOpenAiStatus({ ok: Boolean(d.ok), reason: String(d.reason ?? "unknown"), message: d.message });
+      })
+      .catch(() => {
+        if (!cancelled) setOpenAiStatus(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!authLoading && !auth) navigate("/login");
@@ -323,6 +344,9 @@ export default function CreateAssistant() {
 
           {/* Step body */}
           <section>
+            {openAiStatus && !openAiStatus.ok && (
+              <OpenAiStatusBanner status={openAiStatus} />
+            )}
             <PreviewBar
               name={assistantName}
               service={connectedServices.find((s) => s.id === serviceId)?.name ?? "Square"}
@@ -642,6 +666,85 @@ export default function CreateAssistant() {
 /* ─────────────────────────────────────────────────────────────────
    Helpers / sub-components
    ───────────────────────────────────────────────────────────────── */
+
+function OpenAiStatusBanner({
+  status,
+}: {
+  status: { ok: boolean; reason: string; message?: string };
+}) {
+  const copy = (() => {
+    switch (status.reason) {
+      case "missing_key":
+        return {
+          title: "Server is missing OPENAI_API_KEY.",
+          body: "Voice agents and previews can't run until OPENAI_API_KEY is set in the API server environment. The wizard will use a generic browser voice for previews in the meantime.",
+        };
+      case "insufficient_quota":
+        return {
+          title: "OpenAI account is out of quota.",
+          body: "Live agents and native voice previews will fail until billing is restored. Previews here will play a generic browser voice. Restore billing at platform.openai.com/settings/organization/billing.",
+        };
+      case "billing_disabled":
+        return {
+          title: "OpenAI rejected your API key.",
+          body: status.message
+            ? `OpenAI says: "${status.message}". Verify the key at platform.openai.com/api-keys and that the project has an active payment method.`
+            : "Verify the key at platform.openai.com/api-keys and that the project has an active payment method.",
+        };
+      default:
+        return {
+          title: "OpenAI is currently unreachable.",
+          body: status.message ?? "Voice previews will fall back to a generic browser voice until OpenAI responds again.",
+        };
+    }
+  })();
+  const url =
+    status.reason === "insufficient_quota"
+      ? "https://platform.openai.com/settings/organization/billing"
+      : "https://platform.openai.com/api-keys";
+  const ctaLabel =
+    status.reason === "insufficient_quota"
+      ? "Open OpenAI billing"
+      : status.reason === "missing_key"
+      ? null
+      : "Open OpenAI keys";
+  return (
+    <div
+      className="vl-panel p-4 mb-5 flex items-start gap-3"
+      style={{
+        borderColor: "rgba(232,93,72,0.45)",
+        background: "rgba(232,93,72,0.06)",
+      }}
+    >
+      <span
+        className="mt-0.5 inline-flex items-center justify-center w-6 h-6 rounded-full"
+        style={{ background: "rgba(232,93,72,0.18)", color: "var(--color-vl-danger)", fontWeight: 700, fontSize: 12 }}
+        aria-hidden="true"
+      >
+        !
+      </span>
+      <div className="flex-1 min-w-0">
+        <p className="text-[13px] font-semibold" style={{ color: "var(--color-vl-ivory)" }}>
+          {copy.title}
+        </p>
+        <p className="text-[12px] mt-1 leading-relaxed" style={{ color: "rgba(245,239,227,0.65)" }}>
+          {copy.body}
+        </p>
+        {ctaLabel && (
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-[12px] mt-2"
+            style={{ color: "var(--color-vl-brass2)" }}
+          >
+            {ctaLabel} <ExternalLink className="w-3 h-3" />
+          </a>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function PreviewBar({
   name,
@@ -1155,6 +1258,84 @@ function PipelineCard({
    Sample player — synthesizes a real audio clip on demand and plays it.
    ───────────────────────────────────────────────────────────────── */
 
+const SAMPLE_LINE = "Hey, ready when you are. Two ranch waters and a Bud heavy?";
+
+/**
+ * Map a vendor-specific voice label to the closest browser voice attribute
+ * (gender + lang) so the SpeechSynthesis fallback feels at least flavoured
+ * when native TTS isn't available. Best-effort — browser voices vary by OS.
+ */
+const BROWSER_VOICE_HINTS: Record<string, { gender: "female" | "male" | "neutral"; lang: string }> = {
+  ash: { gender: "male", lang: "en-US" },
+  alloy: { gender: "neutral", lang: "en-US" },
+  ballad: { gender: "female", lang: "en-US" },
+  coral: { gender: "female", lang: "en-US" },
+  sage: { gender: "neutral", lang: "en-US" },
+  verse: { gender: "male", lang: "en-US" },
+  Kore: { gender: "female", lang: "en-US" },
+  Aoede: { gender: "female", lang: "en-US" },
+  Puck: { gender: "male", lang: "en-US" },
+  Charon: { gender: "male", lang: "en-US" },
+  Leda: { gender: "female", lang: "en-US" },
+  Fenrir: { gender: "male", lang: "en-US" },
+  Zephyr: { gender: "neutral", lang: "en-US" },
+  Rachel: { gender: "female", lang: "en-US" },
+  Bella: { gender: "female", lang: "en-US" },
+  Antoni: { gender: "male", lang: "en-US" },
+  Domi: { gender: "female", lang: "en-US" },
+  asteria: { gender: "female", lang: "en-US" },
+  luna: { gender: "female", lang: "en-US" },
+  stella: { gender: "female", lang: "en-US" },
+  athena: { gender: "female", lang: "en-US" },
+  ITO: { gender: "male", lang: "en-US" },
+  KORA: { gender: "female", lang: "en-US" },
+  AURA: { gender: "female", lang: "en-US" },
+};
+
+function pickBrowserVoice(label: string): SpeechSynthesisVoice | null {
+  if (typeof window === "undefined" || !window.speechSynthesis) return null;
+  const all = window.speechSynthesis.getVoices();
+  if (all.length === 0) return null;
+  const hint = BROWSER_VOICE_HINTS[label] ?? { gender: "neutral", lang: "en-US" };
+  const en = all.filter((v) => v.lang.toLowerCase().startsWith(hint.lang.slice(0, 2).toLowerCase()));
+  const pool = en.length > 0 ? en : all;
+  const wantFemale = hint.gender === "female";
+  const wantMale = hint.gender === "male";
+  const match = pool.find((v) => {
+    const n = v.name.toLowerCase();
+    if (wantFemale) return /samantha|fiona|moira|tessa|karen|veena|allison|susan|zoe|sarah|female|sienna/.test(n);
+    if (wantMale) return /alex|daniel|fred|tom|aaron|gordon|jamie|reed|male|oliver/.test(n);
+    return true;
+  });
+  return match ?? pool[0] ?? null;
+}
+
+function speakWithBrowser(label: string, text: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (typeof window === "undefined" || !window.speechSynthesis) {
+      reject(new Error("Browser does not support SpeechSynthesis."));
+      return;
+    }
+    try {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      const voice = pickBrowserVoice(label);
+      if (voice) utterance.voice = voice;
+      utterance.rate = 1.05;
+      utterance.pitch = 1;
+      utterance.onend = () => resolve();
+      utterance.onerror = (ev) => reject(new Error(ev.error || "speechSynthesis error"));
+      window.speechSynthesis.speak(utterance);
+    } catch (e) {
+      reject(e instanceof Error ? e : new Error("speechSynthesis failed"));
+    }
+  });
+}
+
+interface SampleErrorBody {
+  error?: { code?: string; message?: string };
+}
+
 function SamplePlayer({
   provider,
   voice,
@@ -1165,8 +1346,9 @@ function SamplePlayer({
   disabled: boolean;
 }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const [state, setState] = useState<"idle" | "loading" | "playing" | "error">("idle");
+  const [state, setState] = useState<"idle" | "loading" | "playing" | "error" | "playing_fallback">("idle");
   const [errorText, setErrorText] = useState<string>("");
+  const [usedFallback, setUsedFallback] = useState<boolean>(false);
 
   useEffect(() => {
     return () => {
@@ -1176,33 +1358,69 @@ function SamplePlayer({
         a.src = "";
         audioRef.current = null;
       }
+      if (typeof window !== "undefined" && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
     };
   }, []);
 
   useEffect(() => {
     setState("idle");
+    setErrorText("");
+    setUsedFallback(false);
     const a = audioRef.current;
     if (a) {
       a.pause();
       a.src = "";
       audioRef.current = null;
     }
+    if (typeof window !== "undefined" && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
   }, [provider, voice]);
+
+  async function fallbackToBrowser(): Promise<void> {
+    setUsedFallback(true);
+    setState("playing_fallback");
+    try {
+      await speakWithBrowser(voice, SAMPLE_LINE);
+      setState("idle");
+    } catch (e) {
+      setState("error");
+      setErrorText(e instanceof Error ? e.message : "Browser preview failed");
+    }
+  }
 
   async function play() {
     if (disabled) return;
-    if (state === "playing") {
+    if (state === "playing" || state === "playing_fallback") {
       audioRef.current?.pause();
+      if (typeof window !== "undefined" && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
       setState("idle");
       return;
     }
     setState("loading");
     setErrorText("");
+    setUsedFallback(false);
     try {
       const url = `/api/v1/voice-pipelines/${encodeURIComponent(provider)}/sample?voice=${encodeURIComponent(voice)}`;
       const res = await fetch(url);
       if (!res.ok) {
-        const body = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
+        const body = (await res.json().catch(() => ({}))) as SampleErrorBody;
+        const code = body.error?.code ?? "";
+        // Anything billing-related routes through the silent browser fallback
+        // so the operator still gets a preview voice while we surface the
+        // underlying issue in the dashboard banner instead.
+        if (
+          code === "openai_quota_exhausted" ||
+          code === "openai_billing_disabled" ||
+          code === "openai_rate_limited"
+        ) {
+          await fallbackToBrowser();
+          return;
+        }
         throw new Error(body.error?.message ?? `Sample HTTP ${res.status}`);
       }
       const blob = await res.blob();
@@ -1221,35 +1439,58 @@ function SamplePlayer({
       await audio.play();
       setState("playing");
     } catch (e) {
-      setState("error");
-      setErrorText(e instanceof Error ? e.message : "Sample failed");
+      // Any unexpected failure falls back to the browser voice so the user
+      // is never blocked from previewing a pipeline they're considering.
+      try {
+        await fallbackToBrowser();
+      } catch {
+        setState("error");
+        setErrorText(e instanceof Error ? e.message : "Sample failed");
+      }
     }
   }
 
+  const isPlaying = state === "playing" || state === "playing_fallback";
+
   return (
-    <button
-      type="button"
-      onClick={play}
-      disabled={disabled || state === "loading"}
-      className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border transition-colors text-[12px]"
-      style={{
-        borderColor: state === "playing" ? "rgba(124,110,245,0.6)" : "rgba(245,239,227,0.18)",
-        background: state === "playing" ? "rgba(124,110,245,0.08)" : "rgba(245,239,227,0.025)",
-        color: "var(--color-vl-ivory)",
-        opacity: disabled ? 0.5 : 1,
-      }}
-    >
-      {state === "loading" ? (
-        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-      ) : state === "playing" ? (
-        <Pause className="w-3.5 h-3.5" />
-      ) : state === "error" ? (
-        <Volume2 className="w-3.5 h-3.5" style={{ color: "var(--color-vl-danger)" }} />
-      ) : (
-        <Play className="w-3.5 h-3.5" />
+    <div className="flex items-center gap-2">
+      <button
+        type="button"
+        onClick={play}
+        disabled={disabled || state === "loading"}
+        className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border transition-colors text-[12px]"
+        style={{
+          borderColor: isPlaying ? "rgba(124,110,245,0.6)" : "rgba(245,239,227,0.18)",
+          background: isPlaying ? "rgba(124,110,245,0.08)" : "rgba(245,239,227,0.025)",
+          color: "var(--color-vl-ivory)",
+          opacity: disabled ? 0.5 : 1,
+        }}
+      >
+        {state === "loading" ? (
+          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+        ) : isPlaying ? (
+          <Pause className="w-3.5 h-3.5" />
+        ) : state === "error" ? (
+          <Volume2 className="w-3.5 h-3.5" style={{ color: "var(--color-vl-danger)" }} />
+        ) : (
+          <Play className="w-3.5 h-3.5" />
+        )}
+        <span>{state === "error" ? errorText || "Try again" : isPlaying ? "Playing" : "Hear sample"}</span>
+      </button>
+      {usedFallback && (
+        <span
+          className="text-[10px] px-2 py-0.5 rounded-full"
+          style={{
+            color: "var(--color-vl-brass2)",
+            background: "rgba(224,183,106,0.10)",
+            border: "1px solid rgba(224,183,106,0.35)",
+          }}
+          title="Native TTS unavailable. This is a generic browser voice — the live agent still uses the real provider."
+        >
+          Browser preview
+        </span>
       )}
-      <span>{state === "error" ? errorText || "Try again" : state === "playing" ? "Playing" : "Hear sample"}</span>
-    </button>
+    </div>
   );
 }
 

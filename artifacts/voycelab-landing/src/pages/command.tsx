@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { useVenues } from "@/hooks/use-venues";
@@ -6,6 +6,7 @@ import { VoiceRail } from "@/components/voice-rail";
 import {
   ArrowRight,
   ArrowUpRight,
+  ExternalLink,
   Loader2,
   Mic,
   Plug,
@@ -24,10 +25,36 @@ export default function Command() {
   const [, setLocation] = useLocation();
   const { data: auth, isLoading, isFetching } = useAuth();
   const { data: venues, isLoading: venuesLoading, error: venuesError } = useVenues();
+  const [openAiStatus, setOpenAiStatus] = useState<{
+    ok: boolean;
+    reason: string;
+    message?: string;
+  } | null>(null);
 
   useEffect(() => {
     if (!isLoading && !isFetching && !auth?.user) setLocation("/login");
   }, [isLoading, isFetching, auth, setLocation]);
+
+  useEffect(() => {
+    if (!auth?.user) return;
+    let cancelled = false;
+    fetch("/api/v1/voice-pipelines/openai-status")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (cancelled || !d) return;
+        setOpenAiStatus({
+          ok: Boolean(d.ok),
+          reason: String(d.reason ?? "unknown"),
+          message: d.message,
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setOpenAiStatus(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [auth?.user]);
 
   const primaryVenue = useMemo(
     () =>
@@ -120,6 +147,8 @@ export default function Command() {
             Hello, {firstName}.
           </h1>
         </div>
+
+        {openAiStatus && !openAiStatus.ok && <OpenAiStatusBanner status={openAiStatus} />}
 
         {/* Single intent card — the one thing that matters right now */}
         <article
@@ -227,6 +256,88 @@ export default function Command() {
             last
           />
         </nav>
+      </div>
+    </div>
+  );
+}
+
+function OpenAiStatusBanner({
+  status,
+}: {
+  status: { ok: boolean; reason: string; message?: string };
+}) {
+  const copy = (() => {
+    switch (status.reason) {
+      case "missing_key":
+        return {
+          title: "Server is missing OPENAI_API_KEY.",
+          body: "Voice agents won't run until OPENAI_API_KEY is set in the API server environment.",
+          ctaLabel: null,
+          ctaUrl: null,
+        };
+      case "insufficient_quota":
+        return {
+          title: "OpenAI account is out of quota.",
+          body: "Live voice agents and previews will fail until billing is restored. Top up at OpenAI to keep your assistants running.",
+          ctaLabel: "Open OpenAI billing",
+          ctaUrl: "https://platform.openai.com/settings/organization/billing",
+        };
+      case "billing_disabled":
+        return {
+          title: "OpenAI rejected your API key.",
+          body: status.message
+            ? `OpenAI says: "${status.message}". Verify the key and that the project has an active payment method.`
+            : "Verify the key at OpenAI and that the project has an active payment method.",
+          ctaLabel: "Open OpenAI keys",
+          ctaUrl: "https://platform.openai.com/api-keys",
+        };
+      default:
+        return {
+          title: "OpenAI is currently unreachable.",
+          body: status.message ?? "Voice agents may degrade until OpenAI responds again.",
+          ctaLabel: null,
+          ctaUrl: null,
+        };
+    }
+  })();
+  return (
+    <div
+      className="mb-6 flex items-start gap-3 rounded-2xl border p-4"
+      style={{
+        borderColor: "rgba(232,93,72,0.45)",
+        background: "rgba(232,93,72,0.06)",
+      }}
+    >
+      <span
+        className="mt-0.5 inline-flex items-center justify-center w-6 h-6 rounded-full"
+        style={{
+          background: "rgba(232,93,72,0.18)",
+          color: "var(--color-vl-danger)",
+          fontWeight: 700,
+          fontSize: 12,
+        }}
+        aria-hidden="true"
+      >
+        !
+      </span>
+      <div className="flex-1 min-w-0">
+        <p className="text-[13px] font-semibold" style={{ color: "var(--color-vl-ivory)" }}>
+          {copy.title}
+        </p>
+        <p className="text-[12.5px] mt-1 leading-relaxed" style={{ color: "rgba(245,239,227,0.65)" }}>
+          {copy.body}
+        </p>
+        {copy.ctaLabel && copy.ctaUrl && (
+          <a
+            href={copy.ctaUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-[12px] mt-2"
+            style={{ color: "var(--color-vl-brass2)" }}
+          >
+            {copy.ctaLabel} <ExternalLink className="w-3 h-3" />
+          </a>
+        )}
       </div>
     </div>
   );

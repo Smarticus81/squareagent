@@ -158,6 +158,22 @@ function pcm16ToWav(pcm: Buffer, sampleRate: number, channels: number): Buffer {
   return buffer;
 }
 
+/**
+ * Special error class so the route handler can map upstream billing
+ * problems to a structured `openai_quota_exhausted` code rather than
+ * leaking the raw OpenAI error back into the wizard.
+ */
+class OpenAiQuotaError extends Error {
+  readonly status: number;
+  readonly code: "insufficient_quota" | "billing_disabled" | "rate_limited";
+  constructor(code: OpenAiQuotaError["code"], status: number, message: string) {
+    super(message);
+    this.name = "OpenAiQuotaError";
+    this.status = status;
+    this.code = code;
+  }
+}
+
 async function synthesizeOpenAISample(voice: string, text: string): Promise<{ bytes: Buffer; contentType: string }> {
   const apiKey = process.env.OPENAI_API_KEY ?? process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
   if (!apiKey) throw new Error("OPENAI_API_KEY not configured");
@@ -180,6 +196,20 @@ async function synthesizeOpenAISample(voice: string, text: string): Promise<{ by
     });
     if (!res.ok) {
       const detail = await res.text();
+      let parsed: { error?: { code?: string; type?: string; message?: string } } | null = null;
+      try { parsed = JSON.parse(detail); } catch { /* not JSON */ }
+      const errCode = parsed?.error?.code ?? "";
+      const errType = parsed?.error?.type ?? "";
+      const errMsg = parsed?.error?.message ?? detail;
+      if (res.status === 429 && (errCode === "insufficient_quota" || errType === "insufficient_quota")) {
+        throw new OpenAiQuotaError("insufficient_quota", 429, errMsg);
+      }
+      if (res.status === 401 || res.status === 403) {
+        throw new OpenAiQuotaError("billing_disabled", res.status, errMsg);
+      }
+      if (res.status === 429) {
+        throw new OpenAiQuotaError("rate_limited", 429, errMsg);
+      }
       throw new Error(`OpenAI TTS HTTP ${res.status}: ${detail}`);
     }
     const arr = new Uint8Array(await res.arrayBuffer());
@@ -304,9 +334,109 @@ router.get("/:provider/sample", async (req: Request, res: Response) => {
     res.setHeader("X-Voycelab-Sample-Voice", voice);
     res.send(synth.bytes);
   } catch (e) {
+    if (e instanceof OpenAiQuotaError) {
+      const friendly =
+        e.code === "insufficient_quota"
+          ? "Your OpenAI account is out of quota, so previews can't be synthesized server-side. The wizard will play a generic browser-voice preview instead. Add billing at platform.openai.com/settings/organization/billing to restore native previews."
+          : e.code === "billing_disabled"
+          ? "OpenAI rejected your API key (billing disabled or key inactive). Verify the key at platform.openai.com/api-keys and that the project has an active payment method."
+          : "OpenAI is rate-limiting requests right now. Try again in a moment.";
+      res.status(402).json({
+        error: {
+          code: e.code === "insufficient_quota" ? "openai_quota_exhausted"
+            : e.code === "billing_disabled" ? "openai_billing_disabled"
+            : "openai_rate_limited",
+          message: friendly,
+          details: { httpStatus: e.status, raw: e.message },
+        },
+      });
+      return;
+    }
     const message = e instanceof Error ? e.message : "synthesis failed";
     res.status(502).json({ error: { code: "sample_failed", message } });
   }
+});
+
+// ── OpenAI quota probe ───────────────────────────────────────────────────────
+//
+// GET /api/v1/voice-pipelines/openai-status
+//
+// Returns the live state of the configured OpenAI key so the dashboard can
+// surface a banner when previews and live sessions will fail. This is a
+// 1-token probe against the responses API; results are cached for 60s so
+// dashboard refreshes don't hammer OpenAI.
+
+interface OpenAiStatus {
+  ok: boolean;
+  reason: "ok" | "missing_key" | "insufficient_quota" | "billing_disabled" | "unknown";
+  message?: string;
+  checkedAt: string;
+}
+
+let openAiStatusCache: { snapshot: OpenAiStatus; expiresAt: number } | null = null;
+const OPENAI_STATUS_TTL_MS = 60 * 1000;
+
+async function probeOpenAiStatus(): Promise<OpenAiStatus> {
+  if (openAiStatusCache && openAiStatusCache.expiresAt > Date.now()) {
+    return openAiStatusCache.snapshot;
+  }
+  const apiKey = process.env.OPENAI_API_KEY ?? process.env.AI_INTEGRATIONS_OPENAI_API_KEY ?? "";
+  if (!apiKey) {
+    const snapshot: OpenAiStatus = {
+      ok: false,
+      reason: "missing_key",
+      message: "OPENAI_API_KEY is not set in the server environment.",
+      checkedAt: new Date().toISOString(),
+    };
+    openAiStatusCache = { snapshot, expiresAt: Date.now() + OPENAI_STATUS_TTL_MS };
+    return snapshot;
+  }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    const res = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      signal: controller.signal,
+      body: JSON.stringify({ model: "gpt-4o-mini", input: "ok", max_output_tokens: 16 }),
+    });
+    if (res.ok) {
+      const snapshot: OpenAiStatus = { ok: true, reason: "ok", checkedAt: new Date().toISOString() };
+      openAiStatusCache = { snapshot, expiresAt: Date.now() + OPENAI_STATUS_TTL_MS };
+      return snapshot;
+    }
+    let parsed: { error?: { code?: string; type?: string; message?: string } } | null = null;
+    try { parsed = (await res.json()) as { error?: { code?: string; type?: string; message?: string } }; } catch { /* ignore */ }
+    const errCode = parsed?.error?.code ?? "";
+    const errType = parsed?.error?.type ?? "";
+    const errMsg = parsed?.error?.message ?? `HTTP ${res.status}`;
+    const reason: OpenAiStatus["reason"] =
+      res.status === 429 && (errCode === "insufficient_quota" || errType === "insufficient_quota")
+        ? "insufficient_quota"
+        : res.status === 401 || res.status === 403
+        ? "billing_disabled"
+        : "unknown";
+    const snapshot: OpenAiStatus = { ok: false, reason, message: errMsg, checkedAt: new Date().toISOString() };
+    // Negative results live for the full TTL so we don't melt the upstream.
+    openAiStatusCache = { snapshot, expiresAt: Date.now() + OPENAI_STATUS_TTL_MS };
+    return snapshot;
+  } catch (e) {
+    const snapshot: OpenAiStatus = {
+      ok: false,
+      reason: "unknown",
+      message: e instanceof Error ? e.message : "probe failed",
+      checkedAt: new Date().toISOString(),
+    };
+    openAiStatusCache = { snapshot, expiresAt: Date.now() + 30 * 1000 };
+    return snapshot;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+router.get("/openai-status", async (_req: Request, res: Response) => {
+  const status = await probeOpenAiStatus();
+  res.json(status);
 });
 
 export default router;
