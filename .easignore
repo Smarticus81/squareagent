@@ -1,21 +1,25 @@
 # EAS Build ignore — keeps the upload focused on the Expo app.
 #
 # Why this exists:
-# 1. Without this file, EAS uploads the entire pnpm workspace and runs
-#    `pnpm install --frozen-lockfile` at the repo root. That fails with
-#      EACCES: permission denied, mkdir 'artifacts/api-server/node_modules'
-#    because the EAS Linux worker can't symlink workspace deps into the peer
-#    package node_modules dirs.
-# 2. We keep `pnpm-workspace.yaml` so pnpm can resolve `catalog:` versions used
-#    by the Expo app (react, react-dom, zod, @tanstack/react-query).
-# 3. We drop `pnpm-lock.yaml` so pnpm runs a non-frozen install scoped to the
-#    one workspace package present on disk (artifacts/square-voice-agent),
-#    avoiding "lockfile out of sync" errors and the multi-package symlinking
-#    that triggered the EACCES.
-# 4. The Expo app declares `node-linker=hoisted` in its local `.npmrc`, so the
-#    install runs as flat copies — no per-package symlinks at all.
+# Without this file, EAS uploads the entire pnpm workspace and runs
+#   `pnpm install --frozen-lockfile` at the repo root. That fails with
+#     EACCES: permission denied, mkdir 'artifacts/api-server/node_modules'
+# because the EAS Linux worker can't symlink workspace deps into peer
+# package node_modules.
+#
+# Strategy:
+# - Keep pnpm-workspace.yaml so EAS detects pnpm (not yarn) and so pnpm can
+#   resolve the `catalog:` versions used by the Expo app.
+# - Drop pnpm-lock.yaml. The lockfile lists every workspace importer
+#   (api-server, voycelab-landing, etc.). Once those packages are removed
+#   from the upload, --frozen-lockfile would fail with "lockfile out of sync".
+#   The eas-build-pre-install hook in artifacts/square-voice-agent regenerates
+#   a clean lockfile against the slimmed-down workspace before EAS runs its
+#   own install.
+# - Drop the unrelated workspace artifacts and libraries.
+# - Drop dev-only env files, caches, build outputs, and tooling.
 
-# Force a clean, single-package install on EAS workers
+# Force a clean, partial-workspace install on EAS workers
 pnpm-lock.yaml
 
 # Other workspace artifacts (server, web, PWA) — not used by the Expo app
