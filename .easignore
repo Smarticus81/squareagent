@@ -55,7 +55,10 @@ node_modules/
 .DS_Store
 Thumbs.db
 
-# Repo-level docs / scripts unused by the Expo build
+# Repo-level docs / scripts unused by the Expo build. Anchor with a
+# leading slash so we only exclude root-level `scripts/`, not the Expo
+# app's own `artifacts/square-voice-agent/scripts/` directory (which
+# contains eas-pre-install.js).
 CLAUDE.md
 RAILWAY.md
 README.md
@@ -64,4 +67,4 @@ nixpacks.toml
 start-all.bat
 tsconfig.base.json
 tsconfig.json
-scripts/
+/scripts/
