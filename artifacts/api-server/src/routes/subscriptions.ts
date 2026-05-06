@@ -140,8 +140,8 @@ router.post("/checkout", requireAuth as any, async (req: Request, res: Response)
       customer: customerId,
       mode: "subscription",
       line_items: [{ price: priceId, quantity: 1 }],
-      success_url: `${PUBLIC_BASE_URL}/dashboard?checkout=success`,
-      cancel_url: `${PUBLIC_BASE_URL}/dashboard?checkout=cancel`,
+      success_url: `${PUBLIC_BASE_URL}/command?checkout=success`,
+      cancel_url: `${PUBLIC_BASE_URL}/command?checkout=cancel`,
       subscription_data: {
         metadata: { userId: String(user.id) },
       },
@@ -173,7 +173,7 @@ router.post("/portal", requireAuth as any, async (req: Request, res: Response): 
   try {
     const session = await stripe.billingPortal.sessions.create({
       customer: sub.stripeCustomerId,
-      return_url: `${PUBLIC_BASE_URL}/dashboard`,
+      return_url: `${PUBLIC_BASE_URL}/settings`,
     });
     res.json({ url: session.url });
   } catch (e: any) {

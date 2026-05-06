@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useLocation } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { useVenues } from "@/hooks/use-venues";
 import { VoiceRail, type RailState } from "@/components/voice-rail";
@@ -317,6 +317,14 @@ export default function CreateAssistant() {
         <div className="absolute bottom-[-18%] right-[12%] h-[420px] w-[680px] rounded-full blur-3xl" style={{ background: "rgba(156, 201, 161, 0.23)" }} />
       </div>
       <div className="mx-auto w-full max-w-[1160px]">
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 mb-6 text-[12px]">
+          <Link href="/assistants" className="inline-flex items-center gap-1.5 transition-colors" style={{ color: "var(--color-vl-ink-muted)" }}>
+            <ArrowLeft className="w-3.5 h-3.5" /> Assistants
+          </Link>
+          <Link href="/command" className="inline-flex items-center gap-1.5 transition-colors" style={{ color: "var(--color-vl-ink-muted)" }}>
+            <ArrowLeft className="w-3.5 h-3.5" /> Console
+          </Link>
+        </div>
         <div className="grid gap-8 lg:grid-cols-[280px_1fr] lg:gap-10">
           {/* Step rail */}
           <aside className="lg:sticky lg:top-28 lg:self-start">

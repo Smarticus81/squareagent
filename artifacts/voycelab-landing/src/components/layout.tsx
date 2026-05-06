@@ -13,11 +13,28 @@ const APP_NAV = [
 
 const LANDING_NAV: { href: string; label: string }[] = [
   { href: "#how-it-works", label: "How it works" },
-  { href: "#how-it-works", label: "Assistants" },
-  { href: "#voice-demo", label: "Integrations" },
+  { href: "#voice-demo", label: "Voice demo" },
   { href: "#use-cases", label: "Customers" },
-  { href: "/pricing", label: "About" },
+  { href: "/pricing", label: "Pricing" },
 ];
+
+/** Map legacy URLs so nav highlighting matches canonical routes. */
+function normalizeAppPath(loc: string): string {
+  if (loc === "/dashboard") return "/command";
+  if (loc === "/account") return "/settings";
+  if (loc === "/plans") return "/pricing";
+  if (loc.startsWith("/agents")) return `/assistants${loc.slice("/agents".length)}`;
+  return loc;
+}
+
+const PUBLIC_SITE_NAV = [
+  { href: "/", label: "Home" },
+  { href: "/pricing", label: "Pricing" },
+];
+
+function navLinkActive(canonicalPath: string, href: string): boolean {
+  return canonicalPath === href || canonicalPath.startsWith(`${href}/`);
+}
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
@@ -25,12 +42,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const logout = useLogout();
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  const isAuthPage = location === "/login" || location === "/signup";
-  const isLanding = location === "/";
-  const isAppPage =
-    !isLanding &&
-    !isAuthPage &&
-    APP_NAV.some((n) => location.startsWith(n.href));
+  const canonicalPath = normalizeAppPath(location);
+  const isAuthPage = canonicalPath === "/login" || canonicalPath === "/signup";
+  const isLanding = canonicalPath === "/";
+
+  const showAppShellNav = Boolean(auth?.user) && !isLanding && !isAuthPage;
+  const showPublicInteriorNav = !auth?.user && !isLanding && !isAuthPage;
+
+  const headerNavItems = showAppShellNav ? APP_NAV : isLanding ? LANDING_NAV : PUBLIC_SITE_NAV;
 
   return (
     <div className="min-h-screen flex flex-col relative">
@@ -43,9 +62,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
               </Link>
 
               <nav className="hidden md:flex items-center gap-1">
-                {(isAppPage ? APP_NAV : LANDING_NAV).map((item, idx) => {
+                {headerNavItems.map((item, idx) => {
                   const isAnchor = item.href.startsWith("#");
-                  const active = isAppPage && location.startsWith(item.href);
+                  const active =
+                    !isAnchor &&
+                    (showAppShellNav || showPublicInteriorNav) &&
+                    navLinkActive(canonicalPath, item.href);
 
                   if (isLanding && isAnchor) {
                     return (
@@ -82,7 +104,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 {!isLoading &&
                   (auth?.user ? (
                     <>
-                      {!isAppPage && (
+                      {!showAppShellNav && (
                         <Link
                           href="/command"
                           className="hidden sm:inline-flex text-[13px] font-medium px-4 py-1.5 rounded-full vl-btn-outline"
@@ -148,7 +170,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   background: "rgba(251,247,241,0.92)",
                 }}
               >
-                {(isAppPage ? APP_NAV : LANDING_NAV).map((item, idx) => {
+                {headerNavItems.map((item, idx) => {
                   const isAnchor = item.href.startsWith("#");
                   if (isLanding && isAnchor) {
                     return (

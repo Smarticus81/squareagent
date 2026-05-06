@@ -1,4 +1,5 @@
-import { Switch, Route, Router as WouterRouter } from "wouter";
+import { useLayoutEffect } from "react";
+import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ThemeProvider } from "next-themes";
 import { Toaster } from "@/components/ui/toaster";
@@ -15,6 +16,16 @@ import ConnectedServices from "@/pages/connected-services";
 import Settings from "@/pages/settings";
 import Pricing from "@/pages/pricing";
 import NotFound from "@/pages/not-found";
+
+function NavigateReplace({ to }: { to: string }) {
+  const [, setLocation] = useLocation();
+  useLayoutEffect(() => {
+    const search = typeof window !== "undefined" ? window.location.search : "";
+    const hash = typeof window !== "undefined" ? window.location.hash : "";
+    setLocation(`${to}${search}${hash}`, { replace: true });
+  }, [setLocation, to]);
+  return null;
+}
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -40,19 +51,25 @@ function Router() {
         <Route path="/" component={Landing} />
         <Route path="/login" component={Login} />
         <Route path="/signup" component={Signup} />
+        <Route path="/dashboard">
+          <NavigateReplace to="/command" />
+        </Route>
+        <Route path="/account">
+          <NavigateReplace to="/settings" />
+        </Route>
+        <Route path="/plans">
+          <NavigateReplace to="/pricing" />
+        </Route>
         <Route path="/command" component={Command} />
         <Route path="/assistants" component={Assistants} />
         <Route path="/assistants/new" component={CreateAssistant} />
         <Route path="/services" component={ConnectedServices} />
         <Route path="/settings" component={Settings} />
         <Route path="/pricing" component={Pricing} />
-        <Route path="/plans" component={Pricing} />
         {/* Legacy redirects so existing links still resolve */}
-        <Route path="/dashboard" component={Command} />
         <Route path="/agents" component={Assistants} />
         <Route path="/agents/new" component={CreateAssistant} />
         <Route path="/agent-setup" component={CreateAssistant} />
-        <Route path="/account" component={Settings} />
         <Route component={NotFound} />
       </Switch>
     </Layout>

@@ -104,17 +104,7 @@ export default function Command() {
         title: "Pick a plan to keep using your assistant.",
         body: "Your 14-day trial has ended. Upgrade to keep Bev on the floor.",
         ctaLabel: "Choose a plan",
-        ctaAction: async () => {
-          const token = localStorage.getItem("voycelab_token") || "";
-          const res = await fetch("/api/subscriptions/portal", {
-            method: "POST",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          }).catch(() => null);
-          if (res?.ok) {
-            const { url } = await res.json();
-            window.location.href = url;
-          }
-        },
+        ctaAction: () => setLocation("/pricing"),
       };
     }
     if (!isConnected) {

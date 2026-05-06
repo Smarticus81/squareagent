@@ -100,20 +100,20 @@ export default function Pricing() {
   }
 
   return (
-    <div className="flex-1 pt-24 pb-24">
+    <div className="flex-1 pt-24 pb-24 bg-vl-cream">
       <div className="w-full max-w-[1180px] mx-auto px-6 lg:px-10">
         <p className="vl-eyebrow">Pricing</p>
-        <h1 className="vl-display text-[40px] md:text-[56px] mt-3 max-w-3xl" style={{ color: "var(--color-vl-ivory)" }}>
+        <h1 className="vl-display text-[40px] md:text-[56px] mt-3 max-w-3xl" style={{ color: "var(--color-vl-ink)" }}>
           The cost of giving your venue a voice.
         </h1>
-        <p className="mt-4 text-[15px] max-w-2xl leading-relaxed" style={{ color: "rgba(245,239,227,0.62)" }}>
+        <p className="mt-4 text-[15px] max-w-2xl leading-relaxed" style={{ color: "var(--color-vl-ink-muted)" }}>
           One platform. Every voice engine your team needs. Pricing scales with how many venues you run and how many assistants you put on the floor — not with how many features you can use.
         </p>
 
         {/* Cadence toggle */}
         <div className="mt-10 flex items-center gap-3">
           <CadenceToggle value={cadence} onChange={setCadence} />
-          <span className="text-[12px]" style={{ color: "rgba(245,239,227,0.5)" }}>
+          <span className="text-[12px]" style={{ color: "var(--color-vl-ink-faint)" }}>
             Yearly = save ~17%
           </span>
         </div>
@@ -128,7 +128,7 @@ export default function Pricing() {
         {loading ? (
           <div className="mt-12 vl-panel p-12 flex items-center justify-center gap-3">
             <Loader2 className="w-5 h-5 animate-spin" style={{ color: "var(--color-vl-brass2)" }} />
-            <span className="text-[14px]" style={{ color: "rgba(245,239,227,0.55)" }}>Loading plans…</span>
+            <span className="text-[14px]" style={{ color: "var(--color-vl-ink-muted)" }}>Loading plans…</span>
           </div>
         ) : (
           <div className="mt-10 grid md:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -147,10 +147,10 @@ export default function Pricing() {
         {/* Voice engine cost transparency */}
         <section className="mt-20">
           <p className="vl-eyebrow">What you actually pay for</p>
-          <h2 className="vl-display text-[28px] md:text-[36px] mt-3 max-w-2xl" style={{ color: "var(--color-vl-ivory)" }}>
+          <h2 className="vl-display text-[28px] md:text-[36px] mt-3 max-w-2xl" style={{ color: "var(--color-vl-ink)" }}>
             Your bill = platform + minutes spoken.
           </h2>
-          <div className="mt-6 grid sm:grid-cols-2 gap-px bg-white/[0.06] border border-white/[0.06] rounded-xl overflow-hidden">
+          <div className="mt-6 grid sm:grid-cols-2 gap-4">
             <Tile
               kicker="Platform fee"
               title="Predictable monthly base"
@@ -179,10 +179,10 @@ export default function Pricing() {
           <div className="grid md:grid-cols-[1fr_auto] gap-6 items-end">
             <div>
               <p className="vl-eyebrow">The math</p>
-              <h2 className="vl-display text-[28px] md:text-[34px] mt-3" style={{ color: "var(--color-vl-ivory)" }}>
+              <h2 className="vl-display text-[28px] md:text-[34px] mt-3" style={{ color: "var(--color-vl-ink)" }}>
                 If your manager saves 4 hours a week, you've already paid for Professional.
               </h2>
-              <p className="mt-3 text-[14px] max-w-xl leading-relaxed" style={{ color: "rgba(245,239,227,0.62)" }}>
+              <p className="mt-3 text-[14px] max-w-xl leading-relaxed" style={{ color: "var(--color-vl-ink-muted)" }}>
                 Bar managers earn $20-$35 an hour. Four hours a week of saved POS lookups, inventory counts, and report-pulling is $320-$560 of value. Professional is $199.
               </p>
             </div>
@@ -200,10 +200,10 @@ export default function Pricing() {
         {/* FAQ */}
         <section className="mt-20">
           <p className="vl-eyebrow">FAQ</p>
-          <h2 className="vl-display text-[28px] md:text-[36px] mt-3" style={{ color: "var(--color-vl-ivory)" }}>
+          <h2 className="vl-display text-[28px] md:text-[36px] mt-3" style={{ color: "var(--color-vl-ink)" }}>
             The honest answers.
           </h2>
-          <div className="mt-6 grid md:grid-cols-2 gap-px bg-white/[0.06] border border-white/[0.06] rounded-xl overflow-hidden">
+          <div className="mt-6 grid md:grid-cols-2 gap-4">
             <Faq
               q="Can I change voice engines after I start?"
               a="Yes. Each assistant carries its own engine choice. Switch any time from the assistant settings — no migration, no re-onboarding. Existing orders keep flowing."
@@ -229,7 +229,11 @@ export default function Pricing() {
 
 function CadenceToggle({ value, onChange }: { value: Cadence; onChange: (v: Cadence) => void }) {
   return (
-    <div className="inline-flex rounded-full border border-white/[0.10] p-1" role="radiogroup">
+    <div
+      className="inline-flex rounded-full border p-1"
+      style={{ borderColor: "rgba(14,27,44,0.12)", background: "rgba(255,255,255,0.5)" }}
+      role="radiogroup"
+    >
       {(["monthly", "yearly"] as Cadence[]).map((opt) => {
         const selected = value === opt;
         return (
@@ -240,9 +244,9 @@ function CadenceToggle({ value, onChange }: { value: Cadence; onChange: (v: Cade
             onClick={() => onChange(opt)}
             className="text-[12px] px-4 py-1.5 rounded-full transition-colors"
             style={{
-              background: selected ? "rgba(124,110,245,0.12)" : "transparent",
-              color: selected ? "var(--color-vl-ivory)" : "rgba(245,239,227,0.55)",
-              border: selected ? "1px solid rgba(124,110,245,0.4)" : "1px solid transparent",
+              background: selected ? "rgba(124,110,245,0.14)" : "transparent",
+              color: selected ? "var(--color-vl-ink)" : "var(--color-vl-ink-muted)",
+              border: selected ? "1px solid rgba(124,110,245,0.45)" : "1px solid transparent",
             }}
           >
             {opt === "monthly" ? "Monthly" : "Yearly"}
@@ -279,37 +283,37 @@ function PlanCard({
       }}
     >
       <div className="flex items-baseline justify-between gap-3">
-        <h3 className="text-[20px] font-semibold" style={{ color: "var(--color-vl-ivory)" }}>
+        <h3 className="text-[20px] font-semibold" style={{ color: "var(--color-vl-ink)" }}>
           {plan.name}
         </h3>
         {plan.ribbon && (
           <span
             className="vl-chip"
-            style={{ color: "var(--color-vl-voice)", borderColor: "rgba(124,110,245,0.4)", fontSize: 10 }}
+            style={{ color: "var(--color-vl-ink-soft)", borderColor: "rgba(124,110,245,0.45)", fontSize: 10 }}
           >
             {plan.ribbon}
           </span>
         )}
       </div>
-      <p className="text-[13px] mt-1.5 leading-snug min-h-[36px]" style={{ color: "rgba(245,239,227,0.6)" }}>
+      <p className="text-[13px] mt-1.5 leading-snug min-h-[36px]" style={{ color: "var(--color-vl-ink-muted)" }}>
         {plan.tagline}
       </p>
 
       <div className="mt-5 mb-1 flex items-baseline gap-2">
         {isContact ? (
-          <span className="text-[28px] font-semibold" style={{ color: "var(--color-vl-ivory)" }}>
+          <span className="text-[28px] font-semibold" style={{ color: "var(--color-vl-ink)" }}>
             Custom
           </span>
         ) : isFree ? (
-          <span className="text-[28px] font-semibold" style={{ color: "var(--color-vl-ivory)" }}>
+          <span className="text-[28px] font-semibold" style={{ color: "var(--color-vl-ink)" }}>
             Free
           </span>
         ) : (
           <>
-            <span className="text-[36px] font-semibold tabular-nums" style={{ color: "var(--color-vl-ivory)" }}>
+            <span className="text-[36px] font-semibold tabular-nums" style={{ color: "var(--color-vl-ink)" }}>
               ${price}
             </span>
-            <span className="text-[13px]" style={{ color: "rgba(245,239,227,0.55)" }}>
+            <span className="text-[13px]" style={{ color: "var(--color-vl-ink-muted)" }}>
               / mo {cadence === "yearly" ? "(billed yearly)" : ""}
             </span>
           </>
@@ -321,22 +325,31 @@ function PlanCard({
         </p>
       )}
       {isFree && plan.trialDays && (
-        <p className="text-[11.5px] mt-0.5" style={{ color: "rgba(245,239,227,0.55)" }}>
+        <p className="text-[11.5px] mt-0.5" style={{ color: "var(--color-vl-ink-faint)" }}>
           {plan.trialDays}-day trial · No card required
         </p>
       )}
 
-      <div className="my-5 h-px bg-white/[0.06]" />
+      <div className="my-5 h-px" style={{ background: "rgba(14,27,44,0.08)" }} />
 
       <ul className="space-y-2.5 flex-1">
         {plan.bullets.map((b, i) => (
-          <li key={i} className="flex items-start gap-2 text-[13px]" style={{ color: b.emphasis ? "var(--color-vl-ivory)" : "rgba(245,239,227,0.72)" }}>
-            <Check className="w-3.5 h-3.5 mt-0.5 shrink-0" style={{ color: b.emphasis ? "var(--color-vl-brass2)" : "var(--color-vl-success)" }} />
+          <li
+            key={i}
+            className="flex items-start gap-2 text-[13px]"
+            style={{
+              color: b.emphasis ? "var(--color-vl-ink)" : "var(--color-vl-ink-soft)",
+            }}
+          >
+            <Check
+              className="w-3.5 h-3.5 mt-0.5 shrink-0"
+              style={{ color: b.emphasis ? "var(--color-vl-coral-deep)" : "var(--color-vl-success)" }}
+            />
             <span style={{ fontWeight: b.emphasis ? 600 : 400 }}>{b.text}</span>
           </li>
         ))}
         {!isContact && plan.includedVoiceMinutes > 0 && (
-          <li className="flex items-start gap-2 text-[12px]" style={{ color: "rgba(245,239,227,0.55)" }}>
+          <li className="flex items-start gap-2 text-[12px]" style={{ color: "var(--color-vl-ink-muted)" }}>
             <span className="w-3.5" aria-hidden />
             <span>
               Overage at ${plan.overagePerMinuteUsd.toFixed(2)} / extra minute. {plan.allowedPipelines.length} voice engine{plan.allowedPipelines.length === 1 ? "" : "s"} unlocked.
@@ -364,12 +377,12 @@ function PlanCard({
 
 function Tile({ kicker, title, body }: { kicker: string; title: string; body: string }) {
   return (
-    <div className="bg-[#0B0D12] p-6">
+    <div className="vl-panel p-6">
       <p className="vl-eyebrow">{kicker}</p>
-      <p className="text-[16px] font-semibold mt-2" style={{ color: "var(--color-vl-ivory)" }}>
+      <p className="text-[16px] font-semibold mt-2" style={{ color: "var(--color-vl-ink)" }}>
         {title}
       </p>
-      <p className="text-[13px] mt-2 leading-relaxed" style={{ color: "rgba(245,239,227,0.6)" }}>
+      <p className="text-[13px] mt-2 leading-relaxed" style={{ color: "var(--color-vl-ink-muted)" }}>
         {body}
       </p>
     </div>
@@ -378,9 +391,9 @@ function Tile({ kicker, title, body }: { kicker: string; title: string; body: st
 
 function Faq({ q, a }: { q: string; a: string }) {
   return (
-    <div className="bg-[#0B0D12] p-6">
-      <p className="text-[14px] font-semibold" style={{ color: "var(--color-vl-ivory)" }}>{q}</p>
-      <p className="text-[13px] mt-2 leading-relaxed" style={{ color: "rgba(245,239,227,0.62)" }}>{a}</p>
+    <div className="vl-panel p-6">
+      <p className="text-[14px] font-semibold" style={{ color: "var(--color-vl-ink)" }}>{q}</p>
+      <p className="text-[13px] mt-2 leading-relaxed" style={{ color: "var(--color-vl-ink-muted)" }}>{a}</p>
     </div>
   );
 }

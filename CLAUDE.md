@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-VoyceLab — a voice-ordering platform that connects to Square POS. Users speak orders through a voice agent (browser PWA or Expo native app), which uses OpenAI's Realtime API via WebRTC, and syncs orders live to Square.
+VoyceLab — a voice-powered operations platform for hospitality venues (wedding venues, bars, event spaces). Users create voice assistants that connect to systems they already use (Square POS, inventory, events). Natural voice conversations turn into real actions — checking stock, summarizing sales, preparing reorders, flagging risks. Voice flow uses OpenAI's Realtime API via WebRTC (browser PWA or Expo native app), syncing operations live to Square.
 
 ## Monorepo Structure
 
@@ -103,6 +103,24 @@ Custom middleware follows the `ToolMiddleware` signature: `(toolName, args, ctx,
 - **Credential Cache** (`lib/credential-cache.ts`) — 5-min TTL in-memory cache for venue Square credentials, avoids DB hit on every tool call
 - **Catalog Cache** (`lib/catalog-cache.ts`) — 5-min TTL per-venue catalog cache, avoids re-fetching from Square API
 - **Session Store** (`lib/session-store.ts`) — in-memory + DB write-through for voice session state, survives server restarts
+
+## Landing Page Design System
+
+The marketing site (`voycelab-landing`) uses a warm, hospitality-focused light theme — **not** dark mode.
+
+**Visual identity**: Cream paper backgrounds, deep navy ink, coral accent, painterly watercolor washes (peach, sage, lilac). Serif display headlines (Fraunces), sans-serif body (Inter).
+
+**Key tokens** (defined in `lib/tokens.ts` and `index.css`):
+- Background: `#FBF7F1` (cream) · Ink: `#0E1B2C` (navy) · Accent: `#FF6B47` (coral)
+- Painterly blobs: peach `#FFC9A8`, sage `#9CC9A1`, lilac `#C7B7E5`, honey `#F2C97D`
+
+**CSS architecture** (`index.css`): Tailwind v4 with `@theme inline` block. All design tokens are CSS variables. Utility classes: `.vl-display` (serif headlines), `.vl-eyebrow` (coral uppercase labels), `.vl-glass` (frosted header), `.vl-card` (white surface), `.vl-btn-primary` (coral pill), `.vl-btn-outline`.
+
+**Customer-facing language**: Say "assistant" not "agent". Say "commands" not "tools". Say "connected systems" not "APIs". Never expose technical internals (sessions, latency, model names, permissions) in user-facing UI.
+
+**Landing page components**:
+- `VoiceOrb` — interactive microphone with frequency bars and state machine (idle → requesting → listening → denied/error)
+- `useVoycelabDemoRealtime` hook — WebRTC demo agent connection for live voice interaction on the landing page
 
 ## Key Conventions
 

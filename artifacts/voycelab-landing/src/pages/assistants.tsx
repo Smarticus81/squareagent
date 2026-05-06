@@ -1,10 +1,10 @@
 import { useEffect } from "react";
-import { useLocation } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { Link, useLocation } from "wouter";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { useVenues } from "@/hooks/use-venues";
 import { VoiceRail } from "@/components/voice-rail";
-import { ExternalLink, Loader2, Plus, Settings2, Sparkles, Store } from "lucide-react";
+import { ArrowLeft, ExternalLink, Loader2, Plus, Settings2, Sparkles, Store, Trash2 } from "lucide-react";
 
 /**
  * Assistants — your team's voices.
@@ -18,6 +18,7 @@ export default function Assistants() {
   const { data: auth, isLoading } = useAuth();
   const { data: venues, isLoading: venuesLoading, error: venuesError } = useVenues();
   const { data: profiles, isLoading: profilesLoading, error: profilesError } = useAgentProfiles();
+  const deleteAssistant = useDeleteAssistant();
 
   useEffect(() => {
     if (!isLoading && !auth?.user) setLocation("/login");
@@ -61,6 +62,13 @@ export default function Assistants() {
         <div className="absolute bottom-[-18%] right-[8%] h-[420px] w-[680px] rounded-full blur-3xl" style={{ background: "rgba(156, 201, 161, 0.25)" }} />
       </div>
       <div className="mx-auto w-full max-w-[1180px]">
+        <Link
+          href="/command"
+          className="inline-flex items-center gap-1.5 text-[12px] mb-5 transition-colors"
+          style={{ color: "var(--color-vl-ink-muted)" }}
+        >
+          <ArrowLeft className="w-3.5 h-3.5" /> Console
+        </Link>
         <div className="mb-10 flex flex-wrap items-end justify-between gap-5">
           <div>
             <p className="vl-eyebrow">Assistants</p>
@@ -152,10 +160,37 @@ export default function Assistants() {
                   >
                     <Settings2 className="w-4 h-4" /> Reconfigure
                   </button>
+                  <button
+                    onClick={() => {
+                      const confirmed = window.confirm(
+                        `Remove ${a.name}? This assistant will no longer appear in your workspace or launch links.`,
+                      );
+                      if (confirmed) deleteAssistant.mutate(a.id);
+                    }}
+                    disabled={deleteAssistant.isPending && deleteAssistant.variables === a.id}
+                    className="inline-flex items-center gap-2 rounded-full px-4 py-2 text-[13px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-50"
+                    style={{
+                      color: "var(--color-vl-danger)",
+                      background: "rgba(215,64,46,0.08)",
+                      border: "1px solid rgba(215,64,46,0.16)",
+                    }}
+                  >
+                    {deleteAssistant.isPending && deleteAssistant.variables === a.id ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-4 w-4" />
+                    )}
+                    Remove
+                  </button>
                 </div>
               </article>
             ))}
           </div>
+        )}
+        {deleteAssistant.error && (
+          <p className="mt-5 rounded-2xl border px-4 py-3 text-[13px]" style={{ color: "var(--color-vl-danger)", background: "rgba(215,64,46,0.08)", borderColor: "rgba(215,64,46,0.18)" }}>
+            {deleteAssistant.error.message}
+          </p>
         )}
       </div>
     </div>
@@ -217,6 +252,26 @@ function useAgentProfiles() {
       return (data.profiles ?? []) as AgentProfile[];
     },
     enabled: !!localStorage.getItem("voycelab_token"),
+  });
+}
+
+function useDeleteAssistant() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (assistantId: string) => {
+      const token = localStorage.getItem("voycelab_token") || "";
+      const res = await fetch(`/api/v1/agent-profiles/${encodeURIComponent(assistantId)}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error?.message ?? body.error ?? `Failed to remove assistant (${res.status})`);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/v1/agent-profiles"] });
+    },
   });
 }
 

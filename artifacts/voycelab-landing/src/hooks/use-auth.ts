@@ -14,7 +14,9 @@ export const SubscriptionSchema = z.object({
   userId: z.number(),
   plan: z.string(),
   status: z.string(),
-  trialEndsAt: z.string().nullable(),
+  trialEndsAt: z.string().nullable().optional(),
+  stripeCustomerId: z.string().nullable().optional(),
+  stripeSubscriptionId: z.string().nullable().optional(),
 });
 
 export const AuthResponseSchema = z.object({

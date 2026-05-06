@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { useLocation } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import {
   useVenues,
@@ -10,6 +10,7 @@ import {
 } from "@/hooks/use-venues";
 import { connectedServices } from "@/lib/tokens";
 import {
+  ArrowLeft,
   ArrowRight,
   CheckCircle2,
   ExternalLink,
@@ -133,6 +134,13 @@ export default function ConnectedServices() {
       </div>
 
       <div className="mx-auto w-full max-w-[1180px]">
+        <Link
+          href="/command"
+          className="inline-flex items-center gap-1.5 text-[12px] mb-5 transition-colors"
+          style={{ color: "var(--color-vl-ink-muted)" }}
+        >
+          <ArrowLeft className="w-3.5 h-3.5" /> Console
+        </Link>
         <div className="mb-9 grid gap-6 lg:grid-cols-[1fr_360px] lg:items-end">
           <div>
             <p className="vl-eyebrow">Connected services</p>

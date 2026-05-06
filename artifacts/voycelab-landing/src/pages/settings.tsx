@@ -25,6 +25,7 @@ export default function Settings() {
   const [pwMsg, setPwMsg] = useState<null | { tone: "ok" | "error"; text: string }>(null);
 
   const [billingLoading, setBillingLoading] = useState(false);
+  const [billingMsg, setBillingMsg] = useState<null | { tone: "ok" | "error"; text: string }>(null);
 
   useEffect(() => {
     if (!isLoading && !auth?.user) setLocation("/login");
@@ -102,24 +103,57 @@ export default function Settings() {
   };
 
   const handleManageBilling = async () => {
-    // Trial / pre-checkout users go to /pricing to pick a plan; anyone with
-    // an active Stripe subscription goes to the Stripe customer portal.
+    setBillingMsg(null);
     const status = auth?.subscription?.status;
+    const stripeCustomerId = auth?.subscription?.stripeCustomerId ?? null;
+
     if (status !== "active") {
       setLocation("/pricing");
       return;
     }
+
+    if (!stripeCustomerId) {
+      if (auth?.isAdmin) {
+        setBillingMsg({
+          tone: "error",
+          text: "Stripe customer portal needs a subscribed customer. Admin accounts often have no Stripe customer — open Plans to test checkout, or use a non-admin account.",
+        });
+        return;
+      }
+      setLocation("/pricing");
+      return;
+    }
+
     setBillingLoading(true);
     try {
       const res = await fetch("/api/subscriptions/portal", {
         method: "POST",
         headers: getHeaders(),
       });
-      if (!res.ok) throw new Error("Could not open billing.");
-      const { url } = await res.json();
-      window.location.href = url;
-    } catch (e) {
-      console.error(e);
+      let data: { url?: unknown; error?: unknown } = {};
+      try {
+        data = await res.json();
+      } catch {
+        /* ignore */
+      }
+      if (!res.ok) {
+        const msg =
+          typeof data.error === "string" && data.error.trim()
+            ? data.error.trim()
+            : res.status === 503
+              ? "Billing is not configured on this server (Stripe keys missing)."
+              : "Could not open billing.";
+        throw new Error(msg);
+      }
+      const url = typeof data.url === "string" ? data.url : null;
+      if (!url) throw new Error("No billing URL returned.");
+      window.location.assign(url);
+    } catch (err) {
+      setBillingMsg({
+        tone: "error",
+        text: err instanceof Error ? err.message : "Could not open billing.",
+      });
+    } finally {
       setBillingLoading(false);
     }
   };
@@ -243,19 +277,23 @@ export default function Settings() {
                     : "Pick a plan to get started."}
                 </p>
               </div>
-              <button
-                onClick={handleManageBilling}
-                disabled={billingLoading}
-                className={
-                  trialExpired
-                    ? "vl-btn-primary inline-flex items-center gap-2 text-[13px]"
-                    : "vl-btn-ghost inline-flex items-center gap-2 text-[13px]"
-                }
-              >
-                {billingLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                {trialExpired ? "Choose a plan" : planActive ? "Manage billing" : "Upgrade"}
-                <ArrowUpRight className="w-3.5 h-3.5" />
-              </button>
+              <div className="flex flex-col items-end gap-2">
+                <button
+                  type="button"
+                  onClick={handleManageBilling}
+                  disabled={billingLoading}
+                  className={
+                    trialExpired
+                      ? "vl-btn-primary inline-flex items-center gap-2 text-[13px]"
+                      : "vl-btn-ghost inline-flex items-center gap-2 text-[13px]"
+                  }
+                >
+                  {billingLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  {trialExpired ? "Choose a plan" : planActive ? "Manage billing" : "Upgrade"}
+                  <ArrowUpRight className="w-3.5 h-3.5" />
+                </button>
+                {billingMsg && <InlineStatus tone={billingMsg.tone} text={billingMsg.text} />}
+              </div>
             </div>
           </Section>
         </div>
