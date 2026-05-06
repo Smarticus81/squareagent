@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { useVenues } from "@/hooks/use-venues";
@@ -74,6 +74,11 @@ export default function CreateAssistant() {
   const [assistantName, setAssistantName] = useState(() => {
     return sessionStorage.getItem("voycelab.pending_assistant_name") || "";
   });
+  const [wakePhrase, setWakePhrase] = useState(() => {
+    const pending = sessionStorage.getItem("voycelab.pending_assistant_name") || "";
+    return pending ? `Hey ${pending}` : "Hey Bev";
+  });
+  const [wakePhraseTouched, setWakePhraseTouched] = useState(false);
   const [serviceId, setServiceId] = useState<string>("square");
   const [venueId, setVenueId] = useState<number | null>(null);
   const [room, setRoom] = useState<RoomSettingValue>("bar");
@@ -176,6 +181,12 @@ export default function CreateAssistant() {
     if (!venueId && venues && venues.length > 0) setVenueId(venues[0].id);
   }, [venues, venueId]);
 
+  useEffect(() => {
+    if (wakePhraseTouched) return;
+    const trimmed = assistantName.trim();
+    setWakePhrase(trimmed ? `Hey ${trimmed}` : "Hey Bev");
+  }, [assistantName, wakePhraseTouched]);
+
   // Sensitive actions never enable themselves; keep them gated.
   const allowedActionIds = useMemo(
     () => Object.entries(approvals).filter(([, level]) => level !== "not_allowed").map(([id]) => id),
@@ -246,7 +257,7 @@ export default function CreateAssistant() {
           venueId,
           ...(connectedServiceId ? { connectedServiceId } : {}),
           displayName: assistantName,
-          wakePhrase: `Hey ${assistantName}`,
+          wakePhrase: wakePhrase.trim(),
           voicePipelineProvider: pipelineProvider,
           voicePipelineConfig: buildPipelineConfig(),
           noiseMode: room,
@@ -299,13 +310,18 @@ export default function CreateAssistant() {
     step === 4 ? roomSettings.find((r) => r.value === room)?.intensity ?? 0.6 : 0.55;
 
   return (
-    <div className="flex-1 pt-24 pb-20">
-      <div className="w-full max-w-[1100px] mx-auto px-6 lg:px-10">
-        <div className="grid lg:grid-cols-[260px_1fr] gap-10">
+    <div className="relative flex-1 overflow-hidden px-4 pb-20 pt-16 sm:px-6 lg:px-10">
+      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
+        <div className="absolute left-[-12%] top-[-18%] h-[380px] w-[560px] rounded-full blur-3xl" style={{ background: "rgba(255, 201, 168, 0.42)" }} />
+        <div className="absolute right-[-14%] top-[5%] h-[480px] w-[600px] rounded-full blur-3xl" style={{ background: "rgba(199, 183, 229, 0.30)" }} />
+        <div className="absolute bottom-[-18%] right-[12%] h-[420px] w-[680px] rounded-full blur-3xl" style={{ background: "rgba(156, 201, 161, 0.23)" }} />
+      </div>
+      <div className="mx-auto w-full max-w-[1160px]">
+        <div className="grid gap-8 lg:grid-cols-[280px_1fr] lg:gap-10">
           {/* Step rail */}
-          <aside>
+          <aside className="lg:sticky lg:top-28 lg:self-start">
             <p className="vl-eyebrow">Create</p>
-            <h1 className="vl-display text-[28px] mt-2" style={{ color: "var(--color-vl-ivory)" }}>
+            <h1 className="vl-display mt-3 text-[34px]" style={{ color: "var(--color-vl-ink)" }}>
               Build your assistant.
             </h1>
             <ol className="mt-8 space-y-1.5">
@@ -319,19 +335,19 @@ export default function CreateAssistant() {
                     className="flex items-center gap-3 px-3 py-2 rounded-xl transition-colors"
                     style={{
                       background: active ? "rgba(124,110,245,0.10)" : "transparent",
-                      borderLeft: active ? "2px solid var(--color-vl-voice)" : "2px solid transparent",
+                      borderLeft: active ? "2px solid var(--color-vl-coral)" : "2px solid transparent",
                     }}
                   >
                     <span
                       className="text-[10px] font-mono"
-                      style={{ color: active ? "var(--color-vl-voice)" : done ? "var(--color-vl-success)" : "rgba(245,239,227,0.4)" }}
+                      style={{ color: active ? "var(--color-vl-coral)" : done ? "var(--color-vl-success)" : "var(--color-vl-ink-faint)" }}
                     >
                       {done ? "✓" : s.n}
                     </span>
                     <span
                       className="text-[13px]"
                       style={{
-                        color: active ? "var(--color-vl-ivory)" : done ? "rgba(245,239,227,0.65)" : "rgba(245,239,227,0.45)",
+                        color: active ? "var(--color-vl-ink)" : done ? "var(--color-vl-ink-muted)" : "var(--color-vl-ink-faint)",
                       }}
                     >
                       {s.title}
@@ -372,7 +388,22 @@ export default function CreateAssistant() {
                     maxLength={32}
                   />
                 </Field>
-                <Nav onNext={() => setStep(2)} canNext={!!assistantName.trim()} />
+                <Field label="Wake phrase">
+                  <input
+                    value={wakePhrase}
+                    onChange={(e) => {
+                      setWakePhraseTouched(true);
+                      setWakePhrase(e.target.value);
+                    }}
+                    placeholder="Hey Bev"
+                    className="vl-input"
+                    maxLength={60}
+                  />
+                </Field>
+                <p className="text-[12.5px] leading-relaxed" style={{ color: "var(--color-vl-ink-muted)" }}>
+                  Say this phrase to wake the assistant in the PWA or Expo app. Custom phrases are saved with the assistant profile.
+                </p>
+                <Nav onNext={() => setStep(2)} canNext={!!assistantName.trim() && !!wakePhrase.trim()} />
               </StepShell>
             )}
 
@@ -425,10 +456,10 @@ export default function CreateAssistant() {
                             background: venueId === v.id ? "rgba(124,110,245,0.06)" : undefined,
                           }}
                         >
-                          <p className="text-[14px] font-semibold" style={{ color: "var(--color-vl-ivory)" }}>
+                          <p className="text-[14px] font-semibold" style={{ color: "var(--color-vl-ink)" }}>
                             {v.name ?? v.squareLocationName ?? `Venue ${v.id}`}
                           </p>
-                          <p className="text-[12px] mt-1" style={{ color: "rgba(245,239,227,0.5)" }}>
+                          <p className="text-[12px] mt-1" style={{ color: "var(--color-vl-ink-faint)" }}>
                             {v.squareLocationName ?? "No location"}
                           </p>
                         </button>
@@ -437,7 +468,7 @@ export default function CreateAssistant() {
                   </div>
                 )}
                 {(!venues || venues.length === 0) && (
-                  <div className="mt-6 vl-panel p-5 text-[13px]" style={{ color: "rgba(245,239,227,0.62)" }}>
+                  <div className="mt-6 vl-panel p-5 text-[13px]" style={{ color: "var(--color-vl-ink-muted)" }}>
                     No venues connected yet. Open{" "}
                     <button onClick={() => navigate("/services")} className="underline" style={{ color: "var(--color-vl-brass2)" }}>
                       Connected services
@@ -459,19 +490,19 @@ export default function CreateAssistant() {
                   {actionGroups.map((group) => (
                     <div key={group.id} className="vl-panel p-5">
                       <div className="flex items-baseline justify-between gap-3 mb-1">
-                        <p className="text-[14px] font-semibold" style={{ color: "var(--color-vl-ivory)" }}>
+                        <p className="text-[14px] font-semibold" style={{ color: "var(--color-vl-ink)" }}>
                           {group.label}
                         </p>
-                        <p className="text-[12px]" style={{ color: "rgba(245,239,227,0.5)" }}>
+                        <p className="text-[12px]" style={{ color: "var(--color-vl-ink-faint)" }}>
                           {group.description}
                         </p>
                       </div>
-                      <ul className="mt-3 divide-y divide-white/[0.05]">
+                      <ul className="mt-3 divide-y" style={{ borderColor: "rgba(14,27,44,0.08)" }}>
                         {group.actions.map((a) => {
                           const level = approvals[a.id];
                           return (
                             <li key={a.id} className="py-2.5 flex items-center gap-3">
-                              <p className="flex-1 text-[13px]" style={{ color: "var(--color-vl-ivory)" }}>
+                              <p className="flex-1 text-[13px]" style={{ color: "var(--color-vl-ink)" }}>
                                 {a.label}
                               </p>
                               <ApprovalSelector
@@ -486,9 +517,9 @@ export default function CreateAssistant() {
                   ))}
                 </div>
 
-                <p className="text-[12px] mt-4" style={{ color: "rgba(245,239,227,0.55)" }}>
-                  {assistantName || "Your assistant"} can do <strong style={{ color: "var(--color-vl-ivory)" }}>{allowedCount}</strong>{" "}
-                  actions and will ask first on <strong style={{ color: "var(--color-vl-ivory)" }}>{askFirstCount}</strong>.
+                <p className="text-[12px] mt-4" style={{ color: "var(--color-vl-ink-muted)" }}>
+                  {assistantName || "Your assistant"} can do <strong style={{ color: "var(--color-vl-ink)" }}>{allowedCount}</strong>{" "}
+                  actions and will ask first on <strong style={{ color: "var(--color-vl-ink)" }}>{askFirstCount}</strong>.
                 </p>
 
                 <Nav onBack={() => setStep(2)} onNext={() => setStep(4)} canNext />
@@ -512,11 +543,11 @@ export default function CreateAssistant() {
                       }}
                     >
                       <div className="flex items-center justify-between mb-2">
-                        <span className="text-[14px] font-semibold" style={{ color: "var(--color-vl-ivory)" }}>{m.label}</span>
+                        <span className="text-[14px] font-semibold" style={{ color: "var(--color-vl-ink)" }}>{m.label}</span>
                         <RoomIntensity level={m.intensity} active={room === m.value} />
                       </div>
-                      <p className="text-[12px]" style={{ color: "rgba(245,239,227,0.6)" }}>{m.description}</p>
-                      <div className="mt-3 grid grid-cols-2 gap-1 text-[11px]" style={{ color: "rgba(245,239,227,0.5)" }}>
+                      <p className="text-[12px]" style={{ color: "var(--color-vl-ink-muted)" }}>{m.description}</p>
+                      <div className="mt-3 grid grid-cols-2 gap-1 text-[11px]" style={{ color: "var(--color-vl-ink-faint)" }}>
                         <span>Listens: {m.listens}</span>
                         <span>Approval: {m.asks}</span>
                       </div>
@@ -535,7 +566,7 @@ export default function CreateAssistant() {
                 {pipelinesLoading ? (
                   <div className="vl-panel p-8 flex items-center justify-center gap-3">
                     <Loader2 className="w-4 h-4 animate-spin" style={{ color: "var(--color-vl-brass2)" }} />
-                    <span className="text-[13px]" style={{ color: "rgba(245,239,227,0.62)" }}>Loading available engines…</span>
+                    <span className="text-[13px]" style={{ color: "var(--color-vl-ink-muted)" }}>Loading available engines…</span>
                   </div>
                 ) : (
                   <PipelinePicker
@@ -601,12 +632,13 @@ export default function CreateAssistant() {
               >
                 <div className="vl-panel p-7 text-center">
                   <VoiceRail state="synced" />
-                  <p className="vl-display text-[40px] mt-6" style={{ color: "var(--color-vl-ivory)" }}>
+                  <p className="vl-display text-[40px] mt-6" style={{ color: "var(--color-vl-ink)" }}>
                     {assistantName} is live.
                   </p>
 
                   <dl className="mt-6 grid sm:grid-cols-2 gap-x-8 gap-y-1.5 text-[13px] text-left max-w-md mx-auto">
                     <Summary k="Assistant" v={assistantName} />
+                    <Summary k="Wake phrase" v={wakePhrase} />
                     <Summary k="Connected service" v={connectedServices.find((s) => s.id === serviceId)?.name ?? "Square"} />
                     <Summary k="Room setting" v={roomSettings.find((r) => r.value === room)?.label ?? "Bar"} />
                     <Summary k="Voice engine" v={selectedPipeline?.displayName ?? ""} />
@@ -617,13 +649,13 @@ export default function CreateAssistant() {
 
                   <div className="mt-7 flex flex-wrap items-center justify-center gap-2">
                     <button
-                      onClick={() => venueId && launchAssistant(venueId)}
+                      onClick={() => venueId && savedId && launchAssistant(venueId, savedId)}
                       className="vl-btn-primary inline-flex items-center gap-2"
                     >
                       Open assistant <ExternalLink className="w-4 h-4" />
                     </button>
                     <button
-                      onClick={() => venueId && copyLaunchLink(venueId)}
+                      onClick={() => venueId && savedId && copyLaunchLink(venueId, savedId)}
                       className="vl-btn-ghost inline-flex items-center gap-2"
                     >
                       <Copy className="w-4 h-4" /> Copy launch link
@@ -633,7 +665,7 @@ export default function CreateAssistant() {
                     </button>
                   </div>
 
-                  <p className="mt-6 text-[12px]" style={{ color: "rgba(245,239,227,0.5)" }}>
+                  <p className="mt-6 text-[12px]" style={{ color: "var(--color-vl-ink-faint)" }}>
                     <Sparkles className="w-3.5 h-3.5 inline -mt-0.5" /> Saved as {savedId ?? "assistant"}. You can change everything from the Assistants screen.
                   </p>
                 </div>
@@ -646,18 +678,21 @@ export default function CreateAssistant() {
       <style>{`
         .vl-input {
           width: 100%;
-          height: 46px;
+          height: 48px;
           padding: 0 16px;
-          border-radius: 12px;
-          background: rgba(245,239,227,0.04);
-          border: 1px solid rgba(245,239,227,0.12);
-          color: var(--color-vl-ivory);
+          border-radius: 14px;
+          background: #FFFFFF;
+          border: 1px solid rgba(14,27,44,0.12);
+          color: var(--color-vl-ink);
           font-size: 15px;
           outline: none;
-          transition: border-color .2s ease, background .2s ease;
+          transition: border-color .2s ease, background .2s ease, box-shadow .2s ease;
         }
-        .vl-input::placeholder { color: rgba(245,239,227,0.32); }
-        .vl-input:focus { border-color: rgba(124,110,245,0.7); background: rgba(245,239,227,0.06); }
+        .vl-input::placeholder { color: rgba(14,27,44,0.36); }
+        .vl-input:focus {
+          border-color: var(--color-vl-coral);
+          box-shadow: 0 0 0 3px rgba(255,107,71,0.14);
+        }
       `}</style>
     </div>
   );
@@ -724,10 +759,10 @@ function OpenAiStatusBanner({
         !
       </span>
       <div className="flex-1 min-w-0">
-        <p className="text-[13px] font-semibold" style={{ color: "var(--color-vl-ivory)" }}>
+        <p className="text-[13px] font-semibold" style={{ color: "var(--color-vl-ink)" }}>
           {copy.title}
         </p>
-        <p className="text-[12px] mt-1 leading-relaxed" style={{ color: "rgba(245,239,227,0.65)" }}>
+        <p className="text-[12px] mt-1 leading-relaxed" style={{ color: "var(--color-vl-ink-muted)" }}>
           {copy.body}
         </p>
         {ctaLabel && (
@@ -764,7 +799,7 @@ function PreviewBar({
   hint: string;
 }) {
   return (
-    <div className="vl-panel vl-edge-brass p-6 mb-6">
+    <div className="vl-card-glass mb-6 p-6">
       <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="vl-chip" style={{ color: "var(--color-vl-brass2)" }}>
@@ -777,7 +812,7 @@ function PreviewBar({
         </div>
       </div>
       <VoiceRail state={railState} intensity={railIntensity} />
-      <div className="mt-3 vl-eyebrow text-center" style={{ color: "rgba(140,145,154,0.7)" }}>
+      <div className="mt-3 vl-eyebrow text-center" style={{ color: "var(--color-vl-ink-faint)" }}>
         Live preview · {hint}
       </div>
     </div>
@@ -791,20 +826,20 @@ function StepShell({
 }: {
   title: string;
   subtitle?: string;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <div>
-      <h2 className="vl-display text-[34px]" style={{ color: "var(--color-vl-ivory)" }}>{title}</h2>
+      <h2 className="vl-display text-[38px]" style={{ color: "var(--color-vl-ink)" }}>{title}</h2>
       {subtitle && (
-        <p className="mt-2 text-[14px]" style={{ color: "rgba(245,239,227,0.62)" }}>{subtitle}</p>
+        <p className="mt-2 text-[14px] leading-relaxed" style={{ color: "var(--color-vl-ink-muted)" }}>{subtitle}</p>
       )}
       <div className="mt-7 space-y-5">{children}</div>
     </div>
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <label className="block">
       <span className="vl-eyebrow block mb-1.5">{label}</span>
@@ -822,7 +857,7 @@ function Nav({
   onBack?: () => void;
   onNext: () => void;
   canNext?: boolean;
-  nextLabel?: React.ReactNode;
+  nextLabel?: ReactNode;
 }) {
   return (
     <div className="flex items-center gap-3 pt-4">
@@ -867,22 +902,22 @@ function ServiceRow({
       style={{
         opacity: available ? 1 : 0.65,
         cursor: available ? "pointer" : "default",
-        borderColor: checked ? "rgba(124,110,245,0.6)" : undefined,
-        background: checked ? "rgba(124,110,245,0.06)" : undefined,
+        borderColor: checked ? "rgba(255,107,71,0.36)" : undefined,
+        background: checked ? "var(--color-vl-coral-tint)" : undefined,
       }}
     >
       <span
         className="w-4 h-4 rounded-full flex items-center justify-center"
         style={{
-          background: checked ? "var(--color-vl-voice)" : "transparent",
-          border: "1px solid rgba(245,239,227,0.3)",
+          background: checked ? "var(--color-vl-coral)" : "transparent",
+          border: "1px solid rgba(14,27,44,0.18)",
         }}
       >
         {checked && <Check className="w-3 h-3 text-white" />}
       </span>
       <div className="flex-1">
         <div className="flex items-center gap-2">
-          <p className="text-[14px] font-semibold" style={{ color: "var(--color-vl-ivory)" }}>{label}</p>
+          <p className="text-[14px] font-semibold" style={{ color: "var(--color-vl-ink)" }}>{label}</p>
           {available ? (
             <span
               className="vl-chip"
@@ -894,7 +929,7 @@ function ServiceRow({
             <span className="vl-chip" style={{ fontSize: 10 }}>Request access</span>
           )}
         </div>
-        <p className="text-[12px] mt-0.5" style={{ color: "rgba(245,239,227,0.55)" }}>{desc}</p>
+        <p className="text-[12px] mt-0.5" style={{ color: "var(--color-vl-ink-muted)" }}>{desc}</p>
       </div>
     </button>
   );
@@ -909,7 +944,7 @@ function ApprovalSelector({
 }) {
   const options: ApprovalLevel[] = ["no_approval", "ask_first", "not_allowed"];
   return (
-    <div className="inline-flex rounded-full border border-white/[0.08] p-0.5" role="radiogroup">
+    <div className="inline-flex rounded-full border p-0.5" style={{ borderColor: "rgba(14,27,44,0.10)", background: "rgba(255,255,255,0.58)" }} role="radiogroup">
       {options.map((opt) => {
         const selected = value === opt;
         const tone =
@@ -928,7 +963,7 @@ function ApprovalSelector({
             className="text-[11px] px-3 py-1 rounded-full transition-all"
             style={{
               background: selected ? `${tone}1F` : "transparent",
-              color: selected ? tone : "rgba(245,239,227,0.55)",
+              color: selected ? tone : "var(--color-vl-ink-muted)",
               border: selected ? `1px solid ${tone}55` : "1px solid transparent",
             }}
           >
@@ -949,7 +984,7 @@ function RoomIntensity({ level, active }: { level: number; active: boolean }) {
           className="w-1 rounded-full"
           style={{
             height: 6 + threshold * 12,
-            background: level >= threshold ? (active ? "var(--color-vl-voice)" : "var(--color-vl-brass2)") : "rgba(245,239,227,0.18)",
+            background: level >= threshold ? (active ? "var(--color-vl-coral)" : "var(--color-vl-brass2)") : "rgba(14,27,44,0.12)",
           }}
         />
       ))}
@@ -972,27 +1007,27 @@ function TestProgress({
   return (
     <div className="vl-panel p-5">
       <p className="vl-eyebrow mb-3">Test command</p>
-      <p className="vl-display text-[28px]" style={{ color: "var(--color-vl-ivory)" }}>
+      <p className="vl-display text-[28px]" style={{ color: "var(--color-vl-ink)" }}>
         "Add two ranch waters."
       </p>
 
-      <div className="mt-6 grid sm:grid-cols-5 gap-px bg-white/[0.06] rounded-xl overflow-hidden">
+      <div className="mt-6 grid sm:grid-cols-5 gap-px rounded-xl overflow-hidden" style={{ background: "rgba(14,27,44,0.08)" }}>
         {stages.map((s, i) => (
-          <div key={s} className="bg-[#0E1015] py-3 px-2 text-center">
+          <div key={s} className="bg-vl-paper py-3 px-2 text-center">
             <p className="text-[10px] tracking-[0.18em] uppercase" style={{ color: "rgba(140,145,154,0.7)" }}>
               {String(i + 1).padStart(2, "0")}
             </p>
-            <p className="mt-1 text-[13px] font-medium" style={{ color: i === 4 ? "var(--color-vl-success)" : "var(--color-vl-ivory)" }}>
+            <p className="mt-1 text-[13px] font-medium" style={{ color: i === 4 ? "var(--color-vl-success)" : "var(--color-vl-ink)" }}>
               {s}
             </p>
           </div>
         ))}
       </div>
 
-      <p className="mt-5 text-[13px]" style={{ color: "rgba(245,239,227,0.7)" }}>
+      <p className="mt-5 text-[13px]" style={{ color: "var(--color-vl-ink-soft)" }}>
         {assistantName} can do <strong>{allowedActions}</strong> actions. <strong>{askFirst}</strong> of them will ask before running.
       </p>
-      <p className="mt-1 text-[12px]" style={{ color: "rgba(245,239,227,0.55)" }}>
+      <p className="mt-1 text-[12px]" style={{ color: "var(--color-vl-ink-muted)" }}>
         For sensitive actions you'll see <strong>Confirm</strong> and <strong>Cancel</strong> on the voice surface.
       </p>
     </div>
@@ -1002,8 +1037,8 @@ function TestProgress({
 function Summary({ k, v }: { k: string; v: string }) {
   return (
     <>
-      <dt style={{ color: "rgba(245,239,227,0.5)" }}>{k}</dt>
-      <dd style={{ color: "var(--color-vl-ivory)" }}>{v}</dd>
+      <dt style={{ color: "var(--color-vl-ink-faint)" }}>{k}</dt>
+      <dd style={{ color: "var(--color-vl-ink)" }}>{v}</dd>
     </>
   );
 }
@@ -1022,13 +1057,13 @@ function providersWithDefault(list: ConnectedServiceProvider[]) {
   ];
 }
 
-async function launchAssistant(venueId: number) {
+async function launchAssistant(venueId: number, agentProfileId: string) {
   try {
     const token = localStorage.getItem("voycelab_token") || "";
     const res = await fetch("/api/auth/exchange/create", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ venueId }),
+      body: JSON.stringify({ venueId, agentProfileId }),
     });
     if (!res.ok) throw new Error("Could not open the assistant. Try again.");
     const { code } = await res.json();
@@ -1038,19 +1073,19 @@ async function launchAssistant(venueId: number) {
     const baseUrl = isLocalDev
       ? `${window.location.protocol}//${window.location.hostname}:8081/`
       : `${window.location.origin}/agent/`;
-    window.open(`${baseUrl}?code=${encodeURIComponent(code)}`, "_blank", "noopener,noreferrer");
+    window.open(`${baseUrl}?code=${encodeURIComponent(code)}&agentProfileId=${encodeURIComponent(agentProfileId)}`, "_blank", "noopener,noreferrer");
   } catch (e) {
     console.error(e);
   }
 }
 
-async function copyLaunchLink(venueId: number) {
+async function copyLaunchLink(venueId: number, agentProfileId: string) {
   try {
     const token = localStorage.getItem("voycelab_token") || "";
     const res = await fetch("/api/auth/exchange/create", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ venueId }),
+      body: JSON.stringify({ venueId, agentProfileId }),
     });
     if (!res.ok) throw new Error("Could not generate a link.");
     const { code } = await res.json();
@@ -1060,7 +1095,7 @@ async function copyLaunchLink(venueId: number) {
     const baseUrl = isLocalDev
       ? `${window.location.protocol}//${window.location.hostname}:8081/`
       : `${window.location.origin}/agent/`;
-    const url = `${baseUrl}?code=${encodeURIComponent(code)}`;
+    const url = `${baseUrl}?code=${encodeURIComponent(code)}&agentProfileId=${encodeURIComponent(agentProfileId)}`;
     await navigator.clipboard.writeText(url);
   } catch (e) {
     console.error(e);
@@ -1102,9 +1137,9 @@ function PipelinePicker({
         <div key={cat.id}>
           <div className="flex items-baseline justify-between gap-3 mb-2">
             <p className="vl-eyebrow">{cat.label}</p>
-            <p className="text-[11px]" style={{ color: "rgba(245,239,227,0.45)" }}>{items.length} option{items.length === 1 ? "" : "s"}</p>
+            <p className="text-[11px]" style={{ color: "var(--color-vl-ink-faint)" }}>{items.length} option{items.length === 1 ? "" : "s"}</p>
           </div>
-          <p className="text-[12.5px] mb-3" style={{ color: "rgba(245,239,227,0.55)" }}>{cat.blurb}</p>
+          <p className="text-[12.5px] mb-3" style={{ color: "var(--color-vl-ink-muted)" }}>{cat.blurb}</p>
           <div className="grid sm:grid-cols-2 gap-2">
             {items.map((p) => (
               <PipelineCard
@@ -1156,7 +1191,7 @@ function PipelineCard({
       : pipeline.status === "experimental"
       ? "var(--color-vl-brass2)"
       : pipeline.status === "request_access"
-      ? "var(--color-vl-voice)"
+      ? "var(--color-vl-coral)"
       : "var(--color-vl-danger)";
   const statusLabel: Record<typeof pipeline.status, string> = {
     available: "Available",
@@ -1171,8 +1206,8 @@ function PipelineCard({
       className="vl-panel p-5 transition-colors"
       style={{
         opacity: disabled ? 0.55 : 1,
-        borderColor: active ? "rgba(124,110,245,0.6)" : undefined,
-        background: active ? "rgba(124,110,245,0.06)" : undefined,
+        borderColor: active ? "rgba(255,107,71,0.36)" : undefined,
+        background: active ? "var(--color-vl-coral-tint)" : undefined,
       }}
     >
       <button
@@ -1185,7 +1220,7 @@ function PipelineCard({
         <div className="flex items-start justify-between gap-3">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <p className="text-[15px] font-semibold" style={{ color: "var(--color-vl-ivory)" }}>{pipeline.displayName}</p>
+              <p className="text-[15px] font-semibold" style={{ color: "var(--color-vl-ink)" }}>{pipeline.displayName}</p>
               <span
                 className="vl-chip"
                 style={{ color: tone, borderColor: `${tone}55`, fontSize: 10 }}
@@ -1197,12 +1232,12 @@ function PipelineCard({
               )}
             </div>
             {pipeline.shortDescription && (
-              <p className="text-[12.5px] mt-1.5 leading-snug" style={{ color: "rgba(245,239,227,0.62)" }}>
+              <p className="text-[12.5px] mt-1.5 leading-snug" style={{ color: "var(--color-vl-ink-muted)" }}>
                 {pipeline.shortDescription}
               </p>
             )}
             {disabled && pipeline.reason && (
-              <p className="text-[11.5px] mt-2" style={{ color: "rgba(245,239,227,0.5)" }}>
+              <p className="text-[11.5px] mt-2" style={{ color: "var(--color-vl-ink-faint)" }}>
                 {pipeline.reason}
               </p>
             )}
@@ -1210,8 +1245,8 @@ function PipelineCard({
           <span
             className="w-4 h-4 rounded-full flex items-center justify-center shrink-0"
             style={{
-              background: active ? "var(--color-vl-voice)" : "transparent",
-              border: "1px solid rgba(245,239,227,0.3)",
+              background: active ? "var(--color-vl-coral)" : "transparent",
+              border: "1px solid rgba(14,27,44,0.18)",
             }}
           >
             {active && <Check className="w-3 h-3 text-white" />}
@@ -1234,9 +1269,9 @@ function PipelineCard({
                 height: 28,
                 padding: "0 8px",
                 borderRadius: 999,
-                background: "rgba(245,239,227,0.04)",
-                border: "1px solid rgba(245,239,227,0.18)",
-                color: "var(--color-vl-ivory)",
+                background: "rgba(14,27,44,0.04)",
+                border: "1px solid rgba(14,27,44,0.12)",
+                color: "var(--color-vl-ink)",
                 fontSize: 11.5,
                 outline: 0,
               }}
@@ -1460,9 +1495,9 @@ function SamplePlayer({
         disabled={disabled || state === "loading"}
         className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border transition-colors text-[12px]"
         style={{
-          borderColor: isPlaying ? "rgba(124,110,245,0.6)" : "rgba(245,239,227,0.18)",
-          background: isPlaying ? "rgba(124,110,245,0.08)" : "rgba(245,239,227,0.025)",
-          color: "var(--color-vl-ivory)",
+          borderColor: isPlaying ? "rgba(124,110,245,0.6)" : "rgba(14,27,44,0.12)",
+          background: isPlaying ? "var(--color-vl-coral-tint)" : "rgba(255,255,255,0.55)",
+          color: "var(--color-vl-ink)",
           opacity: disabled ? 0.5 : 1,
         }}
       >
@@ -1524,12 +1559,12 @@ function PipelineConfigPanel({
     <div className="vl-panel p-5 mt-2">
       <div className="flex items-baseline justify-between gap-3 mb-3">
         <p className="vl-eyebrow">Tune {selected.displayName}</p>
-        <p className="text-[11px]" style={{ color: "rgba(245,239,227,0.45)" }}>Optional</p>
+        <p className="text-[11px]" style={{ color: "var(--color-vl-ink-faint)" }}>Optional</p>
       </div>
 
       {(selected.sampleVoices?.length ?? 0) > 0 && (
         <div className="mb-4">
-          <label className="block text-[11px] uppercase tracking-[0.14em] mb-2" style={{ color: "rgba(245,239,227,0.55)" }}>
+          <label className="block text-[11px] uppercase tracking-[0.14em] mb-2" style={{ color: "var(--color-vl-ink-muted)" }}>
             Voice character
           </label>
           <div className="flex flex-wrap gap-2">
@@ -1540,10 +1575,10 @@ function PipelineConfigPanel({
                 onClick={() => onVoice(v)}
                 className="px-3 py-1.5 rounded-full text-[12px] transition-colors"
                 style={{
-                  borderColor: voice === v ? "rgba(124,110,245,0.6)" : "rgba(245,239,227,0.18)",
-                  background: voice === v ? "rgba(124,110,245,0.10)" : "rgba(245,239,227,0.025)",
-                  color: "var(--color-vl-ivory)",
-                  border: `1px solid ${voice === v ? "rgba(124,110,245,0.6)" : "rgba(245,239,227,0.18)"}`,
+                  borderColor: voice === v ? "rgba(124,110,245,0.6)" : "rgba(14,27,44,0.12)",
+                  background: voice === v ? "var(--color-vl-coral-tint)" : "rgba(255,255,255,0.55)",
+                  color: "var(--color-vl-ink)",
+                  border: `1px solid ${voice === v ? "rgba(124,110,245,0.6)" : "rgba(14,27,44,0.12)"}`,
                 }}
               >
                 {v}
@@ -1555,10 +1590,10 @@ function PipelineConfigPanel({
 
       {isGemini31 && (
         <div className="mb-3">
-          <label className="block text-[11px] uppercase tracking-[0.14em] mb-2" style={{ color: "rgba(245,239,227,0.55)" }}>
+          <label className="block text-[11px] uppercase tracking-[0.14em] mb-2" style={{ color: "var(--color-vl-ink-muted)" }}>
             Thinking depth
           </label>
-          <p className="text-[11.5px] mb-2" style={{ color: "rgba(245,239,227,0.5)" }}>
+          <p className="text-[11.5px] mb-2" style={{ color: "var(--color-vl-ink-faint)" }}>
             Lower = faster first reply. Higher = better reasoning on multi-step requests like splitting a tab or upselling.
           </p>
           <div className="flex flex-wrap gap-2">
@@ -1569,10 +1604,10 @@ function PipelineConfigPanel({
                 onClick={() => onThinkingLevel(lvl)}
                 className="px-3 py-1.5 rounded-full text-[12px] capitalize transition-colors"
                 style={{
-                  borderColor: thinkingLevel === lvl ? "rgba(224,183,106,0.6)" : "rgba(245,239,227,0.18)",
-                  background: thinkingLevel === lvl ? "rgba(224,183,106,0.10)" : "rgba(245,239,227,0.025)",
-                  color: "var(--color-vl-ivory)",
-                  border: `1px solid ${thinkingLevel === lvl ? "rgba(224,183,106,0.6)" : "rgba(245,239,227,0.18)"}`,
+                  borderColor: thinkingLevel === lvl ? "rgba(224,183,106,0.6)" : "rgba(14,27,44,0.12)",
+                  background: thinkingLevel === lvl ? "rgba(224,183,106,0.10)" : "rgba(255,255,255,0.55)",
+                  color: "var(--color-vl-ink)",
+                  border: `1px solid ${thinkingLevel === lvl ? "rgba(224,183,106,0.6)" : "rgba(14,27,44,0.12)"}`,
                 }}
               >
                 {lvl}
@@ -1585,8 +1620,8 @@ function PipelineConfigPanel({
       {isGemini25 && (
         <div className="flex items-start justify-between gap-3 py-2">
           <div className="flex-1 min-w-0">
-            <p className="text-[13px] font-medium" style={{ color: "var(--color-vl-ivory)" }}>Proactive audio</p>
-            <p className="text-[11.5px] mt-1" style={{ color: "rgba(245,239,227,0.55)" }}>
+            <p className="text-[13px] font-medium" style={{ color: "var(--color-vl-ink)" }}>Proactive audio</p>
+            <p className="text-[11.5px] mt-1" style={{ color: "var(--color-vl-ink-muted)" }}>
               When on, the assistant ignores ambient chatter and only responds to speech that's clearly directed at it. Recommended for busy bars.
             </p>
           </div>
@@ -1600,7 +1635,7 @@ function PipelineConfigPanel({
             <span
               className="w-9 h-5 rounded-full relative transition-colors"
               style={{
-                background: proactiveAudio ? "rgba(124,110,245,0.6)" : "rgba(245,239,227,0.18)",
+                background: proactiveAudio ? "rgba(124,110,245,0.6)" : "rgba(14,27,44,0.12)",
               }}
             >
               <span
@@ -1613,7 +1648,7 @@ function PipelineConfigPanel({
       )}
 
       {selected.notes && (
-        <p className="text-[11.5px] mt-3 leading-relaxed" style={{ color: "rgba(245,239,227,0.5)" }}>
+        <p className="text-[11.5px] mt-3 leading-relaxed" style={{ color: "var(--color-vl-ink-faint)" }}>
           {selected.notes}
         </p>
       )}

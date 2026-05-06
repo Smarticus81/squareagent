@@ -1,14 +1,14 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..800;1,9..144,300..800&family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
 @import "tailwindcss";
 @import "tw-animate-css";
 
 @plugin "@tailwindcss/typography";
 
 /* ──────────────────────────────────────────────────────────────
-   VoyceLab — Voice-Layer Control Surface
+   VoyceLab — Hospitality, orchestrated by voice.
    ──────────────────────────────────────────────────────────────
-   Black marble surface. Brass edge light. Violet voice signal.
-   Dark mode is the flagship; light mode is ivory menu paper.
+   Warm cream paper. Deep navy ink. Coral hospitality accent.
+   Painterly background of peach, sage, and lilac.
    ────────────────────────────────────────────────────────────── */
 
 @theme inline {
@@ -41,106 +41,105 @@
   --color-destructive: hsl(var(--destructive));
   --color-destructive-foreground: hsl(var(--destructive-foreground));
 
-  /* Direct brand tokens — match lib/tokens.ts */
-  --color-vl-black: #07080A;
-  --color-vl-graphite: #111318;
-  --color-vl-graphite2: #181B22;
-  --color-vl-graphite3: #242832;
-  --color-vl-ivory: #F5EFE3;
-  --color-vl-bone: #E6D9C3;
-  --color-vl-sand: #C9B894;
-  --color-vl-ash: #8B909A;
-  --color-vl-brass: #C69A52;
-  --color-vl-brass2: #E0B76A;
-  --color-vl-ember: #FF6A2A;
-  --color-vl-voice: #7C6EF5;
-  --color-vl-voice2: #5E56E6;
-  --color-vl-success: #35C275;
-  --color-vl-warning: #F2B84B;
-  --color-vl-danger: #E05252;
+  /* ── Brand tokens — Hospitality palette ─────────────────────── */
+
+  /* Cream paper backgrounds */
+  --color-vl-cream: #FBF7F1;
+  --color-vl-cream-warm: #F4ECDD;
+  --color-vl-cream-deep: #ECE0CB;
+  --color-vl-paper: #FFFFFF;
+
+  /* Ink — deep navy text */
+  --color-vl-ink: #0E1B2C;
+  --color-vl-ink-soft: #2B3A50;
+  --color-vl-ink-muted: #5A6577;
+  --color-vl-ink-faint: #8A93A2;
+
+  /* Coral — primary action, hospitality warmth */
+  --color-vl-coral: #FF6B47;
+  --color-vl-coral-deep: #E2502E;
+  --color-vl-coral-soft: #FFA384;
+  --color-vl-coral-tint: #FFF1EB;
+
+  /* Painterly accents from the brand wash */
+  --color-vl-peach: #FFC9A8;
+  --color-vl-peach-soft: #FFE4D2;
+  --color-vl-sage: #9CC9A1;
+  --color-vl-sage-soft: #DCEBDB;
+  --color-vl-lilac: #C7B7E5;
+  --color-vl-lilac-soft: #EDE5F8;
+  --color-vl-honey: #F2C97D;
+  --color-vl-honey-soft: #FBE8C0;
+
+  /* Status */
+  --color-vl-success: #2F9E64;
+  --color-vl-warning: #E59B2A;
+  --color-vl-danger: #D7402E;
+
+  /* Aliases retained for back-compat — many components reference these */
+  --color-vl-black: #0E1B2C;
+  --color-vl-graphite: #1A2638;
+  --color-vl-graphite2: #243042;
+  --color-vl-graphite3: #2E3A4D;
+  --color-vl-ivory: #0E1B2C;          /* now means "ink" in light theme */
+  --color-vl-bone: #2B3A50;
+  --color-vl-sand: #5A6577;
+  --color-vl-ash: #8A93A2;
+  --color-vl-brass: #E2502E;          /* now coral-deep */
+  --color-vl-brass2: #FF6B47;         /* now coral */
+  --color-vl-ember: #FF6B47;
+  --color-vl-voice: #C7B7E5;          /* lilac as the conversation accent */
+  --color-vl-voice2: #A38EDC;
 
   --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-display: 'Fraunces', 'Times New Roman', Georgia, serif;
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 
-  --radius-sm: 0.375rem;
-  --radius-md: 0.5rem;
-  --radius-lg: 0.75rem;
-  --radius-xl: 1rem;
-  --radius-2xl: 1.25rem;
-  --radius-3xl: 1.5rem;
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.25rem;
+  --radius-2xl: 1.75rem;
+  --radius-3xl: 2.25rem;
 }
 
-/* DARK FLAGSHIP — default */
+/* Single light theme — flagship */
 :root,
+:root.light,
 :root.dark {
-  color-scheme: dark;
-
-  --background: 222 14% 4%;             /* #07080A */
-  --foreground: 38 39% 93%;             /* ivory */
-
-  --card: 222 14% 7%;                   /* #111318 */
-  --card-foreground: 38 39% 93%;
-  --card-border: 38 25% 80% / 14%;
-
-  --popover: 222 14% 9%;
-  --popover-foreground: 38 39% 93%;
-  --popover-border: 38 25% 80% / 14%;
-
-  --primary: 38 39% 93%;                /* ivory on brass actions */
-  --primary-foreground: 222 14% 4%;
-
-  --secondary: 222 12% 14%;             /* graphite3 */
-  --secondary-foreground: 38 39% 93%;
-
-  --muted: 222 12% 12%;
-  --muted-foreground: 222 8% 60%;       /* ash */
-
-  --accent: 35 50% 55%;                 /* brass */
-  --accent-foreground: 222 14% 4%;
-
-  --destructive: 0 70% 60%;
-  --destructive-foreground: 38 39% 93%;
-
-  --border: 38 25% 80% / 14%;
-  --input: 38 25% 80% / 14%;
-  --ring: 245 87% 70%;                  /* voice violet */
-
-  --radius: 0.75rem;
-}
-
-/* LIGHT — ivory menu paper, graphite ink, brass accent */
-:root.light {
   color-scheme: light;
 
-  --background: 38 39% 96%;             /* close to ivory */
-  --foreground: 222 14% 8%;
+  --background: 36 50% 96%;             /* #FBF7F1 cream */
+  --foreground: 215 53% 12%;            /* #0E1B2C ink */
 
   --card: 0 0% 100%;
-  --card-foreground: 222 14% 8%;
-  --card-border: 222 10% 88%;
+  --card-foreground: 215 53% 12%;
+  --card-border: 215 25% 14% / 8%;
 
   --popover: 0 0% 100%;
-  --popover-foreground: 222 14% 8%;
-  --popover-border: 222 10% 88%;
+  --popover-foreground: 215 53% 12%;
+  --popover-border: 215 25% 14% / 10%;
 
-  --primary: 222 14% 8%;
-  --primary-foreground: 38 39% 96%;
+  --primary: 11 100% 64%;               /* coral */
+  --primary-foreground: 0 0% 100%;
 
-  --secondary: 38 25% 90%;
-  --secondary-foreground: 222 14% 8%;
+  --secondary: 36 45% 90%;
+  --secondary-foreground: 215 53% 12%;
 
-  --muted: 38 25% 92%;
-  --muted-foreground: 222 8% 36%;
+  --muted: 36 40% 92%;
+  --muted-foreground: 220 12% 40%;
 
-  --accent: 35 50% 45%;
-  --accent-foreground: 38 39% 96%;
+  --accent: 11 100% 64%;
+  --accent-foreground: 0 0% 100%;
 
-  --destructive: 0 70% 50%;
+  --destructive: 7 70% 51%;
   --destructive-foreground: 0 0% 100%;
 
-  --border: 222 10% 88%;
-  --input: 222 10% 88%;
-  --ring: 245 87% 60%;
+  --border: 215 25% 14% / 10%;
+  --input: 215 25% 14% / 14%;
+  --ring: 11 100% 64%;
+
+  --radius: 1rem;
 }
 
 @layer base {
@@ -153,143 +152,389 @@
 
   body {
     @apply font-sans antialiased;
-    background-color: hsl(var(--background));
-    /* Atmospheric base — radial brass glow on the side, voice bloom on the other */
+    background-color: var(--color-vl-cream);
+    /* Painterly hospitality wash — peach top-left, sage right, lilac bottom-left */
     background-image:
-      radial-gradient(ellipse 65% 45% at 12% 8%, rgba(124,110,245,0.07), transparent 60%),
-      radial-gradient(ellipse 55% 40% at 92% 88%, rgba(198,154,82,0.06), transparent 60%),
-      radial-gradient(ellipse 90% 60% at 50% 110%, rgba(255,106,42,0.04), transparent 70%);
+      radial-gradient(ellipse 60% 45% at 8% 4%, rgba(255, 201, 168, 0.55), transparent 60%),
+      radial-gradient(ellipse 55% 40% at 96% 18%, rgba(199, 183, 229, 0.32), transparent 65%),
+      radial-gradient(ellipse 70% 55% at 88% 95%, rgba(156, 201, 161, 0.30), transparent 65%),
+      radial-gradient(ellipse 60% 50% at 12% 90%, rgba(255, 107, 71, 0.10), transparent 70%);
     background-attachment: fixed;
     text-rendering: optimizeLegibility;
-  }
-
-  :root.light body {
-    background-image:
-      radial-gradient(ellipse 65% 45% at 12% 8%, rgba(124,110,245,0.05), transparent 60%),
-      radial-gradient(ellipse 55% 40% at 92% 88%, rgba(198,154,82,0.06), transparent 60%);
+    font-feature-settings: "ss01", "cv11";
   }
 
   h1, h2, h3, h4, h5, h6 {
-    @apply font-sans tracking-tight;
-    font-feature-settings: "ss01", "ss02", "cv11";
+    @apply tracking-tight;
+    color: var(--color-vl-ink);
+    font-feature-settings: "ss01", "ss02";
   }
 
-  ::selection { background: rgba(124,110,245,0.35); color: hsl(var(--foreground)); }
+  ::selection {
+    background: rgba(255, 107, 71, 0.25);
+    color: var(--color-vl-ink);
+  }
 
-  /* Focus ring — visible, voice violet */
   :focus-visible {
-    outline: 2px solid hsl(var(--ring));
+    outline: 2px solid var(--color-vl-coral);
     outline-offset: 2px;
-    border-radius: 6px;
+    border-radius: 8px;
   }
 }
 
 @layer utilities {
-  /* Glass surface — premium control panel */
-  .vl-glass {
-    background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.015));
-    border: 1px solid rgba(245,239,227,0.10);
-    backdrop-filter: blur(18px) saturate(1.1);
-    -webkit-backdrop-filter: blur(18px) saturate(1.1);
-  }
+  /* ── Typography ─────────────────────────────────────────────── */
 
-  :root.light .vl-glass {
-    background: linear-gradient(180deg, rgba(255,255,255,0.85), rgba(255,255,255,0.65));
-    border: 1px solid rgba(17,19,24,0.08);
-  }
-
-  .vl-panel {
-    background: linear-gradient(180deg, #14161C 0%, #0E1015 100%);
-    border: 1px solid rgba(245,239,227,0.08);
-    border-radius: 18px;
-  }
-
-  :root.light .vl-panel {
-    background: linear-gradient(180deg, #FFFFFF 0%, #F8F2E5 100%);
-    border: 1px solid rgba(17,19,24,0.07);
-  }
-
-  /* Chip — connected status */
-  .vl-chip {
-    display: inline-flex; align-items: center; gap: 0.5rem;
-    padding: 0.32rem 0.7rem;
-    border-radius: 9999px;
-    font-size: 11px;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    border: 1px solid rgba(245,239,227,0.12);
-    background: rgba(245,239,227,0.04);
-    color: hsl(var(--foreground));
-  }
-
-  :root.light .vl-chip {
-    border-color: rgba(17,19,24,0.10);
-    background: rgba(17,19,24,0.04);
-  }
-
-  /* Brass pill button */
-  .vl-btn-primary {
-    background: linear-gradient(180deg, #E0B76A, #C69A52);
-    color: #07080A;
-    font-weight: 600;
-    border-radius: 999px;
-    padding: 0.85rem 1.6rem;
-    transition: transform .15s ease, box-shadow .15s ease, filter .15s ease;
-    box-shadow: 0 1px 0 rgba(255,255,255,0.18) inset, 0 8px 28px -12px rgba(198,154,82,0.45);
-  }
-  .vl-btn-primary:hover { transform: translateY(-1px); filter: brightness(1.06); }
-  .vl-btn-primary:active { transform: translateY(0); filter: brightness(0.96); }
-
-  .vl-btn-ghost {
-    background: rgba(245,239,227,0.045);
-    color: hsl(var(--foreground));
-    border: 1px solid rgba(245,239,227,0.12);
-    border-radius: 999px;
-    padding: 0.85rem 1.6rem;
+  /* Serif display — used for hero/section headlines */
+  .vl-display {
+    font-family: var(--font-display);
     font-weight: 500;
-    transition: background .2s ease, border-color .2s ease;
-  }
-  .vl-btn-ghost:hover { background: rgba(245,239,227,0.08); border-color: rgba(245,239,227,0.22); }
-
-  :root.light .vl-btn-ghost {
-    background: rgba(17,19,24,0.04);
-    border-color: rgba(17,19,24,0.10);
-  }
-  :root.light .vl-btn-ghost:hover { background: rgba(17,19,24,0.08); }
-
-  /* Brass edge — used to backlight panels */
-  .vl-edge-brass {
-    box-shadow: inset 0 1px 0 rgba(224,183,106,0.22);
+    letter-spacing: -0.022em;
+    line-height: 1.02;
+    font-optical-sizing: auto;
   }
 
-  /* Hairline dividers */
+  /* Italic emphasis fragment in serif headlines, e.g. "by voice." */
+  .vl-display em,
+  .vl-italic {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-weight: 400;
+    color: var(--color-vl-coral);
+  }
+
+  /* Coral eyebrow — uppercase, tracked, used above headlines */
+  .vl-eyebrow {
+    font-family: var(--font-sans);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--color-vl-coral);
+  }
+
+  .vl-section-eyebrow {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--color-vl-coral);
+  }
+
+  .vl-section-heading {
+    font-family: var(--font-display);
+    font-weight: 500;
+    font-size: clamp(2rem, 4.2vw, 3.4rem);
+    letter-spacing: -0.022em;
+    line-height: 1.04;
+    color: var(--color-vl-ink);
+  }
+
+  /* ── Surfaces ───────────────────────────────────────────────── */
+
+  /* Glass header band — used by the fixed top bar */
+  .vl-glass {
+    background: rgba(251, 247, 241, 0.72);
+    backdrop-filter: blur(20px) saturate(1.2);
+    -webkit-backdrop-filter: blur(20px) saturate(1.2);
+    border-bottom: 1px solid rgba(14, 27, 44, 0.06);
+  }
+
+  /* Solid white card with soft shadow */
+  .vl-card {
+    background: var(--color-vl-paper);
+    border: 1px solid rgba(14, 27, 44, 0.06);
+    border-radius: 18px;
+    box-shadow:
+      0 1px 2px rgba(14, 27, 44, 0.03),
+      0 8px 28px rgba(14, 27, 44, 0.04);
+    transition: box-shadow .3s ease, transform .3s ease;
+  }
+  .vl-card:hover {
+    box-shadow:
+      0 2px 6px rgba(14, 27, 44, 0.05),
+      0 14px 40px rgba(14, 27, 44, 0.08);
+  }
+
+  /* Frosted glass panel — used for hero conversation, voice scenes */
+  .vl-card-glass {
+    background: rgba(255, 255, 255, 0.72);
+    backdrop-filter: blur(22px) saturate(1.15);
+    -webkit-backdrop-filter: blur(22px) saturate(1.15);
+    border: 1px solid rgba(14, 27, 44, 0.08);
+    border-radius: 28px;
+    box-shadow:
+      0 4px 28px rgba(14, 27, 44, 0.07),
+      0 1px 4px rgba(14, 27, 44, 0.04);
+  }
+
+  /* App panel — used by Console, Wizard, Settings */
+  .vl-panel {
+    background: var(--color-vl-paper);
+    border: 1px solid rgba(14, 27, 44, 0.07);
+    border-radius: 20px;
+    box-shadow: 0 1px 2px rgba(14, 27, 44, 0.025);
+  }
+
+  /* Coral-tinted surface for highlighted blocks */
+  .vl-panel-coral {
+    background: linear-gradient(180deg, var(--color-vl-coral-tint) 0%, #FFFFFF 100%);
+    border: 1px solid rgba(255, 107, 71, 0.18);
+    border-radius: 20px;
+  }
+
+  /* Edge highlight — coral hairline on top of a panel */
+  .vl-edge-brass,
+  .vl-edge-coral {
+    box-shadow: inset 0 1px 0 rgba(255, 107, 71, 0.30);
+  }
+
+  /* Hairline divider */
   .vl-line {
-    background-image: linear-gradient(90deg, transparent, rgba(245,239,227,0.18), transparent);
+    background-image: linear-gradient(90deg, transparent, rgba(14, 27, 44, 0.14), transparent);
     height: 1px;
   }
 
-  :root.light .vl-line {
-    background-image: linear-gradient(90deg, transparent, rgba(17,19,24,0.18), transparent);
+  /* ── Buttons ────────────────────────────────────────────────── */
+
+  /* Primary coral pill — the brand CTA */
+  .vl-btn-primary,
+  .vl-btn-coral,
+  .vl-btn-blue {
+    background: linear-gradient(180deg, #FF7E5C 0%, #FF6B47 55%, #ED5331 100%);
+    color: #FFFFFF;
+    font-family: var(--font-sans);
+    font-weight: 600;
+    font-size: 14px;
+    border-radius: 999px;
+    padding: 0.78rem 1.5rem;
+    transition: transform .15s ease, box-shadow .15s ease, filter .15s ease;
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.20) inset,
+      0 12px 28px -10px rgba(255, 107, 71, 0.55),
+      0 2px 6px rgba(255, 107, 71, 0.20);
+    border: none;
+    cursor: pointer;
+  }
+  .vl-btn-primary:hover,
+  .vl-btn-coral:hover,
+  .vl-btn-blue:hover {
+    transform: translateY(-1px);
+    filter: brightness(1.04);
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.20) inset,
+      0 16px 36px -10px rgba(255, 107, 71, 0.60),
+      0 2px 8px rgba(255, 107, 71, 0.24);
+  }
+  .vl-btn-primary:active,
+  .vl-btn-coral:active,
+  .vl-btn-blue:active { transform: translateY(0); filter: brightness(0.97); }
+  .vl-btn-primary:disabled,
+  .vl-btn-coral:disabled,
+  .vl-btn-blue:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+    transform: none;
   }
 
-  /* Compressed display type for cinematic moments */
-  .vl-display {
-    font-family: 'Inter', sans-serif;
-    font-weight: 700;
-    letter-spacing: -0.035em;
-    line-height: 0.94;
-    font-feature-settings: "ss01", "cv11";
+  /* Outline pill — secondary CTA */
+  .vl-btn-outline {
+    background: transparent;
+    color: var(--color-vl-ink);
+    font-family: var(--font-sans);
+    font-weight: 600;
+    font-size: 14px;
+    border-radius: 999px;
+    padding: 0.78rem 1.5rem;
+    border: 1.5px solid rgba(14, 27, 44, 0.16);
+    transition: background .2s ease, border-color .2s ease;
+    cursor: pointer;
+  }
+  .vl-btn-outline:hover {
+    background: rgba(14, 27, 44, 0.04);
+    border-color: rgba(14, 27, 44, 0.28);
   }
 
-  /* Spaced uppercase micro labels */
-  .vl-eyebrow {
-    font-size: 11px;
-    letter-spacing: 0.22em;
-    text-transform: uppercase;
-    color: var(--color-vl-brass2);
+  /* Ghost — used inside the app for tertiary actions */
+  .vl-btn-ghost {
+    background: rgba(14, 27, 44, 0.04);
+    color: var(--color-vl-ink);
+    border: 1px solid rgba(14, 27, 44, 0.08);
+    border-radius: 999px;
+    padding: 0.78rem 1.5rem;
+    font-weight: 500;
+    font-size: 14px;
+    transition: background .2s ease, border-color .2s ease;
+    cursor: pointer;
+  }
+  .vl-btn-ghost:hover {
+    background: rgba(14, 27, 44, 0.08);
+    border-color: rgba(14, 27, 44, 0.18);
   }
 
-  /* Reduced motion — kill ambient animations */
+  /* ── Chips ──────────────────────────────────────────────────── */
+
+  /* Default chip — neutral context indicator */
+  .vl-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.32rem 0.7rem;
+    border-radius: 9999px;
+    font-size: 11.5px;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    color: var(--color-vl-ink-soft);
+    background: rgba(14, 27, 44, 0.04);
+    border: 1px solid rgba(14, 27, 44, 0.08);
+  }
+
+  .vl-chip-light {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.28rem 0.7rem;
+    border-radius: 9999px;
+    font-size: 11.5px;
+    font-weight: 500;
+    color: var(--color-vl-ink-soft);
+    background: var(--color-vl-paper);
+    border: 1px solid rgba(14, 27, 44, 0.08);
+    box-shadow: 0 1px 2px rgba(14, 27, 44, 0.04);
+  }
+
+  /* Coral pill chip — for hero callouts and brand markers */
+  .vl-chip-coral {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.32rem 0.75rem;
+    border-radius: 9999px;
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--color-vl-coral-deep);
+    background: var(--color-vl-coral-tint);
+    border: 1px solid rgba(255, 107, 71, 0.25);
+  }
+
+  /* ── Inputs ─────────────────────────────────────────────────── */
+
+  .vl-input {
+    width: 100%;
+    height: 48px;
+    padding: 0 16px;
+    border-radius: 14px;
+    background: var(--color-vl-paper);
+    border: 1px solid rgba(14, 27, 44, 0.12);
+    color: var(--color-vl-ink);
+    font-size: 15px;
+    outline: none;
+    transition: border-color .2s ease, background .2s ease, box-shadow .2s ease;
+  }
+  .vl-input::placeholder { color: rgba(14, 27, 44, 0.36); }
+  .vl-input:focus {
+    border-color: var(--color-vl-coral);
+    background: var(--color-vl-paper);
+    box-shadow: 0 0 0 3px rgba(255, 107, 71, 0.14);
+  }
+
+  /* ── Layout helpers ─────────────────────────────────────────── */
+
+  .vl-landing {
+    background: transparent;
+    color: var(--color-vl-ink);
+    min-height: 100vh;
+  }
+
+  .section-container {
+    width: 100%;
+    max-width: 1280px;
+    margin-left: auto;
+    margin-right: auto;
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+  }
+  @media (min-width: 768px) {
+    .section-container {
+      padding-left: 3rem;
+      padding-right: 3rem;
+    }
+  }
+  @media (min-width: 1280px) {
+    .section-container {
+      padding-left: 5rem;
+      padding-right: 5rem;
+    }
+  }
+
+  /* Header / footer overrides for the landing page */
+  .vl-landing-header .vl-glass {
+    background: rgba(251, 247, 241, 0.72);
+    border-bottom: 1px solid rgba(14, 27, 44, 0.06);
+  }
+
+  .vl-landing-footer {
+    background: rgba(251, 247, 241, 0.6);
+    border-color: rgba(14, 27, 44, 0.08) !important;
+  }
+
+  /* ── Hospitality scene helpers ──────────────────────────────── */
+
+  /* Big watercolor blob behind the hero scene */
+  .vl-blob {
+    position: absolute;
+    border-radius: 9999px;
+    filter: blur(60px);
+    pointer-events: none;
+  }
+
+  /* Concentric orbit rings (decorative, centered behind hero waveform) */
+  .vl-orbit-ring {
+    position: absolute;
+    border-radius: 9999px;
+    border: 1px solid rgba(14, 27, 44, 0.08);
+    pointer-events: none;
+  }
+
+  /* ── Animations ─────────────────────────────────────────────── */
+
+  @keyframes vl-wave {
+    0%, 100% { height: 30%; }
+    50% { height: 100%; }
+  }
+
+  @keyframes vl-float-slow {
+    0%, 100% { transform: translateY(0px) rotate(0deg); }
+    50% { transform: translateY(-10px) rotate(0.5deg); }
+  }
+  @keyframes vl-float-medium {
+    0%, 100% { transform: translateY(0px) translateX(0px); }
+    50% { transform: translateY(-7px) translateX(3px); }
+  }
+  @keyframes vl-float-fast {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-12px); }
+  }
+  .vl-float-slow { animation: vl-float-slow 7s ease-in-out infinite; }
+  .vl-float-medium { animation: vl-float-medium 5.5s ease-in-out infinite; }
+  .vl-float-fast { animation: vl-float-fast 4.5s ease-in-out infinite; }
+
+  @keyframes vl-pulse-soft {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.55; }
+  }
+  .vl-pulse-soft { animation: vl-pulse-soft 2.4s ease-in-out infinite; }
+
+  @keyframes vl-orbit-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+  .vl-orbit-spin { animation: vl-orbit-spin 60s linear infinite; }
+
+  /* Scrollbar hide */
+  .scrollbar-hide::-webkit-scrollbar { display: none; }
+  .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {
       animation-duration: 0.01ms !important;

@@ -43,7 +43,7 @@ interface VoiceAgentContextType {
   setCatalog: (items: unknown[]) => void;
   setCurrentOrder: (order: unknown[]) => void;
   setSquareCredentials: (token: string, locationId: string) => void;
-  setAuthParams: (venueId: string, authToken: string) => void;
+  setAuthParams: (venueId: string, authToken: string, agentProfileId?: string) => void;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -71,6 +71,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
   const squareLocationIdRef = useRef("");
   const venueIdRef = useRef("");
   const authTokenRef = useRef("");
+  const agentProfileIdRef = useRef("");
   const isRunning = useRef(false);
   const agentStateRef = useRef<AgentState>("disconnected");
   const sessionIdRef = useRef("");
@@ -100,9 +101,10 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
   }, []);
 
   /** Store venueId + auth JWT so realtime calls go through server-side credential lookup. */
-  const setAuthParams = useCallback((venueId: string, authToken: string) => {
+  const setAuthParams = useCallback((venueId: string, authToken: string, agentProfileId?: string) => {
     venueIdRef.current = venueId;
     authTokenRef.current = authToken;
+    agentProfileIdRef.current = agentProfileId ?? "";
   }, []);
 
 
@@ -221,6 +223,7 @@ General:
           catalog: catalogRef.current,
           order: currentOrderRef.current,
           venueId: venueIdRef.current || undefined,
+          agentProfileId: agentProfileIdRef.current || undefined,
         }),
       });
 
@@ -370,6 +373,7 @@ General:
           catalog: catalogRef.current,
           order: currentOrderRef.current,
           venueId: venueIdRef.current || undefined,
+          agentProfileId: agentProfileIdRef.current || undefined,
         }),
       });
 

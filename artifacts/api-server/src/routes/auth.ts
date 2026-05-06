@@ -361,7 +361,7 @@ router.post("/exchange/create", requireAuth as any, async (req: Request, res: Re
   if (!ensureAuthStore(res)) return;
 
   const token = extractToken(req)!;
-  const { venueId } = req.body ?? {};
+  const { venueId, agentProfileId } = req.body ?? {};
   if (!venueId) { res.status(400).json({ error: "venueId is required" }); return; }
 
   const code = crypto.randomBytes(32).toString("hex");
@@ -372,9 +372,10 @@ router.post("/exchange/create", requireAuth as any, async (req: Request, res: Re
       code,
       token,
       venueId: String(venueId),
+      agentProfileId: agentProfileId || null,
       expiresAt,
     });
-    res.json({ code });
+    res.json({ code, agentProfileId: agentProfileId ?? null });
   } catch (e: any) {
     console.error("[Exchange] Failed to create code:", e.message);
     res.status(503).json({ error: "Exchange service temporarily unavailable. Please try again." });
@@ -399,7 +400,7 @@ router.post("/exchange/redeem", async (req: Request, res: Response): Promise<voi
 
     // Delete immediately — one-time use
     await db.delete(exchangeCodesTable).where(eq(exchangeCodesTable.code, code));
-    res.json({ token: entry.token, venueId: entry.venueId });
+    res.json({ token: entry.token, venueId: entry.venueId, agentProfileId: (entry as any).agentProfileId ?? null });
   } catch (e: any) {
     console.error("[Exchange] Failed to redeem code:", e.message);
     res.status(503).json({ error: "Exchange service temporarily unavailable. Please try again." });

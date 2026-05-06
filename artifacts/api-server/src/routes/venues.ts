@@ -10,7 +10,7 @@
  */
 
 import { Router, Request, Response } from "express";
-import { db, venuesTable } from "@workspace/db";
+import { db, agentProfilesTable, venuesTable } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
 import { requireAuth } from "./auth";
 
@@ -257,11 +257,37 @@ router.get("/:id/credentials", requireAuth as any, async (req: Request, res: Res
       return;
     }
 
+    const requestedProfileId =
+      typeof req.query.agentProfileId === "string" && req.query.agentProfileId.trim()
+        ? req.query.agentProfileId.trim()
+        : null;
+
+    const profileQuery = db
+      .select({
+        id: agentProfilesTable.id,
+        displayName: agentProfilesTable.displayName,
+        wakePhrase: agentProfilesTable.wakePhrase,
+        voicePipelineProvider: agentProfilesTable.voicePipelineProvider,
+        voicePipelineConfig: agentProfilesTable.voicePipelineConfig,
+      })
+      .from(agentProfilesTable)
+      .where(
+        requestedProfileId
+          ? and(eq(agentProfilesTable.venueId, venueId), eq(agentProfilesTable.id, requestedProfileId))
+          : eq(agentProfilesTable.venueId, venueId),
+      );
+
+    const [profile] = requestedProfileId
+      ? await profileQuery.limit(1)
+      : await profileQuery.orderBy(desc(agentProfilesTable.updatedAt)).limit(1);
+
     res.json({
       accessToken: venue.squareAccessToken,
       locationId: venue.squareLocationId,
       locationName: venue.squareLocationName,
       merchantId: venue.squareMerchantId,
+      agentProfile: profile ?? null,
+      wakePhrase: profile?.wakePhrase ?? null,
     });
   } catch (e: any) {
     console.error("[Venues] Credentials error:", e.message);

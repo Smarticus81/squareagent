@@ -8,40 +8,71 @@
  */
 
 export const voyceTokens = {
-  black: "#07080A",
-  graphite: "#111318",
-  graphite2: "#181B22",
-  graphite3: "#242832",
+  /* Cream paper backgrounds */
+  cream: "#FBF7F1",
+  creamWarm: "#F4ECDD",
+  creamDeep: "#ECE0CB",
+  paper: "#FFFFFF",
 
-  ivory: "#F5EFE3",
-  bone: "#E6D9C3",
-  sand: "#C9B894",
-  ash: "#8B909A",
+  /* Ink */
+  ink: "#0E1B2C",
+  inkSoft: "#2B3A50",
+  inkMuted: "#5A6577",
+  inkFaint: "#8A93A2",
 
-  brass: "#C69A52",
-  brass2: "#E0B76A",
-  ember: "#FF6A2A",
+  /* Coral hospitality accent */
+  coral: "#FF6B47",
+  coralDeep: "#E2502E",
+  coralSoft: "#FFA384",
+  coralTint: "#FFF1EB",
 
-  voice: "#7C6EF5",
-  voice2: "#5E56E6",
-  voiceGlow: "rgba(124, 110, 245, 0.35)",
+  /* Painterly accents */
+  peach: "#FFC9A8",
+  peachSoft: "#FFE4D2",
+  sage: "#9CC9A1",
+  sageSoft: "#DCEBDB",
+  lilac: "#C7B7E5",
+  lilacSoft: "#EDE5F8",
+  honey: "#F2C97D",
+  honeySoft: "#FBE8C0",
 
-  success: "#35C275",
-  warning: "#F2B84B",
-  danger: "#E05252",
+  /* Status */
+  success: "#2F9E64",
+  warning: "#E59B2A",
+  danger: "#D7402E",
 
-  glass: "rgba(255, 255, 255, 0.065)",
-  glassStrong: "rgba(255, 255, 255, 0.12)",
-  line: "rgba(245, 239, 227, 0.14)",
-  lineStrong: "rgba(245, 239, 227, 0.24)",
+  /* Surface fills */
+  glass: "rgba(255, 255, 255, 0.72)",
+  glassStrong: "rgba(255, 255, 255, 0.88)",
+  line: "rgba(14, 27, 44, 0.10)",
+  lineStrong: "rgba(14, 27, 44, 0.18)",
+
+  /* Back-compat aliases used by existing components */
+  black: "#0E1B2C",
+  graphite: "#1A2638",
+  graphite2: "#243042",
+  graphite3: "#2E3A4D",
+  ivory: "#0E1B2C",
+  bone: "#2B3A50",
+  sand: "#5A6577",
+  ash: "#8A93A2",
+  brass: "#E2502E",
+  brass2: "#FF6B47",
+  ember: "#FF6B47",
+  voice: "#C7B7E5",
+  voice2: "#A38EDC",
+  voiceGlow: "rgba(199, 183, 229, 0.35)",
 } as const;
 
 export const voyceCopy = {
   brand: "VoyceLab",
-  tagline: "Ask your venue anything.",
+  brandTagline: "Where voice runs hospitality.",
+  tagline: "Hospitality, orchestrated by voice.",
   promise:
-    "VoyceLab gives venues a voice-powered assistant that understands their events, POS, inventory, bar packages, and operations — so teams can get answers, take action, and run smoother events without digging through dashboards.",
-  conversion: "Your venue can finally talk to its own operations.",
+    "VoyceLab connects voice assistants to the tools that power your venue. Natural conversations turn into real actions across service, inventory, POS, events, and your entire operation.",
+  supporting: "Less busywork. More guest magic.",
+  conversion: "Let's put your venue in conversation.",
+  positioning: "Beyond commands. Beyond systems.",
 } as const;
 
 /* ─────────────────────────────────────────────────────────────────

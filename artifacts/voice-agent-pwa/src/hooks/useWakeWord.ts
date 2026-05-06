@@ -52,6 +52,19 @@ export function useWakeWord({
   const recRef = useRef<any>(null);
   const restartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const captureFailsRef = useRef(0);
+  const wakeWordsRef = useRef(wakeWords);
+  const stopPhrasesRef = useRef(stopPhrases);
+  const shutdownPhrasesRef = useRef(shutdownPhrases);
+  const onWakeRef = useRef(onWakeWordDetected);
+  const onStopRef = useRef(onStopDetected);
+  const onShutdownRef = useRef(onShutdownDetected);
+
+  wakeWordsRef.current = wakeWords;
+  stopPhrasesRef.current = stopPhrases;
+  shutdownPhrasesRef.current = shutdownPhrases;
+  onWakeRef.current = onWakeWordDetected;
+  onStopRef.current = onStopDetected;
+  onShutdownRef.current = onShutdownDetected;
 
   const clearRestartTimer = useCallback(() => {
     if (restartTimerRef.current) {
@@ -127,27 +140,27 @@ export function useWakeWord({
         console.log("[WakeWord] Transcript:", combined);
 
         // Check shutdown phrases first (highest priority)
-        if (shutdownPhrases.some((p) => combined.includes(p))) {
+        if (shutdownPhrasesRef.current.some((p) => combined.includes(p))) {
           console.log("[WakeWord] Shutdown phrase:", combined);
           stop();
-          onShutdownDetected();
+          onShutdownRef.current();
           return;
         }
 
         // Check stop/terminate phrases
-        if (stopPhrases.some((p) => combined.includes(p))) {
+        if (stopPhrasesRef.current.some((p) => combined.includes(p))) {
           console.log("[WakeWord] Stop phrase:", combined);
           // Don't stop wake word — caller handles transition
           stop();
-          onStopDetected();
+          onStopRef.current();
           return;
         }
 
         // Check wake words
-        if (wakeWords.some((w) => combined.includes(w))) {
+        if (wakeWordsRef.current.some((w) => combined.includes(w))) {
           console.log("[WakeWord] Wake word detected:", combined);
           stop();
-          onWakeWordDetected();
+          onWakeRef.current();
           return;
         }
       }
@@ -194,7 +207,7 @@ export function useWakeWord({
       recRef.current = null;
       scheduleRetry(500);
     }
-  }, [wakeWords, stopPhrases, shutdownPhrases, confidenceThreshold, onWakeWordDetected, onStopDetected, onShutdownDetected, stop, cleanupRec, scheduleRetry]);
+  }, [confidenceThreshold, stop, cleanupRec, scheduleRetry]);
 
   spawnRecRef.current = spawnRec;
 

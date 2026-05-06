@@ -37,10 +37,12 @@ async function main() {
           code TEXT PRIMARY KEY,
           token TEXT NOT NULL,
           venue_id TEXT NOT NULL,
+          agent_profile_id UUID NULL,
           expires_at TIMESTAMP NOT NULL,
           created_at TIMESTAMP NOT NULL DEFAULT NOW()
         )
       `);
+      await pool.query(`ALTER TABLE exchange_codes ADD COLUMN IF NOT EXISTS agent_profile_id UUID NULL`);
       console.log("exchange_codes table OK");
     } catch (e: any) {
       console.error("Failed to ensure exchange_codes table:", e.message);

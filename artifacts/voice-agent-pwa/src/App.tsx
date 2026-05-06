@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { Menu } from "lucide-react";
 import { useVoiceAgent, type AgentState, type OrderCommand, type ConversationMessage } from "@/contexts/VoiceAgentContext";
 import { useOrder } from "@/contexts/OrderContext";
@@ -45,6 +45,20 @@ function stateLabel(state: AgentState, mode: AppMode, wakeWordActive: boolean): 
   }
 }
 
+function buildWakeWords(wakePhrase: string): string[] {
+  const normalized = wakePhrase.toLowerCase().trim();
+  const compact = normalized.replace(/[^\p{L}\p{N}\s]/gu, "").replace(/\s+/g, " ");
+  const words = new Set(["hey voyce", "hey voicelab", "hey voycelab", "voycelab"]);
+  if (compact) {
+    words.add(compact);
+    if (compact.startsWith("hey ")) words.add(compact.slice(4));
+    else words.add(`hey ${compact}`);
+  } else {
+    words.add("hey bar");
+  }
+  return Array.from(words);
+}
+
 /* ── Ghost conversation lines ─────────────────────────────────── */
 function GhostLine({ msg, rank }: { msg: ConversationMessage; rank: number }) {
   const isUser = msg.role === "user";
@@ -78,7 +92,18 @@ export default function App() {
     addItem, removeItem, updateQuantity, clearOrder, markVoiceOrderSubmitted, submitOrder, isSubmitting,
   } = useOrder();
 
-  const { isConfigured, catalogItems, isLoadingCatalog, catalogError, accessToken, locationId, venueId: sqVenueId, authToken: sqAuthToken } = useSquare();
+  const {
+    isConfigured,
+    catalogItems,
+    isLoadingCatalog,
+    catalogError,
+    accessToken,
+    locationId,
+    venueId: sqVenueId,
+    authToken: sqAuthToken,
+    agentProfileId,
+    wakePhrase,
+  } = useSquare();
 
   const [panelOpen, setPanelOpen] = useState(false);
   const [panelTab, setPanelTab] = useState<"order" | "menu" | "settings">("order");
@@ -124,8 +149,8 @@ export default function App() {
   useEffect(() => {
     const venueId = sqVenueId || "";
     const authToken = sqAuthToken || "";
-    if (venueId && authToken) setAuthParams(venueId, authToken);
-  }, [sqVenueId, sqAuthToken, setAuthParams]);
+    if (venueId && authToken) setAuthParams(venueId, authToken, agentProfileId ?? undefined);
+  }, [sqVenueId, sqAuthToken, agentProfileId, setAuthParams]);
 
   // Push current order to voice agent
   useEffect(() => {
@@ -204,7 +229,10 @@ export default function App() {
     setMode("shutdown");
   }, [disconnect]);
 
+  const wakeWords = useMemo(() => buildWakeWords(wakePhrase), [wakePhrase]);
+
   const { isListening: wakeWordListening, startWakeWord, stopWakeWord } = useWakeWord({
+    wakeWords,
     confidenceThreshold: 0.4,
     onWakeWordDetected,
     onStopDetected,
@@ -311,26 +339,31 @@ export default function App() {
           <Menu size={18} />
         </button>
         <div className="brand-row">
-          <svg width="24" height="22" viewBox="0 0 62 58" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <svg width="36" height="22" viewBox="0 0 52 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
             <defs>
-              <linearGradient id="vl-top-blue" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#5AA0FF"/>
-                <stop offset="100%" stopColor="#1F4FE0"/>
+              <linearGradient id="vl-top-lilac" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#D9CBF0"/>
+                <stop offset="100%" stopColor="#A38EDC"/>
               </linearGradient>
-              <linearGradient id="vl-top-gold" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#FFD34A"/>
-                <stop offset="100%" stopColor="#F5A623"/>
+              <linearGradient id="vl-top-coral" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#FF8A66"/>
+                <stop offset="100%" stopColor="#E2502E"/>
+              </linearGradient>
+              <linearGradient id="vl-top-sage" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#B9DBBE"/>
+                <stop offset="100%" stopColor="#7FB386"/>
               </linearGradient>
             </defs>
-            <circle cx="3" cy="30" r="2.4" fill="url(#vl-top-blue)"/>
-            <rect x="7" y="22" width="5" height="16" rx="2.5" fill="url(#vl-top-blue)"/>
-            <rect x="15" y="14" width="5" height="32" rx="2.5" fill="url(#vl-top-blue)"/>
-            <rect x="23" y="6" width="5" height="48" rx="2.5" fill="url(#vl-top-blue)"/>
-            <rect x="31" y="6" width="5" height="48" rx="2.5" fill="url(#vl-top-gold)"/>
-            <rect x="39" y="14" width="5" height="32" rx="2.5" fill="url(#vl-top-gold)"/>
-            <rect x="47" y="22" width="5" height="16" rx="2.5" fill="url(#vl-top-gold)"/>
-            <rect x="55" y="26" width="5" height="8" rx="2.5" fill="url(#vl-top-gold)"/>
-            <path d="M25 5.5 Q33 0 40 5.5" stroke="#FF8A2B" strokeWidth="2.4" strokeLinecap="round" fill="none"/>
+            <rect x="1" y="14" width="3" height="4" rx="1.5" fill="url(#vl-top-lilac)"/>
+            <rect x="6" y="11" width="3" height="10" rx="1.5" fill="url(#vl-top-lilac)"/>
+            <rect x="11" y="6" width="3" height="20" rx="1.5" fill="url(#vl-top-coral)"/>
+            <rect x="16" y="2" width="3" height="28" rx="1.5" fill="url(#vl-top-coral)"/>
+            <rect x="21" y="0" width="3" height="32" rx="1.5" fill="url(#vl-top-coral)"/>
+            <rect x="26" y="2" width="3" height="28" rx="1.5" fill="url(#vl-top-coral)"/>
+            <rect x="31" y="6" width="3" height="20" rx="1.5" fill="url(#vl-top-coral)"/>
+            <rect x="36" y="10" width="3" height="12" rx="1.5" fill="url(#vl-top-sage)"/>
+            <rect x="41" y="13" width="3" height="6" rx="1.5" fill="url(#vl-top-sage)"/>
+            <rect x="46" y="14" width="3" height="4" rx="1.5" fill="url(#vl-top-sage)"/>
           </svg>
           <span className="brand-text" style={{ color: "var(--logo-text)" }}>
             Voyce<span style={{ fontWeight: 500, opacity: 0.92 }}>Lab</span>
@@ -354,27 +387,32 @@ export default function App() {
       <div className="content">
         {/* Subtle watermark — equalizer mark */}
         <div className="watermark">
-          <svg width="180" height="168" viewBox="0 0 62 58" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <svg width="190" height="118" viewBox="0 0 52 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
             <defs>
-              <linearGradient id="vl-wm-blue" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#5AA0FF"/>
-                <stop offset="100%" stopColor="#1F4FE0"/>
+              <linearGradient id="vl-wm-lilac" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#D9CBF0"/>
+                <stop offset="100%" stopColor="#A38EDC"/>
               </linearGradient>
-              <linearGradient id="vl-wm-gold" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#FFD34A"/>
-                <stop offset="100%" stopColor="#F5A623"/>
+              <linearGradient id="vl-wm-coral" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#FF8A66"/>
+                <stop offset="100%" stopColor="#E2502E"/>
+              </linearGradient>
+              <linearGradient id="vl-wm-sage" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#B9DBBE"/>
+                <stop offset="100%" stopColor="#7FB386"/>
               </linearGradient>
             </defs>
             <g opacity="0.08">
-              <circle cx="3" cy="30" r="2.4" fill="url(#vl-wm-blue)"/>
-              <rect x="7" y="22" width="5" height="16" rx="2.5" fill="url(#vl-wm-blue)"/>
-              <rect x="15" y="14" width="5" height="32" rx="2.5" fill="url(#vl-wm-blue)"/>
-              <rect x="23" y="6" width="5" height="48" rx="2.5" fill="url(#vl-wm-blue)"/>
-              <rect x="31" y="6" width="5" height="48" rx="2.5" fill="url(#vl-wm-gold)"/>
-              <rect x="39" y="14" width="5" height="32" rx="2.5" fill="url(#vl-wm-gold)"/>
-              <rect x="47" y="22" width="5" height="16" rx="2.5" fill="url(#vl-wm-gold)"/>
-              <rect x="55" y="26" width="5" height="8" rx="2.5" fill="url(#vl-wm-gold)"/>
-              <path d="M25 5.5 Q33 0 40 5.5" stroke="#FF8A2B" strokeWidth="2.4" strokeLinecap="round" fill="none"/>
+              <rect x="1" y="14" width="3" height="4" rx="1.5" fill="url(#vl-wm-lilac)"/>
+              <rect x="6" y="11" width="3" height="10" rx="1.5" fill="url(#vl-wm-lilac)"/>
+              <rect x="11" y="6" width="3" height="20" rx="1.5" fill="url(#vl-wm-coral)"/>
+              <rect x="16" y="2" width="3" height="28" rx="1.5" fill="url(#vl-wm-coral)"/>
+              <rect x="21" y="0" width="3" height="32" rx="1.5" fill="url(#vl-wm-coral)"/>
+              <rect x="26" y="2" width="3" height="28" rx="1.5" fill="url(#vl-wm-coral)"/>
+              <rect x="31" y="6" width="3" height="20" rx="1.5" fill="url(#vl-wm-coral)"/>
+              <rect x="36" y="10" width="3" height="12" rx="1.5" fill="url(#vl-wm-sage)"/>
+              <rect x="41" y="13" width="3" height="6" rx="1.5" fill="url(#vl-wm-sage)"/>
+              <rect x="46" y="14" width="3" height="4" rx="1.5" fill="url(#vl-wm-sage)"/>
             </g>
           </svg>
         </div>

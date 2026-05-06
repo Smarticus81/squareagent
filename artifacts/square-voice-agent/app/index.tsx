@@ -5,7 +5,7 @@ import {
   View, Text, StyleSheet, Pressable, Platform,
   FlatList, Modal, ActivityIndicator, Linking, useColorScheme,
 } from "react-native";
-import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Path, Rect, Stop } from "react-native-svg";
+import Svg, { Defs, LinearGradient as SvgLinearGradient, Rect, Stop } from "react-native-svg";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
@@ -63,6 +63,20 @@ function railColors(key: RailKey, isDark: boolean) {
     case "wake":         return { line: c.active,    glow: c.active,    glowOp: 0.06, bar: c.bar       };
     default:             return { line: c.line,      glow: c.glow,      glowOp: 0,    bar: c.bar       };
   }
+}
+
+function buildWakeWords(wakePhrase: string): string[] {
+  const normalized = wakePhrase.toLowerCase().trim();
+  const compact = normalized.replace(/[^\p{L}\p{N}\s]/gu, "").replace(/\s+/g, " ");
+  const words = new Set(["hey voyce", "hey voicelab", "hey voycelab", "voycelab"]);
+  if (compact) {
+    words.add(compact);
+    if (compact.startsWith("hey ")) words.add(compact.slice(4));
+    else words.add(`hey ${compact}`);
+  } else {
+    words.add("hey bar");
+  }
+  return Array.from(words);
 }
 
 const NUM_BARS = 24;
@@ -229,7 +243,7 @@ export default function MainScreen() {
   } = useOrder();
 
   const { isConfigured, catalogItems, isLoadingCatalog, accessToken, locationId, venueId, authToken,
-    connectionError, isReconnecting, refreshCredentials } = useSquare();
+    connectionError, isReconnecting, refreshCredentials, wakePhrase } = useSquare();
   const { voice, speed, setVoice, setSpeed, loaded: voicePrefsLoaded } = useVoicePrefs();
   const [panelOpen, setPanelOpen] = useState(false);
   const [panelTab,  setPanelTab]  = useState<"order" | "menu" | "settings">("order");
@@ -249,6 +263,7 @@ export default function MainScreen() {
   const onWake = useCallback(async () => { setWakeMode("command"); await connect(); }, [connect]);
   const onStop = useCallback(async () => { await disconnect(); setWakeMode("idle"); }, [disconnect]);
   const { isListening: wakeListening, startWakeWord, stopWakeWord } = useWakeWord({
+    wakeWords: buildWakeWords(wakePhrase),
     onWakeWordDetected: onWake, onStopDetected: onStop,
   });
 
@@ -378,26 +393,31 @@ export default function MainScreen() {
         </Pressable>
 
         <View style={s.brandRow}>
-          <Svg width={24} height={22} viewBox="0 0 62 58">
+          <Svg width={36} height={22} viewBox="0 0 52 32">
             <Defs>
-              <SvgLinearGradient id="vl-top-blue" x1="0" y1="0" x2="0" y2="1">
-                <Stop offset="0%" stopColor="#5AA0FF" />
-                <Stop offset="100%" stopColor="#1F4FE0" />
+              <SvgLinearGradient id="vl-top-lilac" x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0%" stopColor="#D9CBF0" />
+                <Stop offset="100%" stopColor="#A38EDC" />
               </SvgLinearGradient>
-              <SvgLinearGradient id="vl-top-gold" x1="0" y1="0" x2="0" y2="1">
-                <Stop offset="0%" stopColor="#FFD34A" />
-                <Stop offset="100%" stopColor="#F5A623" />
+              <SvgLinearGradient id="vl-top-coral" x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0%" stopColor="#FF8A66" />
+                <Stop offset="100%" stopColor="#E2502E" />
+              </SvgLinearGradient>
+              <SvgLinearGradient id="vl-top-sage" x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0%" stopColor="#B9DBBE" />
+                <Stop offset="100%" stopColor="#7FB386" />
               </SvgLinearGradient>
             </Defs>
-            <Circle cx={3} cy={30} r={2.4} fill="url(#vl-top-blue)" />
-            <Rect x={7} y={22} width={5} height={16} rx={2.5} fill="url(#vl-top-blue)" />
-            <Rect x={15} y={14} width={5} height={32} rx={2.5} fill="url(#vl-top-blue)" />
-            <Rect x={23} y={6} width={5} height={48} rx={2.5} fill="url(#vl-top-blue)" />
-            <Rect x={31} y={6} width={5} height={48} rx={2.5} fill="url(#vl-top-gold)" />
-            <Rect x={39} y={14} width={5} height={32} rx={2.5} fill="url(#vl-top-gold)" />
-            <Rect x={47} y={22} width={5} height={16} rx={2.5} fill="url(#vl-top-gold)" />
-            <Rect x={55} y={26} width={5} height={8} rx={2.5} fill="url(#vl-top-gold)" />
-            <Path d="M25 5.5 Q33 0 40 5.5" stroke="#FF8A2B" strokeWidth={2.4} strokeLinecap="round" fill="none" />
+            <Rect x={1} y={14} width={3} height={4} rx={1.5} fill="url(#vl-top-lilac)" />
+            <Rect x={6} y={11} width={3} height={10} rx={1.5} fill="url(#vl-top-lilac)" />
+            <Rect x={11} y={6} width={3} height={20} rx={1.5} fill="url(#vl-top-coral)" />
+            <Rect x={16} y={2} width={3} height={28} rx={1.5} fill="url(#vl-top-coral)" />
+            <Rect x={21} y={0} width={3} height={32} rx={1.5} fill="url(#vl-top-coral)" />
+            <Rect x={26} y={2} width={3} height={28} rx={1.5} fill="url(#vl-top-coral)" />
+            <Rect x={31} y={6} width={3} height={20} rx={1.5} fill="url(#vl-top-coral)" />
+            <Rect x={36} y={10} width={3} height={12} rx={1.5} fill="url(#vl-top-sage)" />
+            <Rect x={41} y={13} width={3} height={6} rx={1.5} fill="url(#vl-top-sage)" />
+            <Rect x={46} y={14} width={3} height={4} rx={1.5} fill="url(#vl-top-sage)" />
           </Svg>
           <View style={s.brandWords}>
             <Text style={[s.brandVoyce, { color: t.logoText }]}>Voyce</Text>
@@ -418,26 +438,31 @@ export default function MainScreen() {
       <View style={s.content}>
         {/* Watermark — equalizer mark */}
         <View style={s.watermark} pointerEvents="none">
-          <Svg width={170} height={158} viewBox="0 0 62 58" opacity={0.08}>
+          <Svg width={190} height={118} viewBox="0 0 52 32" opacity={0.08}>
             <Defs>
-              <SvgLinearGradient id="vl-wm-blue" x1="0" y1="0" x2="0" y2="1">
-                <Stop offset="0%" stopColor="#5AA0FF" />
-                <Stop offset="100%" stopColor="#1F4FE0" />
+              <SvgLinearGradient id="vl-wm-lilac" x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0%" stopColor="#D9CBF0" />
+                <Stop offset="100%" stopColor="#A38EDC" />
               </SvgLinearGradient>
-              <SvgLinearGradient id="vl-wm-gold" x1="0" y1="0" x2="0" y2="1">
-                <Stop offset="0%" stopColor="#FFD34A" />
-                <Stop offset="100%" stopColor="#F5A623" />
+              <SvgLinearGradient id="vl-wm-coral" x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0%" stopColor="#FF8A66" />
+                <Stop offset="100%" stopColor="#E2502E" />
+              </SvgLinearGradient>
+              <SvgLinearGradient id="vl-wm-sage" x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0%" stopColor="#B9DBBE" />
+                <Stop offset="100%" stopColor="#7FB386" />
               </SvgLinearGradient>
             </Defs>
-            <Circle cx={3} cy={30} r={2.4} fill="url(#vl-wm-blue)" />
-            <Rect x={7} y={22} width={5} height={16} rx={2.5} fill="url(#vl-wm-blue)" />
-            <Rect x={15} y={14} width={5} height={32} rx={2.5} fill="url(#vl-wm-blue)" />
-            <Rect x={23} y={6} width={5} height={48} rx={2.5} fill="url(#vl-wm-blue)" />
-            <Rect x={31} y={6} width={5} height={48} rx={2.5} fill="url(#vl-wm-gold)" />
-            <Rect x={39} y={14} width={5} height={32} rx={2.5} fill="url(#vl-wm-gold)" />
-            <Rect x={47} y={22} width={5} height={16} rx={2.5} fill="url(#vl-wm-gold)" />
-            <Rect x={55} y={26} width={5} height={8} rx={2.5} fill="url(#vl-wm-gold)" />
-            <Path d="M25 5.5 Q33 0 40 5.5" stroke="#FF8A2B" strokeWidth={2.4} strokeLinecap="round" fill="none" />
+            <Rect x={1} y={14} width={3} height={4} rx={1.5} fill="url(#vl-wm-lilac)" />
+            <Rect x={6} y={11} width={3} height={10} rx={1.5} fill="url(#vl-wm-lilac)" />
+            <Rect x={11} y={6} width={3} height={20} rx={1.5} fill="url(#vl-wm-coral)" />
+            <Rect x={16} y={2} width={3} height={28} rx={1.5} fill="url(#vl-wm-coral)" />
+            <Rect x={21} y={0} width={3} height={32} rx={1.5} fill="url(#vl-wm-coral)" />
+            <Rect x={26} y={2} width={3} height={28} rx={1.5} fill="url(#vl-wm-coral)" />
+            <Rect x={31} y={6} width={3} height={20} rx={1.5} fill="url(#vl-wm-coral)" />
+            <Rect x={36} y={10} width={3} height={12} rx={1.5} fill="url(#vl-wm-sage)" />
+            <Rect x={41} y={13} width={3} height={6} rx={1.5} fill="url(#vl-wm-sage)" />
+            <Rect x={46} y={14} width={3} height={4} rx={1.5} fill="url(#vl-wm-sage)" />
           </Svg>
         </View>
 

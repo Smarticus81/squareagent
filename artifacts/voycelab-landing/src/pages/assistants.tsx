@@ -1,9 +1,10 @@
 import { useEffect } from "react";
 import { useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { useVenues } from "@/hooks/use-venues";
 import { VoiceRail } from "@/components/voice-rail";
-import { Loader2, Plus, Settings2 } from "lucide-react";
+import { ExternalLink, Loader2, Plus, Settings2, Sparkles, Store } from "lucide-react";
 
 /**
  * Assistants — your team's voices.
@@ -16,12 +17,13 @@ export default function Assistants() {
   const [, setLocation] = useLocation();
   const { data: auth, isLoading } = useAuth();
   const { data: venues, isLoading: venuesLoading, error: venuesError } = useVenues();
+  const { data: profiles, isLoading: profilesLoading, error: profilesError } = useAgentProfiles();
 
   useEffect(() => {
     if (!isLoading && !auth?.user) setLocation("/login");
   }, [auth, isLoading, setLocation]);
 
-  if (isLoading || (venuesLoading && !venuesError)) {
+  if (isLoading || (venuesLoading && !venuesError) || (profilesLoading && !profilesError)) {
     return (
       <div className="flex-1 flex items-center justify-center">
         <Loader2 className="w-5 h-5 animate-spin" style={{ color: "var(--color-vl-brass2)" }} />
@@ -31,29 +33,42 @@ export default function Assistants() {
 
   if (!auth?.user) return null;
 
-  const list = (venues ?? []).map((v) => ({
-    id: v.id,
-    name: "Bev",
-    venue: v.squareLocationName ?? v.name ?? "Unnamed venue",
+  const venueById = new Map((venues ?? []).map((v) => [v.id, v]));
+  const list = (profiles ?? []).map((profile) => {
+    const venue = venueById.get(profile.venueId);
+    const approvals = Object.values((profile.confirmationPolicy?.approvals ?? {}) as Record<string, string>);
+    const askFirstCount = approvals.filter((level) => level === "ask_first").length;
+    return {
+    id: profile.id,
+    venueId: profile.venueId,
+    name: profile.displayName,
+    venue: venue?.squareLocationName ?? venue?.name ?? "Unnamed venue",
     service: "Square",
-    voice: "Fastest live voice",
-    room: "Bar",
-    allowedCount: 8,
-    askFirstCount: 3,
-    state: v.squareLocationId ? ("ready" as const) : ("offline" as const),
-  }));
+    voice: pipelineLabel(profile.voicePipelineProvider),
+    room: roomLabel(profile.noiseMode),
+    wakePhrase: profile.wakePhrase,
+    allowedCount: profile.allowedTools.length,
+    askFirstCount,
+    state: venue?.squareLocationId ? ("ready" as const) : ("offline" as const),
+  };
+  });
 
   return (
-    <div className="flex-1 pt-24 pb-24">
-      <div className="w-full max-w-[1200px] mx-auto px-6 lg:px-10">
-        <div className="flex items-end justify-between mb-10 flex-wrap gap-4">
+    <div className="relative flex-1 overflow-hidden px-4 pb-24 pt-16 sm:px-6 lg:px-10">
+      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
+        <div className="absolute left-[-12%] top-[-18%] h-[380px] w-[560px] rounded-full blur-3xl" style={{ background: "rgba(255, 201, 168, 0.42)" }} />
+        <div className="absolute right-[-12%] top-[8%] h-[460px] w-[560px] rounded-full blur-3xl" style={{ background: "rgba(199, 183, 229, 0.30)" }} />
+        <div className="absolute bottom-[-18%] right-[8%] h-[420px] w-[680px] rounded-full blur-3xl" style={{ background: "rgba(156, 201, 161, 0.25)" }} />
+      </div>
+      <div className="mx-auto w-full max-w-[1180px]">
+        <div className="mb-10 flex flex-wrap items-end justify-between gap-5">
           <div>
             <p className="vl-eyebrow">Assistants</p>
-            <h1 className="vl-display text-[40px] md:text-[56px] mt-3" style={{ color: "var(--color-vl-ivory)" }}>
-              Your team's voices.
+            <h1 className="vl-display mt-4 max-w-[720px] text-[42px] md:text-[62px]" style={{ color: "var(--color-vl-ink)" }}>
+              Your team’s voice assistants.
             </h1>
-            <p className="mt-3 text-[15px]" style={{ color: "rgba(245,239,227,0.62)" }}>
-              Each assistant has a connected service, a room setting, and approval rules for what it can do.
+            <p className="mt-5 max-w-[620px] text-[16px] leading-relaxed" style={{ color: "var(--color-vl-ink-muted)" }}>
+              Create one assistant per venue. Each voice carries its connected service, room behavior, wake phrase, and approval rules.
             </p>
           </div>
           <button
@@ -65,57 +80,71 @@ export default function Assistants() {
         </div>
 
         {venuesError && (
-          <div className="vl-panel p-4 mb-6 text-[13px]" style={{ color: "var(--color-vl-danger)" }}>
+          <div className="mb-6 rounded-2xl border px-4 py-3 text-[13px]" style={{ color: "var(--color-vl-danger)", background: "rgba(215,64,46,0.08)", borderColor: "rgba(215,64,46,0.18)" }}>
             Connected service is unavailable right now: {venuesError.message}
+          </div>
+        )}
+
+        {profilesError && (
+          <div className="mb-6 rounded-2xl border px-4 py-3 text-[13px]" style={{ color: "var(--color-vl-danger)", background: "rgba(215,64,46,0.08)", borderColor: "rgba(215,64,46,0.18)" }}>
+            Assistants are unavailable right now: {profilesError.message}
           </div>
         )}
 
         {list.length === 0 ? (
           <EmptyState onCreate={() => setLocation("/assistants/new")} />
         ) : (
-          <div className="grid lg:grid-cols-2 gap-3">
+          <div className="grid gap-5 lg:grid-cols-2">
             {list.map((a) => (
-              <article key={a.id} className="vl-panel p-7 vl-edge-brass">
-                <div className="flex items-center justify-between mb-3">
-                  <p className="vl-eyebrow">{a.venue}</p>
+              <article key={a.id} className="vl-card-glass overflow-hidden p-6 md:p-7">
+                <div className="mb-5 flex items-start justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl" style={{ background: "var(--color-vl-coral-tint)", color: "var(--color-vl-coral-deep)", border: "1px solid rgba(255,107,71,0.16)" }}>
+                      <Sparkles className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <p className="vl-eyebrow">{a.venue}</p>
+                      <h2 className="vl-display mt-1 text-[42px]" style={{ color: "var(--color-vl-ink)" }}>
+                        {a.name}
+                      </h2>
+                    </div>
+                  </div>
                   <span
                     className="vl-chip"
                     style={{
-                      color: a.state === "ready" ? "var(--color-vl-success)" : "rgba(245,239,227,0.55)",
-                      borderColor: a.state === "ready" ? "rgba(53,194,117,0.4)" : undefined,
+                      color: a.state === "ready" ? "var(--color-vl-success)" : "var(--color-vl-ink-muted)",
+                      borderColor: a.state === "ready" ? "rgba(47,158,100,0.20)" : undefined,
+                      background: a.state === "ready" ? "rgba(47,158,100,0.08)" : undefined,
                     }}
                   >
                     {a.state === "ready" ? "Ready" : "Offline"}
                   </span>
                 </div>
-                <h2 className="vl-display text-[40px]" style={{ color: "var(--color-vl-ivory)" }}>
-                  {a.name}
-                </h2>
 
                 <div className="mt-4">
                   <VoiceRail state={a.state === "ready" ? "ready" : "offline"} intensity={0.6} />
                 </div>
 
-                <dl className="grid sm:grid-cols-2 gap-x-6 gap-y-2.5 mt-6 text-[13px]">
+                <dl className="mt-7 grid gap-3 sm:grid-cols-2">
                   <Row k="Connected service" v={a.service} />
-                  <Row k="Voice option" v={a.voice} />
+                  <Row k="Voice engine" v={a.voice} />
                   <Row k="Room setting" v={a.room} />
-                  <Row k="Approval" v={`Ask first on ${a.askFirstCount}`} />
+                  <Row k="Wake phrase" v={a.wakePhrase} />
                 </dl>
 
-                <div className="mt-5 pt-5 border-t border-white/[0.06]">
-                  <p className="text-[13px]" style={{ color: "rgba(245,239,227,0.7)" }}>
-                    Can do <strong style={{ color: "var(--color-vl-ivory)" }}>{a.allowedCount}</strong> actions. Will ask before <strong style={{ color: "var(--color-vl-ivory)" }}>{a.askFirstCount}</strong>.
+                <div className="mt-6 rounded-2xl px-4 py-3" style={{ background: "rgba(14,27,44,0.04)", border: "1px solid rgba(14,27,44,0.07)" }}>
+                  <p className="text-[13px]" style={{ color: "var(--color-vl-ink-muted)" }}>
+                    Can do <strong style={{ color: "var(--color-vl-ink)" }}>{a.allowedCount}</strong> actions. Will ask before <strong style={{ color: "var(--color-vl-ink)" }}>{a.askFirstCount}</strong>.
                   </p>
                 </div>
 
                 <div className="mt-6 flex flex-wrap gap-2">
                   <button
-                    onClick={() => launchAssistant(a.id)}
+                    onClick={() => launchAssistant(a.venueId, a.id)}
                     disabled={a.state !== "ready"}
-                    className="vl-btn-primary text-[13px] disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="vl-btn-primary inline-flex items-center gap-2 text-[13px] disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    Open assistant
+                    Open assistant <ExternalLink className="h-3.5 w-3.5" />
                   </button>
                   <button
                     onClick={() => setLocation("/assistants/new")}
@@ -135,20 +164,23 @@ export default function Assistants() {
 
 function Row({ k, v }: { k: string; v: string }) {
   return (
-    <>
-      <dt style={{ color: "rgba(245,239,227,0.5)" }}>{k}</dt>
-      <dd style={{ color: "var(--color-vl-ivory)" }}>{v}</dd>
-    </>
+    <div className="rounded-2xl bg-white/60 px-4 py-3" style={{ border: "1px solid rgba(14,27,44,0.06)" }}>
+      <dt className="text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: "var(--color-vl-ink-faint)" }}>{k}</dt>
+      <dd className="mt-1 text-[13px] font-medium" style={{ color: "var(--color-vl-ink)" }}>{v}</dd>
+    </div>
   );
 }
 
 function EmptyState({ onCreate }: { onCreate: () => void }) {
   return (
-    <div className="vl-panel p-12 text-center">
-      <h2 className="vl-display text-[32px]" style={{ color: "var(--color-vl-ivory)" }}>
+    <div className="vl-card-glass p-10 text-center md:p-12">
+      <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl" style={{ background: "var(--color-vl-coral-tint)", color: "var(--color-vl-coral-deep)" }}>
+        <Store className="h-6 w-6" />
+      </div>
+      <h2 className="vl-display text-[36px]" style={{ color: "var(--color-vl-ink)" }}>
         Create your first assistant.
       </h2>
-      <p className="mt-3 text-[14px] max-w-md mx-auto" style={{ color: "rgba(245,239,227,0.6)" }}>
+      <p className="mx-auto mt-3 max-w-md text-[14px] leading-relaxed" style={{ color: "var(--color-vl-ink-muted)" }}>
         Name it, connect a service, choose what it can do, and test a command before you launch.
       </p>
       <button onClick={onCreate} className="vl-btn-primary inline-flex items-center gap-2 mt-7">
@@ -158,13 +190,55 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
   );
 }
 
-async function launchAssistant(venueId: number) {
+interface AgentProfile {
+  id: string;
+  venueId: number;
+  displayName: string;
+  wakePhrase: string;
+  voicePipelineProvider: string;
+  noiseMode: string;
+  allowedTools: string[];
+  confirmationPolicy: Record<string, unknown>;
+}
+
+function useAgentProfiles() {
+  return useQuery({
+    queryKey: ["/api/v1/agent-profiles"],
+    queryFn: async () => {
+      const token = localStorage.getItem("voycelab_token") || "";
+      const res = await fetch("/api/v1/agent-profiles", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error?.message ?? body.error ?? `Failed to load assistants (${res.status})`);
+      }
+      const data = await res.json();
+      return (data.profiles ?? []) as AgentProfile[];
+    },
+    enabled: !!localStorage.getItem("voycelab_token"),
+  });
+}
+
+function pipelineLabel(provider: string): string {
+  if (provider.includes("gemini")) return "Gemini Live";
+  if (provider.includes("hume")) return "Hume EVI";
+  if (provider.includes("deepgram")) return "Deepgram";
+  if (provider.includes("elevenlabs")) return "ElevenLabs";
+  return "OpenAI Realtime";
+}
+
+function roomLabel(noiseMode: string): string {
+  return noiseMode.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+async function launchAssistant(venueId: number, agentProfileId: string) {
   try {
     const token = localStorage.getItem("voycelab_token") || "";
     const res = await fetch("/api/auth/exchange/create", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ venueId }),
+      body: JSON.stringify({ venueId, agentProfileId }),
     });
     if (!res.ok) throw new Error("Could not open the assistant. Try again.");
     const { code } = await res.json();
@@ -174,7 +248,7 @@ async function launchAssistant(venueId: number) {
     const baseUrl = isLocalDev
       ? `${window.location.protocol}//${window.location.hostname}:8081/`
       : `${window.location.origin}/agent/`;
-    window.open(`${baseUrl}?code=${encodeURIComponent(code)}`, "_blank", "noopener,noreferrer");
+    window.open(`${baseUrl}?code=${encodeURIComponent(code)}&agentProfileId=${encodeURIComponent(agentProfileId)}`, "_blank", "noopener,noreferrer");
   } catch (e) {
     console.error(e);
   }

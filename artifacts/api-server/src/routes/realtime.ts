@@ -14,6 +14,8 @@
 
 import { Router } from "express";
 import { requireAuth, requirePlan } from "./auth";
+import { db, agentProfilesTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
 import {
   syncLiveOrderToSquare,
   cancelLiveOrder,
@@ -38,8 +40,69 @@ import {
 
 const router = Router();
 
-const OPENAI_REALTIME_MODEL = "gpt-realtime-mini";
-// GA realtime mini model for low-latency voice. Use gpt-realtime-1.5 for more capability.
+const OPENAI_REALTIME_MODEL = process.env.OPENAI_REALTIME_MODEL ?? "gpt-realtime-mini";
+// GA realtime mini model for low-latency voice.
+
+/** Public landing-page voice demo: answers questions about VoyceLab only (no tools, no POS). */
+const VOYCELAB_DEMO_INSTRUCTIONS = `You are Bev, the VoyceLab voice guide. You answer questions about VoyceLab only.
+
+Be extremely concise: one to two short sentences per turn. Sound warm, confident, and natural. Never use lists or jargon.
+
+Key facts:
+- VoyceLab gives hospitality venues a voice assistant that connects to their POS, inventory, and event systems so staff can ask operational questions and take actions by speaking.
+- Square is the primary integration; others are on the roadmap.
+- Owners set up assistants in minutes: name it, connect systems, choose permissions, test a command.
+- Plans start with a free trial; direct them to the website for exact pricing.
+- This demo does NOT connect to a real venue; it only explains VoyceLab.
+
+If asked something off-topic, say you can only help with VoyceLab questions on this line. Never be pushy.`;
+
+/** Simple sliding-window rate limit for unauthenticated demo minting (per IP). */
+const demoSessionHits = new Map<string, number[]>();
+function demoRateLimitOk(ip: string, recordHit = true): boolean {
+  const windowMs = Number(process.env.VOYCELAB_DEMO_RATE_WINDOW_MS ?? 900000); // 15 min
+  const maxHits = Number(process.env.VOYCELAB_DEMO_RATE_MAX ?? 12);
+  const now = Date.now();
+  const prev = demoSessionHits.get(ip) ?? [];
+  const fresh = prev.filter((t) => now - t < windowMs);
+  if (fresh.length >= maxHits) return false;
+  if (recordHit) fresh.push(now);
+  demoSessionHits.set(ip, fresh);
+  return true;
+}
+
+function clientIp(req: { headers: Record<string, string | string[] | undefined>; socket: { remoteAddress?: string } }) {
+  const xf = req.headers["x-forwarded-for"];
+  const raw = typeof xf === "string" ? xf.split(",")[0]?.trim() : Array.isArray(xf) ? xf[0]?.trim() : "";
+  return raw || req.socket.remoteAddress || "unknown";
+}
+
+function buildDemoRealtimeSessionConfig(voice: string, speed: number) {
+  return {
+    type: "realtime" as const,
+    model: OPENAI_REALTIME_MODEL,
+    instructions: VOYCELAB_DEMO_INSTRUCTIONS,
+    output_modalities: ["audio" as const],
+    audio: {
+      input: {
+        format: { type: "audio/pcm" as const, rate: 24000 as const },
+        transcription: { model: "whisper-1" },
+        turn_detection: {
+          type: "server_vad" as const,
+          threshold: 0.42,
+          prefix_padding_ms: 80,
+          silence_duration_ms: 180,
+          create_response: true,
+        },
+      },
+      output: {
+        format: { type: "audio/pcm" as const, rate: 24000 as const },
+        voice,
+        speed,
+      },
+    },
+  };
+}
 
 function buildRealtimeSessionConfig(voice: string, speed: number, catalog: CatalogItem[], order: OrderItem[], plan?: string) {
   const skills = getSkillsForSession(plan ?? "trial");
@@ -74,6 +137,70 @@ function buildRealtimeSessionConfig(voice: string, speed: number, catalog: Catal
   };
 }
 
+// ── POST /demo-session — Public VoyceLab FAQ voice demo (no auth, rate-limited) ─
+
+router.post("/demo-session", async (req: any, res: any) => {
+  if (process.env.VOYCELAB_DEMO_ENABLED === "0" || process.env.VOYCELAB_DEMO_ENABLED === "false") {
+    res.status(503).json({ error: "demo_disabled", detail: "Voice demo is temporarily unavailable." });
+    return;
+  }
+
+  const apiKey = process.env.OPENAI_API_KEY ?? process.env.AI_INTEGRATIONS_OPENAI_API_KEY ?? "";
+  if (!apiKey) {
+    res.status(503).json({ error: "demo_unavailable", detail: "Voice demo is not configured." });
+    return;
+  }
+
+  const ip = clientIp(req);
+  if (!demoRateLimitOk(ip, false)) {
+    res.status(429).json({
+      error: "too_many_requests",
+      detail: "Too many demo sessions from this network. Try again in a few minutes.",
+    });
+    return;
+  }
+
+  const { voice = "coral", speed = 1.05 } = req.body ?? {};
+  const voiceStr = typeof voice === "string" ? voice : "coral";
+  const speedNum =
+    typeof speed === "number" && Number.isFinite(speed) && speed >= 0.75 && speed <= 1.35 ? speed : 1.05;
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+
+    const response = await fetch("https://api.openai.com/v1/realtime/client_secrets", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      signal: controller.signal,
+      body: JSON.stringify({
+        session: buildDemoRealtimeSessionConfig(voiceStr, speedNum),
+      }),
+    });
+    clearTimeout(timeout);
+
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error("[Realtime] Demo ephemeral token failed:", errText);
+      res.status(response.status).json({ error: "demo_session_failed", detail: errText });
+      return;
+    }
+
+    const data = (await response.json()) as any;
+    demoRateLimitOk(ip);
+    res.json({
+      id: data.session?.id ?? "",
+      client_secret: { value: data.value, expires_at: data.expires_at },
+    });
+  } catch (e: any) {
+    console.error("[Realtime] Demo session error:", e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── POST /session — Mint ephemeral OpenAI token ───────────────────────────────
 
 router.post("/session", requireAuth as any, requirePlan() as any, async (req: any, res: any) => {
@@ -83,7 +210,7 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
     return;
   }
 
-  const { voice = "ash", speed = 1.0, catalog = [], order = [], venueId } = req.body ?? {};
+  const { voice = "ash", speed = 1.0, catalog = [], order = [], venueId, agentProfileId } = req.body ?? {};
 
   // Look up credentials server-side if venueId provided
   let squareToken = "";
@@ -98,7 +225,34 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
 
   const plan = req.subscription?.plan ?? "trial";
   const skills = getSkillsForSession(plan);
-  console.log(`[Realtime] Creating session: plan=${plan}, skills=[${skillSummary(skills)}], venue=${venueId || "none"}`);
+  let provider = "openai_realtime_webrtc";
+  let providerConfig: Record<string, unknown> = {};
+
+  if (agentProfileId) {
+    const [profile] = await db
+      .select({
+        voicePipelineProvider: agentProfilesTable.voicePipelineProvider,
+        voicePipelineConfig: agentProfilesTable.voicePipelineConfig,
+      })
+      .from(agentProfilesTable)
+      .where(eq(agentProfilesTable.id, String(agentProfileId)))
+      .limit(1);
+    if (profile) {
+      provider = profile.voicePipelineProvider;
+      providerConfig = (profile.voicePipelineConfig as Record<string, unknown>) ?? {};
+    }
+  }
+
+  if (provider !== "openai_realtime_webrtc") {
+    res.status(409).json({
+      error: "pipeline_requires_relay",
+      detail: `${provider} is saved on this assistant. Open it in the Expo/web relay client path; this browser WebRTC surface only supports OpenAI Realtime today.`,
+      provider,
+    });
+    return;
+  }
+
+  console.log(`[Realtime] Creating session: plan=${plan}, provider=${provider}, skills=[${skillSummary(skills)}], venue=${venueId || "none"}`);
 
   try {
     const controller = new AbortController();
@@ -112,7 +266,13 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
       },
       signal: controller.signal,
       body: JSON.stringify({
-        session: buildRealtimeSessionConfig(voice, speed, catalog, order, plan),
+        session: buildRealtimeSessionConfig(
+          String(providerConfig.voice ?? voice),
+          Number(providerConfig.speed ?? speed),
+          catalog,
+          order,
+          plan,
+        ),
       }),
     });
     clearTimeout(timeout);

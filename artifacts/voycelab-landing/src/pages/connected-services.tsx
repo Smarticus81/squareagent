@@ -9,7 +9,18 @@ import {
   type SquareLocation,
 } from "@/hooks/use-venues";
 import { connectedServices } from "@/lib/tokens";
-import { Loader2, Trash2, ExternalLink, MapPin, X } from "lucide-react";
+import {
+  ArrowRight,
+  CheckCircle2,
+  ExternalLink,
+  Loader2,
+  MapPin,
+  Plus,
+  PlugZap,
+  Store,
+  Trash2,
+  X,
+} from "lucide-react";
 
 export default function ConnectedServices() {
   const [, setLocation] = useLocation();
@@ -105,79 +116,177 @@ export default function ConnectedServices() {
   if (!auth?.user) return null;
 
   return (
-    <div className="flex-1 pt-24 pb-24">
-      <div className="w-full max-w-[1200px] mx-auto px-6 lg:px-10">
-        <div className="mb-10">
-          <p className="vl-eyebrow">Connected services</p>
-          <h1 className="vl-display text-[40px] md:text-[56px] mt-3" style={{ color: "var(--color-vl-ivory)" }}>
-            Bolt onto your stack.
-          </h1>
-          <p className="mt-3 text-[15px] max-w-2xl" style={{ color: "rgba(245,239,227,0.6)" }}>
-            VoyceLab does not replace your POS or inventory system. It controls them by voice. Connect Square to start.
-          </p>
+    <div className="relative flex-1 overflow-hidden px-4 pb-24 pt-16 sm:px-6 lg:px-10">
+      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
+        <div
+          className="absolute left-[-12%] top-[-12%] h-[360px] w-[520px] rounded-full blur-3xl"
+          style={{ background: "rgba(255, 201, 168, 0.42)" }}
+        />
+        <div
+          className="absolute right-[-10%] top-[5%] h-[420px] w-[520px] rounded-full blur-3xl"
+          style={{ background: "rgba(199, 183, 229, 0.30)" }}
+        />
+        <div
+          className="absolute bottom-[-18%] right-[8%] h-[420px] w-[640px] rounded-full blur-3xl"
+          style={{ background: "rgba(156, 201, 161, 0.26)" }}
+        />
+      </div>
+
+      <div className="mx-auto w-full max-w-[1180px]">
+        <div className="mb-9 grid gap-6 lg:grid-cols-[1fr_360px] lg:items-end">
+          <div>
+            <p className="vl-eyebrow">Connected services</p>
+            <h1 className="vl-display mt-4 max-w-[680px] text-[42px] md:text-[62px]" style={{ color: "var(--color-vl-ink)" }}>
+              Connect the systems your team already trusts.
+            </h1>
+            <p className="mt-5 max-w-[640px] text-[16px] leading-relaxed" style={{ color: "var(--color-vl-ink-muted)" }}>
+              Start with Square, then bring the rest of your venue stack into voice. Your assistant can read, prepare, and act only where you allow it.
+            </p>
+          </div>
+
+          <div className="vl-card-glass p-5">
+            <div className="flex items-start gap-3">
+              <div
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl"
+                style={{
+                  background: "linear-gradient(135deg, var(--color-vl-coral-tint), #fff)",
+                  color: "var(--color-vl-coral-deep)",
+                  border: "1px solid rgba(255,107,71,0.16)",
+                }}
+              >
+                <PlugZap className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-[13px] font-semibold" style={{ color: "var(--color-vl-ink)" }}>
+                  Live voice actions
+                </p>
+                <p className="mt-1 text-[12.5px] leading-relaxed" style={{ color: "var(--color-vl-ink-muted)" }}>
+                  Square powers menu lookup, order workflows, inventory checks, and reporting.
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
 
         {errorMsg && (
-          <div className="vl-panel p-4 mb-6 text-[13px]" style={{ color: "var(--color-vl-danger)" }}>
+          <div
+            className="mb-6 rounded-2xl border px-4 py-3 text-[13px]"
+            style={{
+              color: "var(--color-vl-danger)",
+              background: "rgba(215, 64, 46, 0.08)",
+              borderColor: "rgba(215, 64, 46, 0.18)",
+            }}
+          >
             {errorMsg}
           </div>
         )}
 
         {venuesError && (
-          <div className="vl-panel p-4 mb-6 text-[13px]" style={{ color: "var(--color-vl-danger)" }}>
+          <div
+            className="mb-6 rounded-2xl border px-4 py-3 text-[13px]"
+            style={{
+              color: "var(--color-vl-danger)",
+              background: "rgba(215, 64, 46, 0.08)",
+              borderColor: "rgba(215, 64, 46, 0.18)",
+            }}
+          >
             Venue service unavailable: {venuesError.message}
           </div>
         )}
 
         {/* Connected venues */}
-        <section className="mb-10">
-          <p className="vl-eyebrow mb-3">Live</p>
-          <div className="vl-panel divide-y divide-white/[0.05]">
+        <section className="mb-12">
+          <div className="mb-4 flex items-end justify-between gap-4">
+            <div>
+              <p className="vl-eyebrow">Live connections</p>
+              <p className="mt-2 text-[13px]" style={{ color: "var(--color-vl-ink-muted)" }}>
+                Active systems your assistants can use right now.
+              </p>
+            </div>
+            {(venues ?? []).length > 0 && (
+              <button
+                onClick={handleConnectSquare}
+                disabled={connecting}
+                className="vl-btn-outline hidden items-center gap-2 px-4 py-2 text-[13px] sm:inline-flex"
+              >
+                {connecting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+                Add location
+              </button>
+            )}
+          </div>
+
+          <div className="vl-card-glass overflow-hidden">
             {(venues ?? []).length === 0 ? (
-              <div className="p-8 flex items-center justify-between">
+              <div className="flex flex-col gap-6 p-7 sm:flex-row sm:items-center sm:justify-between md:p-8">
                 <div>
-                  <p className="text-[16px] font-semibold" style={{ color: "var(--color-vl-ivory)" }}>
-                    No services connected yet.
+                  <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl" style={{ background: "var(--color-vl-coral-tint)", color: "var(--color-vl-coral-deep)" }}>
+                    <Store className="h-5 w-5" />
+                  </div>
+                  <p className="text-[18px] font-semibold" style={{ color: "var(--color-vl-ink)" }}>
+                    Connect Square first.
                   </p>
-                  <p className="text-[13px] mt-1" style={{ color: "rgba(245,239,227,0.55)" }}>
-                    Connect Square to give your agent something to control.
+                  <p className="mt-2 max-w-[520px] text-[14px] leading-relaxed" style={{ color: "var(--color-vl-ink-muted)" }}>
+                    Choose the Square location your assistant will control. You can add more locations later.
                   </p>
                 </div>
-                <button onClick={handleConnectSquare} disabled={connecting} className="vl-btn-primary inline-flex items-center gap-2">
+                <button onClick={handleConnectSquare} disabled={connecting} className="vl-btn-primary inline-flex shrink-0 items-center gap-2">
                   {connecting && <Loader2 className="w-4 h-4 animate-spin" />}
                   Connect Square
+                  {!connecting && <ArrowRight className="h-4 w-4" />}
                 </button>
               </div>
             ) : (
               (venues ?? []).map((v) => (
-                <div key={v.id} className="px-6 py-5 flex items-center gap-4">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[15px] font-semibold" style={{ color: "var(--color-vl-ivory)" }}>
-                        Square
-                      </span>
-                      <span
-                        className="vl-chip"
-                        style={{ color: "var(--color-vl-success)", borderColor: "rgba(53,194,117,0.4)", fontSize: 10 }}
-                      >
-                        <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: "var(--color-vl-success)" }} />
-                        Live
-                      </span>
+                <div key={v.id} className="grid gap-4 border-b border-[rgba(14,27,44,0.06)] p-5 last:border-b-0 sm:grid-cols-[1fr_auto] sm:items-center md:p-6">
+                  <div className="flex items-start gap-4">
+                    <div
+                      className="flex h-14 w-14 shrink-0 items-center justify-center rounded-[22px]"
+                      style={{
+                        background: "linear-gradient(135deg, #FFFFFF, var(--color-vl-coral-tint))",
+                        border: "1px solid rgba(255,107,71,0.18)",
+                        color: "var(--color-vl-coral-deep)",
+                      }}
+                    >
+                      <Store className="h-6 w-6" />
                     </div>
-                    <p className="text-[13px] mt-0.5" style={{ color: "rgba(245,239,227,0.6)" }}>
-                      {v.squareLocationName ?? v.name ?? `Venue ${v.id}`}
-                    </p>
-                    {v.connectedAt && (
-                      <p className="text-[11px] mt-0.5" style={{ color: "rgba(245,239,227,0.4)" }}>
-                        Connected {new Date(v.connectedAt).toLocaleDateString()}
+
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-[16px] font-semibold" style={{ color: "var(--color-vl-ink)" }}>
+                          Square
+                        </span>
+                        <span
+                          className="vl-chip"
+                          style={{
+                            color: "var(--color-vl-success)",
+                            borderColor: "rgba(47,158,100,0.20)",
+                            background: "rgba(47,158,100,0.08)",
+                            fontSize: 11,
+                          }}
+                        >
+                          <CheckCircle2 className="h-3 w-3" />
+                          Live
+                        </span>
+                      </div>
+                      <p className="mt-1 text-[14px]" style={{ color: "var(--color-vl-ink-muted)" }}>
+                        {v.squareLocationName ?? v.name ?? `Venue ${v.id}`}
                       </p>
-                    )}
+                      {v.connectedAt && (
+                        <p className="mt-1 text-[12px]" style={{ color: "var(--color-vl-ink-faint)" }}>
+                          Connected {new Date(v.connectedAt).toLocaleDateString()}
+                        </p>
+                      )}
+                    </div>
                   </div>
                   <button
                     onClick={() => deleteVenue.mutate(v.id)}
                     disabled={deleteVenue.isPending}
-                    className="vl-btn-ghost inline-flex items-center gap-2 text-[12px]"
-                    style={{ color: "var(--color-vl-danger)" }}
+                    className="inline-flex items-center justify-center gap-2 rounded-full border px-4 py-2 text-[12px] font-semibold transition-colors disabled:opacity-60"
+                    style={{
+                      color: "var(--color-vl-danger)",
+                      background: "rgba(215, 64, 46, 0.06)",
+                      borderColor: "rgba(215, 64, 46, 0.16)",
+                    }}
                   >
                     {deleteVenue.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
                     Disconnect
@@ -187,9 +296,9 @@ export default function ConnectedServices() {
             )}
           </div>
           {(venues ?? []).length > 0 && (
-            <div className="mt-3">
-              <button onClick={handleConnectSquare} disabled={connecting} className="vl-btn-ghost inline-flex items-center gap-2 text-[13px]">
-                {connecting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+            <div className="mt-4 sm:hidden">
+              <button onClick={handleConnectSquare} disabled={connecting} className="vl-btn-outline inline-flex items-center gap-2 px-4 py-2 text-[13px]">
+                {connecting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
                 Add another Square location
               </button>
             </div>
@@ -198,21 +307,47 @@ export default function ConnectedServices() {
 
         {/* Other providers — request access */}
         <section>
-          <p className="vl-eyebrow mb-3">Request access</p>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div className="mb-4">
+            <p className="vl-eyebrow">Request access</p>
+            <p className="mt-2 text-[13px]" style={{ color: "var(--color-vl-ink-muted)" }}>
+              Tell us what you want to connect next. We will prioritize your venue’s stack.
+            </p>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {connectedServices.filter((p: typeof connectedServices[number]) => p.status !== "live").map((p: typeof connectedServices[number]) => (
-              <div key={p.id} className="vl-panel p-5" style={{ opacity: 0.78 }}>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-[14px] font-semibold" style={{ color: "var(--color-vl-ivory)" }}>{p.name}</span>
-                  <span className="vl-chip" style={{ fontSize: 10, color: "rgba(245,239,227,0.5)" }}>Request access</span>
+              <div key={p.id} className="vl-card group relative overflow-hidden p-5">
+                <div
+                  aria-hidden
+                  className="absolute right-[-40px] top-[-50px] h-28 w-28 rounded-full transition-transform duration-300 group-hover:scale-125"
+                  style={{ background: "rgba(255, 201, 168, 0.28)" }}
+                />
+                <div className="relative flex items-start justify-between gap-3">
+                  <div>
+                    <span className="text-[15px] font-semibold" style={{ color: "var(--color-vl-ink)" }}>{p.name}</span>
+                    <p className="mt-2 min-h-[36px] text-[12.5px] leading-relaxed" style={{ color: "var(--color-vl-ink-muted)" }}>{p.description}</p>
+                  </div>
+                  <span
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
+                    style={{
+                      background: "rgba(14,27,44,0.04)",
+                      color: "var(--color-vl-ink-muted)",
+                      border: "1px solid rgba(14,27,44,0.08)",
+                    }}
+                  >
+                    <PlugZap className="h-4 w-4" />
+                  </span>
                 </div>
-                <p className="text-[12px]" style={{ color: "rgba(245,239,227,0.55)" }}>{p.description}</p>
                 <a
                   href={`mailto:hello@voycelab.com?subject=Connector%20request%3A%20${encodeURIComponent(p.name)}`}
-                  className="mt-3 inline-flex items-center gap-1 text-[12px]"
-                  style={{ color: "var(--color-vl-brass2)" }}
+                  className="relative mt-5 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-semibold transition-colors"
+                  style={{
+                    color: "var(--color-vl-coral-deep)",
+                    background: "var(--color-vl-coral-tint)",
+                    border: "1px solid rgba(255,107,71,0.18)",
+                  }}
                 >
-                  Request <ExternalLink className="w-3 h-3" />
+                  Request connector <ExternalLink className="w-3 h-3" />
                 </a>
               </div>
             ))}
@@ -222,14 +357,17 @@ export default function ConnectedServices() {
 
       {/* Location picker modal */}
       {showLocationPicker && locations.length > 0 && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="max-w-md w-full vl-panel vl-edge-brass p-7">
-            <div className="flex items-center justify-between mb-5">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(14,27,44,0.36)] p-4 backdrop-blur-sm">
+          <div className="vl-card-glass w-full max-w-[520px] p-6 md:p-7">
+            <div className="mb-5 flex items-start justify-between gap-4">
               <div>
                 <p className="vl-eyebrow">Connect Square</p>
-                <h2 className="text-[20px] font-semibold mt-1" style={{ color: "var(--color-vl-ivory)" }}>
+                <h2 className="vl-display mt-2 text-[30px]" style={{ color: "var(--color-vl-ink)" }}>
                   Choose a location
                 </h2>
+                <p className="mt-2 text-[13px]" style={{ color: "var(--color-vl-ink-muted)" }}>
+                  Pick the venue this assistant should control.
+                </p>
               </div>
               <button
                 onClick={() => {
@@ -237,28 +375,39 @@ export default function ConnectedServices() {
                   setOauthToken(null);
                   setLocations([]);
                 }}
-                className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/[0.06]"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors"
+                style={{
+                  color: "var(--color-vl-ink-muted)",
+                  background: "rgba(14,27,44,0.04)",
+                  border: "1px solid rgba(14,27,44,0.08)",
+                }}
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <div className="space-y-2 max-h-96 overflow-y-auto">
+            <div className="max-h-96 space-y-3 overflow-y-auto pr-1">
               {locations.map((loc) => (
                 <button
                   key={loc.id}
                   onClick={() => handleSelectLocation(loc)}
                   disabled={saveVenue.isPending}
-                  className="w-full text-left vl-panel p-4 flex items-start gap-3 disabled:opacity-50 transition-all hover:-translate-y-0.5"
+                  className="vl-card flex w-full items-start gap-3 p-4 text-left transition-all hover:-translate-y-0.5 disabled:opacity-50"
                 >
-                  <MapPin className="w-4 h-4 mt-0.5 shrink-0" style={{ color: "var(--color-vl-brass2)" }} />
-                  <div>
-                    <p className="text-[14px] font-semibold" style={{ color: "var(--color-vl-ivory)" }}>{loc.name}</p>
+                  <span
+                    className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
+                    style={{ background: "var(--color-vl-coral-tint)", color: "var(--color-vl-coral-deep)" }}
+                  >
+                    <MapPin className="h-4 w-4" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-[14px] font-semibold" style={{ color: "var(--color-vl-ink)" }}>{loc.name}</p>
                     {loc.address && (
-                      <p className="text-[12px] mt-0.5" style={{ color: "rgba(245,239,227,0.55)" }}>
+                      <p className="mt-1 text-[12px]" style={{ color: "var(--color-vl-ink-muted)" }}>
                         {loc.address}
                       </p>
                     )}
                   </div>
+                  {saveVenue.isPending && <Loader2 className="ml-auto mt-2 h-4 w-4 animate-spin" style={{ color: "var(--color-vl-coral)" }} />}
                 </button>
               ))}
             </div>

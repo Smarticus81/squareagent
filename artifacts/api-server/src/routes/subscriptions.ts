@@ -86,6 +86,32 @@ function planFromPriceId(priceId: string): string {
   return PLAN_PRICE_MAP[priceId] ?? "professional";
 }
 
+async function upsertSubscriptionForUser(
+  userId: number,
+  values: Partial<typeof subscriptionsTable.$inferInsert>,
+) {
+  const [existing] = await db
+    .select({ id: subscriptionsTable.id })
+    .from(subscriptionsTable)
+    .where(eq(subscriptionsTable.userId, userId))
+    .limit(1);
+
+  if (existing) {
+    await db
+      .update(subscriptionsTable)
+      .set({ ...values, updatedAt: new Date() })
+      .where(eq(subscriptionsTable.id, existing.id));
+    return;
+  }
+
+  await db.insert(subscriptionsTable).values({
+    userId,
+    plan: "trial",
+    status: "trialing",
+    ...values,
+  });
+}
+
 // ── POST /checkout — Create Stripe Checkout Session ───────────────────────────
 
 router.post("/checkout", requireAuth as any, async (req: Request, res: Response): Promise<void> => {
@@ -107,12 +133,7 @@ router.post("/checkout", requireAuth as any, async (req: Request, res: Response)
         metadata: { userId: String(user.id) },
       });
       customerId = customer.id;
-      // Persist customer ID
-      if (sub) {
-        await db.update(subscriptionsTable)
-          .set({ stripeCustomerId: customerId, updatedAt: new Date() })
-          .where(eq(subscriptionsTable.id, sub.id));
-      }
+      await upsertSubscriptionForUser(user.id, { stripeCustomerId: customerId });
     }
 
     const session = await stripe.checkout.sessions.create({
@@ -124,6 +145,12 @@ router.post("/checkout", requireAuth as any, async (req: Request, res: Response)
       subscription_data: {
         metadata: { userId: String(user.id) },
       },
+      metadata: {
+        userId: String(user.id),
+        priceId,
+        plan: planFromPriceId(priceId),
+      },
+      allow_promotion_codes: true,
     });
 
     res.json({ url: session.url });
@@ -173,26 +200,51 @@ router.post("/webhook", async (req: Request, res: Response): Promise<void> => {
 
   try {
     switch (event.type) {
+      case "checkout.session.completed": {
+        const session = event.data.object as Stripe.Checkout.Session;
+        const userId = parseInt(String(session.metadata?.userId ?? "0"), 10);
+        if (!userId) break;
+
+        const subscriptionId =
+          typeof session.subscription === "string"
+            ? session.subscription
+            : session.subscription?.id;
+        const customerId =
+          typeof session.customer === "string"
+            ? session.customer
+            : session.customer?.id;
+        const priceId = String(session.metadata?.priceId ?? "");
+
+        await upsertSubscriptionForUser(userId, {
+          stripeCustomerId: customerId ?? null,
+          stripeSubscriptionId: subscriptionId ?? null,
+          plan: priceId ? planFromPriceId(priceId) : String(session.metadata?.plan ?? "professional"),
+          status: "active",
+        });
+        break;
+      }
+
       case "customer.subscription.created":
       case "customer.subscription.updated": {
         const sub = event.data.object as Stripe.Subscription;
-        const userId = parseInt(sub.metadata.userId ?? "0", 10);
+        let userId = parseInt(sub.metadata.userId ?? "0", 10);
+        if (!userId && typeof sub.customer === "string") {
+          const customer = await stripe.customers.retrieve(sub.customer);
+          if (!customer.deleted) userId = parseInt(String(customer.metadata?.userId ?? "0"), 10);
+        }
         if (!userId) break;
 
         const priceId = sub.items.data[0]?.price?.id ?? "";
         const plan = planFromPriceId(priceId);
 
-        await db.update(subscriptionsTable)
-          .set({
+        await upsertSubscriptionForUser(userId, {
             stripeSubscriptionId: sub.id,
             stripeCustomerId: sub.customer as string,
             plan,
             status: sub.status === "trialing" ? "trialing" : sub.status === "active" ? "active" : sub.status,
             currentPeriodEnd: new Date((sub as any).current_period_end * 1000),
             cancelAt: (sub as any).cancel_at ? new Date((sub as any).cancel_at * 1000) : null,
-            updatedAt: new Date(),
-          })
-          .where(eq(subscriptionsTable.userId, userId));
+          });
 
         console.log(`[Stripe] Subscription ${sub.id} updated for user ${userId} — plan: ${plan}, status: ${sub.status}`);
         break;
@@ -200,16 +252,17 @@ router.post("/webhook", async (req: Request, res: Response): Promise<void> => {
 
       case "customer.subscription.deleted": {
         const sub = event.data.object as Stripe.Subscription;
-        const userId = parseInt(sub.metadata.userId ?? "0", 10);
+        let userId = parseInt(sub.metadata.userId ?? "0", 10);
+        if (!userId && typeof sub.customer === "string") {
+          const customer = await stripe.customers.retrieve(sub.customer);
+          if (!customer.deleted) userId = parseInt(String(customer.metadata?.userId ?? "0"), 10);
+        }
         if (!userId) break;
 
-        await db.update(subscriptionsTable)
-          .set({
+        await upsertSubscriptionForUser(userId, {
             status: "canceled",
             cancelAt: new Date(),
-            updatedAt: new Date(),
-          })
-          .where(eq(subscriptionsTable.userId, userId));
+          });
 
         console.log(`[Stripe] Subscription ${sub.id} canceled for user ${userId}`);
         break;

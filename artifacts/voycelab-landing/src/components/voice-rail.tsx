@@ -21,15 +21,15 @@ interface VoiceRailProps {
 }
 
 const STATE_COLOR: Record<RailState, string> = {
-  offline: "rgba(140, 145, 154, 0.45)",
-  ready: "#C69A52",
-  listening: "#7C6EF5",
-  thinking: "#FF6A2A",
-  speaking: "#E0B76A",
-  confirming: "#E0B76A",
-  executing: "#F5EFE3",
-  synced: "#35C275",
-  error: "#E05252",
+  offline: "rgba(90, 101, 119, 0.45)",
+  ready: "#FF6B47",
+  listening: "#A38EDC",
+  thinking: "#E2502E",
+  speaking: "#FFA384",
+  confirming: "#F2C97D",
+  executing: "#0E1B2C",
+  synced: "#2F9E64",
+  error: "#D7402E",
 };
 
 /**
@@ -134,13 +134,13 @@ export function VoiceRail({
         />
       )}
 
-      {/* Executing — fast white sweep */}
+      {/* Executing — fast coral sweep */}
       {state === "executing" && !reduce && (
         <motion.div
           aria-hidden
           className="absolute top-1/2 -translate-y-1/2 h-[3px] w-32 rounded-full"
           style={{
-            background: `linear-gradient(90deg, transparent, #FFFFFF, transparent)`,
+            background: `linear-gradient(90deg, transparent, #FF6B47, transparent)`,
           }}
           animate={{ left: ["-20%", "120%"] }}
           transition={{ duration: 0.8, repeat: Infinity, ease: "easeInOut" }}
@@ -153,14 +153,14 @@ export function VoiceRail({
           <motion.div
             aria-hidden
             className="absolute top-1/2 -translate-y-1/2 h-[3px] left-0 w-1/2 rounded-full origin-left"
-            style={{ backgroundColor: "#35C275" }}
+            style={{ backgroundColor: "#2F9E64" }}
             animate={{ scaleX: [0.8, 1, 0.8], opacity: [0.5, 1, 0.5] }}
             transition={{ duration: 1.1, repeat: Infinity, ease: "easeInOut" }}
           />
           <motion.div
             aria-hidden
             className="absolute top-1/2 -translate-y-1/2 h-[3px] right-0 w-1/2 rounded-full origin-right"
-            style={{ backgroundColor: "#E05252" }}
+            style={{ backgroundColor: "#D7402E" }}
             animate={{ scaleX: [0.8, 1, 0.8], opacity: [0.5, 1, 0.5] }}
             transition={{ duration: 1.1, repeat: Infinity, ease: "easeInOut", delay: 0.55 }}
           />
@@ -173,7 +173,7 @@ export function VoiceRail({
           aria-hidden
           className="absolute top-1/2 -translate-y-1/2 left-1/2 -translate-x-1/2 w-2 h-3 rotate-12"
           style={{
-            background: "linear-gradient(180deg, transparent, #E05252, transparent)",
+            background: "linear-gradient(180deg, transparent, #D7402E, transparent)",
           }}
         />
       )}

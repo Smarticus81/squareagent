@@ -18,25 +18,40 @@ export default function Signup() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center relative p-6 py-12">
+    <div className="min-h-screen flex items-center justify-center relative p-6 py-12 overflow-hidden">
+      <div
+        aria-hidden
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background:
+            "radial-gradient(ellipse 60% 45% at 15% 15%, rgba(255,201,168,0.40), transparent 65%), radial-gradient(ellipse 50% 40% at 85% 85%, rgba(156,201,161,0.35), transparent 65%), radial-gradient(ellipse 40% 35% at 90% 15%, rgba(199,183,229,0.30), transparent 65%)",
+        }}
+      />
+
       <Link
         href="/"
-        className="absolute top-6 left-6 flex items-center gap-1.5 text-[13px] font-medium"
-        style={{ color: "rgba(245,239,227,0.55)" }}
+        className="absolute top-6 left-6 flex items-center gap-1.5 text-[13px] font-medium hover:opacity-80 transition-opacity"
+        style={{ color: "var(--color-vl-ink-muted)" }}
       >
         <ArrowLeft className="w-3.5 h-3.5" /> Back
       </Link>
 
-      <div className="w-full max-w-[400px]">
-        <div className="flex justify-center mb-10">
-          <Logo size="lg" />
+      <div className="relative w-full max-w-[420px]">
+        <div className="flex justify-center mb-8">
+          <Logo size="lg" withTagline />
         </div>
 
-        <div className="vl-panel vl-edge-brass p-8">
-          <h1 className="text-[22px] font-semibold tracking-tight text-center" style={{ color: "var(--color-vl-ivory)" }}>
-            Configure your agent
+        <div className="vl-card vl-edge-coral p-8">
+          <h1
+            className="vl-display text-[28px] text-center"
+            style={{ color: "var(--color-vl-ink)" }}
+          >
+            Put your venue <em>in conversation.</em>
           </h1>
-          <p className="text-[13px] text-center mt-1.5" style={{ color: "rgba(245,239,227,0.55)" }}>
+          <p
+            className="text-[14px] text-center mt-2"
+            style={{ color: "var(--color-vl-ink-muted)" }}
+          >
             14 days free · No card required
           </p>
           <div className="mt-6 mb-2">
@@ -94,30 +109,20 @@ export default function Signup() {
           </form>
         </div>
 
-        <p className="mt-8 text-center text-[13px]" style={{ color: "rgba(245,239,227,0.55)" }}>
+        <p
+          className="mt-8 text-center text-[13.5px]"
+          style={{ color: "var(--color-vl-ink-muted)" }}
+        >
           Have an account?{" "}
-          <Link href="/login" className="font-medium hover:underline" style={{ color: "var(--color-vl-brass2)" }}>
+          <Link
+            href="/login"
+            className="font-semibold hover:underline"
+            style={{ color: "var(--color-vl-coral-deep)" }}
+          >
             Sign in
           </Link>
         </p>
       </div>
-
-      <style>{`
-        .vl-input {
-          width: 100%;
-          height: 44px;
-          padding: 0 14px;
-          border-radius: 12px;
-          background: rgba(245,239,227,0.04);
-          border: 1px solid rgba(245,239,227,0.12);
-          color: var(--color-vl-ivory);
-          font-size: 14px;
-          outline: none;
-          transition: border-color .2s ease, background .2s ease;
-        }
-        .vl-input::placeholder { color: rgba(245,239,227,0.35); }
-        .vl-input:focus { border-color: rgba(124,110,245,0.7); background: rgba(245,239,227,0.06); }
-      `}</style>
     </div>
   );
 }
@@ -125,7 +130,10 @@ export default function Signup() {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="vl-eyebrow block mb-1.5" style={{ color: "rgba(245,239,227,0.55)" }}>
+      <span
+        className="block mb-1.5 text-[11px] font-semibold tracking-[0.18em] uppercase"
+        style={{ color: "var(--color-vl-ink-muted)" }}
+      >
         {label}
       </span>
       {children}

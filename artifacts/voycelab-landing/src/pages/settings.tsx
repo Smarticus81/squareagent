@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
-import { ArrowLeft, ArrowRight, ArrowUpRight, CheckCircle2, Loader2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, ArrowUpRight, CheckCircle2, CreditCard, Loader2, Lock, UserRound } from "lucide-react";
 
 /**
  * Settings — account only.
@@ -56,7 +56,7 @@ export default function Settings() {
 
   const profileDirty = (name || "") !== (auth.user.name || "") || (email || "") !== (auth.user.email || "");
 
-  const handleProfileUpdate = async (e: React.FormEvent) => {
+  const handleProfileUpdate = async (e: FormEvent) => {
     e.preventDefault();
     if (!profileDirty) return;
     setProfileLoading(true);
@@ -78,7 +78,7 @@ export default function Settings() {
     }
   };
 
-  const handlePasswordChange = async (e: React.FormEvent) => {
+  const handlePasswordChange = async (e: FormEvent) => {
     e.preventDefault();
     if (!currentPassword || !newPassword) return;
     setPwLoading(true);
@@ -134,28 +134,33 @@ export default function Settings() {
     : 0;
 
   return (
-    <div className="flex-1 pt-24 pb-24">
-      <div className="w-full max-w-[760px] mx-auto px-6 lg:px-10">
+    <div className="relative flex-1 overflow-hidden px-4 pb-24 pt-16 sm:px-6 lg:px-10">
+      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
+        <div className="absolute left-[-12%] top-[-18%] h-[380px] w-[560px] rounded-full blur-3xl" style={{ background: "rgba(255, 201, 168, 0.42)" }} />
+        <div className="absolute right-[-14%] top-[6%] h-[480px] w-[620px] rounded-full blur-3xl" style={{ background: "rgba(199, 183, 229, 0.28)" }} />
+        <div className="absolute bottom-[-18%] right-[10%] h-[420px] w-[680px] rounded-full blur-3xl" style={{ background: "rgba(156, 201, 161, 0.22)" }} />
+      </div>
+      <div className="mx-auto w-full max-w-[920px]">
         {/* Back to the console */}
         <Link
           href="/command"
           className="inline-flex items-center gap-1.5 text-[12px] mb-5 transition-colors"
-          style={{ color: "rgba(245,239,227,0.55)" }}
+          style={{ color: "var(--color-vl-ink-muted)" }}
         >
           <ArrowLeft className="w-3.5 h-3.5" /> Console
         </Link>
 
         <p className="vl-eyebrow">Account</p>
-        <h1 className="text-[28px] md:text-[32px] font-semibold tracking-tight mt-2" style={{ color: "var(--color-vl-ivory)" }}>
+        <h1 className="vl-display mt-3 text-[44px] md:text-[58px]" style={{ color: "var(--color-vl-ink)" }}>
           Your account
         </h1>
-        <p className="text-[14px] mt-2" style={{ color: "rgba(245,239,227,0.55)" }}>
-          Manage how you sign in and what you pay for.
+        <p className="mt-4 max-w-[560px] text-[15px] leading-relaxed" style={{ color: "var(--color-vl-ink-muted)" }}>
+          Manage sign-in, password, and billing in one polished control room.
         </p>
 
-        <div className="mt-10 divide-y divide-white/[0.06] border-t border-b border-white/[0.06]">
+        <div className="mt-10 space-y-4">
           {/* Profile */}
-          <Section title="Profile" description="Your name and email on the console.">
+          <Section icon={<UserRound className="h-5 w-5" />} title="Profile" description="Your name and email on the console.">
             <form onSubmit={handleProfileUpdate} className="grid sm:grid-cols-2 gap-4">
               <Field label="Name">
                 <input value={name} onChange={(e) => setName(e.target.value)} className="vl-compact-input" />
@@ -180,7 +185,7 @@ export default function Settings() {
           </Section>
 
           {/* Password */}
-          <Section title="Password" description="At least 8 characters.">
+          <Section icon={<Lock className="h-5 w-5" />} title="Password" description="At least 8 characters.">
             <form onSubmit={handlePasswordChange} className="grid sm:grid-cols-2 gap-4">
               <Field label="Current password">
                 <input
@@ -216,10 +221,10 @@ export default function Settings() {
           </Section>
 
           {/* Billing — the one place where intent to upgrade lives */}
-          <Section title="Billing" description="Your plan and trial.">
+          <Section icon={<CreditCard className="h-5 w-5" />} title="Billing" description="Your plan and trial.">
             <div className="flex items-start justify-between gap-6 flex-wrap">
               <div>
-                <p className="text-[15px] font-medium" style={{ color: "var(--color-vl-ivory)" }}>
+                <p className="text-[15px] font-medium" style={{ color: "var(--color-vl-ink)" }}>
                   {planActive
                     ? `${capitalize(auth.subscription?.plan ?? "Plan")} · Active`
                     : trialActive
@@ -228,7 +233,7 @@ export default function Settings() {
                     ? "Trial ended"
                     : capitalize(status)}
                 </p>
-                <p className="text-[12.5px] mt-1" style={{ color: "rgba(245,239,227,0.55)" }}>
+                <p className="text-[12.5px] mt-1" style={{ color: "var(--color-vl-ink-muted)" }}>
                   {planActive
                     ? "Your plan renews automatically."
                     : trialActive && trialEndsAt
@@ -276,20 +281,20 @@ export default function Settings() {
       <style>{`
         .vl-compact-input {
           width: 100%;
-          height: 40px;
-          padding: 0 12px;
-          border-radius: 10px;
-          background: rgba(245,239,227,0.035);
-          border: 1px solid rgba(245,239,227,0.10);
-          color: var(--color-vl-ivory);
+          height: 42px;
+          padding: 0 14px;
+          border-radius: 12px;
+          background: rgba(255,255,255,0.72);
+          border: 1px solid rgba(14,27,44,0.12);
+          color: var(--color-vl-ink);
           font-size: 13.5px;
           outline: none;
-          transition: border-color .15s ease, background .15s ease;
+          transition: border-color .15s ease, background .15s ease, box-shadow .15s ease;
         }
-        .vl-compact-input::placeholder { color: rgba(245,239,227,0.3); }
+        .vl-compact-input::placeholder { color: rgba(14,27,44,0.36); }
         .vl-compact-input:focus {
-          border-color: rgba(124,110,245,0.6);
-          background: rgba(245,239,227,0.055);
+          border-color: var(--color-vl-coral);
+          box-shadow: 0 0 0 3px rgba(255,107,71,0.12);
         }
       `}</style>
     </div>
@@ -297,35 +302,42 @@ export default function Settings() {
 }
 
 function Section({
+  icon,
   title,
   description,
   children,
 }: {
+  icon: ReactNode;
   title: string;
   description?: string;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
-    <section className="py-7 grid md:grid-cols-[220px_1fr] gap-6 md:gap-10">
-      <div>
-        <h2 className="text-[15px] font-semibold" style={{ color: "var(--color-vl-ivory)" }}>
-          {title}
-        </h2>
+    <section className="vl-card-glass grid gap-6 p-6 md:grid-cols-[240px_1fr] md:gap-10">
+      <div className="flex gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl" style={{ background: "var(--color-vl-coral-tint)", color: "var(--color-vl-coral-deep)" }}>
+          {icon}
+        </div>
+        <div>
+        <h2 className="text-[15px] font-semibold" style={{ color: "var(--color-vl-ink)" }}>
+            {title}
+          </h2>
         {description && (
-          <p className="text-[12.5px] mt-1 leading-relaxed" style={{ color: "rgba(245,239,227,0.5)" }}>
+            <p className="text-[12.5px] mt-1 leading-relaxed" style={{ color: "var(--color-vl-ink-muted)" }}>
             {description}
           </p>
         )}
+        </div>
       </div>
       <div>{children}</div>
     </section>
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <label className="block">
-      <span className="block text-[11px] uppercase tracking-[0.14em] mb-1.5" style={{ color: "rgba(245,239,227,0.45)" }}>
+      <span className="block text-[11px] uppercase tracking-[0.14em] mb-1.5" style={{ color: "var(--color-vl-ink-faint)" }}>
         {label}
       </span>
       {children}
@@ -351,17 +363,17 @@ function NextLink({ href, title, hint }: { href: string; title: string; hint: st
   return (
     <Link
       href={href}
-      className="group flex items-center justify-between gap-4 px-5 py-4 rounded-xl border border-white/[0.06] transition-colors hover:border-white/[0.14] hover:bg-white/[0.015]"
+      className="group vl-card flex items-center justify-between gap-4 px-5 py-4 transition-colors"
     >
       <div>
-        <p className="text-[14px] font-medium" style={{ color: "var(--color-vl-ivory)" }}>
+        <p className="text-[14px] font-medium" style={{ color: "var(--color-vl-ink)" }}>
           {title}
         </p>
-        <p className="text-[12px] mt-0.5" style={{ color: "rgba(245,239,227,0.5)" }}>
+        <p className="text-[12px] mt-0.5" style={{ color: "var(--color-vl-ink-muted)" }}>
           {hint}
         </p>
       </div>
-      <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" style={{ color: "rgba(245,239,227,0.5)" }} />
+      <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" style={{ color: "var(--color-vl-ink-muted)" }} />
     </Link>
   );
 }

@@ -17,6 +17,14 @@ export interface SquareLocation {
   address?: string;
 }
 
+interface AgentProfileLaunchInfo {
+  id: string;
+  displayName: string;
+  wakePhrase: string;
+  voicePipelineProvider?: string;
+  voicePipelineConfig?: Record<string, unknown>;
+}
+
 
 interface SquareContextType {
   accessToken: string | null;
@@ -34,6 +42,10 @@ interface SquareContextType {
   userInfo: { id: number; email: string; name: string } | null;
   /** Venues available to the logged-in user */
   venues: { id: number; name: string; squareLocationName?: string }[];
+  /** Assistant settings loaded with the selected venue. */
+  agentProfile: AgentProfileLaunchInfo | null;
+  agentProfileId: string | null;
+  wakePhrase: string;
   /** Login with email + password. Returns error string or null on success. */
   login: (email: string, password: string) => Promise<string | null>;
   /** Signup with name + email + password. Returns error string or null on success. */
@@ -55,17 +67,18 @@ const SquareContext = createContext<SquareContextType | null>(null);
 const TOKEN_KEY = "square_access_token";
 const LOC_KEY = "square_location_id";
 
-function getWebLaunchParams(): { venueId: string; authToken: string } | null {
+function getWebLaunchParams(): { venueId: string; authToken: string; agentProfileId?: string } | null {
   const params = new URLSearchParams(window.location.search);
   // Support both exchange code (new) and direct token (legacy/dev)
   const venueId = params.get("venue");
   const authToken = params.get("token");
-  if (venueId && authToken) return { venueId, authToken };
+  const agentProfileId = params.get("agentProfileId") ?? undefined;
+  if (venueId && authToken) return { venueId, authToken, agentProfileId };
   return null;
 }
 
 /** Redeem a one-time exchange code to get token + venueId. */
-async function redeemExchangeCode(code: string): Promise<{ venueId: string; authToken: string } | null> {
+async function redeemExchangeCode(code: string): Promise<{ venueId: string; authToken: string; agentProfileId?: string } | null> {
   try {
     const res = await fetch(`${getBaseUrl()}api/auth/exchange/redeem`, {
       method: "POST",
@@ -74,7 +87,9 @@ async function redeemExchangeCode(code: string): Promise<{ venueId: string; auth
     });
     if (!res.ok) return null;
     const data = await res.json();
-    return data.token && data.venueId ? { venueId: data.venueId, authToken: data.token } : null;
+    return data.token && data.venueId
+      ? { venueId: data.venueId, authToken: data.token, agentProfileId: data.agentProfileId ?? undefined }
+      : null;
   } catch {
     return null;
   }
@@ -94,6 +109,28 @@ export function SquareProvider({ children }: { children: ReactNode }) {
   const [authToken, setAuthToken] = useState<string | null>(localStorage.getItem("voycelab_token"));
   const [userInfo, setUserInfo] = useState<{ id: number; email: string; name: string } | null>(null);
   const [venues, setVenues] = useState<{ id: number; name: string; squareLocationName?: string }[]>([]);
+  const [agentProfile, setAgentProfile] = useState<AgentProfileLaunchInfo | null>(null);
+  const [agentProfileId, setAgentProfileId] = useState<string | null>(localStorage.getItem("voycelab_agent_profile_id"));
+  const [wakePhrase, setWakePhrase] = useState("Hey Bar");
+
+  function applyAgentLaunchInfo(data: any) {
+    const profile = data.agentProfile as AgentProfileLaunchInfo | null | undefined;
+    const nextWakePhrase =
+      typeof profile?.wakePhrase === "string" && profile.wakePhrase.trim()
+        ? profile.wakePhrase.trim()
+        : typeof data.wakePhrase === "string" && data.wakePhrase.trim()
+          ? data.wakePhrase.trim()
+          : "Hey Bar";
+
+    setAgentProfile(profile ?? null);
+    setAgentProfileId(profile?.id ?? null);
+    setWakePhrase(nextWakePhrase);
+    localStorage.setItem("voycelab_wake_phrase", nextWakePhrase);
+    if (profile?.id) localStorage.setItem("voycelab_agent_profile_id", profile.id);
+    else localStorage.removeItem("voycelab_agent_profile_id");
+    if (profile) localStorage.setItem("voycelab_agent_profile", JSON.stringify(profile));
+    else localStorage.removeItem("voycelab_agent_profile");
+  }
 
   // Load credentials once on mount:
   // 1. If launched with ?code=EXCHANGE_CODE, redeem it first
@@ -104,14 +141,19 @@ export function SquareProvider({ children }: { children: ReactNode }) {
     (async () => {
       const params = new URLSearchParams(window.location.search);
       const exchangeCode = params.get("code");
+      const urlAgentProfileId = params.get("agentProfileId") ?? undefined;
 
-      let launch: { venueId: string; authToken: string } | null = null;
+      let launch: { venueId: string; authToken: string; agentProfileId?: string } | null = null;
 
       if (exchangeCode) {
         launch = await redeemExchangeCode(exchangeCode);
+        if (launch && urlAgentProfileId && !launch.agentProfileId) {
+          launch = { ...launch, agentProfileId: urlAgentProfileId };
+        }
         // Always clean the code from URL to prevent stale re-use attempts
         const url = new URL(window.location.href);
         url.searchParams.delete("code");
+        url.searchParams.delete("agentProfileId");
         window.history.replaceState({}, "", url.toString());
       }
 
@@ -119,7 +161,10 @@ export function SquareProvider({ children }: { children: ReactNode }) {
 
       if (launch) {
         try {
-          const res = await fetch(`${getBaseUrl()}api/venues/${launch.venueId}/credentials`, {
+          const profileQuery = launch.agentProfileId
+            ? `?agentProfileId=${encodeURIComponent(launch.agentProfileId)}`
+            : "";
+          const res = await fetch(`${getBaseUrl()}api/venues/${launch.venueId}/credentials${profileQuery}`, {
             headers: { Authorization: `Bearer ${launch.authToken}` },
           });
           if (!cancelled && res.ok) {
@@ -132,6 +177,8 @@ export function SquareProvider({ children }: { children: ReactNode }) {
               // Store auth params for voice agent session auth
               localStorage.setItem("voycelab_venue_id", launch.venueId);
               localStorage.setItem("voycelab_token", launch.authToken);
+              if (launch.agentProfileId) localStorage.setItem("voycelab_agent_profile_id", launch.agentProfileId);
+              applyAgentLaunchInfo(data);
               setVenueId(launch.venueId);
               setAuthToken(launch.authToken);
               setCredentialsReady(true);
@@ -148,6 +195,18 @@ export function SquareProvider({ children }: { children: ReactNode }) {
         const locId = localStorage.getItem(LOC_KEY);
         if (token) setAccessToken(token);
         if (locId) setLocationId(locId);
+        const storedWakePhrase = localStorage.getItem("voycelab_wake_phrase");
+        const storedAgentProfileId = localStorage.getItem("voycelab_agent_profile_id");
+        if (storedWakePhrase) setWakePhrase(storedWakePhrase);
+        if (storedAgentProfileId) setAgentProfileId(storedAgentProfileId);
+        const storedProfile = localStorage.getItem("voycelab_agent_profile");
+        if (storedProfile) {
+          try {
+            setAgentProfile(JSON.parse(storedProfile));
+          } catch {
+            localStorage.removeItem("voycelab_agent_profile");
+          }
+        }
         setCredentialsReady(true);
       }
     })();
@@ -248,9 +307,15 @@ export function SquareProvider({ children }: { children: ReactNode }) {
     clearCredentials();
     localStorage.removeItem("voycelab_token");
     localStorage.removeItem("voycelab_venue_id");
+    localStorage.removeItem("voycelab_wake_phrase");
+    localStorage.removeItem("voycelab_agent_profile");
+      localStorage.removeItem("voycelab_agent_profile_id");
     setAuthToken(null);
     setUserInfo(null);
     setVenues([]);
+    setAgentProfile(null);
+    setAgentProfileId(null);
+    setWakePhrase("Hey Bar");
   }
 
   async function selectVenue(vid: number): Promise<string | null> {
@@ -258,7 +323,11 @@ export function SquareProvider({ children }: { children: ReactNode }) {
     if (!tok) return "Not logged in";
 
     try {
-      const res = await fetch(`${getBaseUrl()}api/venues/${vid}/credentials`, {
+      const storedAgentProfileId = localStorage.getItem("voycelab_agent_profile_id");
+      const profileQuery = storedAgentProfileId
+        ? `?agentProfileId=${encodeURIComponent(storedAgentProfileId)}`
+        : "";
+      const res = await fetch(`${getBaseUrl()}api/venues/${vid}/credentials${profileQuery}`, {
         headers: { Authorization: `Bearer ${tok}` },
       });
       if (!res.ok) {
@@ -270,6 +339,7 @@ export function SquareProvider({ children }: { children: ReactNode }) {
         setAccessToken(data.accessToken);
         setLocationId(data.locationId);
         setVenueId(String(vid));
+        applyAgentLaunchInfo(data);
         localStorage.setItem(TOKEN_KEY, data.accessToken);
         localStorage.setItem(LOC_KEY, data.locationId);
         localStorage.setItem("voycelab_venue_id", String(vid));
@@ -415,7 +485,7 @@ export function SquareProvider({ children }: { children: ReactNode }) {
     <SquareContext.Provider value={{
       accessToken, locationId, venueId, authToken, locations, catalogItems, isConfigured,
       isLoadingCatalog, catalogError, connectionError, isReconnecting,
-      userInfo, venues, login, signup, logout, selectVenue,
+      userInfo, venues, agentProfile, agentProfileId, wakePhrase, login, signup, logout, selectVenue,
       setCredentials, clearCredentials, refreshCredentials,
       loadCatalog, fetchLocations, searchCatalog,
     }}>

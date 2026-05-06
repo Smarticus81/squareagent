@@ -45,6 +45,15 @@ export function useWakeWord({
   const restartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Tracks how many consecutive audio-capture failures (mic still held by WebAudio)
   const captureFailsRef = useRef(0);
+  const wakeWordsRef = useRef(wakeWords);
+  const stopPhrasesRef = useRef(stopPhrases);
+  const onWakeRef = useRef(onWakeWordDetected);
+  const onStopRef = useRef(onStopDetected);
+
+  wakeWordsRef.current = wakeWords;
+  stopPhrasesRef.current = stopPhrases;
+  onWakeRef.current = onWakeWordDetected;
+  onStopRef.current = onStopDetected;
 
   const clearRestartTimer = useCallback(() => {
     if (restartTimerRef.current) {
@@ -117,17 +126,17 @@ export function useWakeWord({
         const combined = transcripts.join(" ");
         console.log("[WakeWord] Transcript:", combined);
 
-        if (stopPhrases.some((p) => combined.includes(p))) {
+        if (stopPhrasesRef.current.some((p) => combined.includes(p))) {
           console.log("[WakeWord] Stop phrase:", combined);
           stop();
-          onStopDetected();
+          onStopRef.current();
           return;
         }
 
-        if (wakeWords.some((w) => combined.includes(w))) {
+        if (wakeWordsRef.current.some((w) => combined.includes(w))) {
           console.log("[WakeWord] Wake word:", combined);
           stop();
-          onWakeWordDetected();
+          onWakeRef.current();
           return;
         }
       }
@@ -181,7 +190,7 @@ export function useWakeWord({
       recRef.current = null;
       scheduleRetry(500);
     }
-  }, [wakeWords, stopPhrases, onWakeWordDetected, onStopDetected, stop, cleanupRec, scheduleRetry]);
+  }, [stop, cleanupRec, scheduleRetry]);
 
   // Wire the ref so scheduleRetry can call spawnRec without a dep cycle
   spawnRecRef.current = spawnRec;

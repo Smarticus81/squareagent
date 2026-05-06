@@ -1,7 +1,7 @@
 import { Link, useLocation } from "wouter";
 import { Logo } from "./logo";
 import { useAuth, useLogout } from "@/hooks/use-auth";
-import { LogOut, Menu, X } from "lucide-react";
+import { LogOut, Menu, X, ArrowRight } from "lucide-react";
 import { useState } from "react";
 
 const APP_NAV = [
@@ -11,9 +11,12 @@ const APP_NAV = [
   { href: "/settings", label: "Account" },
 ];
 
-// Landing nav — minimal, but Pricing is plain-sight to anonymous visitors.
 const LANDING_NAV: { href: string; label: string }[] = [
-  { href: "/pricing", label: "Pricing" },
+  { href: "#how-it-works", label: "How it works" },
+  { href: "#how-it-works", label: "Assistants" },
+  { href: "#voice-demo", label: "Integrations" },
+  { href: "#use-cases", label: "Customers" },
+  { href: "/pricing", label: "About" },
 ];
 
 export function Layout({ children }: { children: React.ReactNode }) {
@@ -32,25 +35,41 @@ export function Layout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen flex flex-col relative">
       {!isAuthPage && (
-        <header className="fixed top-0 inset-x-0 z-50">
+        <header className={`fixed top-0 inset-x-0 z-50 ${isLanding ? "vl-landing-header" : ""}`}>
           <div className="vl-glass">
-            <div className="w-full max-w-[1400px] mx-auto px-6 lg:px-10 h-16 flex items-center justify-between">
+            <div className="w-full max-w-[1280px] mx-auto px-6 lg:px-10 h-[72px] flex items-center justify-between gap-4">
               <Link href="/" className="hover:opacity-90 transition-opacity">
-                <Logo size="md" />
+                <Logo size={isLanding ? "md" : "md"} withTagline={isLanding} />
               </Link>
 
-              {/* Desktop nav */}
               <nav className="hidden md:flex items-center gap-1">
-                {(isAppPage ? APP_NAV : LANDING_NAV).map((item) => {
+                {(isAppPage ? APP_NAV : LANDING_NAV).map((item, idx) => {
+                  const isAnchor = item.href.startsWith("#");
                   const active = isAppPage && location.startsWith(item.href);
+
+                  if (isLanding && isAnchor) {
+                    return (
+                      <a
+                        key={`${item.href}-${idx}`}
+                        href={item.href}
+                        className="text-[13px] font-medium px-3 py-1.5 transition-colors"
+                        style={{ color: "rgba(14, 27, 44, 0.62)" }}
+                        onMouseEnter={(e) => (e.currentTarget.style.color = "#0E1B2C")}
+                        onMouseLeave={(e) => (e.currentTarget.style.color = "rgba(14, 27, 44, 0.62)")}
+                      >
+                        {item.label}
+                      </a>
+                    );
+                  }
+
                   return (
                     <Link
-                      key={item.href}
+                      key={`${item.href}-${idx}`}
                       href={item.href}
-                      className="text-[13px] font-medium px-3 py-1.5 rounded-full transition-colors hover:bg-white/5"
+                      className="text-[13px] font-medium px-3 py-1.5 rounded-full transition-colors"
                       style={{
-                        color: active ? "var(--color-vl-ivory)" : "rgba(245,239,227,0.62)",
-                        background: active ? "rgba(245,239,227,0.06)" : "transparent",
+                        color: active ? "var(--color-vl-coral-deep)" : "rgba(14, 27, 44, 0.62)",
+                        background: active ? "var(--color-vl-coral-tint)" : "transparent",
                       }}
                     >
                       {item.label}
@@ -66,15 +85,16 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       {!isAppPage && (
                         <Link
                           href="/command"
-                          className="hidden sm:inline-flex text-[13px] font-medium px-4 py-1.5 rounded-full vl-btn-ghost"
+                          className="hidden sm:inline-flex text-[13px] font-medium px-4 py-1.5 rounded-full vl-btn-outline"
+                          style={{ padding: "0.5rem 1.1rem" }}
                         >
                           Open console
                         </Link>
                       )}
                       <button
                         onClick={() => logout.mutate()}
-                        className="text-[13px] font-medium flex items-center gap-1.5 px-3 py-1.5 rounded-full transition-colors hover:bg-white/5"
-                        style={{ color: "rgba(245,239,227,0.7)" }}
+                        className="text-[13px] font-medium flex items-center gap-1.5 px-3 py-1.5 rounded-full transition-colors"
+                        style={{ color: "rgba(14, 27, 44, 0.62)" }}
                       >
                         <LogOut className="w-3.5 h-3.5" />
                         <span className="hidden sm:inline">Sign out</span>
@@ -84,59 +104,100 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     <>
                       <Link
                         href="/login"
-                        className="hidden sm:inline text-[13px] font-medium px-4 py-1.5"
-                        style={{ color: "rgba(245,239,227,0.7)" }}
+                        className="hidden sm:inline text-[13px] font-medium"
+                        style={{ color: "rgba(14, 27, 44, 0.62)" }}
                       >
                         Sign in
                       </Link>
                       <Link href="/signup" className="inline-block">
-                        <button className="vl-btn-primary text-[13px] py-2 px-5">
-                          Get started
+                        <button
+                          className="vl-btn-primary text-[13px] inline-flex items-center gap-2"
+                          style={{ padding: "0.5rem 1.1rem 0.5rem 1.2rem" }}
+                        >
+                          Book a demo
+                          <span
+                            className="w-4 h-4 rounded-full bg-white/25 flex items-center justify-center"
+                          >
+                            <ArrowRight className="w-2.5 h-2.5 text-white" />
+                          </span>
                         </button>
                       </Link>
                     </>
                   ))}
 
                 <button
-                  className="md:hidden text-ivory"
+                  className="md:hidden w-9 h-9 rounded-full flex items-center justify-center"
                   onClick={() => setMobileOpen((s) => !s)}
                   aria-label="Toggle menu"
-                  style={{ color: "var(--color-vl-ivory)" }}
+                  style={{
+                    color: "var(--color-vl-ink)",
+                    border: "1px solid rgba(14,27,44,0.10)",
+                    background: "rgba(255,255,255,0.6)",
+                  }}
                 >
-                  {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+                  {mobileOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
                 </button>
               </div>
             </div>
 
             {mobileOpen && (
-              <div className="md:hidden border-t border-white/10 px-6 py-4 flex flex-col gap-2">
-                {(isAppPage ? APP_NAV : LANDING_NAV).map((item) => (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    onClick={() => setMobileOpen(false)}
-                    className="text-[14px] py-2"
-                    style={{ color: "rgba(245,239,227,0.78)" }}
-                  >
-                    {item.label}
-                  </Link>
-                ))}
+              <div
+                className="md:hidden px-6 py-4 flex flex-col gap-2"
+                style={{
+                  borderTop: "1px solid rgba(14,27,44,0.08)",
+                  background: "rgba(251,247,241,0.92)",
+                }}
+              >
+                {(isAppPage ? APP_NAV : LANDING_NAV).map((item, idx) => {
+                  const isAnchor = item.href.startsWith("#");
+                  if (isLanding && isAnchor) {
+                    return (
+                      <a
+                        key={`${item.href}-${idx}`}
+                        href={item.href}
+                        onClick={() => setMobileOpen(false)}
+                        className="text-[14px] py-2"
+                        style={{ color: "rgba(14, 27, 44, 0.75)" }}
+                      >
+                        {item.label}
+                      </a>
+                    );
+                  }
+                  return (
+                    <Link
+                      key={`${item.href}-${idx}`}
+                      href={item.href}
+                      onClick={() => setMobileOpen(false)}
+                      className="text-[14px] py-2"
+                      style={{ color: "rgba(14, 27, 44, 0.75)" }}
+                    >
+                      {item.label}
+                    </Link>
+                  );
+                })}
               </div>
             )}
           </div>
         </header>
       )}
 
-      <main className="flex-1 flex flex-col">{children}</main>
+      <main className={`flex-1 flex flex-col ${isAuthPage ? "" : "pt-[72px]"}`}>{children}</main>
 
       {!isAuthPage && (
-        <footer className="border-t border-white/[0.06] mt-auto">
-          <div className="w-full max-w-[1400px] mx-auto px-6 lg:px-10 py-14">
-            <div className="grid md:grid-cols-[1.4fr_1fr_1fr_1fr] gap-10">
+        <footer
+          className={`mt-auto ${isLanding ? "vl-landing-footer" : ""}`}
+          style={{ borderTop: "1px solid rgba(14,27,44,0.08)" }}
+        >
+          <div className="w-full max-w-[1280px] mx-auto px-6 lg:px-10 py-14">
+            <div className="grid md:grid-cols-[1.6fr_1fr_1fr_1fr] gap-10">
               <div>
-                <Logo size="md" />
-                <p className="text-[13px] mt-4 max-w-[320px] leading-relaxed" style={{ color: "rgba(245,239,227,0.55)" }}>
-                  The voice operating assistant for modern venues. Ask about events, inventory, sales, packages, and operations.
+                <Logo size="md" withTagline />
+                <p
+                  className="text-[13px] mt-5 max-w-[340px] leading-relaxed"
+                  style={{ color: "var(--color-vl-ink-muted)" }}
+                >
+                  Hospitality, orchestrated by voice. VoyceLab connects to your POS,
+                  inventory, events, and team — and turns conversation into action.
                 </p>
               </div>
               <FooterCol
@@ -164,9 +225,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
               />
             </div>
             <div className="vl-line my-10" />
-            <div className="flex flex-col sm:flex-row justify-between items-center gap-2 text-[11px]" style={{ color: "rgba(245,239,227,0.45)" }}>
-              <p className="tracking-wider">© {new Date().getFullYear()} VoyceLab</p>
-              <p className="tracking-[0.2em] uppercase">Ask your venue anything</p>
+            <div
+              className="flex flex-col sm:flex-row justify-between items-center gap-2 text-[11.5px]"
+              style={{ color: "var(--color-vl-ink-faint)" }}
+            >
+              <p className="tracking-wider">&copy; {new Date().getFullYear()} VoyceLab</p>
+              <p className="tracking-[0.22em] uppercase">Where voice runs hospitality</p>
             </div>
           </div>
         </footer>
@@ -175,16 +239,27 @@ export function Layout({ children }: { children: React.ReactNode }) {
   );
 }
 
-function FooterCol({ title, links }: { title: string; links: { href: string; label: string }[] }) {
+function FooterCol({
+  title,
+  links,
+}: {
+  title: string;
+  links: { href: string; label: string }[];
+}) {
   return (
     <div className="space-y-2.5">
-      <p className="vl-eyebrow mb-3">{title}</p>
+      <p
+        className="mb-3 text-[11px] font-semibold tracking-[0.22em] uppercase"
+        style={{ color: "var(--color-vl-coral)" }}
+      >
+        {title}
+      </p>
       {links.map((l) => (
         <Link
           key={l.href}
           href={l.href}
-          className="block text-[13px] transition-colors"
-          style={{ color: "rgba(245,239,227,0.62)" }}
+          className="block text-[13.5px] transition-colors hover:opacity-80"
+          style={{ color: "var(--color-vl-ink-soft)" }}
         >
           {l.label}
         </Link>
