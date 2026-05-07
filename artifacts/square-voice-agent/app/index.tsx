@@ -16,7 +16,8 @@ import Animated, {
   withRepeat, withSequence, withTiming, FadeIn, FadeOut, Easing,
 } from "react-native-reanimated";
 
-import { useWakeWord, TERMINATE_PHRASES, isWakeWordSupported } from "@/hooks/useWakeWord";
+import { useWakeWord, isWakeWordSupported } from "@/hooks/useWakeWord";
+import { matchTermination } from "@/lib/voice-termination";
 import { useVoiceAgent, ConversationMessage, AgentState, OrderCommand } from "@/context/VoiceAgentContext";
 import { useOrder } from "@/context/OrderContext";
 import { useSquare } from "@/context/SquareContext";
@@ -62,6 +63,31 @@ function railColors(key: RailKey, isDark: boolean) {
     case "error":        return { line: c.error,     glow: c.error,     glowOp: 0.12, bar: c.bar       };
     case "wake":         return { line: c.active,    glow: c.active,    glowOp: 0.06, bar: c.bar       };
     default:             return { line: c.line,      glow: c.glow,      glowOp: 0,    bar: c.bar       };
+  }
+}
+
+function pipelineProviderLabel(provider: string | null | undefined): string {
+  if (!provider) return "";
+  switch (provider) {
+    case "openai_realtime_webrtc":          return "OpenAI Realtime";
+    case "openai_realtime_server_ws":       return "OpenAI Realtime (WS)";
+    case "google_gemini_3_1_flash_live":    return "Gemini 2.0 Flash Live";
+    case "google_gemini_2_5_flash_native_audio": return "Gemini 2.5 Flash Audio";
+    case "google_gemini_live_native_audio": return "Gemini Live";
+    case "hume_evi_3":                      return "Hume EVI 3";
+    case "elevenlabs_agents":               return "ElevenLabs";
+    case "deepgram_voice_agent_api":        return "Deepgram Voice Agent";
+    case "livekit_agents":                  return "LiveKit Agents";
+    case "pipecat":                         return "Pipecat";
+    case "deepgram_flux_cartesia":          return "Deepgram + Cartesia";
+    case "deepgram_flux_aura":              return "Deepgram Flux + Aura";
+    case "cartesia_ink_sonic":              return "Cartesia Ink + Sonic";
+    case "assemblyai_openai_cartesia":      return "AssemblyAI + OpenAI + Cartesia";
+    case "custom_modular_pipeline":         return "Custom Pipeline";
+    case "browser_speech_api_fallback":     return "Browser Speech";
+    case "push_to_talk_text_fallback":      return "Push-to-talk";
+    case "text_only_fallback":              return "Text only";
+    default:                                return provider;
   }
 }
 
@@ -233,8 +259,9 @@ export default function MainScreen() {
 
   const {
     agentState, isConnected, conversation, partialTranscript, error,
+    pipelineProvider,
     connect, disconnect, setToolHandler, interrupt,
-    setCatalog, setCurrentOrder, setSquareCredentials, setAuthParams,
+    setCatalog, setCurrentOrder, setSquareCredentials, setAuthParams, setAgentPipeline,
   } = useVoiceAgent();
 
   const {
@@ -243,7 +270,7 @@ export default function MainScreen() {
   } = useOrder();
 
   const { isConfigured, catalogItems, isLoadingCatalog, accessToken, locationId, venueId, authToken,
-    connectionError, isReconnecting, refreshCredentials, wakePhrase } = useSquare();
+    connectionError, isReconnecting, refreshCredentials, wakePhrase, agentProfile } = useSquare();
   const { voice, speed, setVoice, setSpeed, loaded: voicePrefsLoaded } = useVoicePrefs();
   const [panelOpen, setPanelOpen] = useState(false);
   const [panelTab,  setPanelTab]  = useState<"order" | "menu" | "settings">("order");
@@ -260,31 +287,90 @@ export default function MainScreen() {
   const wakeModeRef = useRef<WakeMode>("idle");
   wakeModeRef.current = wakeMode;
 
-  const onWake = useCallback(async () => { setWakeMode("command"); await connect(); }, [connect]);
-  const onStop = useCallback(async () => { await disconnect(); setWakeMode("idle"); }, [disconnect]);
+  const terminationHandledRef = useRef(false);
+  useEffect(() => {
+    if (wakeMode === "command") terminationHandledRef.current = false;
+  }, [wakeMode]);
+
+  const startWakeWordRef = useRef<(() => void | Promise<void>) | null>(null);
+
+  const onWake = useCallback(async () => {
+    setWakeMode("command");
+    await connect();
+  }, [connect]);
+
+  const onSoftTerminateFromWake = useCallback(async () => {
+    await disconnect();
+    setWakeMode("wake");
+    setTimeout(() => startWakeWordRef.current?.(), 450);
+  }, [disconnect]);
+
+  const onHardShutdownFromWake = useCallback(async () => {
+    setWakeMode("idle");
+    await disconnect();
+  }, [disconnect]);
+
   const { isListening: wakeListening, startWakeWord, stopWakeWord } = useWakeWord({
     wakeWords: buildWakeWords(wakePhrase),
-    onWakeWordDetected: onWake, onStopDetected: onStop,
+    onWakeWordDetected: onWake,
+    onStopDetected: onSoftTerminateFromWake,
+    onShutdownDetected: onHardShutdownFromWake,
   });
 
-  const enterWake = useCallback(() => { setWakeMode("wake"); startWakeWord(); }, [startWakeWord]);
-  const exitWake  = useCallback(async () => { stopWakeWord(); await disconnect(); setWakeMode("idle"); }, [stopWakeWord, disconnect]);
+  useEffect(() => {
+    startWakeWordRef.current = startWakeWord;
+  }, [startWakeWord]);
+
+  const enterWake = useCallback(() => {
+    setWakeMode("wake");
+    startWakeWord();
+  }, [startWakeWord]);
+
+  const exitWake = useCallback(async () => {
+    stopWakeWord();
+    await disconnect();
+    setWakeMode("idle");
+  }, [stopWakeWord, disconnect]);
 
   useEffect(() => {
     if (wakeModeRef.current !== "command" || isConnected) return;
-    const ti = setTimeout(() => { if (wakeModeRef.current !== "command") return; setWakeMode("wake"); startWakeWord(); }, 350);
+    const ti = setTimeout(() => {
+      if (wakeModeRef.current !== "command") return;
+      setWakeMode("wake");
+      startWakeWord();
+    }, 350);
     return () => clearTimeout(ti);
   }, [isConnected, startWakeWord]);
+
+  const applyTermination = useCallback(
+    async (kind: "soft" | "hard") => {
+      if (terminationHandledRef.current) return;
+      terminationHandledRef.current = true;
+      if (kind === "hard") {
+        setWakeMode("idle");
+        await disconnect();
+      } else {
+        setWakeMode("wake");
+        await disconnect();
+        setTimeout(() => startWakeWordRef.current?.(), 450);
+      }
+    },
+    [disconnect],
+  );
 
   useEffect(() => {
     if (wakeMode !== "command") return;
     const last = [...conversation].reverse().find((m) => m.role === "user");
     if (!last) return;
-    if (TERMINATE_PHRASES.some((p) => last.content.toLowerCase().includes(p))) {
-      const ti = setTimeout(() => disconnect(), 1600);
-      return () => clearTimeout(ti);
-    }
-  }, [conversation, wakeMode, disconnect]);
+    const kind = matchTermination(last.content);
+    if (kind) void applyTermination(kind);
+  }, [conversation, wakeMode, applyTermination]);
+
+  useEffect(() => {
+    if (wakeMode !== "command" || !partialTranscript?.trim()) return;
+    const kind = matchTermination(partialTranscript);
+    if (kind) void applyTermination(kind);
+  }, [partialTranscript, wakeMode, applyTermination]);
 
   useEffect(() => {
     setCatalog(catalogItems.map((c) => ({ id: c.id, variationId: c.variationId, name: c.name, price: c.price, category: c.category })));
@@ -294,6 +380,18 @@ export default function MainScreen() {
 
   // Forward auth params so voice agent can authenticate server-side tool calls
   useEffect(() => { if (venueId && authToken) setAuthParams(venueId, authToken); }, [venueId, authToken, setAuthParams]);
+
+  // Forward the assistant's configured voice pipeline so the connection path
+  // matches what was set up on the dashboard (OpenAI vs Gemini vs Deepgram
+  // vs modular). Without this the EAS build would silently use OpenAI for
+  // every assistant.
+  useEffect(() => {
+    setAgentPipeline(
+      agentProfile?.voicePipelineProvider ?? null,
+      agentProfile?.voicePipelineConfig ?? null,
+      agentProfile?.id ?? null,
+    );
+  }, [agentProfile, setAgentPipeline]);
 
   useEffect(() => {
     setCurrentOrder((currentOrder?.items ?? []).map((i) => ({ name: i.catalogItem.name, price: i.catalogItem.price, quantity: i.quantity })));
@@ -423,6 +521,13 @@ export default function MainScreen() {
             <Text style={[s.brandVoyce, { color: t.logoText }]}>Voyce</Text>
             <Text style={[s.brandLabs, { color: t.logoText, opacity: 0.92 }]}>Lab</Text>
           </View>
+          {pipelineProvider ? (
+            <View style={[s.providerBadge, { borderColor: t.badgeBorder }]}>
+              <Text style={[s.providerBadgeText, { color: t.badgeText }]} numberOfLines={1}>
+                {pipelineProviderLabel(pipelineProvider)}
+              </Text>
+            </View>
+          ) : null}
         </View>
 
         {orderCount > 0 ? (
@@ -768,6 +873,11 @@ const s = StyleSheet.create({
   brandWords:   { flexDirection: "row", alignItems: "baseline" },
   brandVoyce:     { fontFamily: "Inter_500Medium", fontSize: 15, letterSpacing: -0.2, fontWeight: "600" },
   brandLabs:     { fontFamily: "Inter_500Medium", fontSize: 15, letterSpacing: -0.2, fontWeight: "500" },
+  providerBadge: {
+    paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999, borderWidth: 0.5,
+    maxWidth: 140,
+  },
+  providerBadgeText: { fontFamily: "Inter_500Medium", fontSize: 10, letterSpacing: 0.4, textTransform: "uppercase" },
   orderBadge:   { minWidth: 24, height: 24, borderRadius: 8, borderWidth: 0.5, alignItems: "center", justifyContent: "center", paddingHorizontal: 6 },
   orderBadgeNum:{ fontFamily: "Inter_500Medium", fontSize: 12 },
 

@@ -16,6 +16,11 @@ import React, {
 } from "react";
 import { Platform } from "react-native";
 import { getVoicePrefs } from "@/hooks/useVoicePrefs";
+import {
+  NativeVoiceBridge,
+  type BridgeOutgoing,
+  type NativeVoiceBridgeHandle,
+} from "@/components/NativeVoiceBridge";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -46,12 +51,39 @@ export interface OrderCommand {
 export type CommandHandler = (commands: OrderCommand[]) => void;
 export type ToolHandler = CommandHandler;
 
+/**
+ * Voice pipeline provider id, mirrored from `voicelab-core`'s
+ * `VoicePipelineProvider`. Used to dispatch the connection path so the runtime
+ * matches what the assistant was configured with on the dashboard.
+ */
+export type PipelineProvider =
+  | "openai_realtime_webrtc"
+  | "openai_realtime_server_ws"
+  | "google_gemini_3_1_flash_live"
+  | "google_gemini_2_5_flash_native_audio"
+  | "google_gemini_live_native_audio"
+  | "hume_evi_3"
+  | "elevenlabs_agents"
+  | "deepgram_voice_agent_api"
+  | "livekit_agents"
+  | "pipecat"
+  | "deepgram_flux_cartesia"
+  | "deepgram_flux_aura"
+  | "cartesia_ink_sonic"
+  | "assemblyai_openai_cartesia"
+  | "custom_modular_pipeline"
+  | "browser_speech_api_fallback"
+  | "push_to_talk_text_fallback"
+  | "text_only_fallback";
+
 interface VoiceAgentContextType {
   agentState: AgentState;
   isConnected: boolean;
   conversation: ConversationMessage[];
   partialTranscript: string;
   error: string | null;
+  /** Provider currently bound to this client (null until set from agent profile). */
+  pipelineProvider: PipelineProvider | null;
   connect: () => Promise<void>;
   disconnect: () => Promise<void>;
   clearConversation: () => void;
@@ -61,6 +93,12 @@ interface VoiceAgentContextType {
   setCurrentOrder: (order: unknown[]) => void;
   setSquareCredentials: (token: string, locationId: string) => void;
   setAuthParams: (venueId: string, authToken: string) => void;
+  /** Apply the assistant's configured pipeline provider + config from its agent profile. */
+  setAgentPipeline: (
+    provider: PipelineProvider | string | null | undefined,
+    config?: Record<string, unknown> | null,
+    agentProfileId?: string | null,
+  ) => void;
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -112,20 +150,74 @@ function getApiBase(): string {
   return `${protocol}://${domain}/`;
 }
 
-function getWsUrl(voice: string, speed: number, authToken?: string, venueId?: string): string {
+/**
+ * Map a configured pipeline provider to the relay sub-path served by
+ * `attachWebSocketRelay` (see api-server/src/routes/ws-relay.ts). Providers
+ * that don't have a server-side relay yet fall back to OpenAI so we never
+ * silently mismatch — the dispatcher upstream still throws if the provider
+ * isn't actually supported.
+ */
+function relayPathForProvider(provider: PipelineProvider | null): string {
+  switch (provider) {
+    case "google_gemini_3_1_flash_live":
+    case "google_gemini_2_5_flash_native_audio":
+    case "google_gemini_live_native_audio":
+      return "/api/realtime/gemini";
+    case "hume_evi_3":
+      return "/api/realtime/hume";
+    case "deepgram_voice_agent_api":
+      return "/api/realtime/deepgram-agent";
+    case "deepgram_flux_cartesia":
+    case "deepgram_flux_aura":
+    case "cartesia_ink_sonic":
+    case "assemblyai_openai_cartesia":
+    case "custom_modular_pipeline":
+      return "/api/realtime/modular";
+    default:
+      return "/api/realtime";
+  }
+}
+
+function getWsUrl(
+  voice: string,
+  speed: number,
+  authToken: string | undefined,
+  venueId: string | undefined,
+  provider: PipelineProvider | null,
+  config: Record<string, unknown> | null,
+  agentProfileId: string | null,
+): string {
   const domain = process.env.EXPO_PUBLIC_DOMAIN;
+  const path = relayPathForProvider(provider);
   let base: string;
   if (!domain) {
-    base = "ws://localhost:8080/api/realtime";
+    base = `ws://localhost:8080${path}`;
   } else {
     const protocol = domain.startsWith("localhost") ? "ws" : "wss";
-    base = `${protocol}://${domain}/api/realtime`;
+    base = `${protocol}://${domain}${path}`;
   }
   const params = new URLSearchParams();
   params.set("voice", voice);
   params.set("speed", String(speed));
   if (authToken) params.set("token", authToken);
   if (venueId) params.set("venueId", venueId);
+  if (agentProfileId) params.set("agentProfileId", agentProfileId);
+
+  // Provider-specific query params expected by the relay handlers.
+  if (provider && provider.startsWith("google_gemini")) {
+    const modelId =
+      typeof config?.modelId === "string" ? (config.modelId as string) :
+      typeof config?.model === "string" ? (config.model as string) :
+      provider === "google_gemini_3_1_flash_live" ? "gemini-2.0-flash-exp" :
+      "gemini-2.0-flash-exp";
+    params.set("modelId", modelId);
+  }
+  if (path === "/api/realtime/modular" && config) {
+    for (const key of ["sttVendor", "llmVendor", "ttsVendor", "llmModel"]) {
+      const v = config[key];
+      if (typeof v === "string" && v) params.set(key, v);
+    }
+  }
   return `${base}?${params.toString()}`;
 }
 
@@ -164,6 +256,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
   const [conversation, setConversation] = useState<ConversationMessage[]>([]);
   const [partialTranscript, setPartialTranscript] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [pipelineProvider, setPipelineProvider] = useState<PipelineProvider | null>(null);
 
   const commandHandlerRef = useRef<CommandHandler | null>(null);
   const catalogRef = useRef<unknown[]>([]);
@@ -173,6 +266,9 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
   const squareLocationIdRef = useRef<string>("");
   const venueIdRef = useRef<string>("");
   const authTokenRef = useRef<string>("");
+  const pipelineProviderRef = useRef<PipelineProvider | null>(null);
+  const pipelineConfigRef = useRef<Record<string, unknown> | null>(null);
+  const agentProfileIdRef = useRef<string | null>(null);
   const isRunning = useRef(false);
   const agentStateRef = useRef<AgentState>("disconnected");
 
@@ -187,6 +283,12 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
   const pcRef = useRef<any>(null);
   const dcRef = useRef<any>(null);
   const nativeStreamRef = useRef<any>(null);
+
+  // Native WebView bridge (used for non-OpenAI providers on iOS/Android)
+  const bridgeRef = useRef<NativeVoiceBridgeHandle | null>(null);
+  const [bridgeActive, setBridgeActive] = useState(false);
+  const bridgeReadyRef = useRef(false);
+  const pendingBridgeUrlRef = useRef<string | null>(null);
 
   // ── Shared helpers ──────────────────────────────────────────────────────────
 
@@ -204,6 +306,25 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
 
   const sendContextUpdate = useCallback(() => {
     if (Platform.OS !== "web") {
+      // If we're on a non-OpenAI native session, the WebSocket lives inside
+      // the WebView bridge — forward the same x.context_update payload our
+      // server-side relays already understand.
+      if (
+        pipelineProviderRef.current &&
+        pipelineProviderRef.current !== "openai_realtime_webrtc" &&
+        bridgeRef.current
+      ) {
+        bridgeRef.current.sendContext({
+          type: "x.context_update",
+          catalog: catalogRef.current,
+          order: currentOrderRef.current,
+          squareToken: squareTokenRef.current,
+          squareLocationId: squareLocationIdRef.current,
+          venueId: venueIdRef.current || undefined,
+        });
+        return;
+      }
+
       // Native WebRTC: data channel goes DIRECTLY to OpenAI → must send
       // a standard session.update with rebuilt instructions.
       const dc = dcRef.current;
@@ -321,6 +442,21 @@ General:
     venueIdRef.current = venueId;
     authTokenRef.current = authToken;
   }, []);
+
+  const setAgentPipeline = useCallback(
+    (
+      provider: PipelineProvider | string | null | undefined,
+      config?: Record<string, unknown> | null,
+      agentProfileId?: string | null,
+    ) => {
+      const normalized = (provider ?? null) as PipelineProvider | null;
+      pipelineProviderRef.current = normalized;
+      pipelineConfigRef.current = config ?? null;
+      agentProfileIdRef.current = agentProfileId ?? null;
+      setPipelineProvider(normalized);
+    },
+    [],
+  );
 
   const setToolHandler = useCallback((h: CommandHandler) => {
     commandHandlerRef.current = h;
@@ -636,6 +772,68 @@ General:
     console.log("[WebRTC] Connection established — direct to OpenAI via UDP");
   }, [handleNativeDcEvent]);
 
+  // ── Native WebView bridge connect (non-OpenAI providers) ────────────────────
+
+  const handleBridgeMessage = useCallback(
+    (msg: BridgeOutgoing) => {
+      switch (msg.type) {
+        case "ready":
+          bridgeReadyRef.current = true;
+          // If a connect was queued before the page finished loading, send it now.
+          if (pendingBridgeUrlRef.current) {
+            bridgeRef.current?.connect(pendingBridgeUrlRef.current);
+            pendingBridgeUrlRef.current = null;
+          }
+          break;
+        case "ws_open":
+          isRunning.current = true;
+          break;
+        case "ws_close":
+          isRunning.current = false;
+          setAgentState((prev) => (prev === "error" ? "error" : "disconnected"));
+          setBridgeActive(false);
+          bridgeReadyRef.current = false;
+          break;
+        case "ws_error":
+          console.error("[NativeBridge] WS error:", msg.message);
+          setError(msg.message || "Bridge error");
+          setAgentState("error");
+          break;
+        case "log":
+          console.log("[NativeBridge]", msg.message);
+          break;
+        case "ws_event":
+          // Reuse the existing web event handler — the relays speak the same
+          // realtime event vocabulary on both transports.
+          handleWebWsEvent(JSON.stringify(msg.event));
+          break;
+      }
+    },
+    [handleWebWsEvent],
+  );
+
+  const connectNativeBridge = useCallback(async () => {
+    const { voice, speed } = await getVoicePrefs();
+    const wsUrl = getWsUrl(
+      voice,
+      speed,
+      authTokenRef.current,
+      venueIdRef.current || undefined,
+      pipelineProviderRef.current,
+      pipelineConfigRef.current,
+      agentProfileIdRef.current,
+    );
+    console.log(
+      `[NativeBridge] Connecting (provider=${pipelineProviderRef.current}) to`,
+      wsUrl,
+    );
+    pendingBridgeUrlRef.current = wsUrl;
+    bridgeReadyRef.current = false;
+    // Mounting the bridge triggers WebView load → we'll fire `connect`
+    // once we receive `{ type: "ready" }` from the page.
+    setBridgeActive(true);
+  }, []);
+
   // ── Web WebSocket connect ──────────────────────────────────────────────────
 
   const connectWebSocket = useCallback(async () => {
@@ -649,8 +847,19 @@ General:
     }
 
     const { voice, speed } = await getVoicePrefs();
-    const wsUrl = getWsUrl(voice, speed, authTokenRef.current, venueIdRef.current || undefined);
-    console.log("[Realtime] Connecting to", wsUrl);
+    const wsUrl = getWsUrl(
+      voice,
+      speed,
+      authTokenRef.current,
+      venueIdRef.current || undefined,
+      pipelineProviderRef.current,
+      pipelineConfigRef.current,
+      agentProfileIdRef.current,
+    );
+    console.log(
+      `[Realtime] Connecting (provider=${pipelineProviderRef.current ?? "openai_realtime_webrtc"}) to`,
+      wsUrl,
+    );
     const socket = new WebSocket(wsUrl);
     ws.current = socket;
 
@@ -690,11 +899,25 @@ General:
       return;
     }
 
+    // Honor the assistant's configured voice pipeline provider.
+    // • OpenAI Realtime (WebRTC) → native peer connection (lowest latency).
+    // • Anything else on native → use the WebView bridge so the same
+    //   server-side WS relays used by the web build power the session.
+    const provider = pipelineProviderRef.current;
+    const useBridge =
+      Platform.OS !== "web" &&
+      provider !== null &&
+      provider !== "openai_realtime_webrtc";
+
     setAs("connecting");
 
     try {
       if (Platform.OS !== "web") {
-        await connectNativeWebRTC();
+        if (useBridge) {
+          await connectNativeBridge();
+        } else {
+          await connectNativeWebRTC();
+        }
       } else {
         await connectWebSocket();
       }
@@ -710,9 +933,13 @@ General:
         dcRef.current = null;
         pcRef.current?.close();
         pcRef.current = null;
+        bridgeRef.current?.disconnect();
+        setBridgeActive(false);
+        bridgeReadyRef.current = false;
+        pendingBridgeUrlRef.current = null;
       }
     }
-  }, [connectNativeWebRTC, connectWebSocket, setAs]);
+  }, [connectNativeBridge, connectNativeWebRTC, connectWebSocket, setAs]);
 
   // ── Web Audio capture ──────────────────────────────────────────────────────
 
@@ -785,6 +1012,12 @@ General:
     agentStateRef.current = "disconnected";
 
     if (Platform.OS !== "web") {
+      // Native WebView bridge cleanup
+      bridgeRef.current?.disconnect();
+      setBridgeActive(false);
+      bridgeReadyRef.current = false;
+      pendingBridgeUrlRef.current = null;
+
       // Native WebRTC cleanup
       nativeStreamRef.current?.getTracks().forEach((t: any) => t.stop());
       nativeStreamRef.current = null;
@@ -803,12 +1036,17 @@ General:
 
   const interrupt = useCallback(() => {
     if (Platform.OS !== "web") {
+      // If a WebView bridge session is active, interrupt through it.
+      if (bridgeActive && bridgeRef.current) {
+        bridgeRef.current.interrupt();
+        return;
+      }
       const dc = dcRef.current;
       if (dc?.readyState === "open") dc.send(JSON.stringify({ type: "response.cancel" }));
     } else {
       if (ws.current?.readyState === WebSocket.OPEN) ws.current.send(JSON.stringify({ type: "response.cancel" }));
     }
-  }, []);
+  }, [bridgeActive]);
 
   const clearConversation = useCallback(() => {
     setConversation([]);
@@ -826,6 +1064,7 @@ General:
         conversation,
         partialTranscript,
         error,
+        pipelineProvider,
         connect,
         disconnect,
         clearConversation,
@@ -835,9 +1074,17 @@ General:
         setCurrentOrder,
         setSquareCredentials,
         setAuthParams,
+        setAgentPipeline,
       }}
     >
       {children}
+      {Platform.OS !== "web" ? (
+        <NativeVoiceBridge
+          ref={bridgeRef}
+          active={bridgeActive}
+          onMessage={handleBridgeMessage}
+        />
+      ) : null}
     </VoiceAgentContext.Provider>
   );
 }

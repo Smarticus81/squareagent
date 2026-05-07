@@ -1,19 +1,16 @@
 /**
- * Wake word detection using the browser's SpeechRecognition API.
- *
- * Key invariant: isListening === true ONLY after SpeechRecognition.onstart
- * fires — i.e. the OS mic indicator is actually on.  We never trust that
- * rec.start() succeeded until the browser confirms it.
+ * Wake word detection — Expo web (browser SpeechRecognition).
+ * Metro uses useWakeWord.native.ts on iOS/Android.
  */
 import { useRef, useCallback, useState } from "react";
+import { HARD_SHUTDOWN_PHRASES, SOFT_BACK_TO_WAKE_PHRASES } from "@/lib/voice-termination";
 
 export const WAKE_WORDS = ["hey bar", "hey bars", "a bar", "okay bar", "hey voyce", "voycelab"];
-export const STOP_PHRASES = ["shut down", "stop listening", "shut it down", "turn off"];
-export const TERMINATE_PHRASES = [
-  "goodbye", "good bye", "wake word mode", "back to sleep",
-  "go to sleep", "nothing else", "that's all", "thats all",
-  "see you", "stop agent",
-];
+export const STOP_PHRASES = [...SOFT_BACK_TO_WAKE_PHRASES];
+export const SHUTDOWN_PHRASES = [...HARD_SHUTDOWN_PHRASES];
+
+/** @deprecated use matchTermination + SOFT_BACK_TO_WAKE_PHRASES */
+export const TERMINATE_PHRASES = [...SOFT_BACK_TO_WAKE_PHRASES];
 
 function getSR(): any {
   if (typeof window === "undefined") return null;
@@ -27,33 +24,41 @@ export function isWakeWordSupported(): boolean {
 interface UseWakeWordOptions {
   wakeWords?: string[];
   stopPhrases?: string[];
+  shutdownPhrases?: string[];
+  confidenceThreshold?: number;
   onWakeWordDetected: () => void;
   onStopDetected: () => void;
+  onShutdownDetected: () => void;
 }
 
 export function useWakeWord({
   wakeWords = WAKE_WORDS,
   stopPhrases = STOP_PHRASES,
+  shutdownPhrases = SHUTDOWN_PHRASES,
+  confidenceThreshold = 0.4,
   onWakeWordDetected,
   onStopDetected,
+  onShutdownDetected,
 }: UseWakeWordOptions) {
-  // true only once the OS mic indicator is confirmed on (onstart fired)
   const [isListening, setIsListening] = useState(false);
 
   const activeRef = useRef(false);
   const recRef = useRef<any>(null);
   const restartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Tracks how many consecutive audio-capture failures (mic still held by WebAudio)
   const captureFailsRef = useRef(0);
   const wakeWordsRef = useRef(wakeWords);
   const stopPhrasesRef = useRef(stopPhrases);
+  const shutdownPhrasesRef = useRef(shutdownPhrases);
   const onWakeRef = useRef(onWakeWordDetected);
   const onStopRef = useRef(onStopDetected);
+  const onShutdownRef = useRef(onShutdownDetected);
 
   wakeWordsRef.current = wakeWords;
   stopPhrasesRef.current = stopPhrases;
+  shutdownPhrasesRef.current = shutdownPhrases;
   onWakeRef.current = onWakeWordDetected;
   onStopRef.current = onStopDetected;
+  onShutdownRef.current = onShutdownDetected;
 
   const clearRestartTimer = useCallback(() => {
     if (restartTimerRef.current) {
@@ -81,7 +86,6 @@ export function useWakeWord({
     setIsListening(false);
   }, [cleanupRec, clearRestartTimer]);
 
-  // spawnRecRef lets scheduleRetry call spawnRec without a forward-reference dep
   const spawnRecRef = useRef<() => void>(() => {});
 
   const scheduleRetry = useCallback((delayMs: number) => {
@@ -107,10 +111,9 @@ export function useWakeWord({
     rec.maxAlternatives = 3;
     recRef.current = rec;
 
-    // ── onstart: mic is ACTUALLY on now ──────────────────────────────────────
     rec.onstart = () => {
       if (!activeRef.current) return;
-      captureFailsRef.current = 0; // reset failure counter on success
+      captureFailsRef.current = 0;
       setIsListening(true);
       console.log("[WakeWord] Mic confirmed open");
     };
@@ -121,10 +124,20 @@ export function useWakeWord({
         const result = event.results[i];
         const transcripts: string[] = [];
         for (let j = 0; j < result.length; j++) {
-          transcripts.push(result[j].transcript.toLowerCase().trim());
+          if (result[j].confidence >= confidenceThreshold || result[j].confidence === 0) {
+            transcripts.push(result[j].transcript.toLowerCase().trim());
+          }
         }
+        if (transcripts.length === 0) continue;
         const combined = transcripts.join(" ");
         console.log("[WakeWord] Transcript:", combined);
+
+        if (shutdownPhrasesRef.current.some((p) => combined.includes(p))) {
+          console.log("[WakeWord] Shutdown phrase:", combined);
+          stop();
+          onShutdownRef.current();
+          return;
+        }
 
         if (stopPhrasesRef.current.some((p) => combined.includes(p))) {
           console.log("[WakeWord] Stop phrase:", combined);
@@ -146,19 +159,16 @@ export function useWakeWord({
       if (!activeRef.current) return;
 
       if (e.error === "not-allowed" || e.error === "service-not-allowed") {
-        // Permanent denial — stop trying
         console.error("[WakeWord] Mic permission denied — stopping");
         stop();
         return;
       }
 
       if (e.error === "audio-capture") {
-        // Mic is temporarily held by another stream (e.g. just-closed WebAudio).
-        // Back off progressively, up to 3 s, then give up.
         captureFailsRef.current += 1;
         const delay = Math.min(800 * captureFailsRef.current, 3000);
         console.warn(`[WakeWord] audio-capture (attempt ${captureFailsRef.current}) — retry in ${delay}ms`);
-        setIsListening(false); // mic is NOT on despite activeRef=true
+        setIsListening(false);
         if (captureFailsRef.current >= 6) {
           console.error("[WakeWord] audio-capture persistent — giving up");
           stop();
@@ -169,30 +179,25 @@ export function useWakeWord({
         return;
       }
 
-      // All other transient errors (network, aborted, etc.) — short retry
       console.warn("[WakeWord] Error:", e.error, "— retrying in 300ms");
     };
 
     rec.onend = () => {
       if (!activeRef.current) return;
-      // Mic closed — no longer listening until next onstart
       setIsListening(false);
       recRef.current = null;
-      // Short pause before restarting (Chrome requires a gap)
       scheduleRetry(250);
     };
 
     try {
       rec.start();
-      // Do NOT set isListening here — wait for onstart
     } catch (e) {
       console.warn("[WakeWord] start() threw:", e);
       recRef.current = null;
       scheduleRetry(500);
     }
-  }, [stop, cleanupRec, scheduleRetry]);
+  }, [confidenceThreshold, stop, cleanupRec, scheduleRetry]);
 
-  // Wire the ref so scheduleRetry can call spawnRec without a dep cycle
   spawnRecRef.current = spawnRec;
 
   const start = useCallback(() => {
@@ -200,7 +205,6 @@ export function useWakeWord({
     if (activeRef.current) return;
     activeRef.current = true;
     captureFailsRef.current = 0;
-    // isListening stays false until onstart confirms the mic
     spawnRec();
   }, [spawnRec]);
 

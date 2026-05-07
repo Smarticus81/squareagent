@@ -13,19 +13,16 @@ import {
   ExpoSpeechRecognitionModule,
   useSpeechRecognitionEvent,
 } from "expo-speech-recognition";
+import { HARD_SHUTDOWN_PHRASES, SOFT_BACK_TO_WAKE_PHRASES } from "@/lib/voice-termination";
 
-// ── Shared word lists (must match useWakeWord.ts) ────────────────────────────
 export const WAKE_WORDS = [
   "hey bar", "hey bars", "a bar", "okay bar", "hey voyce", "voycelab",
 ];
-export const STOP_PHRASES = [
-  "shut down", "stop listening", "shut it down", "turn off",
-];
-export const TERMINATE_PHRASES = [
-  "goodbye", "good bye", "wake word mode", "back to sleep",
-  "go to sleep", "nothing else", "that's all", "thats all",
-  "see you", "stop agent",
-];
+export const STOP_PHRASES = [...SOFT_BACK_TO_WAKE_PHRASES];
+export const SHUTDOWN_PHRASES = [...HARD_SHUTDOWN_PHRASES];
+
+/** @deprecated use matchTermination */
+export const TERMINATE_PHRASES = [...SOFT_BACK_TO_WAKE_PHRASES];
 
 export function isWakeWordSupported(): boolean {
   return true; // always available on native via expo-speech-recognition
@@ -35,15 +32,19 @@ export function isWakeWordSupported(): boolean {
 interface UseWakeWordOptions {
   wakeWords?: string[];
   stopPhrases?: string[];
+  shutdownPhrases?: string[];
   onWakeWordDetected: () => void;
   onStopDetected: () => void;
+  onShutdownDetected: () => void;
 }
 
 export function useWakeWord({
   wakeWords = WAKE_WORDS,
   stopPhrases = STOP_PHRASES,
+  shutdownPhrases = SHUTDOWN_PHRASES,
   onWakeWordDetected,
   onStopDetected,
+  onShutdownDetected,
 }: UseWakeWordOptions) {
   const [isListening, setIsListening] = useState(false);
 
@@ -54,13 +55,17 @@ export function useWakeWord({
   // Keep latest callbacks / word-lists in refs to avoid stale closures
   const onWakeRef = useRef(onWakeWordDetected);
   const onStopRef = useRef(onStopDetected);
+  const onShutdownRef = useRef(onShutdownDetected);
   onWakeRef.current = onWakeWordDetected;
   onStopRef.current = onStopDetected;
+  onShutdownRef.current = onShutdownDetected;
 
   const wakeWordsRef = useRef(wakeWords);
   const stopPhrasesRef = useRef(stopPhrases);
+  const shutdownPhrasesRef = useRef(shutdownPhrases);
   wakeWordsRef.current = wakeWords;
   stopPhrasesRef.current = stopPhrases;
+  shutdownPhrasesRef.current = shutdownPhrases;
 
   // ── Helpers ──────────────────────────────────────────────────────────────
   const clearTimer = useCallback(() => {
@@ -78,7 +83,11 @@ export function useWakeWord({
         interimResults: true,
         continuous: true,
         maxAlternatives: 3,
-        contextualStrings: [...wakeWordsRef.current, ...stopPhrasesRef.current],
+        contextualStrings: [
+          ...wakeWordsRef.current,
+          ...stopPhrasesRef.current,
+          ...shutdownPhrasesRef.current,
+        ],
         iosCategory: {
           category: "playAndRecord",
           categoryOptions: ["defaultToSpeaker", "allowBluetooth"],
@@ -131,8 +140,14 @@ export function useWakeWord({
       const text = result.transcript.toLowerCase().trim();
       console.log("[WakeWord:native] Transcript:", text);
 
+      if (shutdownPhrasesRef.current.some((p) => text.includes(p))) {
+        console.log("[WakeWord:native] Shutdown phrase:", text);
+        stop();
+        onShutdownRef.current();
+        return;
+      }
       if (stopPhrasesRef.current.some((p) => text.includes(p))) {
-        console.log("[WakeWord:native] Stop phrase:", text);
+        console.log("[WakeWord:native] Soft terminate phrase:", text);
         stop();
         onStopRef.current();
         return;
