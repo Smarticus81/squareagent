@@ -18,12 +18,14 @@ export interface SquareLocation {
   address?: string;
 }
 
-interface AgentProfileLaunchInfo {
+export interface AgentProfileLaunchInfo {
   id: string;
+  venueId?: number;
   displayName: string;
   wakePhrase: string;
   voicePipelineProvider?: string;
   voicePipelineConfig?: Record<string, unknown>;
+  isDefault?: boolean;
 }
 
 interface SquareContextType {
@@ -44,6 +46,9 @@ interface SquareContextType {
   userInfo: { id: number; email: string; name: string } | null;
   /** List of venues for the logged-in user */
   venues: { id: number; name: string; squareLocationName?: string; connectedAt?: string }[];
+  /** Assistants configured in the dashboard. */
+  agentProfiles: AgentProfileLaunchInfo[];
+  isLoadingAgentProfiles: boolean;
   /** Assistant settings loaded with the selected venue. */
   agentProfile: AgentProfileLaunchInfo | null;
   wakePhrase: string;
@@ -60,7 +65,10 @@ interface SquareContextType {
   /** Logout and clear all stored credentials */
   logout: () => Promise<void>;
   /** Select a venue from the user's list — loads Square credentials from server */
-  selectVenue: (venueId: number) => Promise<string | null>;
+  selectVenue: (venueId: number, agentProfileId?: string) => Promise<string | null>;
+  /** Select a specific assistant profile and load its venue credentials */
+  selectAgentProfile: (agentProfileId: string) => Promise<string | null>;
+  loadAgentProfiles: (token?: string) => Promise<void>;
 }
 
 const SquareContext = createContext<SquareContextType | null>(null);
@@ -70,6 +78,7 @@ const STORAGE_KEYS = {
   LOCATION_ID: "square_location_id",
   VENUE_ID: "voycelab_venue_id",
   AUTH_TOKEN: "voycelab_token",
+  AGENT_PROFILE_ID: "voycelab_agent_profile_id",
 };
 
 function getBaseUrl() {
@@ -114,6 +123,8 @@ export function SquareProvider({ children }: { children: ReactNode }) {
   const loadingRef = useRef(false);
   const [userInfo, setUserInfo] = useState<{ id: number; email: string; name: string } | null>(null);
   const [venues, setVenues] = useState<{ id: number; name: string; squareLocationName?: string; connectedAt?: string }[]>([]);
+  const [agentProfiles, setAgentProfiles] = useState<AgentProfileLaunchInfo[]>([]);
+  const [isLoadingAgentProfiles, setIsLoadingAgentProfiles] = useState(false);
   const [agentProfile, setAgentProfile] = useState<AgentProfileLaunchInfo | null>(null);
   const [wakePhrase, setWakePhrase] = useState("Hey Bar");
 
@@ -128,8 +139,13 @@ export function SquareProvider({ children }: { children: ReactNode }) {
     setAgentProfile(profile ?? null);
     setWakePhrase(nextWakePhrase);
     await AsyncStorage.setItem("voycelab_wake_phrase", nextWakePhrase);
-    if (profile) await AsyncStorage.setItem("voycelab_agent_profile", JSON.stringify(profile));
-    else await AsyncStorage.removeItem("voycelab_agent_profile");
+    if (profile) {
+      await AsyncStorage.setItem("voycelab_agent_profile", JSON.stringify(profile));
+      await AsyncStorage.setItem(STORAGE_KEYS.AGENT_PROFILE_ID, profile.id);
+    } else {
+      await AsyncStorage.removeItem("voycelab_agent_profile");
+      await AsyncStorage.removeItem(STORAGE_KEYS.AGENT_PROFILE_ID);
+    }
   }
 
   useEffect(() => {
@@ -201,11 +217,12 @@ export function SquareProvider({ children }: { children: ReactNode }) {
       // Fallback: load from local AsyncStorage
       if (!cancelled) {
         try {
-          const [token, locId, vid, tok, storedWakePhrase, storedProfile] = await Promise.all([
+          const [token, locId, vid, tok, storedProfileId, storedWakePhrase, storedProfile] = await Promise.all([
             AsyncStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN),
             AsyncStorage.getItem(STORAGE_KEYS.LOCATION_ID),
             AsyncStorage.getItem(STORAGE_KEYS.VENUE_ID),
             AsyncStorage.getItem(STORAGE_KEYS.AUTH_TOKEN),
+            AsyncStorage.getItem(STORAGE_KEYS.AGENT_PROFILE_ID),
             AsyncStorage.getItem("voycelab_wake_phrase"),
             AsyncStorage.getItem("voycelab_agent_profile"),
           ]);
@@ -223,7 +240,8 @@ export function SquareProvider({ children }: { children: ReactNode }) {
           }
           if (vid && tok) {
             try {
-              const res = await fetch(`${baseUrl}api/venues/${vid}/credentials`, {
+              const profileParam = storedProfileId ? `?agentProfileId=${encodeURIComponent(storedProfileId)}` : "";
+              const res = await fetch(`${baseUrl}api/venues/${vid}/credentials${profileParam}`, {
                 headers: { Authorization: `Bearer ${tok}` },
               });
               if (!cancelled && res.ok) {
@@ -298,6 +316,7 @@ export function SquareProvider({ children }: { children: ReactNode }) {
       AsyncStorage.removeItem(STORAGE_KEYS.LOCATION_ID),
       AsyncStorage.removeItem(STORAGE_KEYS.VENUE_ID),
       AsyncStorage.removeItem(STORAGE_KEYS.AUTH_TOKEN),
+      AsyncStorage.removeItem(STORAGE_KEYS.AGENT_PROFILE_ID),
       AsyncStorage.removeItem("voycelab_wake_phrase"),
       AsyncStorage.removeItem("voycelab_agent_profile"),
     ]);
@@ -316,6 +335,7 @@ export function SquareProvider({ children }: { children: ReactNode }) {
   async function refreshCredentials(): Promise<boolean> {
     const vid = venueId || (await AsyncStorage.getItem(STORAGE_KEYS.VENUE_ID));
     const tok = authToken || (await AsyncStorage.getItem(STORAGE_KEYS.AUTH_TOKEN));
+    const profileId = agentProfile?.id || (await AsyncStorage.getItem(STORAGE_KEYS.AGENT_PROFILE_ID));
     if (!vid || !tok) {
       setConnectionError("No saved session. Open the dashboard to reconnect Square.");
       return false;
@@ -326,7 +346,8 @@ export function SquareProvider({ children }: { children: ReactNode }) {
 
     try {
       const baseUrl = getBaseUrl();
-      const res = await fetch(`${baseUrl}api/venues/${vid}/credentials`, {
+      const profileParam = profileId ? `?agentProfileId=${encodeURIComponent(profileId)}` : "";
+      const res = await fetch(`${baseUrl}api/venues/${vid}/credentials${profileParam}`, {
         headers: { Authorization: `Bearer ${tok}` },
       });
 
@@ -439,6 +460,27 @@ export function SquareProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  async function loadAgentProfiles(tokenOverride?: string): Promise<void> {
+    const tok = tokenOverride || authToken || (await AsyncStorage.getItem(STORAGE_KEYS.AUTH_TOKEN));
+    if (!tok) return;
+
+    setIsLoadingAgentProfiles(true);
+    try {
+      const baseUrl = getBaseUrl();
+      const res = await fetch(`${baseUrl}api/v1/agent-profiles`, {
+        headers: { Authorization: `Bearer ${tok}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAgentProfiles(Array.isArray(data.profiles) ? data.profiles : []);
+      }
+    } catch (e) {
+      console.warn("Failed to load assistants", e);
+    } finally {
+      setIsLoadingAgentProfiles(false);
+    }
+  }
+
   async function login(email: string, password: string): Promise<string | null> {
     try {
       const baseUrl = getBaseUrl();
@@ -456,6 +498,7 @@ export function SquareProvider({ children }: { children: ReactNode }) {
 
       // Load venues for this user
       await loadVenues(data.token);
+      await loadAgentProfiles(data.token);
 
       return null;
     } catch (e: any) {
@@ -480,6 +523,7 @@ export function SquareProvider({ children }: { children: ReactNode }) {
 
       // New user has no venues yet
       setVenues([]);
+      setAgentProfiles([]);
 
       return null;
     } catch (e: any) {
@@ -501,16 +545,18 @@ export function SquareProvider({ children }: { children: ReactNode }) {
     await clearCredentials();
     setUserInfo(null);
     setVenues([]);
+    setAgentProfiles([]);
   }
 
   /** Select a venue → load Square credentials from server and store locally */
-  async function selectVenue(vid: number): Promise<string | null> {
+  async function selectVenue(vid: number, profileId?: string): Promise<string | null> {
     const tok = authToken || (await AsyncStorage.getItem(STORAGE_KEYS.AUTH_TOKEN));
     if (!tok) return "Not logged in";
 
     try {
       const baseUrl = getBaseUrl();
-      const res = await fetch(`${baseUrl}api/venues/${vid}/credentials`, {
+      const profileParam = profileId ? `?agentProfileId=${encodeURIComponent(profileId)}` : "";
+      const res = await fetch(`${baseUrl}api/venues/${vid}/credentials${profileParam}`, {
         headers: { Authorization: `Bearer ${tok}` },
       });
       if (!res.ok) {
@@ -526,6 +572,7 @@ export function SquareProvider({ children }: { children: ReactNode }) {
         await AsyncStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, data.accessToken);
         await AsyncStorage.setItem(STORAGE_KEYS.LOCATION_ID, data.locationId);
         await AsyncStorage.setItem(STORAGE_KEYS.VENUE_ID, String(vid));
+        if (profileId) await AsyncStorage.setItem(STORAGE_KEYS.AGENT_PROFILE_ID, profileId);
         setConnectionError(null);
         return null;
       }
@@ -533,6 +580,12 @@ export function SquareProvider({ children }: { children: ReactNode }) {
     } catch (e: any) {
       return e.message || "Network error";
     }
+  }
+
+  async function selectAgentProfile(agentProfileId: string): Promise<string | null> {
+    const profile = agentProfiles.find((p) => p.id === agentProfileId);
+    if (!profile?.venueId) return "Assistant is not attached to a venue";
+    return selectVenue(profile.venueId, profile.id);
   }
 
   // On mount, also try to restore user session and load venues
@@ -549,6 +602,7 @@ export function SquareProvider({ children }: { children: ReactNode }) {
           const data = await res.json();
           setUserInfo(data.user);
           await loadVenues(tok);
+          await loadAgentProfiles(tok);
         }
       } catch {}
     })();
@@ -572,6 +626,8 @@ export function SquareProvider({ children }: { children: ReactNode }) {
         isReconnecting,
         userInfo,
         venues,
+        agentProfiles,
+        isLoadingAgentProfiles,
         agentProfile,
         wakePhrase,
         setCredentials,
@@ -584,6 +640,8 @@ export function SquareProvider({ children }: { children: ReactNode }) {
         signup,
         logout,
         selectVenue,
+        selectAgentProfile,
+        loadAgentProfiles,
       }}
     >
       {children}

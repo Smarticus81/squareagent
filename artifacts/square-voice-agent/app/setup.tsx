@@ -41,10 +41,13 @@ export default function SetupScreen() {
     authToken,
     userInfo,
     venues,
+    agentProfiles,
+    isLoadingAgentProfiles,
     login,
     signup,
     logout,
     selectVenue,
+    selectAgentProfile,
     agentProfile,
   } = useSquare();
 
@@ -125,6 +128,24 @@ export default function SetupScreen() {
         await loadCatalog();
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         setResult({ success: true, message: "Connected! Catalog loaded." });
+      }
+    } finally {
+      setVenueLoading(false);
+    }
+  }
+
+  async function handleSelectAssistant(agentProfileId: string) {
+    setVenueError(null);
+    setVenueLoading(true);
+    try {
+      const err = await selectAgentProfile(agentProfileId);
+      if (err) {
+        setVenueError(err);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      } else {
+        await loadCatalog();
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setResult({ success: true, message: "Assistant connected." });
       }
     } finally {
       setVenueLoading(false);
@@ -290,10 +311,44 @@ export default function SetupScreen() {
         /* ── Logged in but no venue selected ─────────────────────── */
         ) : !isConfigured ? (
           <Animated.View entering={FadeInDown.delay(60).duration(300)}>
-            {venues.length > 0 ? (
+            {agentProfiles.length > 0 ? (
+              <>
+                <Text style={styles.authTitle}>Select your assistant</Text>
+                <Text style={styles.authSub}>Choose Kora, Barback, or whichever assistant you configured on the dashboard.</Text>
+
+                <View style={styles.locationList}>
+                  {agentProfiles.map((profile) => (
+                    <Pressable
+                      key={profile.id}
+                      onPress={() => handleSelectAssistant(profile.id)}
+                      disabled={venueLoading}
+                      style={[styles.locationRow, { opacity: venueLoading ? 0.6 : 1 }]}
+                    >
+                      <View style={styles.locationLeft}>
+                        <Text style={styles.locationName}>{profile.displayName}</Text>
+                        <Text style={styles.locationAddr}>{getVoiceProviderLabel(profile.voicePipelineProvider)}</Text>
+                      </View>
+                      <Feather name="chevron-right" size={18} color={Colors.dark.textMuted} />
+                    </Pressable>
+                  ))}
+                </View>
+
+                {venueError && (
+                  <View style={[styles.resultCard, styles.resultError]}>
+                    <Feather name="alert-circle" size={16} color={Colors.dark.danger} />
+                    <Text style={[styles.resultText, { color: Colors.dark.danger }]}>{venueError}</Text>
+                  </View>
+                )}
+              </>
+            ) : isLoadingAgentProfiles ? (
+              <View style={styles.noVenuesCard}>
+                <ActivityIndicator size="small" color={Colors.dark.accent} />
+                <Text style={styles.noVenuesTitle}>Loading assistants</Text>
+              </View>
+            ) : venues.length > 0 ? (
               <>
                 <Text style={styles.authTitle}>Select your venue</Text>
-                <Text style={styles.authSub}>Choose the venue you want to use with the voice agent.</Text>
+                <Text style={styles.authSub}>No assistants were found yet. Choose a venue to use its default assistant.</Text>
 
                 <View style={styles.locationList}>
                   {venues.map((v) => (
@@ -364,6 +419,22 @@ export default function SetupScreen() {
             )}
 
             <Animated.View entering={FadeInDown.delay(100).duration(300)} style={styles.statsCard}>
+              {agentProfile && (
+                <View
+                  style={[
+                    styles.statsRow,
+                    {
+                      borderBottomWidth: StyleSheet.hairlineWidth,
+                      borderBottomColor: Colors.dark.surfaceBorder,
+                      paddingBottom: 10,
+                    },
+                  ]}
+                >
+                  <Feather name="radio" size={16} color={Colors.dark.accent} />
+                  <Text style={styles.statsLabel}>Assistant</Text>
+                  <Text style={styles.statsValue}>{agentProfile.displayName}</Text>
+                </View>
+              )}
               <View style={styles.statsRow}>
                 <Feather name="package" size={16} color={Colors.dark.accent} />
                 <Text style={styles.statsLabel}>Catalog Items</Text>
@@ -378,6 +449,33 @@ export default function SetupScreen() {
                 <Text style={styles.refreshText}>Refresh catalog</Text>
               </Pressable>
             </Animated.View>
+
+            {agentProfiles.length > 1 && (
+              <Animated.View entering={FadeInDown.delay(120).duration(300)} style={styles.locationList}>
+                <Text style={styles.voiceLabel}>Switch assistant</Text>
+                {agentProfiles.map((profile) => {
+                  const active = agentProfile?.id === profile.id;
+                  return (
+                    <Pressable
+                      key={profile.id}
+                      onPress={() => handleSelectAssistant(profile.id)}
+                      disabled={venueLoading || active}
+                      style={[styles.locationRow, active && styles.voiceChipActive, { opacity: venueLoading ? 0.6 : 1 }]}
+                    >
+                      <View style={styles.locationLeft}>
+                        <Text style={styles.locationName}>{profile.displayName}</Text>
+                        <Text style={styles.locationAddr}>{getVoiceProviderLabel(profile.voicePipelineProvider)}</Text>
+                      </View>
+                      {active ? (
+                        <Feather name="check" size={18} color={Colors.dark.accent} />
+                      ) : (
+                        <Feather name="chevron-right" size={18} color={Colors.dark.textMuted} />
+                      )}
+                    </Pressable>
+                  );
+                })}
+              </Animated.View>
+            )}
 
             {/* Recent orders diagnostic */}
             <Pressable
