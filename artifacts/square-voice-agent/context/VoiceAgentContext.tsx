@@ -689,7 +689,10 @@ General:
   // ── Native WebRTC connect ──────────────────────────────────────────────────
 
   const connectNativeWebRTC = useCallback(async () => {
-    const { voice, speed } = await getVoicePrefs();
+    const { voice, speed } = await getVoicePrefs(
+      pipelineProviderRef.current,
+      pipelineConfigRef.current,
+    );
     const baseUrl = getApiBase();
 
     console.log("[WebRTC] Creating peer connection...");
@@ -813,7 +816,10 @@ General:
   );
 
   const connectNativeBridge = useCallback(async () => {
-    const { voice, speed } = await getVoicePrefs();
+    const { voice, speed } = await getVoicePrefs(
+      pipelineProviderRef.current,
+      pipelineConfigRef.current,
+    );
     const wsUrl = getWsUrl(
       voice,
       speed,
@@ -846,7 +852,10 @@ General:
       throw new Error("AudioContext failed: " + e?.message);
     }
 
-    const { voice, speed } = await getVoicePrefs();
+    const { voice, speed } = await getVoicePrefs(
+      pipelineProviderRef.current,
+      pipelineConfigRef.current,
+    );
     const wsUrl = getWsUrl(
       voice,
       speed,

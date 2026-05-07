@@ -17,7 +17,7 @@ import Animated, { FadeInDown } from "react-native-reanimated";
 
 import Colors from "@/constants/colors";
 import { useSquare, SquareLocation } from "@/context/SquareContext";
-import { useVoicePrefs, VOICES, SPEEDS } from "@/hooks/useVoicePrefs";
+import { getVoiceProviderLabel, useVoicePrefs, SPEEDS } from "@/hooks/useVoicePrefs";
 
 const WEB_TOP_INSET = 67;
 const WEB_BOTTOM_INSET = 34;
@@ -45,9 +45,13 @@ export default function SetupScreen() {
     signup,
     logout,
     selectVenue,
+    agentProfile,
   } = useSquare();
 
-  const { voice, speed, setVoice, setSpeed } = useVoicePrefs();
+  const { voice, speed, setVoice, setSpeed, voices } = useVoicePrefs(
+    agentProfile?.voicePipelineProvider,
+    agentProfile?.voicePipelineConfig,
+  );
 
   // Auth form state
   const [authMode, setAuthMode] = useState<"login" | "signup">("login");
@@ -431,11 +435,12 @@ export default function SetupScreen() {
             <Feather name="mic" size={16} color={Colors.dark.accent} />
             <Text style={styles.voiceSectionTitle}>Voice Settings</Text>
           </View>
+          <Text style={styles.voiceHint}>{getVoiceProviderLabel(agentProfile?.voicePipelineProvider)}</Text>
 
           {/* Voice picker */}
           <Text style={styles.voiceLabel}>Voice</Text>
           <View style={styles.voiceGrid}>
-            {VOICES.map((v) => {
+            {voices.map((v) => {
               const active = voice === v.id;
               return (
                 <Pressable

@@ -221,6 +221,25 @@ export function SquareProvider({ children }: { children: ReactNode }) {
               await AsyncStorage.removeItem("voycelab_agent_profile");
             }
           }
+          if (vid && tok) {
+            try {
+              const res = await fetch(`${baseUrl}api/venues/${vid}/credentials`, {
+                headers: { Authorization: `Bearer ${tok}` },
+              });
+              if (!cancelled && res.ok) {
+                const data = await res.json();
+                if (data.accessToken && data.locationId) {
+                  setAccessToken(data.accessToken);
+                  setLocationId(data.locationId);
+                  await AsyncStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, data.accessToken);
+                  await AsyncStorage.setItem(STORAGE_KEYS.LOCATION_ID, data.locationId);
+                  await applyAgentLaunchInfo(data);
+                }
+              }
+            } catch (e) {
+              console.warn("Failed to refresh stored venue credentials", e);
+            }
+          }
         } catch (e) {
           console.error("Failed to load credentials", e);
         }

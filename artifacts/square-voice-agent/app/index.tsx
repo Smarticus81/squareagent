@@ -21,7 +21,7 @@ import { matchTermination } from "@/lib/voice-termination";
 import { useVoiceAgent, ConversationMessage, AgentState, OrderCommand } from "@/context/VoiceAgentContext";
 import { useOrder } from "@/context/OrderContext";
 import { useSquare } from "@/context/SquareContext";
-import { useVoicePrefs, VOICES, SPEEDS } from "@/hooks/useVoicePrefs";
+import { useVoicePrefs, SPEEDS } from "@/hooks/useVoicePrefs";
 import { OrderCard } from "@/components/OrderCard";
 
 const WEB_TOP = 67;
@@ -271,7 +271,10 @@ export default function MainScreen() {
 
   const { isConfigured, catalogItems, isLoadingCatalog, accessToken, locationId, venueId, authToken,
     connectionError, isReconnecting, refreshCredentials, wakePhrase, agentProfile } = useSquare();
-  const { voice, speed, setVoice, setSpeed, loaded: voicePrefsLoaded } = useVoicePrefs();
+  const { voice, speed, setVoice, setSpeed, loaded: voicePrefsLoaded, voices } = useVoicePrefs(
+    agentProfile?.voicePipelineProvider,
+    agentProfile?.voicePipelineConfig,
+  );
   const [panelOpen, setPanelOpen] = useState(false);
   const [panelTab,  setPanelTab]  = useState<"order" | "menu" | "settings">("order");
 
@@ -806,10 +809,10 @@ export default function MainScreen() {
               <View style={[s.settingsRow, { borderBottomColor: t.divider, flexDirection: "column", alignItems: "flex-start", gap: 8 }]}>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
                   <Feather name="mic" size={16} color={t.settingsIcon} />
-                  <Text style={[s.settingsRowTxt, { color: t.settingsTxt }]}>Voice</Text>
+                  <Text style={[s.settingsRowTxt, { color: t.settingsTxt }]}>Voice · {pipelineProviderLabel(agentProfile?.voicePipelineProvider)}</Text>
                 </View>
                 <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, paddingLeft: 28 }}>
-                  {VOICES.map((v) => (
+                  {voices.map((v) => (
                     <Pressable key={v.id} onPress={() => setVoice(v.id)}
                       style={{
                         paddingVertical: 3, paddingHorizontal: 8, borderRadius: 8,
