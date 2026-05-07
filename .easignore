@@ -28,7 +28,7 @@ artifacts/voycelab-landing/
 artifacts/voice-agent-pwa/
 
 # Server-only libraries (square-voice-agent has zero @workspace/* deps)
-lib/
+/lib/
 
 # Caches and build outputs
 node_modules/
