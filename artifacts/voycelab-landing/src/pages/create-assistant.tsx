@@ -312,9 +312,9 @@ export default function CreateAssistant() {
   return (
     <div className="relative flex-1 overflow-hidden px-4 pb-20 pt-16 sm:px-6 lg:px-10">
       <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
-        <div className="absolute left-[-12%] top-[-18%] h-[380px] w-[560px] rounded-full blur-3xl" style={{ background: "rgba(255, 201, 168, 0.42)" }} />
-        <div className="absolute right-[-14%] top-[5%] h-[480px] w-[600px] rounded-full blur-3xl" style={{ background: "rgba(199, 183, 229, 0.30)" }} />
-        <div className="absolute bottom-[-18%] right-[12%] h-[420px] w-[680px] rounded-full blur-3xl" style={{ background: "rgba(156, 201, 161, 0.23)" }} />
+        <div className="absolute left-[-12%] top-[-18%] h-[380px] w-[560px] rounded-full blur-3xl" style={{ background: "rgba(251, 207, 232, 0.42)" }} />
+        <div className="absolute right-[-14%] top-[5%] h-[480px] w-[600px] rounded-full blur-3xl" style={{ background: "rgba(199, 210, 254, 0.30)" }} />
+        <div className="absolute bottom-[-18%] right-[12%] h-[420px] w-[680px] rounded-full blur-3xl" style={{ background: "rgba(167, 243, 208, 0.23)" }} />
       </div>
       <div className="mx-auto w-full max-w-[1160px]">
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2 mb-6 text-[12px]">
@@ -505,7 +505,7 @@ export default function CreateAssistant() {
                           {group.description}
                         </p>
                       </div>
-                      <ul className="mt-3 divide-y" style={{ borderColor: "rgba(14,27,44,0.08)" }}>
+                      <ul className="mt-3 divide-y" style={{ borderColor: "rgba(10, 10, 11,0.08)" }}>
                         {group.actions.map((a) => {
                           const level = approvals[a.id];
                           return (
@@ -690,16 +690,16 @@ export default function CreateAssistant() {
           padding: 0 16px;
           border-radius: 14px;
           background: #FFFFFF;
-          border: 1px solid rgba(14,27,44,0.12);
+          border: 1px solid rgba(10, 10, 11,0.12);
           color: var(--color-vl-ink);
           font-size: 15px;
           outline: none;
           transition: border-color .2s ease, background .2s ease, box-shadow .2s ease;
         }
-        .vl-input::placeholder { color: rgba(14,27,44,0.36); }
+        .vl-input::placeholder { color: rgba(10, 10, 11,0.36); }
         .vl-input:focus {
           border-color: var(--color-vl-coral);
-          box-shadow: 0 0 0 3px rgba(255,107,71,0.14);
+          box-shadow: 0 0 0 3px rgba(99, 102, 241,0.14);
         }
       `}</style>
     </div>
@@ -910,7 +910,7 @@ function ServiceRow({
       style={{
         opacity: available ? 1 : 0.65,
         cursor: available ? "pointer" : "default",
-        borderColor: checked ? "rgba(255,107,71,0.36)" : undefined,
+        borderColor: checked ? "rgba(99, 102, 241,0.36)" : undefined,
         background: checked ? "var(--color-vl-coral-tint)" : undefined,
       }}
     >
@@ -918,7 +918,7 @@ function ServiceRow({
         className="w-4 h-4 rounded-full flex items-center justify-center"
         style={{
           background: checked ? "var(--color-vl-coral)" : "transparent",
-          border: "1px solid rgba(14,27,44,0.18)",
+          border: "1px solid rgba(10, 10, 11,0.18)",
         }}
       >
         {checked && <Check className="w-3 h-3 text-white" />}
@@ -952,7 +952,7 @@ function ApprovalSelector({
 }) {
   const options: ApprovalLevel[] = ["no_approval", "ask_first", "not_allowed"];
   return (
-    <div className="inline-flex rounded-full border p-0.5" style={{ borderColor: "rgba(14,27,44,0.10)", background: "rgba(255,255,255,0.58)" }} role="radiogroup">
+    <div className="inline-flex rounded-full border p-0.5" style={{ borderColor: "rgba(10, 10, 11,0.10)", background: "rgba(255,255,255,0.58)" }} role="radiogroup">
       {options.map((opt) => {
         const selected = value === opt;
         const tone =
@@ -992,7 +992,7 @@ function RoomIntensity({ level, active }: { level: number; active: boolean }) {
           className="w-1 rounded-full"
           style={{
             height: 6 + threshold * 12,
-            background: level >= threshold ? (active ? "var(--color-vl-coral)" : "var(--color-vl-brass2)") : "rgba(14,27,44,0.12)",
+            background: level >= threshold ? (active ? "var(--color-vl-coral)" : "var(--color-vl-brass2)") : "rgba(10, 10, 11,0.12)",
           }}
         />
       ))}
@@ -1019,7 +1019,7 @@ function TestProgress({
         "Add two ranch waters."
       </p>
 
-      <div className="mt-6 grid sm:grid-cols-5 gap-px rounded-xl overflow-hidden" style={{ background: "rgba(14,27,44,0.08)" }}>
+      <div className="mt-6 grid sm:grid-cols-5 gap-px rounded-xl overflow-hidden" style={{ background: "rgba(10, 10, 11,0.08)" }}>
         {stages.map((s, i) => (
           <div key={s} className="bg-vl-paper py-3 px-2 text-center">
             <p className="text-[10px] tracking-[0.18em] uppercase" style={{ color: "rgba(140,145,154,0.7)" }}>
@@ -1214,7 +1214,7 @@ function PipelineCard({
       className="vl-panel p-5 transition-colors"
       style={{
         opacity: disabled ? 0.55 : 1,
-        borderColor: active ? "rgba(255,107,71,0.36)" : undefined,
+        borderColor: active ? "rgba(99, 102, 241,0.36)" : undefined,
         background: active ? "var(--color-vl-coral-tint)" : undefined,
       }}
     >
@@ -1254,7 +1254,7 @@ function PipelineCard({
             className="w-4 h-4 rounded-full flex items-center justify-center shrink-0"
             style={{
               background: active ? "var(--color-vl-coral)" : "transparent",
-              border: "1px solid rgba(14,27,44,0.18)",
+              border: "1px solid rgba(10, 10, 11,0.18)",
             }}
           >
             {active && <Check className="w-3 h-3 text-white" />}
@@ -1277,8 +1277,8 @@ function PipelineCard({
                 height: 28,
                 padding: "0 8px",
                 borderRadius: 999,
-                background: "rgba(14,27,44,0.04)",
-                border: "1px solid rgba(14,27,44,0.12)",
+                background: "rgba(10, 10, 11,0.04)",
+                border: "1px solid rgba(10, 10, 11,0.12)",
                 color: "var(--color-vl-ink)",
                 fontSize: 11.5,
                 outline: 0,
@@ -1503,7 +1503,7 @@ function SamplePlayer({
         disabled={disabled || state === "loading"}
         className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border transition-colors text-[12px]"
         style={{
-          borderColor: isPlaying ? "rgba(124,110,245,0.6)" : "rgba(14,27,44,0.12)",
+          borderColor: isPlaying ? "rgba(124,110,245,0.6)" : "rgba(10, 10, 11,0.12)",
           background: isPlaying ? "var(--color-vl-coral-tint)" : "rgba(255,255,255,0.55)",
           color: "var(--color-vl-ink)",
           opacity: disabled ? 0.5 : 1,
@@ -1583,10 +1583,10 @@ function PipelineConfigPanel({
                 onClick={() => onVoice(v)}
                 className="px-3 py-1.5 rounded-full text-[12px] transition-colors"
                 style={{
-                  borderColor: voice === v ? "rgba(124,110,245,0.6)" : "rgba(14,27,44,0.12)",
+                  borderColor: voice === v ? "rgba(124,110,245,0.6)" : "rgba(10, 10, 11,0.12)",
                   background: voice === v ? "var(--color-vl-coral-tint)" : "rgba(255,255,255,0.55)",
                   color: "var(--color-vl-ink)",
-                  border: `1px solid ${voice === v ? "rgba(124,110,245,0.6)" : "rgba(14,27,44,0.12)"}`,
+                  border: `1px solid ${voice === v ? "rgba(124,110,245,0.6)" : "rgba(10, 10, 11,0.12)"}`,
                 }}
               >
                 {v}
@@ -1612,10 +1612,10 @@ function PipelineConfigPanel({
                 onClick={() => onThinkingLevel(lvl)}
                 className="px-3 py-1.5 rounded-full text-[12px] capitalize transition-colors"
                 style={{
-                  borderColor: thinkingLevel === lvl ? "rgba(224,183,106,0.6)" : "rgba(14,27,44,0.12)",
+                  borderColor: thinkingLevel === lvl ? "rgba(224,183,106,0.6)" : "rgba(10, 10, 11,0.12)",
                   background: thinkingLevel === lvl ? "rgba(224,183,106,0.10)" : "rgba(255,255,255,0.55)",
                   color: "var(--color-vl-ink)",
-                  border: `1px solid ${thinkingLevel === lvl ? "rgba(224,183,106,0.6)" : "rgba(14,27,44,0.12)"}`,
+                  border: `1px solid ${thinkingLevel === lvl ? "rgba(224,183,106,0.6)" : "rgba(10, 10, 11,0.12)"}`,
                 }}
               >
                 {lvl}
@@ -1643,7 +1643,7 @@ function PipelineConfigPanel({
             <span
               className="w-9 h-5 rounded-full relative transition-colors"
               style={{
-                background: proactiveAudio ? "rgba(124,110,245,0.6)" : "rgba(14,27,44,0.12)",
+                background: proactiveAudio ? "rgba(124,110,245,0.6)" : "rgba(10, 10, 11,0.12)",
               }}
             >
               <span

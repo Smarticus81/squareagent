@@ -1,14 +1,14 @@
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..800;1,9..144,300..800&family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap');
 @import "tailwindcss";
 @import "tw-animate-css";
 
 @plugin "@tailwindcss/typography";
 
 /* ──────────────────────────────────────────────────────────────
-   VoyceLab — Hospitality, orchestrated by voice.
+   VoyceLab — Modern SaaS aesthetic (Chatbase-inspired)
    ──────────────────────────────────────────────────────────────
-   Warm cream paper. Deep navy ink. Coral hospitality accent.
-   Painterly background of peach, sage, and lilac.
+   White paper. Near-black ink. Soft pastel gradient washes.
+   Clean Inter typography. Black pill CTAs. Minimal, refined.
    ────────────────────────────────────────────────────────────── */
 
 @theme inline {
@@ -41,66 +41,72 @@
   --color-destructive: hsl(var(--destructive));
   --color-destructive-foreground: hsl(var(--destructive-foreground));
 
-  /* ── Brand tokens — Hospitality palette ─────────────────────── */
+  /* ── Brand tokens — Modern SaaS palette ─────────────────────── */
 
-  /* Cream paper backgrounds */
-  --color-vl-cream: #FBF7F1;
-  --color-vl-cream-warm: #F4ECDD;
-  --color-vl-cream-deep: #ECE0CB;
+  /* Paper backgrounds — pure white with a hint of warmth */
+  --color-vl-cream: #FFFFFF;
+  --color-vl-cream-warm: #FAFAF9;
+  --color-vl-cream-deep: #F4F4F5;
   --color-vl-paper: #FFFFFF;
 
-  /* Ink — deep navy text */
-  --color-vl-ink: #0E1B2C;
-  --color-vl-ink-soft: #2B3A50;
-  --color-vl-ink-muted: #5A6577;
-  --color-vl-ink-faint: #8A93A2;
+  /* Ink — near-black for confident type */
+  --color-vl-ink: #0A0A0B;
+  --color-vl-ink-soft: #27272A;
+  --color-vl-ink-muted: #71717A;
+  --color-vl-ink-faint: #A1A1AA;
 
-  /* Coral — primary action, hospitality warmth */
-  --color-vl-coral: #FF6B47;
-  --color-vl-coral-deep: #E2502E;
-  --color-vl-coral-soft: #FFA384;
-  --color-vl-coral-tint: #FFF1EB;
+  /* Primary — deep ink (chatbase-style dark CTA) */
+  --color-vl-coral: #0A0A0B;
+  --color-vl-coral-deep: #000000;
+  --color-vl-coral-soft: #3F3F46;
+  --color-vl-coral-tint: #F4F4F5;
 
-  /* Painterly accents from the brand wash */
-  --color-vl-peach: #FFC9A8;
-  --color-vl-peach-soft: #FFE4D2;
-  --color-vl-sage: #9CC9A1;
-  --color-vl-sage-soft: #DCEBDB;
-  --color-vl-lilac: #C7B7E5;
-  --color-vl-lilac-soft: #EDE5F8;
-  --color-vl-honey: #F2C97D;
-  --color-vl-honey-soft: #FBE8C0;
+  /* Accent — violet/indigo signature */
+  --color-vl-accent: #6366F1;
+  --color-vl-accent-deep: #4F46E5;
+  --color-vl-accent-soft: #A5B4FC;
+  --color-vl-accent-tint: #EEF2FF;
+
+  /* Painterly gradient stops — pastel washes for hero */
+  --color-vl-peach: #FBCFE8;
+  --color-vl-peach-soft: #FCE7F3;
+  --color-vl-sage: #A7F3D0;
+  --color-vl-sage-soft: #D1FAE5;
+  --color-vl-lilac: #C7D2FE;
+  --color-vl-lilac-soft: #E0E7FF;
+  --color-vl-honey: #FDE68A;
+  --color-vl-honey-soft: #FEF3C7;
 
   /* Status */
-  --color-vl-success: #2F9E64;
-  --color-vl-warning: #E59B2A;
-  --color-vl-danger: #D7402E;
+  --color-vl-success: #10B981;
+  --color-vl-warning: #F59E0B;
+  --color-vl-danger: #EF4444;
 
-  /* Aliases retained for back-compat — many components reference these */
-  --color-vl-black: #0E1B2C;
-  --color-vl-graphite: #1A2638;
-  --color-vl-graphite2: #243042;
-  --color-vl-graphite3: #2E3A4D;
-  --color-vl-ivory: #0E1B2C;          /* now means "ink" in light theme */
-  --color-vl-bone: #2B3A50;
-  --color-vl-sand: #5A6577;
-  --color-vl-ash: #8A93A2;
-  --color-vl-brass: #E2502E;          /* now coral-deep */
-  --color-vl-brass2: #FF6B47;         /* now coral */
-  --color-vl-ember: #FF6B47;
-  --color-vl-voice: #C7B7E5;          /* lilac as the conversation accent */
-  --color-vl-voice2: #A38EDC;
+  /* Aliases retained for back-compat */
+  --color-vl-black: #0A0A0B;
+  --color-vl-graphite: #18181B;
+  --color-vl-graphite2: #27272A;
+  --color-vl-graphite3: #3F3F46;
+  --color-vl-ivory: #0A0A0B;
+  --color-vl-bone: #27272A;
+  --color-vl-sand: #71717A;
+  --color-vl-ash: #A1A1AA;
+  --color-vl-brass: #000000;
+  --color-vl-brass2: #0A0A0B;
+  --color-vl-ember: #6366F1;
+  --color-vl-voice: #C7D2FE;
+  --color-vl-voice2: #818CF8;
 
   --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
-  --font-display: 'Fraunces', 'Times New Roman', Georgia, serif;
+  --font-display: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 
   --radius-sm: 0.5rem;
   --radius-md: 0.75rem;
   --radius-lg: 1rem;
   --radius-xl: 1.25rem;
-  --radius-2xl: 1.75rem;
-  --radius-3xl: 2.25rem;
+  --radius-2xl: 1.5rem;
+  --radius-3xl: 2rem;
 }
 
 /* Single light theme — flagship */
@@ -109,37 +115,37 @@
 :root.dark {
   color-scheme: light;
 
-  --background: 36 50% 96%;             /* #FBF7F1 cream */
-  --foreground: 215 53% 12%;            /* #0E1B2C ink */
+  --background: 0 0% 100%;
+  --foreground: 240 6% 4%;
 
   --card: 0 0% 100%;
-  --card-foreground: 215 53% 12%;
-  --card-border: 215 25% 14% / 8%;
+  --card-foreground: 240 6% 4%;
+  --card-border: 240 6% 10% / 8%;
 
   --popover: 0 0% 100%;
-  --popover-foreground: 215 53% 12%;
-  --popover-border: 215 25% 14% / 10%;
+  --popover-foreground: 240 6% 4%;
+  --popover-border: 240 6% 10% / 10%;
 
-  --primary: 11 100% 64%;               /* coral */
+  --primary: 240 6% 4%;
   --primary-foreground: 0 0% 100%;
 
-  --secondary: 36 45% 90%;
-  --secondary-foreground: 215 53% 12%;
+  --secondary: 240 5% 96%;
+  --secondary-foreground: 240 6% 4%;
 
-  --muted: 36 40% 92%;
-  --muted-foreground: 220 12% 40%;
+  --muted: 240 5% 96%;
+  --muted-foreground: 240 4% 46%;
 
-  --accent: 11 100% 64%;
+  --accent: 239 84% 67%;
   --accent-foreground: 0 0% 100%;
 
-  --destructive: 7 70% 51%;
+  --destructive: 0 84% 60%;
   --destructive-foreground: 0 0% 100%;
 
-  --border: 215 25% 14% / 10%;
-  --input: 215 25% 14% / 14%;
-  --ring: 11 100% 64%;
+  --border: 240 6% 90%;
+  --input: 240 6% 90%;
+  --ring: 239 84% 67%;
 
-  --radius: 1rem;
+  --radius: 0.875rem;
 }
 
 @layer base {
@@ -152,13 +158,13 @@
 
   body {
     @apply font-sans antialiased;
-    background-color: var(--color-vl-cream);
-    /* Painterly hospitality wash — peach top-left, sage right, lilac bottom-left */
+    background-color: #FFFFFF;
+    /* Soft pastel hero wash — pink top-left, violet right, mint bottom */
     background-image:
-      radial-gradient(ellipse 60% 45% at 8% 4%, rgba(255, 201, 168, 0.55), transparent 60%),
-      radial-gradient(ellipse 55% 40% at 96% 18%, rgba(199, 183, 229, 0.32), transparent 65%),
-      radial-gradient(ellipse 70% 55% at 88% 95%, rgba(156, 201, 161, 0.30), transparent 65%),
-      radial-gradient(ellipse 60% 50% at 12% 90%, rgba(255, 107, 71, 0.10), transparent 70%);
+      radial-gradient(ellipse 70% 50% at 10% 0%, rgba(251, 207, 232, 0.45), transparent 60%),
+      radial-gradient(ellipse 60% 45% at 95% 8%, rgba(199, 210, 254, 0.55), transparent 65%),
+      radial-gradient(ellipse 55% 40% at 90% 100%, rgba(167, 243, 208, 0.30), transparent 70%),
+      radial-gradient(ellipse 50% 40% at 5% 95%, rgba(253, 230, 138, 0.22), transparent 70%);
     background-attachment: fixed;
     text-rendering: optimizeLegibility;
     font-feature-settings: "ss01", "cv11";
@@ -168,15 +174,18 @@
     @apply tracking-tight;
     color: var(--color-vl-ink);
     font-feature-settings: "ss01", "ss02";
+    font-family: var(--font-sans);
+    font-weight: 600;
+    letter-spacing: -0.025em;
   }
 
   ::selection {
-    background: rgba(255, 107, 71, 0.25);
+    background: rgba(99, 102, 241, 0.20);
     color: var(--color-vl-ink);
   }
 
   :focus-visible {
-    outline: 2px solid var(--color-vl-coral);
+    outline: 2px solid var(--color-vl-accent);
     outline-offset: 2px;
     border-radius: 8px;
   }
@@ -185,208 +194,205 @@
 @layer utilities {
   /* ── Typography ─────────────────────────────────────────────── */
 
-  /* Serif display — used for hero/section headlines */
   .vl-display {
-    font-family: var(--font-display);
-    font-weight: 500;
-    letter-spacing: -0.022em;
-    line-height: 1.02;
+    font-family: var(--font-sans);
+    font-weight: 600;
+    letter-spacing: -0.035em;
+    line-height: 1.04;
     font-optical-sizing: auto;
+    color: var(--color-vl-ink);
   }
 
-  /* Italic emphasis fragment in serif headlines, e.g. "by voice." */
+  /* Italic emphasis fragment in headlines — gradient text */
   .vl-display em,
   .vl-italic {
-    font-family: var(--font-display);
-    font-style: italic;
-    font-weight: 400;
-    color: var(--color-vl-coral);
+    font-family: var(--font-sans);
+    font-style: normal;
+    font-weight: 600;
+    background: linear-gradient(120deg, #6366F1 0%, #EC4899 50%, #F59E0B 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
   }
 
-  /* Coral eyebrow — uppercase, tracked, used above headlines */
   .vl-eyebrow {
     font-family: var(--font-sans);
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.22em;
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.10em;
     text-transform: uppercase;
-    color: var(--color-vl-coral);
+    color: var(--color-vl-ink-muted);
   }
 
   .vl-section-eyebrow {
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.22em;
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.10em;
     text-transform: uppercase;
-    color: var(--color-vl-coral);
+    color: var(--color-vl-ink-muted);
   }
 
   .vl-section-heading {
-    font-family: var(--font-display);
-    font-weight: 500;
-    font-size: clamp(2rem, 4.2vw, 3.4rem);
-    letter-spacing: -0.022em;
-    line-height: 1.04;
+    font-family: var(--font-sans);
+    font-weight: 600;
+    font-size: clamp(2rem, 4.2vw, 3.5rem);
+    letter-spacing: -0.035em;
+    line-height: 1.05;
     color: var(--color-vl-ink);
   }
 
   /* ── Surfaces ───────────────────────────────────────────────── */
 
-  /* Glass header band — used by the fixed top bar */
   .vl-glass {
-    background: rgba(251, 247, 241, 0.72);
-    backdrop-filter: blur(20px) saturate(1.2);
-    -webkit-backdrop-filter: blur(20px) saturate(1.2);
-    border-bottom: 1px solid rgba(14, 27, 44, 0.06);
+    background: rgba(255, 255, 255, 0.78);
+    backdrop-filter: blur(16px) saturate(1.4);
+    -webkit-backdrop-filter: blur(16px) saturate(1.4);
+    border-bottom: 1px solid rgba(10, 10, 11, 0.06);
   }
 
-  /* Solid white card with soft shadow */
   .vl-card {
-    background: var(--color-vl-paper);
-    border: 1px solid rgba(14, 27, 44, 0.06);
-    border-radius: 18px;
+    background: #FFFFFF;
+    border: 1px solid rgba(10, 10, 11, 0.07);
+    border-radius: 16px;
     box-shadow:
-      0 1px 2px rgba(14, 27, 44, 0.03),
-      0 8px 28px rgba(14, 27, 44, 0.04);
-    transition: box-shadow .3s ease, transform .3s ease;
+      0 1px 2px rgba(10, 10, 11, 0.04),
+      0 4px 16px rgba(10, 10, 11, 0.04);
+    transition: box-shadow .25s ease, transform .25s ease, border-color .25s ease;
   }
   .vl-card:hover {
+    border-color: rgba(10, 10, 11, 0.12);
     box-shadow:
-      0 2px 6px rgba(14, 27, 44, 0.05),
-      0 14px 40px rgba(14, 27, 44, 0.08);
+      0 2px 4px rgba(10, 10, 11, 0.05),
+      0 12px 32px rgba(10, 10, 11, 0.08);
   }
 
-  /* Frosted glass panel — used for hero conversation, voice scenes */
   .vl-card-glass {
-    background: rgba(255, 255, 255, 0.72);
-    backdrop-filter: blur(22px) saturate(1.15);
-    -webkit-backdrop-filter: blur(22px) saturate(1.15);
-    border: 1px solid rgba(14, 27, 44, 0.08);
-    border-radius: 28px;
+    background: rgba(255, 255, 255, 0.80);
+    backdrop-filter: blur(20px) saturate(1.3);
+    -webkit-backdrop-filter: blur(20px) saturate(1.3);
+    border: 1px solid rgba(10, 10, 11, 0.08);
+    border-radius: 24px;
     box-shadow:
-      0 4px 28px rgba(14, 27, 44, 0.07),
-      0 1px 4px rgba(14, 27, 44, 0.04);
+      0 4px 24px rgba(10, 10, 11, 0.06),
+      0 1px 3px rgba(10, 10, 11, 0.04);
   }
 
-  /* App panel — used by Console, Wizard, Settings */
   .vl-panel {
-    background: var(--color-vl-paper);
-    border: 1px solid rgba(14, 27, 44, 0.07);
-    border-radius: 20px;
-    box-shadow: 0 1px 2px rgba(14, 27, 44, 0.025);
+    background: #FFFFFF;
+    border: 1px solid rgba(10, 10, 11, 0.07);
+    border-radius: 16px;
+    box-shadow: 0 1px 2px rgba(10, 10, 11, 0.03);
   }
 
-  /* Coral-tinted surface for highlighted blocks */
   .vl-panel-coral {
-    background: linear-gradient(180deg, var(--color-vl-coral-tint) 0%, #FFFFFF 100%);
-    border: 1px solid rgba(255, 107, 71, 0.18);
-    border-radius: 20px;
+    background: linear-gradient(180deg, #EEF2FF 0%, #FFFFFF 100%);
+    border: 1px solid rgba(99, 102, 241, 0.18);
+    border-radius: 16px;
   }
 
-  /* Edge highlight — coral hairline on top of a panel */
   .vl-edge-brass,
   .vl-edge-coral {
-    box-shadow: inset 0 1px 0 rgba(255, 107, 71, 0.30);
+    box-shadow: inset 0 1px 0 rgba(99, 102, 241, 0.30);
   }
 
-  /* Hairline divider */
   .vl-line {
-    background-image: linear-gradient(90deg, transparent, rgba(14, 27, 44, 0.14), transparent);
+    background-image: linear-gradient(90deg, transparent, rgba(10, 10, 11, 0.10), transparent);
     height: 1px;
   }
 
   /* ── Buttons ────────────────────────────────────────────────── */
 
-  /* Primary coral pill — the brand CTA */
+  /* Primary — solid black pill (chatbase signature) */
   .vl-btn-primary,
   .vl-btn-coral,
   .vl-btn-blue {
-    background: linear-gradient(180deg, #FF7E5C 0%, #FF6B47 55%, #ED5331 100%);
+    background: #0A0A0B;
     color: #FFFFFF;
     font-family: var(--font-sans);
-    font-weight: 600;
+    font-weight: 500;
     font-size: 14px;
     border-radius: 999px;
-    padding: 0.78rem 1.5rem;
-    transition: transform .15s ease, box-shadow .15s ease, filter .15s ease;
+    padding: 0.72rem 1.4rem;
+    transition: transform .15s ease, box-shadow .15s ease, background .15s ease;
     box-shadow:
-      0 1px 0 rgba(255, 255, 255, 0.20) inset,
-      0 12px 28px -10px rgba(255, 107, 71, 0.55),
-      0 2px 6px rgba(255, 107, 71, 0.20);
+      0 1px 0 rgba(255, 255, 255, 0.10) inset,
+      0 8px 20px -8px rgba(10, 10, 11, 0.40),
+      0 2px 4px rgba(10, 10, 11, 0.10);
     border: none;
     cursor: pointer;
+    letter-spacing: -0.005em;
   }
   .vl-btn-primary:hover,
   .vl-btn-coral:hover,
   .vl-btn-blue:hover {
     transform: translateY(-1px);
-    filter: brightness(1.04);
+    background: #1F1F23;
     box-shadow:
-      0 1px 0 rgba(255, 255, 255, 0.20) inset,
-      0 16px 36px -10px rgba(255, 107, 71, 0.60),
-      0 2px 8px rgba(255, 107, 71, 0.24);
+      0 1px 0 rgba(255, 255, 255, 0.10) inset,
+      0 12px 28px -8px rgba(10, 10, 11, 0.45),
+      0 4px 8px rgba(10, 10, 11, 0.12);
   }
   .vl-btn-primary:active,
   .vl-btn-coral:active,
-  .vl-btn-blue:active { transform: translateY(0); filter: brightness(0.97); }
+  .vl-btn-blue:active { transform: translateY(0); background: #000; }
   .vl-btn-primary:disabled,
   .vl-btn-coral:disabled,
   .vl-btn-blue:disabled {
-    opacity: 0.55;
+    opacity: 0.45;
     cursor: not-allowed;
     transform: none;
   }
 
-  /* Outline pill — secondary CTA */
   .vl-btn-outline {
-    background: transparent;
+    background: #FFFFFF;
     color: var(--color-vl-ink);
     font-family: var(--font-sans);
-    font-weight: 600;
-    font-size: 14px;
-    border-radius: 999px;
-    padding: 0.78rem 1.5rem;
-    border: 1.5px solid rgba(14, 27, 44, 0.16);
-    transition: background .2s ease, border-color .2s ease;
-    cursor: pointer;
-  }
-  .vl-btn-outline:hover {
-    background: rgba(14, 27, 44, 0.04);
-    border-color: rgba(14, 27, 44, 0.28);
-  }
-
-  /* Ghost — used inside the app for tertiary actions */
-  .vl-btn-ghost {
-    background: rgba(14, 27, 44, 0.04);
-    color: var(--color-vl-ink);
-    border: 1px solid rgba(14, 27, 44, 0.08);
-    border-radius: 999px;
-    padding: 0.78rem 1.5rem;
     font-weight: 500;
     font-size: 14px;
-    transition: background .2s ease, border-color .2s ease;
+    border-radius: 999px;
+    padding: 0.72rem 1.4rem;
+    border: 1px solid rgba(10, 10, 11, 0.14);
+    transition: background .2s ease, border-color .2s ease, box-shadow .2s ease;
+    cursor: pointer;
+    letter-spacing: -0.005em;
+    box-shadow: 0 1px 2px rgba(10, 10, 11, 0.03);
+  }
+  .vl-btn-outline:hover {
+    background: #FAFAF9;
+    border-color: rgba(10, 10, 11, 0.24);
+    box-shadow: 0 2px 8px rgba(10, 10, 11, 0.06);
+  }
+
+  .vl-btn-ghost {
+    background: transparent;
+    color: var(--color-vl-ink);
+    border: 1px solid transparent;
+    border-radius: 999px;
+    padding: 0.72rem 1.4rem;
+    font-weight: 500;
+    font-size: 14px;
+    transition: background .2s ease;
     cursor: pointer;
   }
   .vl-btn-ghost:hover {
-    background: rgba(14, 27, 44, 0.08);
-    border-color: rgba(14, 27, 44, 0.18);
+    background: rgba(10, 10, 11, 0.05);
   }
 
   /* ── Chips ──────────────────────────────────────────────────── */
 
-  /* Default chip — neutral context indicator */
   .vl-chip {
     display: inline-flex;
     align-items: center;
     gap: 0.4rem;
     padding: 0.32rem 0.7rem;
     border-radius: 9999px;
-    font-size: 11.5px;
+    font-size: 12px;
     font-weight: 500;
-    letter-spacing: 0.02em;
+    letter-spacing: -0.005em;
     color: var(--color-vl-ink-soft);
-    background: rgba(14, 27, 44, 0.04);
-    border: 1px solid rgba(14, 27, 44, 0.08);
+    background: #FAFAF9;
+    border: 1px solid rgba(10, 10, 11, 0.08);
   }
 
   .vl-chip-light {
@@ -395,47 +401,46 @@
     gap: 0.4rem;
     padding: 0.28rem 0.7rem;
     border-radius: 9999px;
-    font-size: 11.5px;
+    font-size: 12px;
     font-weight: 500;
     color: var(--color-vl-ink-soft);
-    background: var(--color-vl-paper);
-    border: 1px solid rgba(14, 27, 44, 0.08);
-    box-shadow: 0 1px 2px rgba(14, 27, 44, 0.04);
+    background: #FFFFFF;
+    border: 1px solid rgba(10, 10, 11, 0.08);
+    box-shadow: 0 1px 2px rgba(10, 10, 11, 0.03);
   }
 
-  /* Coral pill chip — for hero callouts and brand markers */
+  /* Indigo accent pill — used for hero callouts */
   .vl-chip-coral {
     display: inline-flex;
     align-items: center;
     gap: 0.4rem;
     padding: 0.32rem 0.75rem;
     border-radius: 9999px;
-    font-size: 11.5px;
-    font-weight: 600;
-    color: var(--color-vl-coral-deep);
-    background: var(--color-vl-coral-tint);
-    border: 1px solid rgba(255, 107, 71, 0.25);
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--color-vl-accent-deep);
+    background: var(--color-vl-accent-tint);
+    border: 1px solid rgba(99, 102, 241, 0.20);
   }
 
   /* ── Inputs ─────────────────────────────────────────────────── */
 
   .vl-input {
     width: 100%;
-    height: 48px;
+    height: 46px;
     padding: 0 16px;
-    border-radius: 14px;
-    background: var(--color-vl-paper);
-    border: 1px solid rgba(14, 27, 44, 0.12);
+    border-radius: 12px;
+    background: #FFFFFF;
+    border: 1px solid rgba(10, 10, 11, 0.12);
     color: var(--color-vl-ink);
     font-size: 15px;
     outline: none;
-    transition: border-color .2s ease, background .2s ease, box-shadow .2s ease;
+    transition: border-color .2s ease, box-shadow .2s ease;
   }
-  .vl-input::placeholder { color: rgba(14, 27, 44, 0.36); }
+  .vl-input::placeholder { color: rgba(10, 10, 11, 0.36); }
   .vl-input:focus {
-    border-color: var(--color-vl-coral);
-    background: var(--color-vl-paper);
-    box-shadow: 0 0 0 3px rgba(255, 107, 71, 0.14);
+    border-color: var(--color-vl-accent);
+    box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.12);
   }
 
   /* ── Layout helpers ─────────────────────────────────────────── */
@@ -448,7 +453,7 @@
 
   .section-container {
     width: 100%;
-    max-width: 1280px;
+    max-width: 1200px;
     margin-left: auto;
     margin-right: auto;
     padding-left: 1.5rem;
@@ -456,44 +461,59 @@
   }
   @media (min-width: 768px) {
     .section-container {
-      padding-left: 3rem;
-      padding-right: 3rem;
+      padding-left: 2.5rem;
+      padding-right: 2.5rem;
     }
   }
   @media (min-width: 1280px) {
     .section-container {
-      padding-left: 5rem;
-      padding-right: 5rem;
+      padding-left: 3rem;
+      padding-right: 3rem;
     }
   }
 
-  /* Header / footer overrides for the landing page */
   .vl-landing-header .vl-glass {
-    background: rgba(251, 247, 241, 0.72);
-    border-bottom: 1px solid rgba(14, 27, 44, 0.06);
+    background: rgba(255, 255, 255, 0.78);
+    border-bottom: 1px solid rgba(10, 10, 11, 0.06);
   }
 
   .vl-landing-footer {
-    background: rgba(251, 247, 241, 0.6);
-    border-color: rgba(14, 27, 44, 0.08) !important;
+    background: #FAFAF9;
+    border-color: rgba(10, 10, 11, 0.08) !important;
   }
 
-  /* ── Hospitality scene helpers ──────────────────────────────── */
+  /* ── Decorative scene helpers ───────────────────────────────── */
 
-  /* Big watercolor blob behind the hero scene */
   .vl-blob {
     position: absolute;
     border-radius: 9999px;
-    filter: blur(60px);
+    filter: blur(72px);
     pointer-events: none;
+    opacity: 0.85;
   }
 
-  /* Concentric orbit rings (decorative, centered behind hero waveform) */
   .vl-orbit-ring {
     position: absolute;
     border-radius: 9999px;
-    border: 1px solid rgba(14, 27, 44, 0.08);
+    border: 1px solid rgba(10, 10, 11, 0.06);
     pointer-events: none;
+  }
+
+  /* Subtle grid background — chatbase-style */
+  .vl-grid-bg {
+    background-image:
+      linear-gradient(rgba(10, 10, 11, 0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(10, 10, 11, 0.04) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+
+  /* Gradient text utility */
+  .vl-gradient-text {
+    background: linear-gradient(120deg, #6366F1 0%, #EC4899 50%, #F59E0B 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
   }
 
   /* ── Animations ─────────────────────────────────────────────── */
@@ -531,7 +551,13 @@
   }
   .vl-orbit-spin { animation: vl-orbit-spin 60s linear infinite; }
 
-  /* Scrollbar hide */
+  @keyframes vl-aurora-drift {
+    0%   { transform: rotate(0deg) scale(1); opacity: 0.85; }
+    50%  { transform: rotate(180deg) scale(1.08); opacity: 1; }
+    100% { transform: rotate(360deg) scale(1); opacity: 0.85; }
+  }
+  .vl-orb-aurora { animation: vl-aurora-drift 28s ease-in-out infinite; will-change: transform, opacity; }
+
   .scrollbar-hide::-webkit-scrollbar { display: none; }
   .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
 

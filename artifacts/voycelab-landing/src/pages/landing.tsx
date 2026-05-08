@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+﻿import { useState, useEffect, useRef } from "react";
 import { Link, useLocation } from "wouter";
 import { motion } from "framer-motion";
 import {
@@ -23,7 +23,7 @@ import {
 import { VoiceOrb } from "@/components/voice-orb";
 import { useVoycelabDemoRealtime } from "@/hooks/use-voycelab-demo-realtime";
 
-/* ── animation config ─────────────────────────────────────────── */
+/* â”€â”€ animation config â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 const ease = [0.22, 1, 0.36, 1] as const;
 const fadeUp = {
   hidden: { opacity: 0, y: 22 },
@@ -42,9 +42,9 @@ const childFade = {
   visible: { opacity: 1, y: 0, transition: { duration: 0.55, ease } },
 };
 
-/* ─────────────────────────────────────────────────────────────────
+/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
    PAGE
-   ───────────────────────────────────────────────────────────────── */
+   â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 export default function Landing() {
   const [, navigate] = useLocation();
   const [name, setName] = useState("");
@@ -63,13 +63,13 @@ export default function Landing() {
   );
 }
 
-/* ═══════════════════════════════════════════════════════════════
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
    HERO
-   ═══════════════════════════════════════════════════════════════ */
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 function Hero({ onStart }: { onStart: () => void }) {
   return (
     <section className="relative pt-28 md:pt-36 pb-16 md:pb-24 overflow-hidden">
-      {/* Painterly hero washes — peach top-left, lilac top-right, sage right */}
+      {/* Painterly hero washes â€” peach top-left, lilac top-right, sage right */}
       <div aria-hidden className="absolute inset-0 pointer-events-none">
         <div
           className="vl-blob"
@@ -78,7 +78,7 @@ function Hero({ onStart }: { onStart: () => void }) {
             left: "-12%",
             width: "44%",
             height: "55%",
-            background: "radial-gradient(ellipse at center, rgba(255, 201, 168, 0.55), transparent 60%)",
+            background: "radial-gradient(ellipse at center, rgba(251, 207, 232, 0.55), transparent 60%)",
           }}
         />
         <div
@@ -88,7 +88,7 @@ function Hero({ onStart }: { onStart: () => void }) {
             right: "-8%",
             width: "38%",
             height: "48%",
-            background: "radial-gradient(ellipse at center, rgba(199, 183, 229, 0.45), transparent 65%)",
+            background: "radial-gradient(ellipse at center, rgba(199, 210, 254, 0.45), transparent 65%)",
           }}
         />
         <div
@@ -98,7 +98,7 @@ function Hero({ onStart }: { onStart: () => void }) {
             right: "12%",
             width: "30%",
             height: "40%",
-            background: "radial-gradient(ellipse at center, rgba(156, 201, 161, 0.30), transparent 65%)",
+            background: "radial-gradient(ellipse at center, rgba(167, 243, 208, 0.30), transparent 65%)",
           }}
         />
         <div
@@ -108,14 +108,14 @@ function Hero({ onStart }: { onStart: () => void }) {
             left: "10%",
             width: "55%",
             height: "45%",
-            background: "radial-gradient(ellipse at center, rgba(255, 107, 71, 0.10), transparent 70%)",
+            background: "radial-gradient(ellipse at center, rgba(99, 102, 241, 0.10), transparent 70%)",
           }}
         />
       </div>
 
       <div className="relative section-container">
         <div className="grid lg:grid-cols-[1fr_1.05fr] gap-10 lg:gap-14 items-start">
-          {/* ── LEFT: copy column ────────────────────────────────── */}
+          {/* â”€â”€ LEFT: copy column â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
           <div className="pt-2">
             <motion.div
               initial="hidden"
@@ -124,8 +124,7 @@ function Hero({ onStart }: { onStart: () => void }) {
               variants={fadeUp}
               className="flex items-center gap-3 flex-wrap"
             >
-              <span className="vl-eyebrow">Beyond commands.</span>
-              <span className="vl-eyebrow">Beyond systems.</span>
+              <span className="vl-eyebrow">Voice assistant for business owners</span>
             </motion.div>
 
             <motion.h1
@@ -135,9 +134,9 @@ function Hero({ onStart }: { onStart: () => void }) {
               variants={fadeUp}
               className="vl-display mt-5 text-[clamp(2.75rem,6.4vw,4.6rem)]"
             >
-              Hospitality,
+              Ask your
               <br />
-              orchestrated
+              business questions
               <br />
               <em>by voice.</em>
             </motion.h1>
@@ -150,9 +149,9 @@ function Hero({ onStart }: { onStart: () => void }) {
               className="mt-7 text-[17px] md:text-[18px] leading-relaxed max-w-[460px]"
               style={{ color: "var(--color-vl-ink-soft)" }}
             >
-              VoyceLab connects voice assistants to the tools that power your venue.
-              Natural conversations turn into real actions across service, inventory,
-              POS, events, and your entire operation.
+              VoyceLab gives business owners a voice assistant they can talk to
+              anywhere. Ask about sales, stock, orders, bookings, payments, and
+              daily operations without sitting in front of a computer.
             </motion.p>
 
             <motion.div
@@ -172,7 +171,7 @@ function Hero({ onStart }: { onStart: () => void }) {
                 See it in action
                 <span
                   className="w-5 h-5 rounded-full flex items-center justify-center"
-                  style={{ background: "rgba(14,27,44,0.08)" }}
+                  style={{ background: "rgba(10, 10, 11,0.08)" }}
                 >
                   <Play className="w-2.5 h-2.5" style={{ color: "var(--color-vl-ink)" }} />
                 </span>
@@ -193,8 +192,8 @@ function Hero({ onStart }: { onStart: () => void }) {
                   <Star
                     key={i}
                     className="w-3.5 h-3.5"
-                    fill="#F2C97D"
-                    style={{ color: "#F2C97D" }}
+                    fill="#FDE68A"
+                    style={{ color: "#FDE68A" }}
                   />
                 ))}
               </div>
@@ -203,7 +202,7 @@ function Hero({ onStart }: { onStart: () => void }) {
               </span>
             </motion.div>
 
-            {/* Try asking — quote chips */}
+            {/* Try asking â€” quote chips */}
             <motion.div
               initial="hidden"
               animate="visible"
@@ -215,7 +214,7 @@ function Hero({ onStart }: { onStart: () => void }) {
                 className="w-12 h-12 rounded-full flex items-center justify-center shrink-0 mt-1"
                 style={{
                   background: "var(--color-vl-coral-tint)",
-                  border: "1px solid rgba(255,107,71,0.20)",
+                  border: "1px solid rgba(99, 102, 241,0.20)",
                 }}
               >
                 <Mic className="w-5 h-5" style={{ color: "var(--color-vl-coral-deep)" }} />
@@ -246,7 +245,7 @@ function Hero({ onStart }: { onStart: () => void }) {
             </motion.div>
           </div>
 
-          {/* ── RIGHT: scene with floating assistants ────────────── */}
+          {/* â”€â”€ RIGHT: scene with floating assistants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
           <motion.div
             initial="hidden"
             animate="visible"
@@ -264,10 +263,10 @@ function Hero({ onStart }: { onStart: () => void }) {
 
 function AvatarStack() {
   const colors = [
-    "linear-gradient(135deg, #FFC9A8, #FF8A66)",
-    "linear-gradient(135deg, #9CC9A1, #6FAA75)",
-    "linear-gradient(135deg, #C7B7E5, #A38EDC)",
-    "linear-gradient(135deg, #F2C97D, #E59B2A)",
+    "linear-gradient(135deg, #FBCFE8, #FF8A66)",
+    "linear-gradient(135deg, #A7F3D0, #6FAA75)",
+    "linear-gradient(135deg, #C7D2FE, #A38EDC)",
+    "linear-gradient(135deg, #FDE68A, #E59B2A)",
   ];
   return (
     <div className="flex -space-x-2">
@@ -307,7 +306,7 @@ function MinimalLanding({ onStart }: { onStart: () => void }) {
             One assistant. One wake phrase. Real venue actions.
           </h2>
           <p className="mt-4 max-w-xl text-[15px] leading-relaxed" style={{ color: "var(--color-vl-ink-muted)" }}>
-            Name it, choose the voice engine, set the phrase your team will say, and launch it to the PWA or Expo app.
+            Connect your business systems, speak naturally, and get answers or actions from your assistant while you are on the floor or on the go.
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
             <button onClick={onStart} className="vl-btn-primary inline-flex items-center gap-2">
@@ -328,141 +327,69 @@ function MinimalLanding({ onStart }: { onStart: () => void }) {
   );
 }
 
-/* ── Hero scene: orbit rings + central waveform sphere + 3 floating assistant cards */
+/* â”€â”€ Hero scene: orbit rings + central waveform sphere + 3 floating assistant cards */
 function HeroScene() {
   const demo = useVoycelabDemoRealtime();
 
   return (
     <div className="relative aspect-[1/1.05] max-w-[640px] mx-auto lg:ml-auto">
-      {/* Concentric rings */}
+      {/* Single soft orbit ring â€” anchors the orb without competing with it */}
       <div aria-hidden className="absolute inset-0">
         <div
-          className="vl-orbit-ring vl-orbit-spin"
-          style={{ inset: "8%" }}
+          className="vl-orbit-ring"
+          style={{ inset: "14%", borderColor: "rgba(99, 102, 241,0.12)" }}
         />
-        <div className="vl-orbit-ring" style={{ inset: "20%", borderColor: "rgba(255,107,71,0.10)" }} />
-        <div className="vl-orbit-ring" style={{ inset: "32%", borderColor: "rgba(199,183,229,0.20)" }} />
       </div>
 
-      {/* Curve label "Natural voice. Real outcomes." */}
-      <svg
-        aria-hidden
-        className="absolute inset-0 w-full h-full pointer-events-none"
-        viewBox="0 0 100 100"
-      >
-        <defs>
-          <path
-            id="vl-curve-top"
-            d="M 14 30 Q 50 4 86 30"
-            fill="none"
-          />
-          <path
-            id="vl-curve-bottom"
-            d="M 14 70 Q 50 96 86 70"
-            fill="none"
-          />
-        </defs>
-        <text
-          fill="rgba(14,27,44,0.45)"
-          style={{ fontSize: 2.6, letterSpacing: "0.32em", fontWeight: 500 }}
-        >
-          <textPath href="#vl-curve-top" startOffset="50%" textAnchor="middle">
-            NATURAL VOICE. REAL OUTCOMES.
-          </textPath>
-        </text>
-        <text
-          fill="rgba(14,27,44,0.35)"
-          style={{ fontSize: 2.4, letterSpacing: "0.32em", fontWeight: 500 }}
-        >
-          <textPath href="#vl-curve-bottom" startOffset="50%" textAnchor="middle">
-            MULTI-TURN CONVERSATIONS
-          </textPath>
-        </text>
-      </svg>
-
-      {/* Central voice orb — live mic-reactive */}
+      {/* Central voice orb â€” user mic starts the session; particles react to assistant output */}
       <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10">
         <VoiceOrb
-          size={240}
+          size={420}
+          outputStream={demo.assistantStream}
+          agentState={demo.agentState}
           label={
             demo.isLive
               ? "VoyceLab voice demo is live. Click to stop."
               : "Start the VoyceLab voice demo."
           }
-          onListenStart={(stream) => void demo.connect(stream)}
-          onListenStop={() => void demo.disconnect()}
+          onListenStart={(stream) => {
+            void demo.connect(stream);
+          }}
+          onListenStop={() => {
+            void demo.disconnect();
+          }}
           externalError={demo.error}
         />
       </div>
 
-      {(demo.agentState === "connecting" ||
-        demo.agentState === "thinking" ||
-        demo.agentState === "speaking" ||
-        demo.conversation.length > 0 ||
-        demo.partialTranscript.trim().length > 0) && (
-        <div className="absolute left-1/2 top-[72%] z-20 w-[min(360px,86%)] -translate-x-1/2 rounded-[24px] border border-white/60 bg-white/80 px-4 py-3 shadow-[0_18px_50px_rgba(14,27,44,0.12)] backdrop-blur-md">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.22em]" style={{ color: "var(--color-vl-coral-deep)" }}>
-            {demo.agentState === "connecting"
-              ? "Connecting"
-              : demo.agentState === "thinking"
-                ? "Thinking"
-                : demo.agentState === "speaking"
-                  ? "Speaking"
-                  : "Live voice demo"}
-          </p>
-          <p className="mt-1 line-clamp-2 text-[13px] leading-relaxed" style={{ color: "var(--color-vl-ink-muted)" }}>
-            {demo.partialTranscript.trim() ||
-              demo.conversation.at(-1)?.content ||
-              "Ask aloud about VoyceLab, Square, trials, and how voice assistants help venues."}
-          </p>
-        </div>
-      )}
-
-      {/* Floating assistant card #1 — POS (top-right) */}
+      {/* Floating command chip #1 â€” POS (top-right) */}
       <FloatingAssistantCard
-        className="absolute top-[2%] right-[2%] md:right-[-4%] vl-float-slow w-[260px]"
+        className="absolute top-[8%] right-[-2%] md:right-[-6%] vl-float-slow"
         index="1"
         title="POS ASSISTANT"
-        blurb="Handle tabs, payments, refunds, and more."
         question="Hey Voyce, split"
         questionAccent="Table 12"
         questionRest="into 3 ways and add a tip."
-        sceneAccent="rgba(199,183,229,0.4)"
-        scenePreview={
-          <PosTerminalPreview />
-        }
-        confirmText="Tab split 3 ways"
       />
 
-      {/* Floating assistant card #2 — Inventory (right middle) */}
+      {/* Floating command chip #2 â€” Inventory (right middle) */}
       <FloatingAssistantCard
-        className="absolute top-[40%] right-[-4%] md:right-[-8%] vl-float-medium w-[260px]"
+        className="absolute top-[48%] right-[-8%] md:right-[-12%] vl-float-medium"
         index="2"
         title="INVENTORY ASSISTANT"
-        blurb="Know what's in stock, what's low, and what to order."
         question="Voyce, do we have"
         questionAccent="enough tequila"
         questionRest="for tonight?"
-        sceneAccent="rgba(156,201,161,0.45)"
-        scenePreview={
-          <InventoryShelfPreview />
-        }
-        confirmText="Tequila Plata · 8 bottles left"
-        confirmDetail="Reorder soon"
-        confirmWarn
       />
 
-      {/* Floating assistant card #3 — Venue (bottom-left) */}
+      {/* Floating command chip #3 â€” Venue (bottom-left) */}
       <FloatingAssistantCard
-        className="absolute bottom-[2%] left-[-4%] md:left-[-10%] vl-float-fast w-[280px]"
+        className="absolute bottom-[8%] left-[-8%] md:left-[-14%] vl-float-fast"
         index="3"
         title="VENUE ASSISTANT"
-        blurb="Run events, timelines, staffing, and every detail seamlessly."
-        question="Hey Voyce, what's"
+        question="Hey Voyce, whatâ€™s"
         questionAccent="the timeline"
         questionRest="for the Johnson wedding?"
-        sceneAccent="rgba(255,201,168,0.45)"
-        scenePreview={<EventTimelinePreview />}
       />
     </div>
   );
@@ -472,235 +399,70 @@ function FloatingAssistantCard({
   className = "",
   index,
   title,
-  blurb,
   question,
   questionAccent,
   questionRest,
-  sceneAccent,
-  scenePreview,
-  confirmText,
-  confirmDetail,
-  confirmWarn = false,
 }: {
   className?: string;
   index: string;
   title: string;
-  blurb: string;
   question: string;
   questionAccent: string;
   questionRest: string;
-  sceneAccent: string;
-  scenePreview: React.ReactNode;
-  confirmText?: string;
-  confirmDetail?: string;
-  confirmWarn?: boolean;
 }) {
   return (
     <div className={className}>
       <div
-        className="relative rounded-[28px] overflow-hidden"
+        className="relative rounded-full pl-2 pr-4 py-2 flex items-center gap-2.5 max-w-[300px]"
         style={{
-          background: "rgba(255,255,255,0.78)",
-          backdropFilter: "blur(18px) saturate(1.1)",
-          WebkitBackdropFilter: "blur(18px) saturate(1.1)",
-          border: "1px solid rgba(14,27,44,0.07)",
+          background: "rgba(255,255,255,0.72)",
+          backdropFilter: "blur(20px) saturate(1.4)",
+          WebkitBackdropFilter: "blur(20px) saturate(1.4)",
+          border: "1px solid rgba(10, 10, 11,0.06)",
           boxShadow:
-            "0 4px 20px rgba(14,27,44,0.06), 0 16px 48px rgba(14,27,44,0.06)",
+            "0 2px 10px rgba(10, 10, 11,0.04), 0 12px 36px rgba(99,102,241,0.10)",
         }}
       >
-        {/* Header — index, title, blurb */}
-        <div className="px-5 pt-4 pb-3">
-          <div className="flex items-start gap-3">
-            <span
-              className="shrink-0 w-6 h-6 rounded-full text-[11px] font-semibold flex items-center justify-center"
-              style={{
-                background: "rgba(199,183,229,0.30)",
-                color: "var(--color-vl-coral-deep)",
-              }}
-            >
-              {index}
-            </span>
-            <div className="flex-1 min-w-0">
-              <p
-                className="text-[10.5px] font-semibold tracking-[0.18em]"
-                style={{ color: "var(--color-vl-ink)" }}
-              >
-                {title}
-              </p>
-              <p
-                className="mt-1 text-[12px] leading-snug"
-                style={{ color: "var(--color-vl-ink-muted)" }}
-              >
-                {blurb}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Question bubble */}
-        <div className="px-5 pb-3">
-          <div
-            className="rounded-2xl px-3.5 py-2.5"
-            style={{ background: "rgba(255,255,255,0.85)", border: "1px solid rgba(14,27,44,0.06)" }}
-          >
-            <p className="text-[13px] leading-snug" style={{ color: "var(--color-vl-ink)" }}>
-              {question}{" "}
-              <span style={{ color: "var(--color-vl-coral)" }}>{questionAccent}</span>{" "}
-              {questionRest}
-            </p>
-            <div className="flex items-center gap-[2px] h-3 mt-1.5">
-              {[0.5, 0.9, 0.6, 1, 0.7, 0.4, 0.8].map((h, i) => (
-                <span
-                  key={i}
-                  className="w-[2px] rounded-full"
-                  style={{
-                    background: "var(--color-vl-coral)",
-                    height: `${h * 100}%`,
-                    opacity: 0.55,
-                  }}
-                />
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Visual preview */}
-        <div
-          className="relative mx-5 mb-4 rounded-2xl overflow-hidden h-32"
+        <span
+          className="shrink-0 w-7 h-7 rounded-full text-[11px] font-semibold flex items-center justify-center"
           style={{
-            background: `linear-gradient(135deg, ${sceneAccent}, rgba(255,255,255,0.6))`,
+            background:
+              "linear-gradient(135deg, rgba(99,102,241,0.18), rgba(236,72,153,0.18))",
+            color: "var(--color-vl-ink)",
           }}
         >
-          {scenePreview}
+          {index}
+        </span>
+        <div className="flex-1 min-w-0">
+          <p
+            className="text-[9.5px] font-semibold tracking-[0.16em] leading-none"
+            style={{ color: "var(--color-vl-ink-muted)" }}
+          >
+            {title}
+          </p>
+          <p
+            className="mt-1 text-[12.5px] leading-tight truncate"
+            style={{ color: "var(--color-vl-ink)" }}
+            title={`${question} ${questionAccent} ${questionRest}`}
+          >
+            {question}{" "}
+            <span style={{ color: "var(--color-vl-coral)", fontWeight: 600 }}>
+              {questionAccent}
+            </span>{" "}
+            {questionRest}
+          </p>
         </div>
-
-        {/* Confirmation chip */}
-        {confirmText && (
-          <div className="px-5 pb-4">
-            <div
-              className="rounded-xl px-3 py-2 flex items-center justify-between"
+        <div className="flex items-end gap-[2px] h-3.5 ml-1 shrink-0">
+          {[0.5, 0.9, 0.6, 1, 0.7].map((h, i) => (
+            <span
+              key={i}
+              className="w-[2px] rounded-full"
               style={{
-                background: confirmWarn
-                  ? "rgba(229,155,42,0.10)"
-                  : "rgba(47,158,100,0.10)",
-                border: confirmWarn
-                  ? "1px solid rgba(229,155,42,0.20)"
-                  : "1px solid rgba(47,158,100,0.20)",
+                background: "var(--color-vl-coral)",
+                height: `${h * 100}%`,
+                opacity: 0.6,
               }}
-            >
-              <div>
-                <p className="text-[12px] font-semibold" style={{ color: "var(--color-vl-ink)" }}>
-                  {confirmText}
-                </p>
-                {confirmDetail && (
-                  <p
-                    className="text-[10.5px] mt-0.5"
-                    style={{ color: confirmWarn ? "#B7791F" : "#1F7A4D" }}
-                  >
-                    {confirmDetail}
-                  </p>
-                )}
-              </div>
-              {confirmWarn ? (
-                <AlertTriangle className="w-3.5 h-3.5" style={{ color: "#E59B2A" }} />
-              ) : (
-                <Check className="w-3.5 h-3.5" style={{ color: "#2F9E64" }} />
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/* Mini illustrations for each scene */
-function PosTerminalPreview() {
-  return (
-    <div className="absolute inset-0 flex items-center justify-center">
-      <div
-        className="w-24 h-20 rounded-md flex flex-col items-center justify-center"
-        style={{
-          background: "var(--color-vl-ink)",
-          boxShadow: "0 6px 18px rgba(14,27,44,0.30)",
-        }}
-      >
-        <div
-          className="w-20 h-12 rounded-sm flex flex-col items-start justify-center px-2"
-          style={{ background: "#FBF7F1" }}
-        >
-          <span className="text-[8px] font-semibold" style={{ color: "var(--color-vl-ink)" }}>
-            Table 12
-          </span>
-          <span className="text-[10px] font-bold" style={{ color: "var(--color-vl-coral-deep)" }}>
-            $156.80
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function InventoryShelfPreview() {
-  return (
-    <div className="absolute inset-0 flex items-center justify-center px-3">
-      <div
-        className="w-full h-20 rounded-md flex items-end gap-1 px-2 pb-1"
-        style={{
-          background: "linear-gradient(180deg, rgba(255,255,255,0.4), rgba(156,201,161,0.25))",
-          border: "1px solid rgba(14,27,44,0.06)",
-        }}
-      >
-        {[0.9, 0.7, 0.85, 0.5, 0.95, 0.6, 0.8].map((h, i) => (
-          <div
-            key={i}
-            className="flex-1 rounded-t-sm"
-            style={{
-              height: `${h * 100}%`,
-              background:
-                i % 2 === 0
-                  ? "linear-gradient(180deg, #6FAA75, #4F8956)"
-                  : "linear-gradient(180deg, #FFA384, #E2502E)",
-              opacity: 0.85,
-            }}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function EventTimelinePreview() {
-  const slots = [
-    { time: "4:30 PM", label: "Ceremony" },
-    { time: "5:00 PM", label: "Cocktail Hour" },
-    { time: "6:30 PM", label: "Dinner" },
-    { time: "9:30 PM", label: "Send Off" },
-  ];
-  return (
-    <div className="absolute inset-0 flex items-center justify-center px-3">
-      <div
-        className="w-full rounded-md px-3 py-2"
-        style={{
-          background: "rgba(255,255,255,0.85)",
-          border: "1px solid rgba(14,27,44,0.06)",
-        }}
-      >
-        <p
-          className="text-[9.5px] font-semibold mb-1.5 flex items-center gap-1.5"
-          style={{ color: "var(--color-vl-ink)" }}
-        >
-          Johnson Wedding
-          <span className="w-1.5 h-1.5 rounded-full" style={{ background: "var(--color-vl-coral)" }} />
-        </p>
-        <div className="space-y-0.5">
-          {slots.map((s) => (
-            <div key={s.time} className="flex items-center gap-2 text-[9px]">
-              <span style={{ color: "var(--color-vl-ink-muted)" }}>{s.time}</span>
-              <span className="font-medium" style={{ color: "var(--color-vl-ink)" }}>
-                {s.label}
-              </span>
-            </div>
+            />
           ))}
         </div>
       </div>
@@ -708,17 +470,17 @@ function EventTimelinePreview() {
   );
 }
 
-/* ═══════════════════════════════════════════════════════════════
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
    INTEGRATIONS STRIP
-   ═══════════════════════════════════════════════════════════════ */
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 function IntegrationsStrip() {
   const integrations = [
-    { name: "Square", color: "#0E1B2C" },
+    { name: "Square", color: "#0A0A0B" },
     { name: "Toast", color: "#FF4F2D" },
-    { name: "Lightspeed", color: "#E2502E" },
-    { name: "7Shifts", color: "#0E1B2C" },
+    { name: "Lightspeed", color: "#000000" },
+    { name: "7Shifts", color: "#0A0A0B" },
     { name: "Xero", color: "#13B5EA" },
-    { name: "Resy", color: "#0E1B2C" },
+    { name: "Resy", color: "#0A0A0B" },
     { name: "OpenTable", color: "#DA3743" },
     { name: "Stripe", color: "#635BFF" },
   ];
@@ -733,7 +495,7 @@ function IntegrationsStrip() {
               className="mt-3 text-[14px] leading-relaxed"
               style={{ color: "var(--color-vl-ink-muted)" }}
             >
-              VoyceLab flows into the systems you already use — securely and beautifully.
+              VoyceLab flows into the systems you already use â€” securely and beautifully.
             </p>
             <Link
               href="/services"
@@ -766,9 +528,9 @@ function IntegrationsStrip() {
   );
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   CONVERSATION SECTION — Live VoyceLab voice FAQ (OpenAI Realtime WebRTC)
-   ═══════════════════════════════════════════════════════════════ */
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   CONVERSATION SECTION â€” Live VoyceLab voice FAQ (OpenAI Realtime WebRTC)
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 function ConversationSection({ compact = false }: { compact?: boolean }) {
   const demo = useVoycelabDemoRealtime();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -784,13 +546,13 @@ function ConversationSection({ compact = false }: { compact?: boolean }) {
       case "idle":
         return { label: "Ready", color: "var(--color-vl-ink-muted)" };
       case "connecting":
-        return { label: "Connecting…", color: "var(--color-vl-honey)" };
+        return { label: "Connectingâ€¦", color: "var(--color-vl-honey)" };
       case "listening":
-        return { label: "Listening — ask anything about VoyceLab", color: "var(--color-vl-success)" };
+        return { label: "Listening â€” ask anything about VoyceLab", color: "var(--color-vl-success)" };
       case "thinking":
-        return { label: "Thinking…", color: "var(--color-vl-lilac)" };
+        return { label: "Thinkingâ€¦", color: "var(--color-vl-lilac)" };
       case "speaking":
-        return { label: "Speaking…", color: "var(--color-vl-coral-deep)" };
+        return { label: "Speakingâ€¦", color: "var(--color-vl-coral-deep)" };
       case "error":
         return { label: "Something went wrong", color: "var(--color-vl-danger)" };
       default:
@@ -820,7 +582,7 @@ function ConversationSection({ compact = false }: { compact?: boolean }) {
               className="mt-6 text-[16px] leading-relaxed max-w-[440px]"
               style={{ color: "var(--color-vl-ink-muted)" }}
             >
-              This is a live, low-latency voice line powered by OpenAI Realtime — ask aloud about VoyceLab:
+              This is a live, low-latency voice line powered by OpenAI Realtime â€” ask aloud about VoyceLab:
               integrations, assistants, pricing overview, and how operators use voice day-to-day.
             </p>
 
@@ -837,11 +599,11 @@ function ConversationSection({ compact = false }: { compact?: boolean }) {
 
             <div className="mt-5 flex items-center gap-2 text-[13px]" style={{ color: "var(--color-vl-ink-muted)" }}>
               <ShieldCheck className="w-3.5 h-3.5" style={{ color: "var(--color-vl-success)" }} />
-              Microphone required · Answers only cover VoyceLab (demo sandbox — no POS tools).
+              Microphone required Â· Answers only cover VoyceLab (demo sandbox â€” no POS tools).
             </div>
 
             <p className="mt-4 text-[12px] max-w-[440px]" style={{ color: "var(--color-vl-ink-faint)" }}>
-              Hint phrases below are prompts — speak naturally after you tap Start.
+              Hint phrases below are prompts â€” speak naturally after you tap Start.
             </p>
           </div>}
 
@@ -860,8 +622,8 @@ function ConversationSection({ compact = false }: { compact?: boolean }) {
                   className="w-11 h-11 rounded-full flex items-center justify-center shrink-0"
                   style={{
                     background:
-                      "linear-gradient(135deg, #FF8A66, #E2502E)",
-                    boxShadow: "0 8px 20px rgba(255,107,71,0.30)",
+                      "linear-gradient(135deg, #FF8A66, #000000)",
+                    boxShadow: "0 8px 20px rgba(99, 102, 241,0.30)",
                   }}
                 >
                   {demo.agentState === "connecting" ? (
@@ -932,7 +694,7 @@ function ConversationSection({ compact = false }: { compact?: boolean }) {
               {!demo.isLive && demo.conversation.length === 0 && (
                 <p className="text-[14px] leading-relaxed py-4 text-center" style={{ color: "var(--color-vl-ink-muted)" }}>
                   Tap <strong style={{ color: "var(--color-vl-ink)" }}>Start voice demo</strong>, allow your microphone,
-                  then ask out loud — you'll hear answers through your speakers or headset.
+                  then ask out loud â€” you'll hear answers through your speakers or headset.
                 </p>
               )}
 
@@ -943,8 +705,8 @@ function ConversationSection({ compact = false }: { compact?: boolean }) {
                     style={{
                       background:
                         msg.role === "user"
-                          ? "rgba(14,27,44,0.06)"
-                          : "linear-gradient(135deg, #FF8A66, #E2502E)",
+                          ? "rgba(10, 10, 11,0.06)"
+                          : "linear-gradient(135deg, #FF8A66, #000000)",
                     }}
                   >
                     {msg.role === "user" ? (
@@ -957,10 +719,10 @@ function ConversationSection({ compact = false }: { compact?: boolean }) {
                     className="rounded-2xl rounded-tl-sm px-4 py-3 max-w-[90%]"
                     style={
                       msg.role === "user"
-                        ? { background: "rgba(14,27,44,0.04)" }
+                        ? { background: "rgba(10, 10, 11,0.04)" }
                         : {
                             background: "var(--color-vl-coral-tint)",
-                            border: "1px solid rgba(255,107,71,0.18)",
+                            border: "1px solid rgba(99, 102, 241,0.18)",
                           }
                     }
                   >
@@ -975,7 +737,7 @@ function ConversationSection({ compact = false }: { compact?: boolean }) {
                 <div className="flex gap-3 opacity-90">
                   <div
                     className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 mt-0.5"
-                    style={{ background: "linear-gradient(135deg, #FF8A66, #E2502E)" }}
+                    style={{ background: "linear-gradient(135deg, #FF8A66, #000000)" }}
                   >
                     <Mic className="w-3 h-3 text-white" />
                   </div>
@@ -983,7 +745,7 @@ function ConversationSection({ compact = false }: { compact?: boolean }) {
                     className="rounded-2xl rounded-tl-sm px-4 py-3 max-w-[90%] italic"
                     style={{
                       background: "rgba(255,241,235,0.85)",
-                      border: "1px dashed rgba(255,107,71,0.35)",
+                      border: "1px dashed rgba(99, 102, 241,0.35)",
                     }}
                   >
                     <p className="text-[14px] leading-relaxed" style={{ color: "var(--color-vl-ink-soft)" }}>
@@ -996,7 +758,7 @@ function ConversationSection({ compact = false }: { compact?: boolean }) {
             </div>
 
             {/* Hint phrases */}
-            <div className="mt-6 pt-5" style={{ borderTop: "1px solid rgba(14,27,44,0.07)" }}>
+            <div className="mt-6 pt-5" style={{ borderTop: "1px solid rgba(10, 10, 11,0.07)" }}>
               <p
                 className="text-[10.5px] font-semibold uppercase tracking-[0.2em] mb-3"
                 style={{ color: "var(--color-vl-ink-muted)" }}
@@ -1056,9 +818,9 @@ function DemoStatusWaveform({ state }: { state: DemoWaveState }) {
   );
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   ASSISTANT TOUR — three numbered hospitality assistants
-   ═══════════════════════════════════════════════════════════════ */
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   ASSISTANT TOUR â€” three numbered hospitality assistants
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 function AssistantTour() {
   const items = [
     {
@@ -1082,7 +844,7 @@ function AssistantTour() {
     {
       index: "03",
       title: "Venue Assistant",
-      blurb: "Events, timelines, staffing, packages — orchestrated by voice across the night.",
+      blurb: "Events, timelines, staffing, packages â€” orchestrated by voice across the night.",
       icon: <CalendarRange className="w-5 h-5" />,
       accent: "var(--color-vl-coral)",
       tint: "var(--color-vl-coral-tint)",
@@ -1191,9 +953,9 @@ function AssistantTour() {
   );
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   SHIFT SECTION — old way vs voycelab way
-   ═══════════════════════════════════════════════════════════════ */
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   SHIFT SECTION â€” old way vs voycelab way
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 function ShiftSection() {
   const oldWay = [
     "Open POS",
@@ -1218,7 +980,7 @@ function ShiftSection() {
         className="absolute inset-0 pointer-events-none"
         style={{
           background:
-            "radial-gradient(ellipse 60% 40% at 50% 100%, rgba(255,201,168,0.20), transparent 70%)",
+            "radial-gradient(ellipse 60% 40% at 50% 100%, rgba(251, 207, 232,0.20), transparent 70%)",
         }}
       />
       <div className="relative section-container">
@@ -1261,7 +1023,7 @@ function ShiftSection() {
                 >
                   <span
                     className="w-1.5 h-1.5 rounded-full shrink-0"
-                    style={{ background: "rgba(14,27,44,0.20)" }}
+                    style={{ background: "rgba(10, 10, 11,0.20)" }}
                   />
                   {step}
                 </li>
@@ -1281,7 +1043,7 @@ function ShiftSection() {
                   <span
                     className="w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center shrink-0 text-white"
                     style={{
-                      background: "linear-gradient(135deg, #FF8A66, #E2502E)",
+                      background: "linear-gradient(135deg, #FF8A66, #000000)",
                     }}
                   >
                     {i + 1}
@@ -1297,9 +1059,9 @@ function ShiftSection() {
   );
 }
 
-/* ═══════════════════════════════════════════════════════════════
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
    ACTIONS SECTION
-   ═══════════════════════════════════════════════════════════════ */
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 function ActionsSection() {
   const actions = [
     {
@@ -1312,7 +1074,7 @@ function ActionsSection() {
     {
       icon: <Bell className="w-5 h-5" />,
       title: "Notify bar lead",
-      desc: "Alerts your bar lead about what needs attention before doors open — no phone tree, no text chain.",
+      desc: "Alerts your bar lead about what needs attention before doors open â€” no phone tree, no text chain.",
       tint: "var(--color-vl-honey-soft)",
       color: "#B7791F",
     },
@@ -1405,9 +1167,9 @@ function ActionsSection() {
   );
 }
 
-/* ═══════════════════════════════════════════════════════════════
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
    VENUE OUTCOMES
-   ═══════════════════════════════════════════════════════════════ */
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 function VenueOutcomes() {
   const outcomes = [
     "No more surprise shortages",
@@ -1466,7 +1228,7 @@ function VenueOutcomes() {
               className="flex items-center gap-3 rounded-2xl px-5 py-3.5"
               style={{
                 background: "rgba(255,255,255,0.6)",
-                border: "1px solid rgba(14,27,44,0.07)",
+                border: "1px solid rgba(10, 10, 11,0.07)",
               }}
             >
               <span
@@ -1515,9 +1277,9 @@ function VenueOutcomes() {
   );
 }
 
-/* ═══════════════════════════════════════════════════════════════
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
    FINAL CTA
-   ═══════════════════════════════════════════════════════════════ */
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 function FinalCTA({
   name,
   setName,
@@ -1537,7 +1299,7 @@ function FinalCTA({
         className="absolute inset-0 pointer-events-none"
         style={{
           background:
-            "radial-gradient(ellipse 70% 60% at 50% 50%, rgba(255,201,168,0.40), transparent 65%), radial-gradient(ellipse 50% 40% at 20% 90%, rgba(199,183,229,0.35), transparent 65%), radial-gradient(ellipse 50% 40% at 80% 90%, rgba(156,201,161,0.30), transparent 65%)",
+            "radial-gradient(ellipse 70% 60% at 50% 50%, rgba(251, 207, 232,0.40), transparent 65%), radial-gradient(ellipse 50% 40% at 20% 90%, rgba(199, 210, 254,0.35), transparent 65%), radial-gradient(ellipse 50% 40% at 80% 90%, rgba(167, 243, 208,0.30), transparent 65%)",
         }}
       />
 
@@ -1569,7 +1331,7 @@ function FinalCTA({
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Name your assistant — Bev, Sage, Marlowe…"
+                placeholder="Name your assistant â€” Bev, Sage, Marloweâ€¦"
                 className="vl-input flex-1"
                 onKeyDown={(e) => e.key === "Enter" && onStart()}
               />
@@ -1587,7 +1349,7 @@ function FinalCTA({
                 Book a live demo
               </Link>
               <span className="text-[13px]" style={{ color: "var(--color-vl-ink-muted)" }}>
-                14-day trial · No card required
+                14-day trial Â· No card required
               </span>
             </div>
           </motion.div>
@@ -1612,7 +1374,7 @@ function FinalCTA({
               className="inline-flex items-center gap-2 text-[13px] px-4 py-2 rounded-full"
               style={{
                 background: "rgba(255,255,255,0.7)",
-                border: "1px solid rgba(14,27,44,0.07)",
+                border: "1px solid rgba(10, 10, 11,0.07)",
                 color: "var(--color-vl-ink-soft)",
               }}
             >

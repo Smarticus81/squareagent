@@ -5,16 +5,15 @@
  * Also detects stop/terminate phrases for mode transitions.
  */
 import { useRef, useCallback, useState } from "react";
+import { HARD_SHUTDOWN_PHRASES, SOFT_BACK_TO_WAKE_PHRASES } from "@/lib/voice-termination";
 
 export const WAKE_WORDS = ["hey bar", "hey bars", "a bar", "okay bar", "hey voyce", "voycelab"];
-export const STOP_PHRASES = [
-  "that's all for now", "thats all for now",
-  "goodbye", "good bye",
-  "stop listening", "see you",
-  "that's all", "thats all",
-  "nothing else",
-];
-export const SHUTDOWN_PHRASES = ["shut down", "shut it down", "turn off"];
+
+/** Soft termination — back to wake listening after closing live agent session */
+export const STOP_PHRASES = [...SOFT_BACK_TO_WAKE_PHRASES];
+
+/** Hard shutdown — stop all ambient listening until user taps to resume */
+export const SHUTDOWN_PHRASES = [...HARD_SHUTDOWN_PHRASES];
 
 function getSR(): any {
   if (typeof window === "undefined") return null;

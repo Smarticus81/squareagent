@@ -121,15 +121,15 @@ export default function ConnectedServices() {
       <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
         <div
           className="absolute left-[-12%] top-[-12%] h-[360px] w-[520px] rounded-full blur-3xl"
-          style={{ background: "rgba(255, 201, 168, 0.42)" }}
+          style={{ background: "rgba(251, 207, 232, 0.42)" }}
         />
         <div
           className="absolute right-[-10%] top-[5%] h-[420px] w-[520px] rounded-full blur-3xl"
-          style={{ background: "rgba(199, 183, 229, 0.30)" }}
+          style={{ background: "rgba(199, 210, 254, 0.30)" }}
         />
         <div
           className="absolute bottom-[-18%] right-[8%] h-[420px] w-[640px] rounded-full blur-3xl"
-          style={{ background: "rgba(156, 201, 161, 0.26)" }}
+          style={{ background: "rgba(167, 243, 208, 0.26)" }}
         />
       </div>
 
@@ -159,7 +159,7 @@ export default function ConnectedServices() {
                 style={{
                   background: "linear-gradient(135deg, var(--color-vl-coral-tint), #fff)",
                   color: "var(--color-vl-coral-deep)",
-                  border: "1px solid rgba(255,107,71,0.16)",
+                  border: "1px solid rgba(99, 102, 241,0.16)",
                 }}
               >
                 <PlugZap className="h-5 w-5" />
@@ -245,13 +245,13 @@ export default function ConnectedServices() {
               </div>
             ) : (
               (venues ?? []).map((v) => (
-                <div key={v.id} className="grid gap-4 border-b border-[rgba(14,27,44,0.06)] p-5 last:border-b-0 sm:grid-cols-[1fr_auto] sm:items-center md:p-6">
+                <div key={v.id} className="grid gap-4 border-b border-[rgba(10, 10, 11,0.06)] p-5 last:border-b-0 sm:grid-cols-[1fr_auto] sm:items-center md:p-6">
                   <div className="flex items-start gap-4">
                     <div
                       className="flex h-14 w-14 shrink-0 items-center justify-center rounded-[22px]"
                       style={{
                         background: "linear-gradient(135deg, #FFFFFF, var(--color-vl-coral-tint))",
-                        border: "1px solid rgba(255,107,71,0.18)",
+                        border: "1px solid rgba(99, 102, 241,0.18)",
                         color: "var(--color-vl-coral-deep)",
                       }}
                     >
@@ -328,7 +328,7 @@ export default function ConnectedServices() {
                 <div
                   aria-hidden
                   className="absolute right-[-40px] top-[-50px] h-28 w-28 rounded-full transition-transform duration-300 group-hover:scale-125"
-                  style={{ background: "rgba(255, 201, 168, 0.28)" }}
+                  style={{ background: "rgba(251, 207, 232, 0.28)" }}
                 />
                 <div className="relative flex items-start justify-between gap-3">
                   <div>
@@ -338,9 +338,9 @@ export default function ConnectedServices() {
                   <span
                     className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
                     style={{
-                      background: "rgba(14,27,44,0.04)",
+                      background: "rgba(10, 10, 11,0.04)",
                       color: "var(--color-vl-ink-muted)",
-                      border: "1px solid rgba(14,27,44,0.08)",
+                      border: "1px solid rgba(10, 10, 11,0.08)",
                     }}
                   >
                     <PlugZap className="h-4 w-4" />
@@ -352,7 +352,7 @@ export default function ConnectedServices() {
                   style={{
                     color: "var(--color-vl-coral-deep)",
                     background: "var(--color-vl-coral-tint)",
-                    border: "1px solid rgba(255,107,71,0.18)",
+                    border: "1px solid rgba(99, 102, 241,0.18)",
                   }}
                 >
                   Request connector <ExternalLink className="w-3 h-3" />
@@ -365,7 +365,7 @@ export default function ConnectedServices() {
 
       {/* Location picker modal */}
       {showLocationPicker && locations.length > 0 && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(14,27,44,0.36)] p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(10, 10, 11,0.36)] p-4 backdrop-blur-sm">
           <div className="vl-card-glass w-full max-w-[520px] p-6 md:p-7">
             <div className="mb-5 flex items-start justify-between gap-4">
               <div>
@@ -386,8 +386,8 @@ export default function ConnectedServices() {
                 className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors"
                 style={{
                   color: "var(--color-vl-ink-muted)",
-                  background: "rgba(14,27,44,0.04)",
-                  border: "1px solid rgba(14,27,44,0.08)",
+                  background: "rgba(10, 10, 11,0.04)",
+                  border: "1px solid rgba(10, 10, 11,0.08)",
                 }}
               >
                 <X className="w-4 h-4" />

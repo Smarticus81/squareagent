@@ -39,7 +39,7 @@ export function LogoMark({
       <defs>
         <linearGradient id={`${uid}-coral`} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor="#FF8A66" />
-          <stop offset="100%" stopColor="#E2502E" />
+          <stop offset="100%" stopColor="#000000" />
         </linearGradient>
         <linearGradient id={`${uid}-lilac`} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor="#D9CBF0" />
@@ -88,8 +88,8 @@ export function Logo({
   const wordSize = { sm: "text-[14px]", md: "text-[16px]", lg: "text-[20px]", xl: "text-[26px]" }[size];
   const tagSize = { sm: "text-[8.5px]", md: "text-[9.5px]", lg: "text-[11px]", xl: "text-[13px]" }[size];
   const wordColor =
-    variant === "light" ? "#FBF7F1" : variant === "mono" ? "currentColor" : "#0E1B2C";
-  const tagColor = variant === "light" ? "rgba(251,247,241,0.65)" : "rgba(14,27,44,0.55)";
+    variant === "light" ? "#FFFFFF" : variant === "mono" ? "currentColor" : "#0A0A0B";
+  const tagColor = variant === "light" ? "rgba(255, 255, 255,0.65)" : "rgba(10, 10, 11,0.55)";
 
   if (iconOnly) return <LogoMark size={dim} variant={variant} className={className} />;
 

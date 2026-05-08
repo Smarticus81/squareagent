@@ -6,6 +6,7 @@ import { useSquare } from "@/contexts/SquareContext";
 import { OrderPanel } from "@/components/OrderPanel";
 import { useWakeWord, isWakeWordSupported } from "@/hooks/useWakeWord";
 import { soundWake, soundChime, soundItemAdd, soundSubmit, soundError, soundSleep } from "@/lib/sounds";
+import { matchTermination } from "@/lib/voice-termination";
 
 /* ── App modes ─────────────────────────────────────────────────── */
 type AppMode = "idle" | "wake_word" | "command" | "shutdown";
@@ -111,6 +112,7 @@ export default function App() {
   const [micPermissionGranted, setMicPermissionGranted] = useState(false);
   const modeRef = useRef<AppMode>("idle");
   const prevItemCountRef = useRef(0);
+  const terminationHandledRef = useRef(false);
 
   useEffect(() => { modeRef.current = mode; }, [mode]);
 
@@ -214,19 +216,17 @@ export default function App() {
   const onStopDetected = useCallback(() => {
     console.log("[App] Terminating phrase → back to wake word mode");
     soundSleep();
-    if (modeRef.current === "command") {
-      disconnect();
-    }
+    const wasCommand = modeRef.current === "command";
     setMode("wake_word");
+    if (wasCommand) void disconnect();
   }, [disconnect]);
 
   const onShutdownDetected = useCallback(() => {
     console.log("[App] Shutdown phrase → stopping completely");
     soundSleep();
-    if (modeRef.current === "command") {
-      disconnect();
-    }
+    const wasCommand = modeRef.current === "command";
     setMode("shutdown");
+    if (wasCommand) void disconnect();
   }, [disconnect]);
 
   const wakeWords = useMemo(() => buildWakeWords(wakePhrase), [wakePhrase]);
@@ -239,12 +239,16 @@ export default function App() {
     onShutdownDetected,
   });
 
-  // When agent disconnects naturally or via response, check if we should return to wake word
+  // When agent disconnects naturally or via response, return to wake listening (unless fully shut down)
   useEffect(() => {
     if (mode === "command" && agentState === "disconnected") {
       setMode("wake_word");
     }
   }, [mode, agentState]);
+
+  useEffect(() => {
+    if (mode === "command") terminationHandledRef.current = false;
+  }, [mode]);
 
   // Play error sound on error state
   useEffect(() => {
@@ -261,7 +265,17 @@ export default function App() {
     }
   }, [mode, startWakeWord, stopWakeWord]);
 
-  // Monitor conversation for termination phrases while in command mode
+  const applyVoiceTermination = useCallback(
+    (kind: "soft" | "hard") => {
+      if (terminationHandledRef.current) return;
+      terminationHandledRef.current = true;
+      soundSleep();
+      setMode(kind === "hard" ? "shutdown" : "wake_word");
+      void disconnect();
+    },
+    [disconnect],
+  );
+
   const lastConversationLenRef = useRef(0);
   useEffect(() => {
     if (mode !== "command") return;
@@ -273,27 +287,16 @@ export default function App() {
 
     const lastMsg = conversation[conversation.length - 1];
     if (lastMsg?.role === "user") {
-      const text = lastMsg.content.toLowerCase();
-      const terminatingPhrases = [
-        "that's all for now", "thats all for now",
-        "goodbye", "good bye", "stop listening",
-        "that's all", "thats all", "nothing else", "see you",
-      ];
-      const shutdownPhrases = ["shut down", "shut it down", "turn off"];
-
-      if (shutdownPhrases.some((p) => text.includes(p))) {
-        setTimeout(() => {
-          disconnect();
-          setMode("shutdown");
-        }, 2000);
-      } else if (terminatingPhrases.some((p) => text.includes(p))) {
-        setTimeout(() => {
-          disconnect();
-          setMode("wake_word");
-        }, 2000);
-      }
+      const kind = matchTermination(lastMsg.content);
+      if (kind) applyVoiceTermination(kind);
     }
-  }, [conversation, mode, disconnect]);
+  }, [conversation, mode, applyVoiceTermination]);
+
+  useEffect(() => {
+    if (mode !== "command" || !partialTranscript?.trim()) return;
+    const kind = matchTermination(partialTranscript);
+    if (kind) applyVoiceTermination(kind);
+  }, [partialTranscript, mode, applyVoiceTermination]);
 
   // ── Rail tap / initial activation ─────────────────────────────
   async function handleRailTap() {
@@ -347,7 +350,7 @@ export default function App() {
               </linearGradient>
               <linearGradient id="vl-top-coral" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="#FF8A66"/>
-                <stop offset="100%" stopColor="#E2502E"/>
+                <stop offset="100%" stopColor="#000000"/>
               </linearGradient>
               <linearGradient id="vl-top-sage" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="#B9DBBE"/>
@@ -395,7 +398,7 @@ export default function App() {
               </linearGradient>
               <linearGradient id="vl-wm-coral" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="#FF8A66"/>
-                <stop offset="100%" stopColor="#E2502E"/>
+                <stop offset="100%" stopColor="#000000"/>
               </linearGradient>
               <linearGradient id="vl-wm-sage" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="#B9DBBE"/>

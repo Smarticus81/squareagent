@@ -97,6 +97,7 @@ export function useVoycelabDemoRealtime() {
   const [conversation, setConversation] = useState<DemoMessage[]>([]);
   const [partialTranscript, setPartialTranscript] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [assistantStream, setAssistantStream] = useState<MediaStream | null>(null);
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const dcRef = useRef<RTCDataChannel | null>(null);
@@ -141,6 +142,7 @@ export function useVoycelabDemoRealtime() {
       audioElRef.current = null;
     }
 
+    setAssistantStream(null);
     setAgentState("idle");
     setPartialTranscript("");
     setError(null);
@@ -269,11 +271,14 @@ export function useVoycelabDemoRealtime() {
         if (e.track.kind !== "audio") return;
         if (!remoteAudioTracks.includes(e.track)) remoteAudioTracks.push(e.track);
         const ms = new MediaStream([...remoteAudioTracks]);
+        setAssistantStream(ms);
         void routeRemotePlayback(audioEl, ms, fallbackAudioCtxRef);
         if (!unmuteHooked.has(e.track)) {
           unmuteHooked.add(e.track);
           e.track.addEventListener("unmute", () => {
-            void routeRemotePlayback(audioEl, new MediaStream([...remoteAudioTracks]), fallbackAudioCtxRef);
+            const unmutedStream = new MediaStream([...remoteAudioTracks]);
+            setAssistantStream(unmutedStream);
+            void routeRemotePlayback(audioEl, unmutedStream, fallbackAudioCtxRef);
           });
         }
       };
@@ -343,6 +348,7 @@ export function useVoycelabDemoRealtime() {
       console.error("[DemoRealtime]", msg);
       setError(msg);
       setAgentState("error");
+      setAssistantStream(null);
       pcRef.current?.close();
       pcRef.current = null;
       dcRef.current = null;
@@ -389,6 +395,7 @@ export function useVoycelabDemoRealtime() {
     conversation,
     partialTranscript,
     error,
+    assistantStream,
     connect,
     disconnect,
     interrupt,

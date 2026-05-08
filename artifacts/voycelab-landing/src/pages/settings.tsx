@@ -170,9 +170,9 @@ export default function Settings() {
   return (
     <div className="relative flex-1 overflow-hidden px-4 pb-24 pt-16 sm:px-6 lg:px-10">
       <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
-        <div className="absolute left-[-12%] top-[-18%] h-[380px] w-[560px] rounded-full blur-3xl" style={{ background: "rgba(255, 201, 168, 0.42)" }} />
-        <div className="absolute right-[-14%] top-[6%] h-[480px] w-[620px] rounded-full blur-3xl" style={{ background: "rgba(199, 183, 229, 0.28)" }} />
-        <div className="absolute bottom-[-18%] right-[10%] h-[420px] w-[680px] rounded-full blur-3xl" style={{ background: "rgba(156, 201, 161, 0.22)" }} />
+        <div className="absolute left-[-12%] top-[-18%] h-[380px] w-[560px] rounded-full blur-3xl" style={{ background: "rgba(251, 207, 232, 0.42)" }} />
+        <div className="absolute right-[-14%] top-[6%] h-[480px] w-[620px] rounded-full blur-3xl" style={{ background: "rgba(199, 210, 254, 0.28)" }} />
+        <div className="absolute bottom-[-18%] right-[10%] h-[420px] w-[680px] rounded-full blur-3xl" style={{ background: "rgba(167, 243, 208, 0.22)" }} />
       </div>
       <div className="mx-auto w-full max-w-[920px]">
         {/* Back to the console */}
@@ -323,16 +323,16 @@ export default function Settings() {
           padding: 0 14px;
           border-radius: 12px;
           background: rgba(255,255,255,0.72);
-          border: 1px solid rgba(14,27,44,0.12);
+          border: 1px solid rgba(10, 10, 11,0.12);
           color: var(--color-vl-ink);
           font-size: 13.5px;
           outline: none;
           transition: border-color .15s ease, background .15s ease, box-shadow .15s ease;
         }
-        .vl-compact-input::placeholder { color: rgba(14,27,44,0.36); }
+        .vl-compact-input::placeholder { color: rgba(10, 10, 11,0.36); }
         .vl-compact-input:focus {
           border-color: var(--color-vl-coral);
-          box-shadow: 0 0 0 3px rgba(255,107,71,0.12);
+          box-shadow: 0 0 0 3px rgba(99, 102, 241,0.12);
         }
       `}</style>
     </div>

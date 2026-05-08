@@ -22,12 +22,12 @@ interface VoiceRailProps {
 
 const STATE_COLOR: Record<RailState, string> = {
   offline: "rgba(90, 101, 119, 0.45)",
-  ready: "#FF6B47",
+  ready: "#0A0A0B",
   listening: "#A38EDC",
-  thinking: "#E2502E",
-  speaking: "#FFA384",
-  confirming: "#F2C97D",
-  executing: "#0E1B2C",
+  thinking: "#000000",
+  speaking: "#A5B4FC",
+  confirming: "#FDE68A",
+  executing: "#0A0A0B",
   synced: "#2F9E64",
   error: "#D7402E",
 };
@@ -140,7 +140,7 @@ export function VoiceRail({
           aria-hidden
           className="absolute top-1/2 -translate-y-1/2 h-[3px] w-32 rounded-full"
           style={{
-            background: `linear-gradient(90deg, transparent, #FF6B47, transparent)`,
+            background: `linear-gradient(90deg, transparent, #0A0A0B, transparent)`,
           }}
           animate={{ left: ["-20%", "120%"] }}
           transition={{ duration: 0.8, repeat: Infinity, ease: "easeInOut" }}

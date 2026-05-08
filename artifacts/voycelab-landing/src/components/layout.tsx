@@ -75,9 +75,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
                         key={`${item.href}-${idx}`}
                         href={item.href}
                         className="text-[13px] font-medium px-3 py-1.5 transition-colors"
-                        style={{ color: "rgba(14, 27, 44, 0.62)" }}
-                        onMouseEnter={(e) => (e.currentTarget.style.color = "#0E1B2C")}
-                        onMouseLeave={(e) => (e.currentTarget.style.color = "rgba(14, 27, 44, 0.62)")}
+                        style={{ color: "rgba(10, 10, 11, 0.62)" }}
+                        onMouseEnter={(e) => (e.currentTarget.style.color = "#0A0A0B")}
+                        onMouseLeave={(e) => (e.currentTarget.style.color = "rgba(10, 10, 11, 0.62)")}
                       >
                         {item.label}
                       </a>
@@ -90,7 +90,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       href={item.href}
                       className="text-[13px] font-medium px-3 py-1.5 rounded-full transition-colors"
                       style={{
-                        color: active ? "var(--color-vl-coral-deep)" : "rgba(14, 27, 44, 0.62)",
+                        color: active ? "var(--color-vl-coral-deep)" : "rgba(10, 10, 11, 0.62)",
                         background: active ? "var(--color-vl-coral-tint)" : "transparent",
                       }}
                     >
@@ -116,7 +116,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       <button
                         onClick={() => logout.mutate()}
                         className="text-[13px] font-medium flex items-center gap-1.5 px-3 py-1.5 rounded-full transition-colors"
-                        style={{ color: "rgba(14, 27, 44, 0.62)" }}
+                        style={{ color: "rgba(10, 10, 11, 0.62)" }}
                       >
                         <LogOut className="w-3.5 h-3.5" />
                         <span className="hidden sm:inline">Sign out</span>
@@ -127,7 +127,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       <Link
                         href="/login"
                         className="hidden sm:inline text-[13px] font-medium"
-                        style={{ color: "rgba(14, 27, 44, 0.62)" }}
+                        style={{ color: "rgba(10, 10, 11, 0.62)" }}
                       >
                         Sign in
                       </Link>
@@ -153,7 +153,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   aria-label="Toggle menu"
                   style={{
                     color: "var(--color-vl-ink)",
-                    border: "1px solid rgba(14,27,44,0.10)",
+                    border: "1px solid rgba(10, 10, 11,0.10)",
                     background: "rgba(255,255,255,0.6)",
                   }}
                 >
@@ -166,8 +166,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <div
                 className="md:hidden px-6 py-4 flex flex-col gap-2"
                 style={{
-                  borderTop: "1px solid rgba(14,27,44,0.08)",
-                  background: "rgba(251,247,241,0.92)",
+                  borderTop: "1px solid rgba(10, 10, 11,0.08)",
+                  background: "rgba(255, 255, 255,0.92)",
                 }}
               >
                 {headerNavItems.map((item, idx) => {
@@ -179,7 +179,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                         href={item.href}
                         onClick={() => setMobileOpen(false)}
                         className="text-[14px] py-2"
-                        style={{ color: "rgba(14, 27, 44, 0.75)" }}
+                        style={{ color: "rgba(10, 10, 11, 0.75)" }}
                       >
                         {item.label}
                       </a>
@@ -191,7 +191,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       href={item.href}
                       onClick={() => setMobileOpen(false)}
                       className="text-[14px] py-2"
-                      style={{ color: "rgba(14, 27, 44, 0.75)" }}
+                      style={{ color: "rgba(10, 10, 11, 0.75)" }}
                     >
                       {item.label}
                     </Link>
@@ -208,7 +208,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       {!isAuthPage && (
         <footer
           className={`mt-auto ${isLanding ? "vl-landing-footer" : ""}`}
-          style={{ borderTop: "1px solid rgba(14,27,44,0.08)" }}
+          style={{ borderTop: "1px solid rgba(10, 10, 11,0.08)" }}
         >
           <div className="w-full max-w-[1280px] mx-auto px-6 lg:px-10 py-14">
             <div className="grid md:grid-cols-[1.6fr_1fr_1fr_1fr] gap-10">

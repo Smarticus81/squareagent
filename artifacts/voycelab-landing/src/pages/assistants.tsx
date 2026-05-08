@@ -57,9 +57,9 @@ export default function Assistants() {
   return (
     <div className="relative flex-1 overflow-hidden px-4 pb-24 pt-16 sm:px-6 lg:px-10">
       <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
-        <div className="absolute left-[-12%] top-[-18%] h-[380px] w-[560px] rounded-full blur-3xl" style={{ background: "rgba(255, 201, 168, 0.42)" }} />
-        <div className="absolute right-[-12%] top-[8%] h-[460px] w-[560px] rounded-full blur-3xl" style={{ background: "rgba(199, 183, 229, 0.30)" }} />
-        <div className="absolute bottom-[-18%] right-[8%] h-[420px] w-[680px] rounded-full blur-3xl" style={{ background: "rgba(156, 201, 161, 0.25)" }} />
+        <div className="absolute left-[-12%] top-[-18%] h-[380px] w-[560px] rounded-full blur-3xl" style={{ background: "rgba(251, 207, 232, 0.42)" }} />
+        <div className="absolute right-[-12%] top-[8%] h-[460px] w-[560px] rounded-full blur-3xl" style={{ background: "rgba(199, 210, 254, 0.30)" }} />
+        <div className="absolute bottom-[-18%] right-[8%] h-[420px] w-[680px] rounded-full blur-3xl" style={{ background: "rgba(167, 243, 208, 0.25)" }} />
       </div>
       <div className="mx-auto w-full max-w-[1180px]">
         <Link
@@ -107,7 +107,7 @@ export default function Assistants() {
               <article key={a.id} className="vl-card-glass overflow-hidden p-6 md:p-7">
                 <div className="mb-5 flex items-start justify-between gap-4">
                   <div className="flex items-center gap-3">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl" style={{ background: "var(--color-vl-coral-tint)", color: "var(--color-vl-coral-deep)", border: "1px solid rgba(255,107,71,0.16)" }}>
+                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl" style={{ background: "var(--color-vl-coral-tint)", color: "var(--color-vl-coral-deep)", border: "1px solid rgba(99, 102, 241,0.16)" }}>
                       <Sparkles className="h-5 w-5" />
                     </div>
                     <div>
@@ -140,7 +140,7 @@ export default function Assistants() {
                   <Row k="Wake phrase" v={a.wakePhrase} />
                 </dl>
 
-                <div className="mt-6 rounded-2xl px-4 py-3" style={{ background: "rgba(14,27,44,0.04)", border: "1px solid rgba(14,27,44,0.07)" }}>
+                <div className="mt-6 rounded-2xl px-4 py-3" style={{ background: "rgba(10, 10, 11,0.04)", border: "1px solid rgba(10, 10, 11,0.07)" }}>
                   <p className="text-[13px]" style={{ color: "var(--color-vl-ink-muted)" }}>
                     Can do <strong style={{ color: "var(--color-vl-ink)" }}>{a.allowedCount}</strong> actions. Will ask before <strong style={{ color: "var(--color-vl-ink)" }}>{a.askFirstCount}</strong>.
                   </p>
@@ -199,7 +199,7 @@ export default function Assistants() {
 
 function Row({ k, v }: { k: string; v: string }) {
   return (
-    <div className="rounded-2xl bg-white/60 px-4 py-3" style={{ border: "1px solid rgba(14,27,44,0.06)" }}>
+    <div className="rounded-2xl bg-white/60 px-4 py-3" style={{ border: "1px solid rgba(10, 10, 11,0.06)" }}>
       <dt className="text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: "var(--color-vl-ink-faint)" }}>{k}</dt>
       <dd className="mt-1 text-[13px] font-medium" style={{ color: "var(--color-vl-ink)" }}>{v}</dd>
     </div>

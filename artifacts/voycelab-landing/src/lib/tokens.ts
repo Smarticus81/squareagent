@@ -8,60 +8,66 @@
  */
 
 export const voyceTokens = {
-  /* Cream paper backgrounds */
-  cream: "#FBF7F1",
-  creamWarm: "#F4ECDD",
-  creamDeep: "#ECE0CB",
+  /* Paper backgrounds — pure white */
+  cream: "#FFFFFF",
+  creamWarm: "#FAFAF9",
+  creamDeep: "#F4F4F5",
   paper: "#FFFFFF",
 
-  /* Ink */
-  ink: "#0E1B2C",
-  inkSoft: "#2B3A50",
-  inkMuted: "#5A6577",
-  inkFaint: "#8A93A2",
+  /* Ink — near-black */
+  ink: "#0A0A0B",
+  inkSoft: "#27272A",
+  inkMuted: "#71717A",
+  inkFaint: "#A1A1AA",
 
-  /* Coral hospitality accent */
-  coral: "#FF6B47",
-  coralDeep: "#E2502E",
-  coralSoft: "#FFA384",
-  coralTint: "#FFF1EB",
+  /* Primary CTA — deep ink (chatbase-style) */
+  coral: "#0A0A0B",
+  coralDeep: "#000000",
+  coralSoft: "#3F3F46",
+  coralTint: "#F4F4F5",
 
-  /* Painterly accents */
-  peach: "#FFC9A8",
-  peachSoft: "#FFE4D2",
-  sage: "#9CC9A1",
-  sageSoft: "#DCEBDB",
-  lilac: "#C7B7E5",
-  lilacSoft: "#EDE5F8",
-  honey: "#F2C97D",
-  honeySoft: "#FBE8C0",
+  /* Accent — violet/indigo signature */
+  accent: "#6366F1",
+  accentDeep: "#4F46E5",
+  accentSoft: "#A5B4FC",
+  accentTint: "#EEF2FF",
+
+  /* Painterly pastel washes */
+  peach: "#FBCFE8",
+  peachSoft: "#FCE7F3",
+  sage: "#A7F3D0",
+  sageSoft: "#D1FAE5",
+  lilac: "#C7D2FE",
+  lilacSoft: "#E0E7FF",
+  honey: "#FDE68A",
+  honeySoft: "#FEF3C7",
 
   /* Status */
-  success: "#2F9E64",
-  warning: "#E59B2A",
-  danger: "#D7402E",
+  success: "#10B981",
+  warning: "#F59E0B",
+  danger: "#EF4444",
 
   /* Surface fills */
-  glass: "rgba(255, 255, 255, 0.72)",
-  glassStrong: "rgba(255, 255, 255, 0.88)",
-  line: "rgba(14, 27, 44, 0.10)",
-  lineStrong: "rgba(14, 27, 44, 0.18)",
+  glass: "rgba(255, 255, 255, 0.78)",
+  glassStrong: "rgba(255, 255, 255, 0.92)",
+  line: "rgba(10, 10, 11, 0.08)",
+  lineStrong: "rgba(10, 10, 11, 0.16)",
 
   /* Back-compat aliases used by existing components */
-  black: "#0E1B2C",
-  graphite: "#1A2638",
-  graphite2: "#243042",
-  graphite3: "#2E3A4D",
-  ivory: "#0E1B2C",
-  bone: "#2B3A50",
-  sand: "#5A6577",
-  ash: "#8A93A2",
-  brass: "#E2502E",
-  brass2: "#FF6B47",
-  ember: "#FF6B47",
-  voice: "#C7B7E5",
-  voice2: "#A38EDC",
-  voiceGlow: "rgba(199, 183, 229, 0.35)",
+  black: "#0A0A0B",
+  graphite: "#18181B",
+  graphite2: "#27272A",
+  graphite3: "#3F3F46",
+  ivory: "#0A0A0B",
+  bone: "#27272A",
+  sand: "#71717A",
+  ash: "#A1A1AA",
+  brass: "#000000",
+  brass2: "#0A0A0B",
+  ember: "#6366F1",
+  voice: "#C7D2FE",
+  voice2: "#818CF8",
+  voiceGlow: "rgba(99, 102, 241, 0.30)",
 } as const;
 
 export const voyceCopy = {
