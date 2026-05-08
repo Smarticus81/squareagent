@@ -53,6 +53,100 @@ interface RelayCtx {
   query: Record<string, string>;
 }
 
+function resamplePcm16Base64(base64Pcm: string, fromRate: number, toRate: number): string {
+  if (fromRate === toRate) return base64Pcm;
+  const input = Buffer.from(base64Pcm, "base64");
+  const sampleCount = Math.floor(input.length / 2);
+  if (sampleCount === 0) return base64Pcm;
+
+  const outputCount = Math.max(1, Math.floor(sampleCount * toRate / fromRate));
+  const output = Buffer.alloc(outputCount * 2);
+  for (let outIndex = 0; outIndex < outputCount; outIndex++) {
+    const sourceIndex = outIndex * (fromRate / toRate);
+    const leftIndex = Math.min(sampleCount - 1, Math.floor(sourceIndex));
+    const rightIndex = Math.min(sampleCount - 1, leftIndex + 1);
+    const weight = sourceIndex - leftIndex;
+    const left = input.readInt16LE(leftIndex * 2);
+    const right = input.readInt16LE(rightIndex * 2);
+    const sample = Math.round(left + (right - left) * weight);
+    output.writeInt16LE(Math.max(-32768, Math.min(32767, sample)), outIndex * 2);
+  }
+  return output.toString("base64");
+}
+
+function geminiClientMessageFromRealtimeEvent(event: Record<string, unknown>): string | null {
+  if (event.type === "input_audio_buffer.append" && typeof event.audio === "string") {
+    return JSON.stringify({
+      realtimeInput: {
+        audio: {
+          data: resamplePcm16Base64(event.audio, 24000, 16000),
+          mimeType: "audio/pcm;rate=16000",
+        },
+      },
+    });
+  }
+
+  if (event.type === "response.cancel") {
+    return null;
+  }
+
+  if (event.realtimeInput || event.clientContent || event.toolResponse) {
+    return JSON.stringify(event);
+  }
+
+  return null;
+}
+
+function geminiServerMessagesForRealtimeClient(
+  event: Record<string, unknown>,
+  sessionId: string,
+): Record<string, unknown>[] {
+  const messages: Record<string, unknown>[] = [];
+
+  if (event.setupComplete !== undefined) {
+    messages.push({ type: "session.created", session: { id: sessionId } });
+  }
+
+  const serverContent = event.serverContent as Record<string, unknown> | undefined;
+  if (serverContent) {
+    const inputTranscription = serverContent.inputTranscription as Record<string, unknown> | undefined;
+    if (typeof inputTranscription?.text === "string" && inputTranscription.text.trim()) {
+      messages.push({
+        type: "conversation.item.input_audio_transcription.completed",
+        transcript: inputTranscription.text,
+      });
+    }
+
+    const outputTranscription = serverContent.outputTranscription as Record<string, unknown> | undefined;
+    if (typeof outputTranscription?.text === "string" && outputTranscription.text.trim()) {
+      messages.push({ type: "response.audio_transcript.done", transcript: outputTranscription.text });
+    }
+
+    const modelTurn = serverContent.modelTurn as Record<string, unknown> | undefined;
+    const parts = Array.isArray(modelTurn?.parts) ? modelTurn.parts : [];
+    for (const part of parts) {
+      if (!part || typeof part !== "object") continue;
+      const inlineData = (part as Record<string, unknown>).inlineData as Record<string, unknown> | undefined;
+      if (typeof inlineData?.data === "string") {
+        messages.push({ type: "response.audio.delta", delta: inlineData.data });
+      }
+    }
+
+    if (serverContent.interrupted) {
+      messages.push({ type: "input_audio_buffer.speech_started" });
+    }
+    if (serverContent.generationComplete || serverContent.turnComplete) {
+      messages.push({ type: "response.done" });
+    }
+  }
+
+  if (event.goAway) {
+    messages.push({ type: "error", error: { message: "Gemini Live session is closing" } });
+  }
+
+  return messages;
+}
+
 // ── Auth helper ───────────────────────────────────────────────────────────────
 
 const ADMIN_EMAILS = (process.env.ADMIN_EMAILS ?? "tmusoni@thinkertons.com")
@@ -499,6 +593,7 @@ function handleGeminiRelay(clientWs: WebSocket, ctx: RelayCtx): void {
   let voiceName: string | undefined;
 
   console.log(`[WS-Relay/Gemini] Connected for user ${ctx.userId} model=${modelId}`);
+  const sessionId = ctx.query.sessionId || `gemini-${ctx.userId}-${Date.now()}`;
 
   const upstreamUrl = (() => {
     try {
@@ -553,7 +648,11 @@ function handleGeminiRelay(clientWs: WebSocket, ctx: RelayCtx): void {
       console.log(`[WS-Relay/Gemini] Setup complete for user=${ctx.userId}, ${toolCount()} tools registered`);
       for (const msg of pendingFromClient) upstream.send(msg);
       pendingFromClient = [];
-      if (clientWs.readyState === WebSocket.OPEN) clientWs.send(raw);
+      if (clientWs.readyState === WebSocket.OPEN) {
+        for (const message of geminiServerMessagesForRealtimeClient(event, sessionId)) {
+          clientWs.send(JSON.stringify(message));
+        }
+      }
       return;
     }
 
@@ -590,8 +689,11 @@ function handleGeminiRelay(clientWs: WebSocket, ctx: RelayCtx): void {
       return;
     }
 
-    // Forward all other messages (serverContent / transcripts / goAway / etc.)
-    if (clientWs.readyState === WebSocket.OPEN) clientWs.send(raw);
+    if (clientWs.readyState === WebSocket.OPEN) {
+      for (const message of geminiServerMessagesForRealtimeClient(event, sessionId)) {
+        clientWs.send(JSON.stringify(message));
+      }
+    }
   });
 
   upstream.on("error", (err) => {
@@ -602,9 +704,14 @@ function handleGeminiRelay(clientWs: WebSocket, ctx: RelayCtx): void {
     }
   });
 
-  upstream.on("close", () => {
-    console.log(`[WS-Relay/Gemini] Upstream closed user=${ctx.userId}`);
-    if (clientWs.readyState === WebSocket.OPEN) clientWs.close();
+  upstream.on("close", (code, reason) => {
+    const message = reason.toString() || `Gemini Live closed with code ${code}`;
+    const clientCloseCode = code >= 1000 && code < 5000 && code !== 1005 && code !== 1006 ? code : 1011;
+    console.log(`[WS-Relay/Gemini] Upstream closed user=${ctx.userId} code=${code} reason=${message}`);
+    if (clientWs.readyState === WebSocket.OPEN) {
+      clientWs.send(JSON.stringify({ type: "error", error: { message } }));
+      clientWs.close(clientCloseCode, message.slice(0, 120));
+    }
   });
 
   clientWs.on("message", (data) => {
@@ -660,8 +767,11 @@ function handleGeminiRelay(clientWs: WebSocket, ctx: RelayCtx): void {
       return;
     }
 
-    if (upstreamReady && setupSent) upstream.send(raw);
-    else pendingFromClient.push(raw);
+    const geminiMessage = geminiClientMessageFromRealtimeEvent(event);
+    if (!geminiMessage) return;
+
+    if (upstreamReady && setupSent) upstream.send(geminiMessage);
+    else pendingFromClient.push(geminiMessage);
   });
 
   clientWs.on("close", () => {

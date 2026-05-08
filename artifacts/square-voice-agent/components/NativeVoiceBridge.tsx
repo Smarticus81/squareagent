@@ -22,7 +22,7 @@
  *   WebView → RN (`window.ReactNativeWebView.postMessage`):
  *     { type: "ready" }
  *     { type: "ws_open" }
- *     { type: "ws_close" }
+ *     { type: "ws_close", code?, reason?, wasClean? }
  *     { type: "ws_event", event }      ← raw realtime event JSON from upstream
  *     { type: "ws_error", message }
  *     { type: "log", message }
@@ -39,7 +39,7 @@ import { WebView, WebViewMessageEvent } from "react-native-webview";
 export type BridgeOutgoing =
   | { type: "ready" }
   | { type: "ws_open" }
-  | { type: "ws_close" }
+  | { type: "ws_close"; code?: number; reason?: string; wasClean?: boolean }
   | { type: "ws_event"; event: unknown }
   | { type: "ws_error"; message: string }
   | { type: "log"; message: string };
@@ -230,8 +230,8 @@ const BRIDGE_HTML = `<!doctype html>
     ws.onerror = function(){
       RNPost({ type: "ws_error", message: "WebSocket error" });
     };
-    ws.onclose = function(){
-      RNPost({ type: "ws_close" });
+    ws.onclose = function(e){
+      RNPost({ type: "ws_close", code: e && e.code, reason: (e && e.reason) || "", wasClean: !!(e && e.wasClean) });
       stopCapture();
       running = false;
     };

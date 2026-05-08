@@ -208,8 +208,8 @@ function getWsUrl(
     const modelId =
       typeof config?.modelId === "string" ? (config.modelId as string) :
       typeof config?.model === "string" ? (config.model as string) :
-      provider === "google_gemini_3_1_flash_live" ? "gemini-2.0-flash-exp" :
-      "gemini-2.0-flash-exp";
+      provider === "google_gemini_3_1_flash_live" ? "gemini-3.1-flash-live-preview" :
+      "gemini-live-2.5-flash-native-audio";
     params.set("modelId", modelId);
   }
   if (path === "/api/realtime/modular" && config) {
@@ -793,7 +793,13 @@ General:
           break;
         case "ws_close":
           isRunning.current = false;
-          setAgentState((prev) => (prev === "error" ? "error" : "disconnected"));
+          if (msg.code && msg.code !== 1000 && msg.code !== 1005) {
+            const reason = msg.reason ? `: ${msg.reason}` : "";
+            setError(`Voice connection closed (${msg.code})${reason}`);
+            setAgentState("error");
+          } else {
+            setAgentState((prev) => (prev === "error" ? "error" : "disconnected"));
+          }
           setBridgeActive(false);
           bridgeReadyRef.current = false;
           break;
