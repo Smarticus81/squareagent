@@ -221,6 +221,38 @@ export interface GeminiFunctionDeclaration {
   parameters: Record<string, unknown>;
 }
 
+function toGeminiSchema(schema: unknown): Record<string, unknown> {
+  if (!schema || typeof schema !== "object") {
+    return { type: "OBJECT", properties: {} };
+  }
+
+  const input = schema as Record<string, unknown>;
+  const output: Record<string, unknown> = {};
+  const rawType = typeof input.type === "string" ? input.type.toUpperCase() : undefined;
+  if (rawType) output.type = rawType;
+  if (typeof input.description === "string") output.description = input.description;
+  if (Array.isArray(input.enum)) output.enum = input.enum;
+  if (Array.isArray(input.required)) output.required = input.required;
+
+  if (input.properties && typeof input.properties === "object") {
+    const properties: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(input.properties as Record<string, unknown>)) {
+      properties[key] = toGeminiSchema(value);
+    }
+    output.properties = properties;
+  }
+
+  if (input.items) {
+    output.items = toGeminiSchema(input.items);
+  }
+
+  if (!output.type) {
+    output.type = output.properties ? "OBJECT" : "STRING";
+  }
+
+  return output;
+}
+
 export function toolDefinitionsToGeminiTools(
   definitions: ReadonlyArray<{
     type?: string;
@@ -232,10 +264,7 @@ export function toolDefinitionsToGeminiTools(
   const decls: GeminiFunctionDeclaration[] = definitions.map((t) => ({
     name: t.name,
     description: t.description ?? "",
-    parameters: (t.parameters as Record<string, unknown>) ?? {
-      type: "object",
-      properties: {},
-    },
+    parameters: toGeminiSchema(t.parameters),
   }));
   return [{ functionDeclarations: decls }];
 }
@@ -288,6 +317,17 @@ export function buildGeminiLiveSetupMessage(opts: GeminiSetupOptions): Record<st
       parts: [{ text: opts.instructions }],
     },
     tools: toolDefinitionsToGeminiTools(opts.tools),
+    realtimeInputConfig: {
+      automaticActivityDetection: {
+        disabled: false,
+        prefixPaddingMs: 300,
+        silenceDurationMs: 700,
+        startOfSpeechSensitivity: "START_SENSITIVITY_HIGH",
+        endOfSpeechSensitivity: "END_SENSITIVITY_HIGH",
+      },
+      activityHandling: "START_OF_ACTIVITY_INTERRUPTS",
+      turnCoverage: "TURN_INCLUDES_ONLY_ACTIVITY",
+    },
     inputAudioTranscription:
       opts.inputLanguageCodes && opts.inputLanguageCodes.length > 0
         ? { languageCodes: opts.inputLanguageCodes }

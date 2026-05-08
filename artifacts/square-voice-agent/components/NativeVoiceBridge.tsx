@@ -4,10 +4,11 @@
  * Hidden WebView used on iOS/Android to run the **WebSocket + Web Audio**
  * voice pipeline for providers other than `openai_realtime_webrtc`.
  *
- * The relay endpoints (`/api/realtime`, `/api/realtime/gemini`,
- * `/api/realtime/hume`, `/api/realtime/deepgram-agent`,
- * `/api/realtime/modular`) all expect PCM16 mono 24 kHz audio chunks framed
- * exactly the way the web build sends them. Rather than re-implementing PCM
+ * The relay endpoints (`/api/realtime`, `/api/realtime/hume`,
+ * `/api/realtime/deepgram-agent`, `/api/realtime/modular`) expect PCM16 mono
+ * 24 kHz audio chunks framed exactly the way the web build sends them. Gemini
+ * Live expects PCM16 mono 16 kHz, so this bridge switches capture rate based on
+ * the relay URL. Rather than re-implementing PCM
  * capture and streaming playback in raw React Native, we host the existing
  * web pipeline inside a `<WebView>` and bridge JSON events both ways via
  * `postMessage`. This is the lowest-risk way to let native EAS builds honor
@@ -83,6 +84,8 @@ const BRIDGE_HTML = `<!doctype html>
   var workletNode = null;
   var nextPlayTime = 0;
   var running = false;
+  var captureRate = 24000;
+  var frameSize = 1440;
 
   // base64 helpers
   function abToB64(buf){
@@ -127,21 +130,21 @@ const BRIDGE_HTML = `<!doctype html>
 
   var WORKLET_SRC = ""
     + "class PcmProcessor extends AudioWorkletProcessor{"
-    + "constructor(){super();this._buf=new Float32Array(1440);this._pos=0;this._active=true;"
+    + "constructor(options){super();var opts=(options&&options.processorOptions)||{};this._frameSize=opts.frameSize||1440;this._buf=new Float32Array(this._frameSize);this._pos=0;this._active=true;"
     + "this.port.onmessage=(e)=>{if(e.data==='stop')this._active=false;};}"
     + "process(inputs){if(!this._active)return false;"
     + "var ch=inputs[0]&&inputs[0][0];if(!ch)return true;"
     + "for(var i=0;i<ch.length;i++){this._buf[this._pos++]=ch[i];"
-    + "if(this._pos>=1440){var pcm=new Int16Array(1440);"
-    + "for(var j=0;j<1440;j++){var s=this._buf[j];"
+    + "if(this._pos>=this._frameSize){var pcm=new Int16Array(this._frameSize);"
+    + "for(var j=0;j<this._frameSize;j++){var s=this._buf[j];"
     + "pcm[j]=s<0?Math.max(-32768,s*32768):Math.min(32767,s*32767);}"
     + "this.port.postMessage(pcm.buffer,[pcm.buffer]);"
-    + "this._buf=new Float32Array(1440);this._pos=0;}}return true;}}"
+    + "this._buf=new Float32Array(this._frameSize);this._pos=0;}}return true;}}"
     + "registerProcessor('pcm-processor',PcmProcessor);";
 
   function startCapture(){
     return navigator.mediaDevices.getUserMedia({
-      audio: { sampleRate: 24000, channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+      audio: { sampleRate: captureRate, channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true }
     }).then(function(stream){
       mediaStream = stream;
       var src = audioCtx.createMediaStreamSource(stream);
@@ -149,16 +152,16 @@ const BRIDGE_HTML = `<!doctype html>
       var url = URL.createObjectURL(blob);
       return audioCtx.audioWorklet.addModule(url).then(function(){
         URL.revokeObjectURL(url);
-        var w = new AudioWorkletNode(audioCtx, "pcm-processor");
+        var w = new AudioWorkletNode(audioCtx, "pcm-processor", { processorOptions: { frameSize: frameSize } });
         workletNode = w;
         w.port.onmessage = function(e){
           if (!ws || ws.readyState !== 1) return;
           var b64 = abToB64(e.data);
-          ws.send(JSON.stringify({ type: "input_audio_buffer.append", audio: b64 }));
+          ws.send(JSON.stringify({ type: "input_audio_buffer.append", audio: b64, sample_rate: captureRate }));
         };
         src.connect(w);
         w.connect(audioCtx.destination);
-        log("audio worklet streaming @24k");
+        log("audio worklet streaming @" + captureRate + "Hz");
       }).catch(function(err){
         log("worklet failed, using ScriptProcessor: " + (err && err.message));
         var p = audioCtx.createScriptProcessor(2048, 1, 1);
@@ -166,7 +169,7 @@ const BRIDGE_HTML = `<!doctype html>
           if (!ws || ws.readyState !== 1) return;
           var f32 = e.inputBuffer.getChannelData(0);
           var b64 = f32ToPcm16B64(f32);
-          ws.send(JSON.stringify({ type: "input_audio_buffer.append", audio: b64 }));
+          ws.send(JSON.stringify({ type: "input_audio_buffer.append", audio: b64, sample_rate: captureRate }));
         };
         src.connect(p);
         p.connect(audioCtx.destination);
@@ -191,8 +194,11 @@ const BRIDGE_HTML = `<!doctype html>
   function doConnect(wsUrl){
     if (running) return;
     running = true;
+    var isGemini = String(wsUrl || "").indexOf("/api/realtime/gemini") >= 0;
+    captureRate = isGemini ? 16000 : 24000;
+    frameSize = isGemini ? 640 : 1440;
     try {
-      audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: captureRate });
     } catch (e) {
       RNPost({ type: "ws_error", message: "AudioContext failed: " + (e && e.message) });
       running = false;

@@ -76,10 +76,11 @@ function resamplePcm16Base64(base64Pcm: string, fromRate: number, toRate: number
 
 function geminiClientMessageFromRealtimeEvent(event: Record<string, unknown>): string | null {
   if (event.type === "input_audio_buffer.append" && typeof event.audio === "string") {
+    const inputRate = Number(event.sample_rate ?? event.sampleRate ?? 24000);
     return JSON.stringify({
       realtimeInput: {
         audio: {
-          data: resamplePcm16Base64(event.audio, 24000, 16000),
+          data: resamplePcm16Base64(event.audio, Number.isFinite(inputRate) ? inputRate : 24000, 16000),
           mimeType: "audio/pcm;rate=16000",
         },
       },
