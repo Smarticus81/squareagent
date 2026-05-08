@@ -13,7 +13,7 @@ import type { VoicePipelineProvider } from "../voice-pipeline/types";
  * Premium tiers are priced for multi-venue groups, where the platform
  * replaces full-time night-of-event coordinators.
  *
- * Underlying voice cost (gpt-realtime-mini and Gemini Flash Live native
+ * Underlying voice cost (gpt-realtime-2 and Gemini Flash Live native
  * audio): ~$0.04 per spoken minute on average. Margins below assume 60%
  * inclusion of plan minutes get used in a typical month.
  */

@@ -103,7 +103,7 @@ interface VoiceAgentContextType {
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const OPENAI_REALTIME_MODEL = "gpt-realtime-mini";
+const OPENAI_REALTIME_MODEL = "gpt-realtime-2";
 
 // AudioWorklet processor source for web path only
 const WORKLET_SRC = `
