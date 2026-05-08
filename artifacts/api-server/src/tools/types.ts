@@ -42,6 +42,12 @@ export interface ToolContext {
   squareClient?: SquareClient;
   /** Unique request ID for tracing (optional). */
   requestId?: string;
+  /** Authenticated user id — used by general-assistant tools to scope queries. */
+  userId?: number;
+  /** Active venue id — used to filter knowledge / db / email rows by venue. */
+  venueId?: number;
+  /** Which assistant kind invoked this tool. Helpful for branching behaviour. */
+  assistantKind?: "venue" | "general";
 }
 
 // ── Result returned by every tool executor ────────────────────────────────────

@@ -116,6 +116,9 @@ importers:
       openai:
         specifier: ^6.29.0
         version: 6.29.0(ws@8.19.0)(zod@3.25.76)
+      pg:
+        specifier: ^8.20.0
+        version: 8.20.0
       stripe:
         specifier: ^20.4.1
         version: 20.4.1(@types/node@25.3.5)
@@ -141,6 +144,9 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 25.3.5
+      '@types/pg':
+        specifier: ^8.11.10
+        version: 8.18.0
       '@types/ws':
         specifier: ^8.18.1
         version: 8.18.1

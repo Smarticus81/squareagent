@@ -16,16 +16,27 @@ import catalogManagementSkill from "./catalog-management.skill";
 import ordersReportingSkill from "./orders-reporting.skill";
 import customersPaymentsSkill from "./customers-payments.skill";
 import teamLaborSkill from "./team-labor.skill";
+import generalAssistantSkill from "./general-assistant.skill";
 
-// ── All registered skills ───────────────────────────────────────────────────
-
-export const ALL_SKILLS: SkillDefinition[] = [
+// Skills tied to the venue (Square) assistant. Listed in plan-tier order so
+// `getSkillsForPlan` returns a stable ordering.
+const VENUE_SKILLS: SkillDefinition[] = [
   posSkill,
   inventorySkill,
   catalogManagementSkill,
   ordersReportingSkill,
   customersPaymentsSkill,
   teamLaborSkill,
+];
+
+// Skills available to the general (non-venue) assistant.
+const GENERAL_SKILLS: SkillDefinition[] = [generalAssistantSkill];
+
+// ── All registered skills ───────────────────────────────────────────────────
+
+export const ALL_SKILLS: SkillDefinition[] = [
+  ...VENUE_SKILLS,
+  ...GENERAL_SKILLS,
 ];
 
 // ── Skill selection ─────────────────────────────────────────────────────────
@@ -36,20 +47,35 @@ export const ALL_SKILLS: SkillDefinition[] = [
  */
 export function getSkillsForPlan(plan: string): SkillDefinition[] {
   const allowedTiers = PLAN_TIERS[plan] ?? PLAN_TIERS.trial;
-  return ALL_SKILLS.filter((skill) => allowedTiers.includes(skill.tier));
+  return VENUE_SKILLS.filter((skill) => allowedTiers.includes(skill.tier));
+}
+
+export interface GetSkillsOptions {
+  /** Which assistant flavour the session is for. Defaults to "venue". */
+  kind?: "venue" | "general";
+  /** Optional explicit skill-id allow list. */
+  skillIds?: string[];
 }
 
 /**
- * Get skills for a session, optionally filtered by specific skill IDs.
- * If no skillIds provided, returns all skills for the plan.
+ * Get skills for a session.
+ *  - kind="venue"   → plan-filtered venue skills (POS, inventory, …)
+ *  - kind="general" → general-assistant skill bundle (web/knowledge/email/db)
+ *
+ * Backwards-compatible: callers passing a `string[]` as second arg still get
+ * the venue-skill behaviour they had before.
  */
 export function getSkillsForSession(
   plan: string,
-  skillIds?: string[],
+  optsOrSkillIds?: GetSkillsOptions | string[],
 ): SkillDefinition[] {
-  const planSkills = getSkillsForPlan(plan);
-  if (!skillIds || skillIds.length === 0) return planSkills;
-  return planSkills.filter((s) => skillIds.includes(s.id));
+  const opts: GetSkillsOptions = Array.isArray(optsOrSkillIds)
+    ? { skillIds: optsOrSkillIds }
+    : optsOrSkillIds ?? {};
+  const kind = opts.kind ?? "venue";
+  const pool = kind === "general" ? GENERAL_SKILLS : getSkillsForPlan(plan);
+  if (!opts.skillIds || opts.skillIds.length === 0) return pool;
+  return pool.filter((s) => opts.skillIds!.includes(s.id));
 }
 
 // ── Build tools/executors/instructions from selected skills ─────────────────

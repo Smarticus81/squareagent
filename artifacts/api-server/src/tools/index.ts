@@ -23,6 +23,10 @@ import * as payments from "./payments";
 import * as team from "./team";
 import * as reports from "./reports";
 import * as workflows from "../workflows";
+import * as generalWeb from "./general/web";
+import * as generalKnowledge from "./general/knowledge";
+import * as generalEmail from "./general/email";
+import * as generalDatabase from "./general/database";
 
 // Re-export types for convenience
 export type { ToolDefinition, ToolExecutor, ToolContext, ToolResult } from "./types";
@@ -41,6 +45,10 @@ const DOMAIN_MODULES = [
   team,
   reports,
   workflows,
+  generalWeb,
+  generalKnowledge,
+  generalEmail,
+  generalDatabase,
 ];
 
 // ── ALL_TOOLS: flat array of every tool definition (for OpenAI session config) ─

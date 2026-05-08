@@ -111,7 +111,7 @@ function buildDemoRealtimeSessionConfig(voice: string, speed: number) {
 }
 
 function buildRealtimeSessionConfig(voice: string, speed: number, catalog: CatalogItem[], order: OrderItem[], plan?: string, assistantKind: "venue" | "general" = "venue") {
-  const skills = getSkillsForSession(plan ?? "trial");
+  const skills = getSkillsForSession(plan ?? "trial", { kind: assistantKind });
   const tools = buildToolsFromSkills(skills);
   const instructions = buildInstructionsFromSkills(skills, catalog, order, assistantKind);
 
@@ -234,7 +234,6 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
   }
 
   const plan = req.subscription?.plan ?? "trial";
-  const skills = getSkillsForSession(plan);
   let provider = "openai_realtime_webrtc";
   let providerConfig: Record<string, unknown> = {};
   let assistantKind: "venue" | "general" = "venue";
@@ -269,6 +268,8 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
   // "general" if the venue has no Square credentials — that way the assistant
   // never pretends to be a bar manager when there's no POS to talk to.
   if (assistantKind === "venue" && !squareToken) assistantKind = "general";
+
+  const skills = getSkillsForSession(plan, { kind: assistantKind });
 
   if (provider !== "openai_realtime_webrtc") {
     res.status(409).json({
@@ -387,30 +388,41 @@ router.post("/tools", requireAuth as any, requirePlan() as any, async (req: any,
     return;
   }
 
-  if (!venueId) {
-    res.status(400).json({ error: "venueId is required" });
-    return;
-  }
-
-  // Server-side credential lookup
+  // venueId is optional: general-assistant tools (web/knowledge/email/db) don't
+  // need a Square-connected venue. We still try to load credentials when one
+  // is provided so venue-mode tools keep working.
   let squareToken = "";
   let squareLocationId = "";
-  const creds = await getCachedCredentials(req.user.id, Number(venueId));
-  if (creds) {
-    squareToken = creds.squareToken;
-    squareLocationId = creds.squareLocationId;
+  if (venueId) {
+    const creds = await getCachedCredentials(req.user.id, Number(venueId));
+    if (creds) {
+      squareToken = creds.squareToken;
+      squareLocationId = creds.squareLocationId;
+    }
   }
 
   // Use a stable fallback so multiple tool calls in one conversation share the same session
-  const sessionId = String(session_id || `rt-${req.user.id}-${venueId}`);
-  const session = getOrCreateSession(sessionId, squareToken, squareLocationId, req.user.id, Number(venueId));
+  const sessionId = String(session_id || `rt-${req.user.id}-${venueId ?? "general"}`);
+  const session = getOrCreateSession(sessionId, squareToken, squareLocationId, req.user.id, Number(venueId ?? 0));
 
   try {
     const squareClient = squareToken ? new SquareClient(squareToken, squareLocationId) : undefined;
+    const assistantKind: "venue" | "general" = squareToken ? "venue" : "general";
     const { result, command } = await executeToolCall(
       tool_name,
       args,
-      { catalog, order, squareToken, squareLocationId, session, squareClient, requestId: sessionId },
+      {
+        catalog,
+        order,
+        squareToken,
+        squareLocationId,
+        session,
+        squareClient,
+        requestId: sessionId,
+        userId: req.user.id,
+        venueId: Number(venueId),
+        assistantKind,
+      },
     );
 
     if (session.items.length === 0 && !session.squareOrderId) {

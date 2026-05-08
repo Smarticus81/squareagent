@@ -291,3 +291,88 @@ export const usageEventsTable = pgTable("usage_events", {
   index("usage_events_org_idx").on(table.organizationId),
   index("usage_events_kind_idx").on(table.kind),
 ]);
+
+
+// -- Knowledge Base ------------------------------------------------------------
+// User-uploaded text documents that the general assistant can search via the
+// search_knowledge tool. Embeddings are stored as JSONB number[] so we can
+// run cosine similarity in JS without requiring pgvector.
+
+export const knowledgeDocumentsTable = pgTable("knowledge_documents", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  venueId: integer("venue_id").references(() => venuesTable.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  sourceType: text("source_type").notNull().default("text"), // text | url | pdf
+  sourceUri: text("source_uri"),
+  byteCount: integer("byte_count").notNull().default(0),
+  chunkCount: integer("chunk_count").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("knowledge_documents_user_idx").on(table.userId),
+  index("knowledge_documents_venue_idx").on(table.venueId),
+]);
+
+export type KnowledgeDocument = typeof knowledgeDocumentsTable.$inferSelect;
+
+export const knowledgeChunksTable = pgTable("knowledge_chunks", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  documentId: uuid("document_id").notNull().references(() => knowledgeDocumentsTable.id, { onDelete: "cascade" }),
+  userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  venueId: integer("venue_id").references(() => venuesTable.id, { onDelete: "cascade" }),
+  chunkIndex: integer("chunk_index").notNull(),
+  text: text("text").notNull(),
+  /** OpenAI text-embedding-3-small produces 1536 floats. Stored as number[]. */
+  embedding: jsonb("embedding").notNull().default([]),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("knowledge_chunks_document_idx").on(table.documentId),
+  index("knowledge_chunks_user_idx").on(table.userId),
+]);
+
+export type KnowledgeChunk = typeof knowledgeChunksTable.$inferSelect;
+
+// -- External Postgres Connections ---------------------------------------------
+// Per-user read-only Postgres connection strings exposed to the
+// query_database tool. Stored in plaintext for now — TODO: encrypt at rest.
+
+export const externalDbConnectionsTable = pgTable("external_db_connections", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  venueId: integer("venue_id").references(() => venuesTable.id, { onDelete: "cascade" }),
+  label: text("label").notNull().default("default"),
+  kind: text("kind").notNull().default("postgres"), // postgres only for now
+  connectionString: text("connection_string").notNull(),
+  /** Optional schema hint shown to the model so it knows what to query. */
+  schemaHint: text("schema_hint"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("external_db_connections_user_idx").on(table.userId),
+]);
+
+export type ExternalDbConnection = typeof externalDbConnectionsTable.$inferSelect;
+
+// -- Email Credentials ---------------------------------------------------------
+// Per-user outbound email config. Currently supports Resend (API key).
+
+export const emailCredentialsTable = pgTable("email_credentials", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  venueId: integer("venue_id").references(() => venuesTable.id, { onDelete: "cascade" }),
+  provider: text("provider").notNull().default("resend"), // resend | smtp
+  apiKey: text("api_key"),
+  fromAddress: text("from_address").notNull(),
+  fromName: text("from_name"),
+  /** Optional SMTP fields for provider=smtp. */
+  smtpHost: text("smtp_host"),
+  smtpPort: integer("smtp_port"),
+  smtpUser: text("smtp_user"),
+  smtpPass: text("smtp_pass"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("email_credentials_user_idx").on(table.userId),
+]);
+
+export type EmailCredential = typeof emailCredentialsTable.$inferSelect;
