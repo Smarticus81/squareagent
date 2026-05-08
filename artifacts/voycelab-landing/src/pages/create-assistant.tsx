@@ -79,6 +79,7 @@ export default function CreateAssistant() {
     return pending ? `Hey ${pending}` : "Hey Bev";
   });
   const [wakePhraseTouched, setWakePhraseTouched] = useState(false);
+  const [assistantKind, setAssistantKind] = useState<"venue" | "general">("venue");
   const [serviceId, setServiceId] = useState<string>("square");
   const [venueId, setVenueId] = useState<number | null>(null);
   const [room, setRoom] = useState<RoomSettingValue>("bar");
@@ -386,6 +387,48 @@ export default function CreateAssistant() {
                 title="Name your assistant."
                 subtitle="This is the name people will use when they speak to it."
               >
+                <Field label="Assistant type">
+                  <div className="grid sm:grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAssistantKind("general");
+                        setServiceId("generic_rest");
+                      }}
+                      className="text-left vl-panel p-4 transition-colors"
+                      style={{
+                        borderColor: assistantKind === "general" ? "rgba(124,110,245,0.6)" : undefined,
+                        background: assistantKind === "general" ? "rgba(124,110,245,0.06)" : undefined,
+                      }}
+                    >
+                      <p className="text-[14px] font-semibold" style={{ color: "var(--color-vl-ink)" }}>
+                        General business assistant
+                      </p>
+                      <p className="text-[12px] mt-1" style={{ color: "var(--color-vl-ink-faint)" }}>
+                        Learns your business. Reasons over docs, answers questions, can connect to email, web, databases, and your tools through a custom REST integration.
+                      </p>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAssistantKind("venue");
+                        setServiceId("square");
+                      }}
+                      className="text-left vl-panel p-4 transition-colors"
+                      style={{
+                        borderColor: assistantKind === "venue" ? "rgba(124,110,245,0.6)" : undefined,
+                        background: assistantKind === "venue" ? "rgba(124,110,245,0.06)" : undefined,
+                      }}
+                    >
+                      <p className="text-[14px] font-semibold" style={{ color: "var(--color-vl-ink)" }}>
+                        Venue assistant (Square)
+                      </p>
+                      <p className="text-[12px] mt-1" style={{ color: "var(--color-vl-ink-faint)" }}>
+                        Hospitality operations: orders, inventory, sales, terminal, team. Connects directly to Square POS.
+                      </p>
+                    </button>
+                  </div>
+                </Field>
                 <Field label="Assistant name">
                   <input
                     autoFocus

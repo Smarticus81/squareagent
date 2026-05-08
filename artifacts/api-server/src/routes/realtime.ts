@@ -14,7 +14,7 @@
 
 import { Router } from "express";
 import { requireAuth, requirePlan } from "./auth";
-import { db, agentProfilesTable } from "@workspace/db";
+import { db, agentProfilesTable, serviceConnectionsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import {
   syncLiveOrderToSquare,
@@ -40,8 +40,12 @@ import {
 
 const router = Router();
 
-const OPENAI_REALTIME_MODEL = process.env.OPENAI_REALTIME_MODEL ?? "gpt-realtime-mini";
-// GA realtime mini model for low-latency voice.
+const OPENAI_REALTIME_MODEL = process.env.OPENAI_REALTIME_MODEL ?? "gpt-realtime-2";
+// gpt-realtime-2 — GA speech-to-speech model with reasoning support.
+// We default reasoning.effort to "low" per the Realtime prompting guide:
+// strong production trade-off between latency and reasoning quality.
+const OPENAI_REALTIME_REASONING_EFFORT =
+  (process.env.OPENAI_REALTIME_REASONING_EFFORT as "minimal" | "low" | "medium" | "high" | undefined) ?? "low";
 
 /** Public landing-page voice demo: answers questions about VoyceLab only (no tools, no POS). */
 const VOYCELAB_DEMO_INSTRUCTIONS = `You are Bev, the VoyceLab voice guide. You answer questions about VoyceLab only.
@@ -83,6 +87,8 @@ function buildDemoRealtimeSessionConfig(voice: string, speed: number) {
     model: OPENAI_REALTIME_MODEL,
     instructions: VOYCELAB_DEMO_INSTRUCTIONS,
     output_modalities: ["audio" as const],
+    // Realtime prompting guide: keep reasoning low for snappy demo Q&A.
+    reasoning: { effort: OPENAI_REALTIME_REASONING_EFFORT },
     audio: {
       input: {
         format: { type: "audio/pcm" as const, rate: 24000 as const },
@@ -104,10 +110,10 @@ function buildDemoRealtimeSessionConfig(voice: string, speed: number) {
   };
 }
 
-function buildRealtimeSessionConfig(voice: string, speed: number, catalog: CatalogItem[], order: OrderItem[], plan?: string) {
+function buildRealtimeSessionConfig(voice: string, speed: number, catalog: CatalogItem[], order: OrderItem[], plan?: string, assistantKind: "venue" | "general" = "venue") {
   const skills = getSkillsForSession(plan ?? "trial");
   const tools = buildToolsFromSkills(skills);
-  const instructions = buildInstructionsFromSkills(skills, catalog, order);
+  const instructions = buildInstructionsFromSkills(skills, catalog, order, assistantKind);
 
   return {
     type: "realtime" as const,
@@ -116,6 +122,10 @@ function buildRealtimeSessionConfig(voice: string, speed: number, catalog: Catal
     tools,
     tool_choice: "auto" as const,
     output_modalities: ["audio" as const],
+    // Realtime prompting guide: "low" effort is the recommended starting point
+    // for production voice agents — keeps barge-in snappy while adding reasoning
+    // to tool dispatch and multi-step requests.
+    reasoning: { effort: OPENAI_REALTIME_REASONING_EFFORT },
     audio: {
       input: {
         format: { type: "audio/pcm" as const, rate: 24000 as const },
@@ -227,12 +237,14 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
   const skills = getSkillsForSession(plan);
   let provider = "openai_realtime_webrtc";
   let providerConfig: Record<string, unknown> = {};
+  let assistantKind: "venue" | "general" = "venue";
 
   if (agentProfileId) {
     const [profile] = await db
       .select({
         voicePipelineProvider: agentProfilesTable.voicePipelineProvider,
         voicePipelineConfig: agentProfilesTable.voicePipelineConfig,
+        connectedServiceId: agentProfilesTable.connectedServiceId,
       })
       .from(agentProfilesTable)
       .where(eq(agentProfilesTable.id, String(agentProfileId)))
@@ -240,8 +252,23 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
     if (profile) {
       provider = profile.voicePipelineProvider;
       providerConfig = (profile.voicePipelineConfig as Record<string, unknown>) ?? {};
+      // Infer assistant kind from the connected service: any non-Square provider
+      // (generic_rest, webhook, mock, etc.) gets the general business persona.
+      if (profile.connectedServiceId) {
+        const [conn] = await db
+          .select({ provider: serviceConnectionsTable.provider })
+          .from(serviceConnectionsTable)
+          .where(eq(serviceConnectionsTable.id, profile.connectedServiceId))
+          .limit(1);
+        if (conn && conn.provider !== "square") assistantKind = "general";
+      }
     }
   }
+
+  // Without an agent profile (or with no connected service), fall back to
+  // "general" if the venue has no Square credentials — that way the assistant
+  // never pretends to be a bar manager when there's no POS to talk to.
+  if (assistantKind === "venue" && !squareToken) assistantKind = "general";
 
   if (provider !== "openai_realtime_webrtc") {
     res.status(409).json({
@@ -272,6 +299,7 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
           catalog,
           order,
           plan,
+          assistantKind,
         ),
       }),
     });

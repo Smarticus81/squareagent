@@ -358,7 +358,7 @@ export function VoiceOrb({
         let average = 0;
 
         if (analyser && frequency && smooth) {
-          analyser.getByteFrequencyData(frequency);
+          analyser.getByteFrequencyData(frequency as Uint8Array<ArrayBuffer>);
           const lower = 2;
           const upper = Math.min(frequency.length - 1, Math.floor(frequency.length * 0.64));
           const usable = Math.max(1, upper - lower);

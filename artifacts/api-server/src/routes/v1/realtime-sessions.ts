@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { v1 } from "@workspace/api-zod";
-import { db, agentProfilesTable } from "@workspace/db";
+import { db, agentProfilesTable, serviceConnectionsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import {
   jsonError,
@@ -50,6 +50,21 @@ router.post("/", async (req: Request, res: Response) => {
   const plan = (req as Request & { subscription?: { plan?: string } }).subscription?.plan ?? "trial";
   const skills = getSkillsForSession(plan);
   const tools = buildToolsFromSkills(skills);
+
+  // Infer assistant kind from the connected service. Anything that isn't
+  // Square gets the general business persona.
+  let assistantKind: "venue" | "general" = "venue";
+  if (profile.connectedServiceId) {
+    const [conn] = await db
+      .select({ provider: serviceConnectionsTable.provider })
+      .from(serviceConnectionsTable)
+      .where(eq(serviceConnectionsTable.id, profile.connectedServiceId))
+      .limit(1);
+    if (conn && conn.provider !== "square") assistantKind = "general";
+  } else {
+    assistantKind = "general";
+  }
+
   // Catalog is fetched lazily; build instructions with empty catalog/order — the
   // skill instructions still describe capabilities. The PWA can reload catalog
   // and request a new session.
@@ -57,7 +72,7 @@ router.post("/", async (req: Request, res: Response) => {
     `You are ${profile.displayName}, a voice agent for this venue. ` +
     (profile.personality ? `${profile.personality} ` : "") +
     "\n\n" +
-    buildInstructionsFromSkills(skills, [], []);
+    buildInstructionsFromSkills(skills, [], [], assistantKind);
 
   try {
     const session = await adapter.createSession({

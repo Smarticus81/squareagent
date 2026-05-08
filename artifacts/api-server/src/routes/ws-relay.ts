@@ -38,7 +38,7 @@ import {
 } from "../voice-pipelines/modular/relay";
 
 const JWT_SECRET = process.env.JWT_SECRET ?? "voycelab-dev-secret-change-in-production";
-const OPENAI_REALTIME_MODEL = "gpt-realtime-mini";
+const OPENAI_REALTIME_MODEL = process.env.OPENAI_REALTIME_MODEL ?? "gpt-realtime-2";
 
 type RelayKind = "openai" | "gemini" | "hume" | "deepgram-agent" | "modular";
 

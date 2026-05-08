@@ -9,7 +9,9 @@ import type {
   VoicePipelineInterruptContext,
 } from "@workspace/voicelab-core/voice-pipeline";
 
-const REALTIME_MODEL = process.env.OPENAI_REALTIME_MODEL ?? "gpt-realtime-mini";
+const REALTIME_MODEL = process.env.OPENAI_REALTIME_MODEL ?? "gpt-realtime-2";
+const REALTIME_REASONING_EFFORT =
+  (process.env.OPENAI_REALTIME_REASONING_EFFORT as "minimal" | "low" | "medium" | "high" | undefined) ?? "low";
 
 function readApiKey(): string {
   return process.env.OPENAI_API_KEY ?? process.env.AI_INTEGRATIONS_OPENAI_API_KEY ?? "";
@@ -70,6 +72,7 @@ export class OpenAiRealtimeWebRtcAdapter implements VoicePipelineAdapter {
       tools: ctx.providerOptions.tools as unknown[] | undefined,
       tool_choice: "auto" as const,
       output_modalities: ["audio" as const],
+      reasoning: { effort: REALTIME_REASONING_EFFORT },
       audio: {
         input: {
           format: { type: "audio/pcm" as const, rate: 24000 as const },
