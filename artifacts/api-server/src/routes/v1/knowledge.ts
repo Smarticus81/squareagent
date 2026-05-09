@@ -19,6 +19,11 @@ import {
 } from "@workspace/db";
 import { requireAuth } from "../auth";
 import { embedBatch, chunkText } from "../../lib/embeddings";
+import { encrypt } from "../../lib/secrets";
+import { extractTextFromUpload } from "../../lib/document-extract";
+import multer from "multer";
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 const router = Router();
 
@@ -162,7 +167,7 @@ router.post("/database-connections", async (req: Request, res: Response): Promis
   if (existing.length > 0) {
     await db
       .update(externalDbConnectionsTable)
-      .set({ connectionString, schemaHint: schemaHint ?? null, updatedAt: new Date() })
+      .set({ connectionString: encrypt(connectionString), schemaHint: schemaHint ?? null, updatedAt: new Date() })
       .where(eq(externalDbConnectionsTable.id, existing[0].id));
     res.json({ id: existing[0].id, label, updated: true });
     return;
@@ -170,7 +175,7 @@ router.post("/database-connections", async (req: Request, res: Response): Promis
 
   const [row] = await db
     .insert(externalDbConnectionsTable)
-    .values({ userId, label, connectionString, schemaHint: schemaHint ?? null })
+    .values({ userId, label, connectionString: encrypt(connectionString), schemaHint: schemaHint ?? null })
     .returning();
   res.status(201).json({ id: row.id, label: row.label });
 });
@@ -230,7 +235,7 @@ router.put("/email", async (req: Request, res: Response): Promise<void> => {
       .update(emailCredentialsTable)
       .set({
         provider,
-        apiKey: apiKey ?? existing[0].apiKey,
+        apiKey: apiKey ? encrypt(apiKey) : existing[0].apiKey,
         fromAddress,
         fromName: fromName ?? null,
         updatedAt: new Date(),
@@ -242,10 +247,72 @@ router.put("/email", async (req: Request, res: Response): Promise<void> => {
 
   const [row] = await db
     .insert(emailCredentialsTable)
-    .values({ userId, provider, apiKey, fromAddress, fromName: fromName ?? null })
+    .values({ userId, provider, apiKey: apiKey ? encrypt(apiKey) : null, fromAddress, fromName: fromName ?? null })
     .returning();
   res.status(201).json({ id: row.id });
 });
+
+// ── File upload (PDF / DOCX / TXT) ───────────────────────────────────────────
+
+router.post(
+  "/documents/upload",
+  upload.single("file"),
+  async (req: Request, res: Response): Promise<void> => {
+    const userId = (req as any).user.id as number;
+    const file = (req as any).file as { originalname: string; mimetype: string; buffer: Buffer } | undefined;
+    if (!file) {
+      res.status(400).json({ error: "file is required (multipart field 'file')" });
+      return;
+    }
+    const title = String(req.body?.title || file.originalname || "Untitled").slice(0, 200);
+    try {
+      const text = await extractTextFromUpload(file.buffer, file.originalname, file.mimetype);
+      if (!text || text.trim().length === 0) {
+        res.status(400).json({ error: "Could not extract any text from the uploaded file." });
+        return;
+      }
+      const chunks = chunkText(text);
+      if (chunks.length === 0) {
+        res.status(400).json({ error: "Document produced 0 chunks" });
+        return;
+      }
+      const embeddings = await embedBatch(chunks);
+
+      const [doc] = await db
+        .insert(knowledgeDocumentsTable)
+        .values({
+          userId,
+          title,
+          sourceType: file.mimetype || "upload",
+          sourceUri: file.originalname,
+          byteCount: file.buffer.length,
+          chunkCount: chunks.length,
+        })
+        .returning();
+
+      await db.insert(knowledgeChunksTable).values(
+        chunks.map((c, i) => ({
+          documentId: doc.id,
+          userId,
+          chunkIndex: i,
+          text: c,
+          embedding: embeddings[i],
+        })),
+      );
+
+      res.status(201).json({
+        id: doc.id,
+        title: doc.title,
+        chunkCount: doc.chunkCount,
+        byteCount: doc.byteCount,
+        createdAt: doc.createdAt,
+      });
+    } catch (e: any) {
+      console.error("[Knowledge] upload error:", e.message);
+      res.status(500).json({ error: e.message });
+    }
+  },
+);
 
 router.delete("/email", async (req: Request, res: Response): Promise<void> => {
   const userId = (req as any).user.id as number;

@@ -6,6 +6,7 @@ import { VoiceRail } from "@/components/voice-rail";
 import {
   ArrowRight,
   ArrowUpRight,
+  Database,
   ExternalLink,
   Loader2,
   Mic,
@@ -235,6 +236,14 @@ export default function Command() {
             hint="Connect Square, disconnect, or add a location."
             href="/services"
             cta={isConnected ? "Manage" : "Connect"}
+          />
+          <RouterRow
+            icon={<Database className="w-3.5 h-3.5" />}
+            label="Data sources"
+            detail="Knowledge base, database, and email"
+            hint="Power your General Business Assistant."
+            href="/data-sources"
+            cta="Open"
           />
           <RouterRow
             icon={<Cog className="w-3.5 h-3.5" />}

@@ -30,7 +30,9 @@
     "openai": "^6.29.0",
     "stripe": "^20.4.1",
     "ws": "^8.19.0",
-    "pg": "^8.20.0"
+    "pg": "^8.20.0",
+    "pdf-parse": "^1.1.1",
+    "mammoth": "^1.8.0"
   },
   "devDependencies": {
     "@types/bcryptjs": "^3.0.0",

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * WebSocket Relay for Native (iOS/Android) Voice Agent
  *
  * Accepts WebSocket upgrades on /api/realtime path.
@@ -148,7 +148,7 @@ function geminiServerMessagesForRealtimeClient(
   return messages;
 }
 
-// ── Auth helper ───────────────────────────────────────────────────────────────
+// â”€â”€ Auth helper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const ADMIN_EMAILS = (process.env.ADMIN_EMAILS ?? "tmusoni@thinkertons.com")
   .split(",")
@@ -209,20 +209,20 @@ async function lookupVenueCredentials(userId: number, venueId: number) {
   return { squareToken: venue.squareAccessToken ?? "", squareLocationId: venue.squareLocationId ?? "" };
 }
 
-// ── System prompt (same as realtime.ts) ───────────────────────────────────────
+// â”€â”€ System prompt (same as realtime.ts) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function buildInstructions(catalog: CatalogItem[], order: OrderItem[]): string {
   const catalogStr =
     catalog.length > 0
       ? catalog.map((c) => `  - ${c.name}: $${c.price.toFixed(2)}${c.category ? ` (${c.category})` : ""}`).join("\n")
-      : "  (No catalog loaded — ask user to connect Square)";
+      : "  (No catalog loaded â€” ask user to connect Square)";
 
   const orderStr =
     order.length > 0
       ? order.map((i) => `  - ${i.quantity}x ${i.item_name} @ $${i.price.toFixed(2)}`).join("\n")
       : "  (empty)";
 
-  return `You are VoyceLab, the voice operating assistant for modern venues running on Square. You have FULL access to the Square platform — ordering, inventory, catalog management, customer profiles, payments, team management, reporting, and more.
+  return `You are VoyceLab, the voice operating assistant for modern venues running on Square. You have FULL access to the Square platform â€” ordering, inventory, catalog management, customer profiles, payments, team management, reporting, and more.
 
 Catalog:
 ${catalogStr}
@@ -239,9 +239,9 @@ Persona:
 POS Rules:
 - Add items only on clear intent ("two Fosters", "tab a Bud Light").
 - Never submit until they say so ("ring it up", "close it out", "that's it"). Confirm the total first.
-- If browsing or chatting, just talk — don't push items.
+- If browsing or chatting, just talk â€” don't push items.
 - Say prices naturally: "eight fifty" not "$8.50". Never say "dollar sign".
-- Items appear on the Square POS in real-time — mention naturally: "got it, that's on the screen".
+- Items appear on the Square POS in real-time â€” mention naturally: "got it, that's on the screen".
 - If they want to pay by card, use send_to_terminal. Say "sent to the terminal, go ahead and tap".
 
 Catalog Management:
@@ -268,12 +268,12 @@ Reports:
 - Top sellers, hourly breakdowns, item performance, daily summaries available.
 
 General:
-- Noisy environment — ignore background chatter. Only respond to direct speech. If unclear, ask.
-- Never guess on destructive actions — always confirm.
-- You have full Square access — use it confidently.`;
+- Noisy environment â€” ignore background chatter. Only respond to direct speech. If unclear, ask.
+- Never guess on destructive actions â€” always confirm.
+- You have full Square access â€” use it confidently.`;
 }
 
-// ── Attach WebSocket server to HTTP server ────────────────────────────────────
+// â”€â”€ Attach WebSocket server to HTTP server â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export function attachWebSocketRelay(server: Server): void {
   const wss = new WebSocketServer({ noServer: true });
@@ -436,13 +436,13 @@ export function attachWebSocketRelay(server: Server): void {
       pendingFromClient = [];
     });
 
-    // Handle messages FROM OpenAI → relay to client (intercept tool calls)
+    // Handle messages FROM OpenAI â†’ relay to client (intercept tool calls)
     openaiWs.on("message", async (data) => {
       const raw = data.toString();
       let event: Record<string, unknown>;
       try { event = JSON.parse(raw); } catch { clientWs.send(raw); return; }
 
-      // Intercept tool call completion → execute server-side
+      // Intercept tool call completion â†’ execute server-side
       if (event.type === "response.function_call_arguments.done") {
         const toolName = String(event.name ?? "");
         let args: Record<string, unknown> = {};
@@ -454,7 +454,7 @@ export function attachWebSocketRelay(server: Server): void {
         try {
           const { result, command } = await executeToolCall(
             toolName, args,
-            { catalog, order, squareToken: sessionSquareToken, squareLocationId: sessionLocationId, session },
+            { catalog, order, squareToken: sessionSquareToken, squareLocationId: sessionLocationId, session, userId: ctx.userId, venueId: ctx.venueId ?? undefined, assistantKind: sessionSquareToken ? "venue" : "general" },
           );
 
           // Send tool output back to OpenAI
@@ -507,7 +507,7 @@ export function attachWebSocketRelay(server: Server): void {
       if (clientWs.readyState === WebSocket.OPEN) clientWs.close();
     });
 
-    // Handle messages FROM client → relay to OpenAI (intercept context updates)
+    // Handle messages FROM client â†’ relay to OpenAI (intercept context updates)
     clientWs.on("message", (data) => {
       const raw = data.toString();
       let event: Record<string, unknown>;
@@ -517,7 +517,7 @@ export function attachWebSocketRelay(server: Server): void {
         return;
       }
 
-      // Intercept custom context update — update local state, send session.update to OpenAI
+      // Intercept custom context update â€” update local state, send session.update to OpenAI
       if (event.type === "x.context_update") {
         if (Array.isArray(event.catalog)) catalog = event.catalog as CatalogItem[];
         if (Array.isArray(event.order)) order = event.order as OrderItem[];
@@ -569,7 +569,7 @@ export function attachWebSocketRelay(server: Server): void {
   );
 }
 
-// ── Gemini Live relay (BidiGenerateContent over WebSocket) ────────────────────
+// â”€â”€ Gemini Live relay (BidiGenerateContent over WebSocket) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function handleGeminiRelay(clientWs: WebSocket, ctx: RelayCtx): void {
   const apiKey = process.env.GOOGLE_GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY ?? "";
@@ -644,7 +644,7 @@ function handleGeminiRelay(clientWs: WebSocket, ctx: RelayCtx): void {
       return;
     }
 
-    // Setup ack — flush any queued client messages.
+    // Setup ack â€” flush any queued client messages.
     if (event.setupComplete !== undefined) {
       console.log(`[WS-Relay/Gemini] Setup complete for user=${ctx.userId}, ${toolCount()} tools registered`);
       for (const msg of pendingFromClient) upstream.send(msg);
@@ -657,7 +657,7 @@ function handleGeminiRelay(clientWs: WebSocket, ctx: RelayCtx): void {
       return;
     }
 
-    // Tool calls — execute server-side, post results back.
+    // Tool calls â€” execute server-side, post results back.
     const toolCall = event.toolCall as
       | { functionCalls?: Array<{ id?: string; name?: string; args?: Record<string, unknown> }> }
       | undefined;
@@ -672,7 +672,7 @@ function handleGeminiRelay(clientWs: WebSocket, ctx: RelayCtx): void {
           const { result, command } = await executeToolCall(
             name,
             args,
-            { catalog, order, squareToken: sessionSquareToken, squareLocationId: sessionLocationId, session },
+            { catalog, order, squareToken: sessionSquareToken, squareLocationId: sessionLocationId, session, userId: ctx.userId, venueId: ctx.venueId ?? undefined, assistantKind: sessionSquareToken ? "venue" : "general" },
           );
           responses.push({ id, name, response: { result } });
           if (command && clientWs.readyState === WebSocket.OPEN) {
@@ -726,7 +726,7 @@ function handleGeminiRelay(clientWs: WebSocket, ctx: RelayCtx): void {
       return;
     }
 
-    // Custom context update from the PWA — refresh local state and re-send setup.
+    // Custom context update from the PWA â€” refresh local state and re-send setup.
     if (event.type === "x.context_update") {
       if (Array.isArray(event.catalog)) catalog = event.catalog as CatalogItem[];
       if (Array.isArray(event.order)) order = event.order as OrderItem[];
@@ -791,7 +791,7 @@ function handleGeminiRelay(clientWs: WebSocket, ctx: RelayCtx): void {
   });
 }
 
-// ── Hume EVI 3 relay ──────────────────────────────────────────────────────────
+// â”€â”€ Hume EVI 3 relay â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function handleHumeRelay(clientWs: WebSocket, ctx: RelayCtx): void {
   if (!process.env.HUME_API_KEY) {
@@ -861,7 +861,7 @@ function handleHumeRelay(clientWs: WebSocket, ctx: RelayCtx): void {
         const { result, command } = await executeToolCall(
           name,
           args,
-          { catalog, order, squareToken: sessionSquareToken, squareLocationId: sessionLocationId, session },
+          { catalog, order, squareToken: sessionSquareToken, squareLocationId: sessionLocationId, session, userId: ctx.userId, venueId: ctx.venueId ?? undefined, assistantKind: sessionSquareToken ? "venue" : "general" },
         );
         upstream.send(JSON.stringify({
           type: "tool_response",
@@ -934,7 +934,7 @@ function handleHumeRelay(clientWs: WebSocket, ctx: RelayCtx): void {
   });
 }
 
-// ── Deepgram Voice Agent API relay ────────────────────────────────────────────
+// â”€â”€ Deepgram Voice Agent API relay â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function handleDeepgramAgentRelay(clientWs: WebSocket, ctx: RelayCtx): void {
   if (!process.env.DEEPGRAM_API_KEY) {
@@ -975,7 +975,7 @@ function handleDeepgramAgentRelay(clientWs: WebSocket, ctx: RelayCtx): void {
 
   upstream.on("message", async (data, isBinary) => {
     if (isBinary) {
-      // Binary frames are TTS audio chunks — forward to client as-is.
+      // Binary frames are TTS audio chunks â€” forward to client as-is.
       if (clientWs.readyState === WebSocket.OPEN) clientWs.send(data);
       return;
     }
@@ -1001,7 +1001,7 @@ function handleDeepgramAgentRelay(clientWs: WebSocket, ctx: RelayCtx): void {
         const { result, command } = await executeToolCall(
           name,
           args,
-          { catalog, order, squareToken: sessionSquareToken, squareLocationId: sessionLocationId, session },
+          { catalog, order, squareToken: sessionSquareToken, squareLocationId: sessionLocationId, session, userId: ctx.userId, venueId: ctx.venueId ?? undefined, assistantKind: sessionSquareToken ? "venue" : "general" },
         );
         upstream.send(JSON.stringify({
           type: "FunctionCallResponse",

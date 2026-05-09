@@ -10,6 +10,7 @@
 import { db, externalDbConnectionsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import pg from "pg";
+import { decrypt } from "../../lib/secrets";
 import type { ToolDefinition, ToolExecutor, ToolContext, ToolResult } from "../types";
 
 const { Client } = pg;
@@ -62,7 +63,7 @@ async function queryDatabase(args: Record<string, unknown>, ctx: ToolContext): P
   }
 
   const client = new Client({
-    connectionString: conn.connectionString,
+    connectionString: decrypt(conn.connectionString),
     statement_timeout: 8_000,
     query_timeout: 8_000,
   });

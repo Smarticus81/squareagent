@@ -9,6 +9,7 @@
 
 import { db, emailCredentialsTable } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
+import { decrypt } from "../../lib/secrets";
 import type { ToolDefinition, ToolExecutor, ToolContext, ToolResult } from "../types";
 
 export const definitions: ToolDefinition[] = [
@@ -51,12 +52,13 @@ async function sendEmail(args: Record<string, unknown>, ctx: ToolContext): Promi
 
   if (creds.provider === "resend") {
     if (!creds.apiKey) return { result: "send_email: Resend API key is missing." };
+    const apiKey = decrypt(creds.apiKey);
     const cc = args.cc ? String(args.cc).trim() : undefined;
     try {
       const res = await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${creds.apiKey}`,
+          Authorization: `Bearer ${apiKey}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({

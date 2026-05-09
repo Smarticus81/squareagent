@@ -14,6 +14,7 @@ import Assistants from "@/pages/assistants";
 import CreateAssistant from "@/pages/create-assistant";
 import ConnectedServices from "@/pages/connected-services";
 import Settings from "@/pages/settings";
+import DataSources from "@/pages/data-sources";
 import Pricing from "@/pages/pricing";
 import NotFound from "@/pages/not-found";
 
@@ -64,6 +65,7 @@ function Router() {
         <Route path="/assistants" component={Assistants} />
         <Route path="/assistants/new" component={CreateAssistant} />
         <Route path="/services" component={ConnectedServices} />
+        <Route path="/data-sources" component={DataSources} />
         <Route path="/settings" component={Settings} />
         <Route path="/pricing" component={Pricing} />
         {/* Legacy redirects so existing links still resolve */}
