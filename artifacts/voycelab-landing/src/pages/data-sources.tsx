@@ -440,9 +440,8 @@ function EmailSection() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
-  const [provider, setProvider] = useState<"resend" | "gmail">("resend");
+  const [provider, setProvider] = useState<"resend" | "gmail_oauth">("gmail_oauth");
   const [apiKey, setApiKey] = useState("");
-  const [appPassword, setAppPassword] = useState("");
   const [fromAddress, setFromAddress] = useState("");
   const [fromName, setFromName] = useState("");
 
@@ -455,7 +454,7 @@ function EmailSection() {
       if (data.email) {
         setFromAddress(data.email.fromAddress ?? "");
         setFromName(data.email.fromName ?? "");
-        if (data.email.provider === "gmail" || data.email.provider === "resend") {
+        if (data.email.provider === "gmail_oauth" || data.email.provider === "resend") {
           setProvider(data.email.provider);
         }
       }
@@ -467,36 +466,91 @@ function EmailSection() {
     load();
   }, []);
 
-  const save = async (e: FormEvent) => {
+  const saveResend = async (e: FormEvent) => {
     e.preventDefault();
     if (!fromAddress.trim()) return;
     setBusy(true);
     setMsg(null);
     try {
-      const body: Record<string, unknown> = {
-        provider,
-        fromAddress: fromAddress.trim(),
-        fromName: fromName.trim() || undefined,
-      };
-      if (provider === "resend") {
-        body.apiKey = apiKey.trim() || undefined;
-      } else if (provider === "gmail") {
-        const cleaned = appPassword.replace(/\s+/g, "");
-        if (cleaned) body.appPassword = cleaned;
-      }
       const res = await fetch("/api/v1/knowledge/email", {
         method: "PUT",
         headers: getHeaders(),
-        body: JSON.stringify(body),
+        body: JSON.stringify({
+          provider: "resend",
+          apiKey: apiKey.trim() || undefined,
+          fromAddress: fromAddress.trim(),
+          fromName: fromName.trim() || undefined,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Save failed");
       setMsg({ tone: "ok", text: "Email config saved." });
       setApiKey("");
-      setAppPassword("");
       await load();
     } catch (err) {
       setMsg({ tone: "error", text: err instanceof Error ? err.message : "Save failed" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const connectGmail = async () => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const params = new URLSearchParams();
+      if (fromName.trim()) params.set("fromName", fromName.trim());
+      const res = await fetch(`/api/oauth/google/start?${params}`, { headers: getAuthHeader() });
+      const data = await res.json();
+      if (!res.ok || !data.url) throw new Error(data.error || "Failed to start Gmail OAuth");
+
+      // Clear any stale signal then open the popup.
+      try { localStorage.removeItem("voycelab_gmail_oauth_result"); } catch {}
+      const popup = window.open(data.url, "gmail-oauth", "width=520,height=640");
+      if (!popup) throw new Error("Popup blocked. Allow popups and try again.");
+      const popupRef = popup;
+
+      // Poll localStorage (works even if the popup ends up cross-origin temporarily).
+      await new Promise<void>((resolve, reject) => {
+        const start = Date.now();
+        const onMessage = (ev: MessageEvent) => {
+          if (ev.data?.type === "gmail-oauth-result") {
+            cleanup();
+            ev.data.ok ? resolve() : reject(new Error(ev.data.error || "Authorization failed"));
+          }
+        };
+        window.addEventListener("message", onMessage);
+        const interval = window.setInterval(() => {
+          try {
+            const raw = localStorage.getItem("voycelab_gmail_oauth_result");
+            if (raw) {
+              localStorage.removeItem("voycelab_gmail_oauth_result");
+              const payload = JSON.parse(raw);
+              cleanup();
+              payload.ok ? resolve() : reject(new Error(payload.error || "Authorization failed"));
+              return;
+            }
+          } catch {}
+          if (popupRef.closed && Date.now() - start > 1500) {
+            cleanup();
+            reject(new Error("Popup was closed before authorization completed."));
+          }
+          if (Date.now() - start > 5 * 60 * 1000) {
+            cleanup();
+            reject(new Error("Authorization timed out."));
+          }
+        }, 500);
+        function cleanup() {
+          window.removeEventListener("message", onMessage);
+          window.clearInterval(interval);
+          try { popupRef.close(); } catch {}
+        }
+      });
+
+      setMsg({ tone: "ok", text: "Gmail connected." });
+      await load();
+    } catch (err) {
+      setMsg({ tone: "error", text: err instanceof Error ? err.message : "Connection failed" });
     } finally {
       setBusy(false);
     }
@@ -507,12 +561,12 @@ function EmailSection() {
     await fetch("/api/v1/knowledge/email", { method: "DELETE", headers: getAuthHeader() });
     setConfig(null);
     setApiKey("");
-    setAppPassword("");
     setFromAddress("");
     setFromName("");
   };
 
-  const sameProvider = config ? config.provider === provider : true;
+  const isGmailConnected = config?.provider === "gmail_oauth";
+  const isResendConnected = config?.provider === "resend";
 
   return (
     <section className="rounded-2xl border border-black/[0.06] bg-white p-6 shadow-[0_1px_2px_rgba(10,10,11,0.04),0_8px_24px_-12px_rgba(10,10,11,0.10)]">
@@ -527,8 +581,17 @@ function EmailSection() {
       {loading ? (
         <div className="text-sm" style={{ color: "rgba(10,10,11,0.52)" }}>Loading...</div>
       ) : (
-        <form onSubmit={save} className="space-y-3">
-          <div className="flex gap-2 mb-2" role="tablist" aria-label="Email provider">
+        <>
+          <div className="flex gap-2 mb-4" role="tablist" aria-label="Email provider">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={provider === "gmail_oauth"}
+              onClick={() => setProvider("gmail_oauth")}
+              className={`px-3 py-1.5 text-sm rounded-full border transition ${provider === "gmail_oauth" ? "bg-[color:var(--color-vl-ink)] text-white border-transparent" : "border-black/[0.12] text-[color:var(--color-vl-ink)]"}`}
+            >
+              Gmail
+            </button>
             <button
               type="button"
               role="tab"
@@ -538,90 +601,101 @@ function EmailSection() {
             >
               Resend
             </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={provider === "gmail"}
-              onClick={() => setProvider("gmail")}
-              className={`px-3 py-1.5 text-sm rounded-full border transition ${provider === "gmail" ? "bg-[color:var(--color-vl-ink)] text-white border-transparent" : "border-black/[0.12] text-[color:var(--color-vl-ink)]"}`}
-            >
-              Gmail
-            </button>
           </div>
 
-          {provider === "resend" ? (
-            <p className="text-[13px]" style={{ color: "rgba(10,10,11,0.55)" }}>
-              Plug in a <a href="https://resend.com" target="_blank" rel="noreferrer" className="underline" style={{ color: "var(--color-vl-accent)" }}>Resend</a> API key. Best for sending from a verified custom domain.
-            </p>
-          ) : (
-            <p className="text-[13px]" style={{ color: "rgba(10,10,11,0.55)" }}>
-              Sends through your own Gmail account via SMTP. Requires 2-Step Verification turned on, then a 16-character <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noreferrer" className="underline" style={{ color: "var(--color-vl-accent)" }}>App Password</a> (Google blocks regular passwords for SMTP). Daily limit ≈ 500 emails.
-            </p>
-          )}
+          {provider === "gmail_oauth" ? (
+            <div className="space-y-3">
+              <p className="text-[13px]" style={{ color: "rgba(10,10,11,0.55)" }}>
+                Sign in with Google to grant VoyceLab the <code className="rounded px-1" style={{ background: "rgba(10,10,11,0.06)" }}>gmail.send</code> scope. Mail is sent from your Gmail address — no app password, no SMTP setup. Daily limit ≈ 500 emails. You can revoke access any time at <a href="https://myaccount.google.com/permissions" target="_blank" rel="noreferrer" className="underline" style={{ color: "var(--color-vl-accent)" }}>your Google Account</a>.
+              </p>
 
-          <div className="grid md:grid-cols-2 gap-3">
-            <input
-              type="email"
-              placeholder={provider === "gmail" ? "Your Gmail address (e.g. you@gmail.com)" : "From address (e.g. ops@yourdomain.com)"}
-              value={fromAddress}
-              onChange={(e) => setFromAddress(e.target.value)}
-              className="bg-white border border-black/[0.12] rounded-lg px-3 py-2 text-sm text-[color:var(--color-vl-ink)] placeholder:text-black/35"
-              required
-            />
-            <input
-              type="text"
-              placeholder="From name (optional)"
-              value={fromName}
-              onChange={(e) => setFromName(e.target.value)}
-              className="bg-white border border-black/[0.12] rounded-lg px-3 py-2 text-sm text-[color:var(--color-vl-ink)] placeholder:text-black/35"
-            />
-          </div>
-          {provider === "resend" ? (
-            <input
-              type="password"
-              placeholder={config && sameProvider ? "Resend API key (leave blank to keep current)" : "Resend API key (re_…)"}
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              className="w-full bg-white border border-black/[0.12] rounded-lg px-3 py-2 text-sm font-mono text-[color:var(--color-vl-ink)] placeholder:text-black/35"
-              autoComplete="new-password"
-            />
+              {isGmailConnected ? (
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm flex items-center justify-between">
+                  <span style={{ color: "var(--color-vl-ink)" }}>Connected as <strong>{config?.fromAddress}</strong></span>
+                </div>
+              ) : null}
+
+              <input
+                type="text"
+                placeholder="From name (optional, e.g. Acme Bar)"
+                value={fromName}
+                onChange={(e) => setFromName(e.target.value)}
+                className="w-full bg-white border border-black/[0.12] rounded-lg px-3 py-2 text-sm text-[color:var(--color-vl-ink)] placeholder:text-black/35"
+              />
+
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={connectGmail}
+                  disabled={busy}
+                  className="vl-btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm font-medium disabled:opacity-50"
+                >
+                  {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                  {isGmailConnected ? "Reconnect Gmail" : "Connect Gmail"}
+                </button>
+                {config && (
+                  <button
+                    type="button"
+                    onClick={remove}
+                    className="vl-btn-outline inline-flex items-center gap-2 px-4 py-2 text-sm"
+                  >
+                    <Trash2 className="w-4 h-4" /> Disconnect
+                  </button>
+                )}
+              </div>
+            </div>
           ) : (
-            <input
-              type="password"
-              placeholder={config && sameProvider ? "App Password (leave blank to keep current)" : "16-character App Password (e.g. abcd efgh ijkl mnop)"}
-              value={appPassword}
-              onChange={(e) => setAppPassword(e.target.value)}
-              className="w-full bg-white border border-black/[0.12] rounded-lg px-3 py-2 text-sm font-mono text-[color:var(--color-vl-ink)] placeholder:text-black/35"
-              autoComplete="new-password"
-            />
+            <form onSubmit={saveResend} className="space-y-3">
+              <p className="text-[13px]" style={{ color: "rgba(10,10,11,0.55)" }}>
+                Plug in a <a href="https://resend.com" target="_blank" rel="noreferrer" className="underline" style={{ color: "var(--color-vl-accent)" }}>Resend</a> API key. Best for sending from a verified custom domain.
+              </p>
+              <div className="grid md:grid-cols-2 gap-3">
+                <input
+                  type="email"
+                  placeholder="From address (e.g. ops@yourdomain.com)"
+                  value={fromAddress}
+                  onChange={(e) => setFromAddress(e.target.value)}
+                  className="bg-white border border-black/[0.12] rounded-lg px-3 py-2 text-sm text-[color:var(--color-vl-ink)] placeholder:text-black/35"
+                  required
+                />
+                <input
+                  type="text"
+                  placeholder="From name (optional)"
+                  value={fromName}
+                  onChange={(e) => setFromName(e.target.value)}
+                  className="bg-white border border-black/[0.12] rounded-lg px-3 py-2 text-sm text-[color:var(--color-vl-ink)] placeholder:text-black/35"
+                />
+              </div>
+              <input
+                type="password"
+                placeholder={isResendConnected ? "Resend API key (leave blank to keep current)" : "Resend API key (re_…)"}
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                className="w-full bg-white border border-black/[0.12] rounded-lg px-3 py-2 text-sm font-mono text-[color:var(--color-vl-ink)] placeholder:text-black/35"
+                autoComplete="new-password"
+              />
+              <div className="flex gap-3">
+                <button
+                  type="submit"
+                  disabled={busy || !fromAddress.trim() || (!isResendConnected && !apiKey.trim())}
+                  className="vl-btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm font-medium disabled:opacity-50"
+                >
+                  {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                  {isResendConnected ? "Update" : "Save"}
+                </button>
+                {config && (
+                  <button
+                    type="button"
+                    onClick={remove}
+                    className="vl-btn-outline inline-flex items-center gap-2 px-4 py-2 text-sm"
+                  >
+                    <Trash2 className="w-4 h-4" /> Disconnect
+                  </button>
+                )}
+              </div>
+            </form>
           )}
-          <div className="flex gap-3">
-            <button
-              type="submit"
-              disabled={
-                busy ||
-                !fromAddress.trim() ||
-                (!sameProvider && provider === "resend" && !apiKey.trim()) ||
-                (!sameProvider && provider === "gmail" && !appPassword.trim()) ||
-                (!config && provider === "resend" && !apiKey.trim()) ||
-                (!config && provider === "gmail" && !appPassword.trim())
-              }
-              className="vl-btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm font-medium disabled:opacity-50"
-            >
-              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-              {config ? "Update" : "Save"}
-            </button>
-            {config && (
-              <button
-                type="button"
-                onClick={remove}
-                className="vl-btn-outline inline-flex items-center gap-2 px-4 py-2 text-sm"
-              >
-                <Trash2 className="w-4 h-4" /> Disconnect
-              </button>
-            )}
-          </div>
-        </form>
+        </>
       )}
 
       {msg && (

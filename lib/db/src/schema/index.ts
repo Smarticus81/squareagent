@@ -334,7 +334,7 @@ export type KnowledgeChunk = typeof knowledgeChunksTable.$inferSelect;
 
 // -- External Postgres Connections ---------------------------------------------
 // Per-user read-only Postgres connection strings exposed to the
-// query_database tool. Stored in plaintext for now — TODO: encrypt at rest.
+// query_database tool. Stored in plaintext for now ï¿½ TODO: encrypt at rest.
 
 export const externalDbConnectionsTable = pgTable("external_db_connections", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -354,21 +354,24 @@ export const externalDbConnectionsTable = pgTable("external_db_connections", {
 export type ExternalDbConnection = typeof externalDbConnectionsTable.$inferSelect;
 
 // -- Email Credentials ---------------------------------------------------------
-// Per-user outbound email config. Currently supports Resend (API key).
+// Per-user outbound email config. Supports Resend (api_key), Gmail via SMTP
+// app password (smtp_*), and Gmail via OAuth2 (oauth_refresh_token).
 
 export const emailCredentialsTable = pgTable("email_credentials", {
   id: uuid("id").defaultRandom().primaryKey(),
   userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
   venueId: integer("venue_id").references(() => venuesTable.id, { onDelete: "cascade" }),
-  provider: text("provider").notNull().default("resend"), // resend | smtp
+  provider: text("provider").notNull().default("resend"), // resend | gmail | gmail_oauth | smtp
   apiKey: text("api_key"),
   fromAddress: text("from_address").notNull(),
   fromName: text("from_name"),
-  /** Optional SMTP fields for provider=smtp. */
+  /** Optional SMTP fields for provider=smtp / gmail. */
   smtpHost: text("smtp_host"),
   smtpPort: integer("smtp_port"),
   smtpUser: text("smtp_user"),
   smtpPass: text("smtp_pass"),
+  /** OAuth2 refresh token (encrypted) for provider=gmail_oauth. */
+  oauthRefreshToken: text("oauth_refresh_token"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (table) => [

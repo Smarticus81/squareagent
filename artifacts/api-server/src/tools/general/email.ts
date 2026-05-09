@@ -8,6 +8,7 @@
 import { db, emailCredentialsTable } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 import nodemailer from "nodemailer";
+import { google } from "googleapis";
 import { decrypt } from "../../lib/secrets";
 import type { ToolDefinition, ToolExecutor, ToolContext, ToolResult } from "../types";
 
@@ -102,6 +103,66 @@ async function sendEmail(args: Record<string, unknown>, ctx: ToolContext): Promi
       return { result: `Email sent to ${to} (id=${data.id ?? "unknown"}).` };
     } catch (e: any) {
       return { result: `send_email error: ${e.message}` };
+    }
+  }
+
+  if (creds.provider === "gmail_oauth") {
+    if (!creds.oauthRefreshToken) {
+      return { result: "send_email: Gmail account is not connected. Reconnect Gmail in the dashboard." };
+    }
+    const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID;
+    const clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET;
+    if (!clientId || !clientSecret) {
+      return { result: "send_email: Gmail OAuth is not configured on the server." };
+    }
+    let refreshToken: string;
+    try {
+      refreshToken = decrypt(creds.oauthRefreshToken);
+    } catch {
+      return { result: "send_email: failed to decrypt Gmail credentials." };
+    }
+    try {
+      const oauth2 = new google.auth.OAuth2(clientId, clientSecret);
+      oauth2.setCredentials({ refresh_token: refreshToken });
+      const gmail = google.gmail({ version: "v1", auth: oauth2 });
+
+      const cc = args.cc ? String(args.cc).trim() : undefined;
+      const fromHeader = creds.fromName
+        ? `${creds.fromName} <${creds.fromAddress}>`
+        : creds.fromAddress;
+
+      // Build a minimal RFC 5322 message and base64url-encode it.
+      const lines = [
+        `From: ${fromHeader}`,
+        `To: ${to}`,
+        ...(cc ? [`Cc: ${cc}`] : []),
+        `Subject: ${subject.replace(/[\r\n]+/g, " ")}`,
+        "MIME-Version: 1.0",
+        "Content-Type: text/plain; charset=UTF-8",
+        "Content-Transfer-Encoding: 7bit",
+        "",
+        body,
+      ];
+      const raw = Buffer.from(lines.join("\r\n"), "utf8")
+        .toString("base64")
+        .replace(/\+/g, "-")
+        .replace(/\//g, "_")
+        .replace(/=+$/, "");
+
+      const send = await gmail.users.messages.send({
+        userId: "me",
+        requestBody: { raw },
+      });
+      return { result: `Email sent to ${to} (id=${send.data.id ?? "unknown"}).` };
+    } catch (e: any) {
+      const msg = String(e?.message ?? e);
+      if (/invalid_grant/i.test(msg)) {
+        return {
+          result:
+            "send_email: Gmail authorization expired or was revoked. Reconnect Gmail in the dashboard.",
+        };
+      }
+      return { result: `send_email error: ${msg.slice(0, 240)}` };
     }
   }
 
