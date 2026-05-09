@@ -440,7 +440,9 @@ function EmailSection() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
+  const [provider, setProvider] = useState<"resend" | "gmail">("resend");
   const [apiKey, setApiKey] = useState("");
+  const [appPassword, setAppPassword] = useState("");
   const [fromAddress, setFromAddress] = useState("");
   const [fromName, setFromName] = useState("");
 
@@ -453,6 +455,9 @@ function EmailSection() {
       if (data.email) {
         setFromAddress(data.email.fromAddress ?? "");
         setFromName(data.email.fromName ?? "");
+        if (data.email.provider === "gmail" || data.email.provider === "resend") {
+          setProvider(data.email.provider);
+        }
       }
     } finally {
       setLoading(false);
@@ -468,20 +473,27 @@ function EmailSection() {
     setBusy(true);
     setMsg(null);
     try {
+      const body: Record<string, unknown> = {
+        provider,
+        fromAddress: fromAddress.trim(),
+        fromName: fromName.trim() || undefined,
+      };
+      if (provider === "resend") {
+        body.apiKey = apiKey.trim() || undefined;
+      } else if (provider === "gmail") {
+        const cleaned = appPassword.replace(/\s+/g, "");
+        if (cleaned) body.appPassword = cleaned;
+      }
       const res = await fetch("/api/v1/knowledge/email", {
         method: "PUT",
         headers: getHeaders(),
-        body: JSON.stringify({
-          provider: "resend",
-          apiKey: apiKey.trim() || undefined,
-          fromAddress: fromAddress.trim(),
-          fromName: fromName.trim() || undefined,
-        }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Save failed");
       setMsg({ tone: "ok", text: "Email config saved." });
       setApiKey("");
+      setAppPassword("");
       await load();
     } catch (err) {
       setMsg({ tone: "error", text: err instanceof Error ? err.message : "Save failed" });
@@ -495,30 +507,62 @@ function EmailSection() {
     await fetch("/api/v1/knowledge/email", { method: "DELETE", headers: getAuthHeader() });
     setConfig(null);
     setApiKey("");
+    setAppPassword("");
     setFromAddress("");
     setFromName("");
   };
+
+  const sameProvider = config ? config.provider === provider : true;
 
   return (
     <section className="rounded-2xl border border-black/[0.06] bg-white p-6 shadow-[0_1px_2px_rgba(10,10,11,0.04),0_8px_24px_-12px_rgba(10,10,11,0.10)]">
       <div className="flex items-center gap-3 mb-4">
         <Mail className="w-5 h-5" style={{ color: "var(--color-vl-accent)" }} />
-        <h2 className="text-xl font-semibold" style={{ color: "var(--color-vl-ink)" }}>Email (Resend)</h2>
+        <h2 className="text-xl font-semibold" style={{ color: "var(--color-vl-ink)" }}>Email</h2>
       </div>
-      <p className="text-[14px] mb-6" style={{ color: "rgba(10,10,11,0.62)" }}>
-        Plug in a <a href="https://resend.com" target="_blank" rel="noreferrer" className="underline" style={{ color: "var(--color-vl-accent)" }}>Resend</a> API key
-        and the <code className="rounded px-1" style={{ color: "var(--color-vl-ink)", background: "rgba(10,10,11,0.06)" }}>send_email</code> tool will deliver from your verified address. The
-        assistant always reads the recipient + subject back to you before sending.
+      <p className="text-[14px] mb-4" style={{ color: "rgba(10,10,11,0.62)" }}>
+        Choose how outbound mail is sent. The <code className="rounded px-1" style={{ color: "var(--color-vl-ink)", background: "rgba(10,10,11,0.06)" }}>send_email</code> tool delivers from this address — the assistant always reads the recipient and subject back to you before sending.
       </p>
 
       {loading ? (
         <div className="text-sm" style={{ color: "rgba(10,10,11,0.52)" }}>Loading...</div>
       ) : (
         <form onSubmit={save} className="space-y-3">
+          <div className="flex gap-2 mb-2" role="tablist" aria-label="Email provider">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={provider === "resend"}
+              onClick={() => setProvider("resend")}
+              className={`px-3 py-1.5 text-sm rounded-full border transition ${provider === "resend" ? "bg-[color:var(--color-vl-ink)] text-white border-transparent" : "border-black/[0.12] text-[color:var(--color-vl-ink)]"}`}
+            >
+              Resend
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={provider === "gmail"}
+              onClick={() => setProvider("gmail")}
+              className={`px-3 py-1.5 text-sm rounded-full border transition ${provider === "gmail" ? "bg-[color:var(--color-vl-ink)] text-white border-transparent" : "border-black/[0.12] text-[color:var(--color-vl-ink)]"}`}
+            >
+              Gmail
+            </button>
+          </div>
+
+          {provider === "resend" ? (
+            <p className="text-[13px]" style={{ color: "rgba(10,10,11,0.55)" }}>
+              Plug in a <a href="https://resend.com" target="_blank" rel="noreferrer" className="underline" style={{ color: "var(--color-vl-accent)" }}>Resend</a> API key. Best for sending from a verified custom domain.
+            </p>
+          ) : (
+            <p className="text-[13px]" style={{ color: "rgba(10,10,11,0.55)" }}>
+              Sends through your own Gmail account via SMTP. Requires 2-Step Verification turned on, then a 16-character <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noreferrer" className="underline" style={{ color: "var(--color-vl-accent)" }}>App Password</a> (Google blocks regular passwords for SMTP). Daily limit ≈ 500 emails.
+            </p>
+          )}
+
           <div className="grid md:grid-cols-2 gap-3">
             <input
               type="email"
-              placeholder="From address (e.g. ops@yourdomain.com)"
+              placeholder={provider === "gmail" ? "Your Gmail address (e.g. you@gmail.com)" : "From address (e.g. ops@yourdomain.com)"}
               value={fromAddress}
               onChange={(e) => setFromAddress(e.target.value)}
               className="bg-white border border-black/[0.12] rounded-lg px-3 py-2 text-sm text-[color:var(--color-vl-ink)] placeholder:text-black/35"
@@ -532,18 +576,36 @@ function EmailSection() {
               className="bg-white border border-black/[0.12] rounded-lg px-3 py-2 text-sm text-[color:var(--color-vl-ink)] placeholder:text-black/35"
             />
           </div>
-          <input
-            type="password"
-            placeholder={config ? "Resend API key (leave blank to keep current)" : "Resend API key (re_…)"}
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            className="w-full bg-white border border-black/[0.12] rounded-lg px-3 py-2 text-sm font-mono text-[color:var(--color-vl-ink)] placeholder:text-black/35"
-            autoComplete="new-password"
-          />
+          {provider === "resend" ? (
+            <input
+              type="password"
+              placeholder={config && sameProvider ? "Resend API key (leave blank to keep current)" : "Resend API key (re_…)"}
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              className="w-full bg-white border border-black/[0.12] rounded-lg px-3 py-2 text-sm font-mono text-[color:var(--color-vl-ink)] placeholder:text-black/35"
+              autoComplete="new-password"
+            />
+          ) : (
+            <input
+              type="password"
+              placeholder={config && sameProvider ? "App Password (leave blank to keep current)" : "16-character App Password (e.g. abcd efgh ijkl mnop)"}
+              value={appPassword}
+              onChange={(e) => setAppPassword(e.target.value)}
+              className="w-full bg-white border border-black/[0.12] rounded-lg px-3 py-2 text-sm font-mono text-[color:var(--color-vl-ink)] placeholder:text-black/35"
+              autoComplete="new-password"
+            />
+          )}
           <div className="flex gap-3">
             <button
               type="submit"
-              disabled={busy || !fromAddress.trim() || (!config && !apiKey.trim())}
+              disabled={
+                busy ||
+                !fromAddress.trim() ||
+                (!sameProvider && provider === "resend" && !apiKey.trim()) ||
+                (!sameProvider && provider === "gmail" && !appPassword.trim()) ||
+                (!config && provider === "resend" && !apiKey.trim()) ||
+                (!config && provider === "gmail" && !appPassword.trim())
+              }
               className="vl-btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm font-medium disabled:opacity-50"
             >
               {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
@@ -563,7 +625,7 @@ function EmailSection() {
       )}
 
       {msg && (
-        <div className={`text-sm mt-4 ${msg.tone === "ok" ? "text-emerald-400" : "text-rose-400"}`}>{msg.text}</div>
+        <div className={`text-sm mt-4 ${msg.tone === "ok" ? "text-emerald-600" : "text-rose-600"}`}>{msg.text}</div>
       )}
     </section>
   );

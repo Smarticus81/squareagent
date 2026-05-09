@@ -1,14 +1,13 @@
 /**
- * Outbound email tool. Uses Resend's REST API when an email_credentials row
- * exists for the user. SMTP support is stubbed and returns a clear error.
- *
- * Confirmation policy: the assistant should always read back the recipient,
- * subject, and a 1-line summary of the body before invoking this tool. The
- * tool itself sends immediately — there is no draft / approval step.
+ * Outbound email tool. Supports Resend (REST), Gmail (SMTP via app password),
+ * and generic SMTP. The assistant should always read back recipient, subject,
+ * and a 1-line summary before calling this tool — the tool sends immediately
+ * with no draft step.
  */
 
 import { db, emailCredentialsTable } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
+import nodemailer from "nodemailer";
 import { decrypt } from "../../lib/secrets";
 import type { ToolDefinition, ToolExecutor, ToolContext, ToolResult } from "../types";
 
@@ -103,6 +102,50 @@ async function sendEmail(args: Record<string, unknown>, ctx: ToolContext): Promi
       return { result: `Email sent to ${to} (id=${data.id ?? "unknown"}).` };
     } catch (e: any) {
       return { result: `send_email error: ${e.message}` };
+    }
+  }
+
+  if (creds.provider === "gmail" || creds.provider === "smtp") {
+    const cc = args.cc ? String(args.cc).trim() : undefined;
+    const isGmail = creds.provider === "gmail";
+    const host = isGmail ? "smtp.gmail.com" : (creds.smtpHost ?? "");
+    const port = isGmail ? 465 : (creds.smtpPort ?? 587);
+    const user = isGmail ? (creds.smtpUser ?? creds.fromAddress) : (creds.smtpUser ?? "");
+    const passEnc = isGmail ? creds.smtpPass : creds.smtpPass;
+    if (!host || !user || !passEnc) {
+      return { result: `send_email: ${creds.provider} credentials are incomplete.` };
+    }
+    let pass: string;
+    try {
+      pass = decrypt(passEnc);
+    } catch {
+      return { result: `send_email: failed to decrypt ${creds.provider} password.` };
+    }
+    try {
+      const transporter = nodemailer.createTransport({
+        host,
+        port,
+        secure: port === 465,
+        auth: { user, pass },
+      });
+      const info = await transporter.sendMail({
+        from: creds.fromName ? `${creds.fromName} <${creds.fromAddress}>` : creds.fromAddress,
+        to,
+        ...(cc ? { cc } : {}),
+        subject,
+        text: body,
+      });
+      return { result: `Email sent to ${to} (id=${info.messageId ?? "unknown"}).` };
+    } catch (e: any) {
+      const msg = String(e?.message ?? e);
+      // Map the most common Gmail failure to actionable language.
+      if (isGmail && /Username and Password not accepted|535/i.test(msg)) {
+        return {
+          result:
+            "send_email: Gmail rejected the credentials. Make sure 2-Step Verification is on and you generated a 16-character App Password (not your normal Gmail password).",
+        };
+      }
+      return { result: `send_email error: ${msg.slice(0, 240)}` };
     }
   }
 

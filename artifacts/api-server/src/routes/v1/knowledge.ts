@@ -235,7 +235,17 @@ router.get("/email", async (req: Request, res: Response): Promise<void> => {
 
 router.put("/email", writeLimiter, async (req: Request, res: Response): Promise<void> => {
   const userId = (req as any).user.id as number;
-  const { provider = "resend", apiKey, fromAddress, fromName } = req.body ?? {};
+  const {
+    provider = "resend",
+    apiKey,
+    fromAddress,
+    fromName,
+    appPassword,
+    smtpHost,
+    smtpPort,
+    smtpUser,
+    smtpPass,
+  } = req.body ?? {};
   if (!fromAddress || typeof fromAddress !== "string") {
     res.status(400).json({ error: "fromAddress is required" });
     return;
@@ -244,6 +254,15 @@ router.put("/email", writeLimiter, async (req: Request, res: Response): Promise<
     res.status(400).json({ error: "apiKey is required for the Resend provider" });
     return;
   }
+  if (provider === "gmail") {
+    // Initial setup must include the app password; updates may omit it to keep current.
+    // The handler below will preserve the existing password when appPassword is blank.
+  } else if (provider === "smtp") {
+    if (!smtpHost || !smtpUser) {
+      res.status(400).json({ error: "smtpHost and smtpUser are required for the SMTP provider" });
+      return;
+    }
+  }
 
   const existing = await db
     .select()
@@ -251,14 +270,28 @@ router.put("/email", writeLimiter, async (req: Request, res: Response): Promise<
     .where(eq(emailCredentialsTable.userId, userId))
     .limit(1);
 
+  // Resolve which encrypted password column to write. For gmail/smtp we reuse smtpPass.
+  const incomingSmtpPass: string | undefined =
+    provider === "gmail" ? (appPassword ? String(appPassword).replace(/\s+/g, "") : undefined)
+    : provider === "smtp" ? (smtpPass ? String(smtpPass) : undefined)
+    : undefined;
+
   if (existing.length > 0) {
+    if (provider === "gmail" && !existing[0].smtpPass && !incomingSmtpPass) {
+      res.status(400).json({ error: "appPassword is required when first connecting Gmail" });
+      return;
+    }
     await db
       .update(emailCredentialsTable)
       .set({
         provider,
-        apiKey: apiKey ? encrypt(apiKey) : existing[0].apiKey,
+        apiKey: provider === "resend" ? (apiKey ? encrypt(apiKey) : existing[0].apiKey) : null,
         fromAddress,
         fromName: fromName ?? null,
+        smtpHost: provider === "gmail" ? "smtp.gmail.com" : (provider === "smtp" ? (smtpHost ?? null) : null),
+        smtpPort: provider === "gmail" ? 465 : (provider === "smtp" ? (typeof smtpPort === "number" ? smtpPort : 587) : null),
+        smtpUser: provider === "gmail" ? (smtpUser ?? fromAddress) : (provider === "smtp" ? (smtpUser ?? null) : null),
+        smtpPass: incomingSmtpPass ? encrypt(incomingSmtpPass) : (provider === existing[0].provider ? existing[0].smtpPass : null),
         updatedAt: new Date(),
       })
       .where(eq(emailCredentialsTable.id, existing[0].id));
@@ -266,9 +299,28 @@ router.put("/email", writeLimiter, async (req: Request, res: Response): Promise<
     return;
   }
 
+  if (provider === "gmail" && !incomingSmtpPass) {
+    res.status(400).json({ error: "appPassword is required for the Gmail provider" });
+    return;
+  }
+  if (provider === "smtp" && !incomingSmtpPass) {
+    res.status(400).json({ error: "smtpPass is required for the SMTP provider" });
+    return;
+  }
+
   const [row] = await db
     .insert(emailCredentialsTable)
-    .values({ userId, provider, apiKey: apiKey ? encrypt(apiKey) : null, fromAddress, fromName: fromName ?? null })
+    .values({
+      userId,
+      provider,
+      apiKey: provider === "resend" && apiKey ? encrypt(apiKey) : null,
+      fromAddress,
+      fromName: fromName ?? null,
+      smtpHost: provider === "gmail" ? "smtp.gmail.com" : (provider === "smtp" ? (smtpHost ?? null) : null),
+      smtpPort: provider === "gmail" ? 465 : (provider === "smtp" ? (typeof smtpPort === "number" ? smtpPort : 587) : null),
+      smtpUser: provider === "gmail" ? (smtpUser ?? fromAddress) : (provider === "smtp" ? (smtpUser ?? null) : null),
+      smtpPass: incomingSmtpPass ? encrypt(incomingSmtpPass) : null,
+    })
     .returning();
   res.status(201).json({ id: row.id });
 });
