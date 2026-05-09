@@ -144,7 +144,7 @@ export default function ConnectedServices() {
         <div className="mb-9 grid gap-6 lg:grid-cols-[1fr_360px] lg:items-end">
           <div>
             <p className="vl-eyebrow">Connected services</p>
-            <h1 className="vl-display mt-4 max-w-[680px] text-[42px] md:text-[62px]" style={{ color: "var(--color-vl-ink)" }}>
+            <h1 className="vl-display mt-4 max-w-[680px] text-[34px] sm:text-[42px] md:text-[62px]" style={{ color: "var(--color-vl-ink)" }}>
               Connect the systems your team already trusts.
             </h1>
             <p className="mt-5 max-w-[640px] text-[16px] leading-relaxed" style={{ color: "var(--color-vl-ink-muted)" }}>

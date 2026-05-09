@@ -154,6 +154,13 @@
   html, body {
     background: hsl(var(--background));
     color: hsl(var(--foreground));
+    /* Prevent rogue horizontal scroll from absolute-positioned decorative elements on mobile. */
+    overflow-x: hidden;
+  }
+
+  /* Friendlier text wrapping on small screens — long words/URLs won't blow out layouts. */
+  body {
+    overflow-wrap: break-word;
   }
 
   body {
@@ -497,6 +504,18 @@
     border-radius: 9999px;
     border: 1px solid rgba(10, 10, 11, 0.06);
     pointer-events: none;
+  }
+
+  /* ── Mobile touch-target safeguards ──────────────────────────── */
+  @media (max-width: 640px) {
+    .vl-btn-primary,
+    .vl-btn-coral,
+    .vl-btn-blue,
+    .vl-btn-outline,
+    .vl-btn-ghost {
+      min-height: 44px;
+      padding: 0.75rem 1.25rem;
+    }
   }
 
   /* Subtle grid background — chatbase-style */

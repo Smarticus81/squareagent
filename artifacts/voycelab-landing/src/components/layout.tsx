@@ -56,9 +56,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
       {!isAuthPage && (
         <header className={`fixed top-0 inset-x-0 z-50 ${isLanding ? "vl-landing-header" : ""}`}>
           <div className="vl-glass">
-            <div className="w-full max-w-[1280px] mx-auto px-6 lg:px-10 h-[72px] flex items-center justify-between gap-4">
-              <Link href="/" className="hover:opacity-90 transition-opacity">
-                <Logo size={isLanding ? "md" : "md"} withTagline={isLanding} />
+            <div className="w-full max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-10 h-[64px] sm:h-[72px] flex items-center justify-between gap-2 sm:gap-4">
+              <Link href="/" className="hover:opacity-90 transition-opacity min-w-0 flex-shrink">
+                <Logo size={isLanding ? "md" : "md"} withTagline={isLanding} hideTaglineOnMobile={isLanding} />
               </Link>
 
               <nav className="hidden md:flex items-center gap-1">
@@ -164,7 +164,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
             {mobileOpen && (
               <div
-                className="md:hidden px-6 py-4 flex flex-col gap-2"
+                className="md:hidden px-4 sm:px-6 py-4 flex flex-col gap-2"
                 style={{
                   borderTop: "1px solid rgba(10, 10, 11,0.08)",
                   background: "rgba(255, 255, 255,0.92)",
@@ -203,15 +203,15 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </header>
       )}
 
-      <main className={`flex-1 flex flex-col ${isAuthPage ? "" : "pt-[72px]"}`}>{children}</main>
+      <main className={`flex-1 flex flex-col ${isAuthPage ? "" : "pt-[64px] sm:pt-[72px]"}`}>{children}</main>
 
       {!isAuthPage && (
         <footer
           className={`mt-auto ${isLanding ? "vl-landing-footer" : ""}`}
           style={{ borderTop: "1px solid rgba(10, 10, 11,0.08)" }}
         >
-          <div className="w-full max-w-[1280px] mx-auto px-6 lg:px-10 py-14">
-            <div className="grid md:grid-cols-[1.6fr_1fr_1fr_1fr] gap-10">
+          <div className="w-full max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-10 py-10 sm:py-14">
+            <div className="grid sm:grid-cols-2 md:grid-cols-[1.6fr_1fr_1fr_1fr] gap-8 md:gap-10">
               <div>
                 <Logo size="md" withTagline />
                 <p

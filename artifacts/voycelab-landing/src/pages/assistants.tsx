@@ -72,7 +72,7 @@ export default function Assistants() {
         <div className="mb-10 flex flex-wrap items-end justify-between gap-5">
           <div>
             <p className="vl-eyebrow">Assistants</p>
-            <h1 className="vl-display mt-4 max-w-[720px] text-[42px] md:text-[62px]" style={{ color: "var(--color-vl-ink)" }}>
+            <h1 className="vl-display mt-4 max-w-[720px] text-[34px] sm:text-[42px] md:text-[62px]" style={{ color: "var(--color-vl-ink)" }}>
               Your team’s voice assistants.
             </h1>
             <p className="mt-5 max-w-[620px] text-[16px] leading-relaxed" style={{ color: "var(--color-vl-ink-muted)" }}>

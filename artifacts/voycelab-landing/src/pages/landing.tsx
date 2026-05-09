@@ -134,11 +134,11 @@ function Hero({ onStart }: { onStart: () => void }) {
               variants={fadeUp}
               className="vl-display mt-5 text-[clamp(2.75rem,6.4vw,4.6rem)]"
             >
-              Ask your
+              The Voice Assistant
               <br />
-              business questions
+              that helps you run your
               <br />
-              <em>by voice.</em>
+              <em>business.</em>
             </motion.h1>
 
             <motion.p
@@ -327,12 +327,23 @@ function MinimalLanding({ onStart }: { onStart: () => void }) {
   );
 }
 
-/* â”€â”€ Hero scene: orbit rings + central waveform sphere + 3 floating assistant cards */
+/* ── Hero scene: orbit rings + central waveform sphere + 3 floating assistant cards */
 function HeroScene() {
   const demo = useVoycelabDemoRealtime();
+  const [orbSize, setOrbSize] = useState<number>(() => {
+    if (typeof window === "undefined") return 420;
+    // Leave at least 32px gutter on each side; cap at 420px.
+    return Math.max(220, Math.min(420, window.innerWidth - 64));
+  });
+  useEffect(() => {
+    const onResize = () =>
+      setOrbSize(Math.max(220, Math.min(420, window.innerWidth - 64)));
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
 
   return (
-    <div className="relative aspect-[1/1.05] max-w-[640px] mx-auto lg:ml-auto">
+    <div className="relative aspect-[1/1.05] w-full max-w-[640px] mx-auto lg:ml-auto">
       {/* Single soft orbit ring â€” anchors the orb without competing with it */}
       <div aria-hidden className="absolute inset-0">
         <div
@@ -344,7 +355,7 @@ function HeroScene() {
       {/* Central voice orb â€” user mic starts the session; particles react to assistant output */}
       <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10">
         <VoiceOrb
-          size={420}
+          size={orbSize}
           outputStream={demo.assistantStream}
           agentState={demo.agentState}
           label={
@@ -362,9 +373,9 @@ function HeroScene() {
         />
       </div>
 
-      {/* Floating command chip #1 â€” POS (top-right) */}
+      {/* Floating command chip #1 â€” POS (top-right) — hidden on narrow screens */}
       <FloatingAssistantCard
-        className="absolute top-[8%] right-[-2%] md:right-[-6%] vl-float-slow"
+        className="hidden sm:block absolute top-[8%] right-[-2%] md:right-[-6%] vl-float-slow"
         index="1"
         title="POS ASSISTANT"
         question="Hey Voyce, split"
@@ -374,7 +385,7 @@ function HeroScene() {
 
       {/* Floating command chip #2 â€” Inventory (right middle) */}
       <FloatingAssistantCard
-        className="absolute top-[48%] right-[-8%] md:right-[-12%] vl-float-medium"
+        className="hidden sm:block absolute top-[48%] right-[-8%] md:right-[-12%] vl-float-medium"
         index="2"
         title="INVENTORY ASSISTANT"
         question="Voyce, do we have"
@@ -384,7 +395,7 @@ function HeroScene() {
 
       {/* Floating command chip #3 â€” Venue (bottom-left) */}
       <FloatingAssistantCard
-        className="absolute bottom-[8%] left-[-8%] md:left-[-14%] vl-float-fast"
+        className="hidden sm:block absolute bottom-[8%] left-[-8%] md:left-[-14%] vl-float-fast"
         index="3"
         title="VENUE ASSISTANT"
         question="Hey Voyce, whatâ€™s"
@@ -1258,7 +1269,7 @@ function VenueOutcomes() {
               className="vl-card p-6 text-center"
             >
               <p
-                className="vl-display text-[40px] md:text-[44px]"
+                className="vl-display text-[30px] sm:text-[40px] md:text-[44px]"
                 style={{ color: "var(--color-vl-coral-deep)" }}
               >
                 {s.value}

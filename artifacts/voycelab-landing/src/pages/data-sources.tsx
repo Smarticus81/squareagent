@@ -88,8 +88,8 @@ export default function DataSources() {
   if (!auth?.user) return null;
 
   return (
-    <div className="flex-1 pt-24 pb-16">
-      <div className="w-full max-w-[960px] mx-auto px-6 lg:px-10">
+    <div className="flex-1 pt-20 sm:pt-24 pb-16">
+      <div className="w-full max-w-[960px] mx-auto px-4 sm:px-6 lg:px-10">
       <Link
         href="/command"
         className="inline-flex items-center gap-2 text-sm mb-6"

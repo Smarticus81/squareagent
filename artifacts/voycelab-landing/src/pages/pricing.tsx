@@ -101,7 +101,7 @@ export default function Pricing() {
 
   return (
     <div className="flex-1 pt-24 pb-24 bg-vl-cream">
-      <div className="w-full max-w-[1180px] mx-auto px-6 lg:px-10">
+      <div className="w-full max-w-[1180px] mx-auto px-4 sm:px-6 lg:px-10">
         <p className="vl-eyebrow">Pricing</p>
         <h1 className="vl-display text-[40px] md:text-[56px] mt-3 max-w-3xl" style={{ color: "var(--color-vl-ink)" }}>
           The cost of giving your venue a voice.

@@ -6,6 +6,8 @@ interface LogoProps {
   size?: "sm" | "md" | "lg" | "xl";
   variant?: "dark" | "light" | "mono";
   withTagline?: boolean;
+  /** When true, the tagline is rendered on sm+ screens only. */
+  hideTaglineOnMobile?: boolean;
 }
 
 /**
@@ -83,6 +85,7 @@ export function Logo({
   size = "md",
   variant = "dark",
   withTagline = false,
+  hideTaglineOnMobile = false,
 }: LogoProps) {
   const dim = { sm: 18, md: 22, lg: 28, xl: 38 }[size];
   const wordSize = { sm: "text-[14px]", md: "text-[16px]", lg: "text-[20px]", xl: "text-[26px]" }[size];
@@ -105,7 +108,11 @@ export function Logo({
         </span>
         {withTagline && (
           <span
-            className={cn("block mt-1 font-normal", tagSize)}
+            className={cn(
+              "block mt-1 font-normal",
+              tagSize,
+              hideTaglineOnMobile && "hidden sm:block",
+            )}
             style={{ color: tagColor, letterSpacing: "0.02em" }}
           >
             Where voice runs hospitality

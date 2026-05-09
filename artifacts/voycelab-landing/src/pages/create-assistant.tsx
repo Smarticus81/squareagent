@@ -683,7 +683,7 @@ export default function CreateAssistant() {
               >
                 <div className="vl-panel p-7 text-center">
                   <VoiceRail state="synced" />
-                  <p className="vl-display text-[40px] mt-6" style={{ color: "var(--color-vl-ink)" }}>
+                  <p className="vl-display text-[28px] sm:text-[40px] mt-6" style={{ color: "var(--color-vl-ink)" }}>
                     {assistantName} is live.
                   </p>
 
@@ -881,7 +881,7 @@ function StepShell({
 }) {
   return (
     <div>
-      <h2 className="vl-display text-[38px]" style={{ color: "var(--color-vl-ink)" }}>{title}</h2>
+      <h2 className="vl-display text-[28px] sm:text-[38px]" style={{ color: "var(--color-vl-ink)" }}>{title}</h2>
       {subtitle && (
         <p className="mt-2 text-[14px] leading-relaxed" style={{ color: "var(--color-vl-ink-muted)" }}>{subtitle}</p>
       )}

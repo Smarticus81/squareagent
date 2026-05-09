@@ -129,8 +129,8 @@ export default function Command() {
   })();
 
   return (
-    <div className="flex-1 pt-24 pb-16">
-      <div className="w-full max-w-[960px] mx-auto px-6 lg:px-10">
+    <div className="flex-1 pt-20 sm:pt-24 pb-16">
+      <div className="w-full max-w-[960px] mx-auto px-4 sm:px-6 lg:px-10">
         {/* Greeting */}
         <div className="mb-8 md:mb-10">
           <p className="vl-eyebrow">Console</p>
