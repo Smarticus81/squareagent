@@ -17,6 +17,7 @@ import ordersReportingSkill from "./orders-reporting.skill";
 import customersPaymentsSkill from "./customers-payments.skill";
 import teamLaborSkill from "./team-labor.skill";
 import generalAssistantSkill from "./general-assistant.skill";
+import metaSkill from "./meta.skill";
 
 // Skills tied to the venue (Square) assistant. Listed in plan-tier order so
 // `getSkillsForPlan` returns a stable ordering.
@@ -32,9 +33,15 @@ const VENUE_SKILLS: SkillDefinition[] = [
 // Skills available to the general (non-venue) assistant.
 const GENERAL_SKILLS: SkillDefinition[] = [generalAssistantSkill];
 
+// Meta skills are always loaded into every session regardless of plan or
+// assistant kind. They provide conversation-control primitives (e.g.
+// wait_for_user for silence/background-noise handling).
+const META_SKILLS: SkillDefinition[] = [metaSkill];
+
 // ── All registered skills ───────────────────────────────────────────────────
 
 export const ALL_SKILLS: SkillDefinition[] = [
+  ...META_SKILLS,
   ...VENUE_SKILLS,
   ...GENERAL_SKILLS,
 ];
@@ -73,9 +80,14 @@ export function getSkillsForSession(
     ? { skillIds: optsOrSkillIds }
     : optsOrSkillIds ?? {};
   const kind = opts.kind ?? "venue";
-  const pool = kind === "general" ? GENERAL_SKILLS : getSkillsForPlan(plan);
+  const base = kind === "general" ? GENERAL_SKILLS : getSkillsForPlan(plan);
+  // Meta skills (wait_for_user etc.) are always included so silence and
+  // background-audio handling work the same in every session.
+  const pool = [...META_SKILLS, ...base];
   if (!opts.skillIds || opts.skillIds.length === 0) return pool;
-  return pool.filter((s) => opts.skillIds!.includes(s.id));
+  // Always keep meta skills regardless of explicit skill-id filter.
+  const allowed = new Set([...META_SKILLS.map((s) => s.id), ...opts.skillIds]);
+  return pool.filter((s) => allowed.has(s.id));
 }
 
 // ── Build tools/executors/instructions from selected skills ─────────────────

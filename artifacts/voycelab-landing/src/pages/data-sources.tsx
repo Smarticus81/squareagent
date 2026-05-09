@@ -81,19 +81,24 @@ export default function DataSources() {
   if (isLoading) {
     return (
       <div className="flex-1 flex items-center justify-center">
-        <Loader2 className="w-5 h-5 animate-spin text-white/60" />
+        <Loader2 className="w-5 h-5 animate-spin" style={{ color: "var(--color-vl-brass2)" }} />
       </div>
     );
   }
   if (!auth?.user) return null;
 
   return (
-    <div className="flex-1 px-6 py-10 max-w-4xl mx-auto w-full">
-      <Link href="/command" className="inline-flex items-center gap-2 text-sm text-white/60 hover:text-white mb-6">
+    <div className="flex-1 pt-24 pb-16">
+      <div className="w-full max-w-[960px] mx-auto px-6 lg:px-10">
+      <Link
+        href="/command"
+        className="inline-flex items-center gap-2 text-sm mb-6"
+        style={{ color: "rgba(10,10,11,0.62)" }}
+      >
         <ArrowLeft className="w-4 h-4" /> Back to command
       </Link>
-      <h1 className="text-3xl font-semibold mb-2">Data sources</h1>
-      <p className="text-white/60 mb-10">
+      <h1 className="text-[34px] font-semibold tracking-tight mb-2" style={{ color: "var(--color-vl-ink)" }}>Data sources</h1>
+      <p className="text-[14px] mb-10" style={{ color: "rgba(10,10,11,0.62)" }}>
         Connect the systems your General Business Assistant should reach for: a knowledge base it can quote
         from, a read-only database it can query, and an email account it can send from.
       </p>
@@ -102,6 +107,7 @@ export default function DataSources() {
         <KnowledgeSection />
         <DatabaseSection />
         <EmailSection />
+      </div>
       </div>
     </div>
   );
@@ -191,13 +197,13 @@ function KnowledgeSection() {
   };
 
   return (
-    <section className="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
+    <section className="rounded-2xl border border-black/[0.06] bg-white p-6 shadow-[0_1px_2px_rgba(10,10,11,0.04),0_8px_24px_-12px_rgba(10,10,11,0.10)]">
       <div className="flex items-center gap-3 mb-4">
-        <FileText className="w-5 h-5 text-white/70" />
-        <h2 className="text-xl font-semibold">Knowledge base</h2>
+        <FileText className="w-5 h-5" style={{ color: "var(--color-vl-accent)" }} />
+        <h2 className="text-xl font-semibold" style={{ color: "var(--color-vl-ink)" }}>Knowledge base</h2>
       </div>
-      <p className="text-sm text-white/60 mb-6">
-        Upload PDFs, Word docs, or paste text. The assistant will use <code className="text-white/80">search_knowledge</code> to
+      <p className="text-[14px] mb-6" style={{ color: "rgba(10,10,11,0.62)" }}>
+        Upload PDFs, Word docs, or paste text. The assistant will use <code className="rounded px-1" style={{ color: "var(--color-vl-ink)", background: "rgba(10,10,11,0.06)" }}>search_knowledge</code> to
         quote from these when relevant.
       </p>
 
@@ -208,28 +214,28 @@ function KnowledgeSection() {
             placeholder="Title"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm"
+            className="w-full bg-white border border-black/[0.12] rounded-lg px-3 py-2 text-sm text-[color:var(--color-vl-ink)] placeholder:text-black/35"
           />
           <textarea
             placeholder="Paste text here…"
             value={text}
             onChange={(e) => setText(e.target.value)}
             rows={6}
-            className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm resize-y"
+            className="w-full bg-white border border-black/[0.12] rounded-lg px-3 py-2 text-sm text-[color:var(--color-vl-ink)] placeholder:text-black/35 resize-y"
           />
           <button
             type="submit"
             disabled={busy || !title.trim() || !text.trim()}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-white text-black text-sm font-medium disabled:opacity-50"
+            className="vl-btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm font-medium disabled:opacity-50"
           >
             {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Add text
           </button>
         </form>
 
-        <label className="flex flex-col items-center justify-center border-2 border-dashed border-white/15 rounded-lg p-6 cursor-pointer hover:border-white/30">
-          <Upload className="w-6 h-6 text-white/60 mb-2" />
-          <div className="text-sm text-white/80">Upload a file</div>
-          <div className="text-xs text-white/50 mt-1">PDF, DOCX, TXT, MD, HTML — up to 10 MB</div>
+        <label className="flex flex-col items-center justify-center border-2 border-dashed border-black/[0.12] rounded-lg p-6 cursor-pointer hover:border-black/[0.25] bg-[var(--color-vl-cream)]/50">
+          <Upload className="w-6 h-6 mb-2" style={{ color: "var(--color-vl-accent)" }} />
+          <div className="text-sm" style={{ color: "var(--color-vl-ink)" }}>Upload a file</div>
+          <div className="text-xs mt-1" style={{ color: "rgba(10,10,11,0.52)" }}>PDF, DOCX, TXT, MD, HTML - up to 10 MB</div>
           <input
             type="file"
             accept=".pdf,.docx,.txt,.md,.markdown,.html,.htm,.csv,.json,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/html,text/markdown"
@@ -254,22 +260,22 @@ function KnowledgeSection() {
       )}
 
       {loading ? (
-        <div className="text-sm text-white/50">Loading…</div>
+        <div className="text-sm" style={{ color: "rgba(10,10,11,0.52)" }}>Loading...</div>
       ) : docs.length === 0 ? (
-        <div className="text-sm text-white/50">No documents yet.</div>
+        <div className="text-sm" style={{ color: "rgba(10,10,11,0.52)" }}>No documents yet.</div>
       ) : (
-        <ul className="divide-y divide-white/5">
+        <ul className="divide-y divide-black/[0.06]">
           {docs.map((d) => (
             <li key={d.id} className="flex items-center justify-between py-3">
               <div>
-                <div className="text-sm">{d.title}</div>
-                <div className="text-xs text-white/50">
+                <div className="text-sm" style={{ color: "var(--color-vl-ink)" }}>{d.title}</div>
+                <div className="text-xs" style={{ color: "rgba(10,10,11,0.52)" }}>
                   {d.chunkCount} chunks · {fmtBytes(d.byteCount)} · {new Date(d.createdAt).toLocaleString()}
                 </div>
               </div>
               <button
                 onClick={() => remove(d.id)}
-                className="p-2 rounded-md text-white/50 hover:text-rose-400 hover:bg-white/5"
+                className="p-2 rounded-md text-black/45 hover:text-rose-600 hover:bg-black/[0.04]"
                 aria-label="Delete document"
               >
                 <Trash2 className="w-4 h-4" />
@@ -344,18 +350,18 @@ function DatabaseSection() {
   };
 
   return (
-    <section className="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
+    <section className="rounded-2xl border border-black/[0.06] bg-white p-6 shadow-[0_1px_2px_rgba(10,10,11,0.04),0_8px_24px_-12px_rgba(10,10,11,0.10)]">
       <div className="flex items-center gap-3 mb-4">
-        <Database className="w-5 h-5 text-white/70" />
-        <h2 className="text-xl font-semibold">Database</h2>
+        <Database className="w-5 h-5" style={{ color: "var(--color-vl-accent)" }} />
+        <h2 className="text-xl font-semibold" style={{ color: "var(--color-vl-ink)" }}>Database</h2>
       </div>
-      <p className="text-sm text-white/60 mb-2">
-        Read-only Postgres. The assistant gets a <code className="text-white/80">query_database</code> tool that runs SELECT
+      <p className="text-[14px] mb-2" style={{ color: "rgba(10,10,11,0.62)" }}>
+        Read-only Postgres. The assistant gets a <code className="rounded px-1" style={{ color: "var(--color-vl-ink)", background: "rgba(10,10,11,0.06)" }}>query_database</code> tool that runs SELECT
         statements (capped at 100 rows, 8 second timeout). The connection string is encrypted at rest.
       </p>
-      <p className="text-xs text-amber-300/80 mb-6">
+      <p className="text-xs mb-6" style={{ color: "#8A6318" }}>
         <strong>Recommended:</strong> create a dedicated read-only role on your database and use its credentials here.
-        Example: <code className="text-amber-200">CREATE ROLE voycelab_ro LOGIN PASSWORD '…'; GRANT CONNECT ON DATABASE
+        Example: <code style={{ color: "#76520B" }}>CREATE ROLE voycelab_ro LOGIN PASSWORD '...'; GRANT CONNECT ON DATABASE
         mydb TO voycelab_ro; GRANT USAGE ON SCHEMA public TO voycelab_ro; GRANT SELECT ON ALL TABLES IN SCHEMA public TO
         voycelab_ro;</code>
       </p>
@@ -367,14 +373,14 @@ function DatabaseSection() {
             placeholder="Label (e.g. analytics)"
             value={label}
             onChange={(e) => setLabel(e.target.value)}
-            className="bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm"
+            className="bg-white border border-black/[0.12] rounded-lg px-3 py-2 text-sm text-[color:var(--color-vl-ink)] placeholder:text-black/35"
           />
           <input
             type="text"
             placeholder="postgres://user:pass@host:5432/db"
             value={connectionString}
             onChange={(e) => setConnectionString(e.target.value)}
-            className="md:col-span-2 bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm font-mono"
+            className="md:col-span-2 bg-white border border-black/[0.12] rounded-lg px-3 py-2 text-sm font-mono text-[color:var(--color-vl-ink)] placeholder:text-black/35"
           />
         </div>
         <textarea
@@ -382,12 +388,12 @@ function DatabaseSection() {
           value={schemaHint}
           onChange={(e) => setSchemaHint(e.target.value)}
           rows={3}
-          className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm resize-y"
+          className="w-full bg-white border border-black/[0.12] rounded-lg px-3 py-2 text-sm text-[color:var(--color-vl-ink)] placeholder:text-black/35 resize-y"
         />
         <button
           type="submit"
           disabled={busy || !connectionString.trim()}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-white text-black text-sm font-medium disabled:opacity-50"
+          className="vl-btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm font-medium disabled:opacity-50"
         >
           {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Save connection
         </button>
@@ -398,23 +404,23 @@ function DatabaseSection() {
       )}
 
       {loading ? (
-        <div className="text-sm text-white/50">Loading…</div>
+        <div className="text-sm" style={{ color: "rgba(10,10,11,0.52)" }}>Loading...</div>
       ) : conns.length === 0 ? (
-        <div className="text-sm text-white/50">No connections configured.</div>
+        <div className="text-sm" style={{ color: "rgba(10,10,11,0.52)" }}>No connections configured.</div>
       ) : (
-        <ul className="divide-y divide-white/5">
+        <ul className="divide-y divide-black/[0.06]">
           {conns.map((c) => (
             <li key={c.id} className="flex items-center justify-between py-3">
               <div>
-                <div className="text-sm font-mono">{c.label}</div>
-                <div className="text-xs text-white/50">
+                <div className="text-sm font-mono" style={{ color: "var(--color-vl-ink)" }}>{c.label}</div>
+                <div className="text-xs" style={{ color: "rgba(10,10,11,0.52)" }}>
                   {c.kind}
                   {c.schemaHint ? ` · ${c.schemaHint.slice(0, 80)}${c.schemaHint.length > 80 ? "…" : ""}` : ""}
                 </div>
               </div>
               <button
                 onClick={() => remove(c.id)}
-                className="p-2 rounded-md text-white/50 hover:text-rose-400 hover:bg-white/5"
+                className="p-2 rounded-md text-black/45 hover:text-rose-600 hover:bg-black/[0.04]"
                 aria-label="Delete connection"
               >
                 <Trash2 className="w-4 h-4" />
@@ -494,19 +500,19 @@ function EmailSection() {
   };
 
   return (
-    <section className="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
+    <section className="rounded-2xl border border-black/[0.06] bg-white p-6 shadow-[0_1px_2px_rgba(10,10,11,0.04),0_8px_24px_-12px_rgba(10,10,11,0.10)]">
       <div className="flex items-center gap-3 mb-4">
-        <Mail className="w-5 h-5 text-white/70" />
-        <h2 className="text-xl font-semibold">Email (Resend)</h2>
+        <Mail className="w-5 h-5" style={{ color: "var(--color-vl-accent)" }} />
+        <h2 className="text-xl font-semibold" style={{ color: "var(--color-vl-ink)" }}>Email (Resend)</h2>
       </div>
-      <p className="text-sm text-white/60 mb-6">
-        Plug in a <a href="https://resend.com" target="_blank" rel="noreferrer" className="underline">Resend</a> API key
-        and the <code className="text-white/80">send_email</code> tool will deliver from your verified address. The
+      <p className="text-[14px] mb-6" style={{ color: "rgba(10,10,11,0.62)" }}>
+        Plug in a <a href="https://resend.com" target="_blank" rel="noreferrer" className="underline" style={{ color: "var(--color-vl-accent)" }}>Resend</a> API key
+        and the <code className="rounded px-1" style={{ color: "var(--color-vl-ink)", background: "rgba(10,10,11,0.06)" }}>send_email</code> tool will deliver from your verified address. The
         assistant always reads the recipient + subject back to you before sending.
       </p>
 
       {loading ? (
-        <div className="text-sm text-white/50">Loading…</div>
+        <div className="text-sm" style={{ color: "rgba(10,10,11,0.52)" }}>Loading...</div>
       ) : (
         <form onSubmit={save} className="space-y-3">
           <div className="grid md:grid-cols-2 gap-3">
@@ -515,7 +521,7 @@ function EmailSection() {
               placeholder="From address (e.g. ops@yourdomain.com)"
               value={fromAddress}
               onChange={(e) => setFromAddress(e.target.value)}
-              className="bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm"
+              className="bg-white border border-black/[0.12] rounded-lg px-3 py-2 text-sm text-[color:var(--color-vl-ink)] placeholder:text-black/35"
               required
             />
             <input
@@ -523,7 +529,7 @@ function EmailSection() {
               placeholder="From name (optional)"
               value={fromName}
               onChange={(e) => setFromName(e.target.value)}
-              className="bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm"
+              className="bg-white border border-black/[0.12] rounded-lg px-3 py-2 text-sm text-[color:var(--color-vl-ink)] placeholder:text-black/35"
             />
           </div>
           <input
@@ -531,14 +537,14 @@ function EmailSection() {
             placeholder={config ? "Resend API key (leave blank to keep current)" : "Resend API key (re_…)"}
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
-            className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm font-mono"
+            className="w-full bg-white border border-black/[0.12] rounded-lg px-3 py-2 text-sm font-mono text-[color:var(--color-vl-ink)] placeholder:text-black/35"
             autoComplete="new-password"
           />
           <div className="flex gap-3">
             <button
               type="submit"
               disabled={busy || !fromAddress.trim() || (!config && !apiKey.trim())}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-white text-black text-sm font-medium disabled:opacity-50"
+              className="vl-btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm font-medium disabled:opacity-50"
             >
               {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
               {config ? "Update" : "Save"}
@@ -547,7 +553,7 @@ function EmailSection() {
               <button
                 type="button"
                 onClick={remove}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-white/10 text-sm text-white/70 hover:bg-white/5"
+                className="vl-btn-outline inline-flex items-center gap-2 px-4 py-2 text-sm"
               >
                 <Trash2 className="w-4 h-4" /> Disconnect
               </button>

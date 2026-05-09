@@ -27,6 +27,7 @@ import * as generalWeb from "./general/web";
 import * as generalKnowledge from "./general/knowledge";
 import * as generalEmail from "./general/email";
 import * as generalDatabase from "./general/database";
+import metaSkill from "../skills/meta.skill";
 
 // Re-export types for convenience
 export type { ToolDefinition, ToolExecutor, ToolContext, ToolResult } from "./types";
@@ -53,11 +54,14 @@ const DOMAIN_MODULES = [
 
 // ── ALL_TOOLS: flat array of every tool definition (for OpenAI session config) ─
 
-export const ALL_TOOLS: ToolDefinition[] = DOMAIN_MODULES.flatMap((m) => m.definitions);
+export const ALL_TOOLS: ToolDefinition[] = [
+  ...metaSkill.tools,
+  ...DOMAIN_MODULES.flatMap((m) => m.definitions),
+];
 
 // ── Merged executor map (wrapped with middleware) ─────────────────────────────
 
-const RAW_EXECUTORS: Record<string, ToolExecutor> = {};
+const RAW_EXECUTORS: Record<string, ToolExecutor> = { ...metaSkill.executors };
 for (const mod of DOMAIN_MODULES) {
   for (const [name, fn] of Object.entries(mod.executors)) {
     if (RAW_EXECUTORS[name]) {
