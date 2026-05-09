@@ -349,9 +349,15 @@ function DatabaseSection() {
         <Database className="w-5 h-5 text-white/70" />
         <h2 className="text-xl font-semibold">Database</h2>
       </div>
-      <p className="text-sm text-white/60 mb-6">
+      <p className="text-sm text-white/60 mb-2">
         Read-only Postgres. The assistant gets a <code className="text-white/80">query_database</code> tool that runs SELECT
         statements (capped at 100 rows, 8 second timeout). The connection string is encrypted at rest.
+      </p>
+      <p className="text-xs text-amber-300/80 mb-6">
+        <strong>Recommended:</strong> create a dedicated read-only role on your database and use its credentials here.
+        Example: <code className="text-amber-200">CREATE ROLE voycelab_ro LOGIN PASSWORD '…'; GRANT CONNECT ON DATABASE
+        mydb TO voycelab_ro; GRANT USAGE ON SCHEMA public TO voycelab_ro; GRANT SELECT ON ALL TABLES IN SCHEMA public TO
+        voycelab_ro;</code>
       </p>
 
       <form onSubmit={save} className="space-y-3 mb-6">

@@ -12,6 +12,26 @@ import { and, eq } from "drizzle-orm";
 import { decrypt } from "../../lib/secrets";
 import type { ToolDefinition, ToolExecutor, ToolContext, ToolResult } from "../types";
 
+/**
+ * In-memory rate limiter — caps sends per user per rolling hour. Survives
+ * cold-starts only weakly, but it's defense against a runaway voice loop.
+ */
+const SEND_LIMIT_PER_HOUR = 15;
+const sendLog = new Map<number, number[]>();
+
+function checkSendLimit(userId: number): { allowed: boolean; remaining: number; resetMs: number } {
+  const now = Date.now();
+  const hourAgo = now - 60 * 60 * 1000;
+  const arr = (sendLog.get(userId) ?? []).filter((t) => t > hourAgo);
+  if (arr.length >= SEND_LIMIT_PER_HOUR) {
+    const oldest = arr[0];
+    return { allowed: false, remaining: 0, resetMs: oldest + 60 * 60 * 1000 - now };
+  }
+  arr.push(now);
+  sendLog.set(userId, arr);
+  return { allowed: true, remaining: SEND_LIMIT_PER_HOUR - arr.length, resetMs: 0 };
+}
+
 export const definitions: ToolDefinition[] = [
   {
     type: "function",
@@ -40,6 +60,12 @@ async function sendEmail(args: Record<string, unknown>, ctx: ToolContext): Promi
   const body = String(args.body ?? "").trim();
   if (!to || !subject || !body) return { result: "send_email: to, subject, and body are required." };
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) return { result: `send_email: ${to} is not a valid email address.` };
+
+  const limit = checkSendLimit(ctx.userId);
+  if (!limit.allowed) {
+    const mins = Math.ceil(limit.resetMs / 60_000);
+    return { result: `send_email: hourly limit (${SEND_LIMIT_PER_HOUR}) reached. Try again in ${mins} minute(s).` };
+  }
 
   const [creds] = await db
     .select()

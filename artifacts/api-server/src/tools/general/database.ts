@@ -70,7 +70,10 @@ async function queryDatabase(args: Record<string, unknown>, ctx: ToolContext): P
   try {
     await client.connect();
     await client.query("BEGIN READ ONLY");
-    const result = await client.query(`${sql} LIMIT 100`);
+    // Wrap as subquery so user-supplied LIMIT / ORDER BY / OFFSET still works
+    // and we still cap the cardinality at 100 rows.
+    const wrapped = `SELECT * FROM (${sql}) AS _voycelab_q LIMIT 100`;
+    const result = await client.query(wrapped);
     await client.query("ROLLBACK");
     const rows = result.rows ?? [];
     if (rows.length === 0) return { result: "Query returned 0 rows." };

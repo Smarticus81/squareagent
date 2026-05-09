@@ -14,10 +14,27 @@
  */
 import crypto from "node:crypto";
 
-const KEY_SOURCE =
-  process.env.SECRETS_ENCRYPTION_KEY?.trim() ||
-  process.env.JWT_SECRET?.trim() ||
-  "voycelab-default-dev-key-do-not-use-in-prod";
+const explicitKey = process.env.SECRETS_ENCRYPTION_KEY?.trim();
+const fallbackKey = process.env.JWT_SECRET?.trim();
+const KEY_SOURCE = explicitKey || fallbackKey || "voycelab-default-dev-key-do-not-use-in-prod";
+
+if (process.env.NODE_ENV === "production") {
+  if (!explicitKey) {
+    // Don't crash boot — but make it loud. Operators should set a dedicated
+    // SECRETS_ENCRYPTION_KEY so JWT_SECRET can be rotated independently.
+    // eslint-disable-next-line no-console
+    console.warn(
+      "[secrets] SECRETS_ENCRYPTION_KEY is not set in production. " +
+        "Falling back to JWT_SECRET — rotating JWT_SECRET will make all encrypted user secrets unreadable. " +
+        "Set SECRETS_ENCRYPTION_KEY to a dedicated 32+ char random value.",
+    );
+  }
+  if (KEY_SOURCE === "voycelab-default-dev-key-do-not-use-in-prod") {
+    throw new Error(
+      "[secrets] Refusing to start: neither SECRETS_ENCRYPTION_KEY nor JWT_SECRET is set in production.",
+    );
+  }
+}
 
 const KEY = crypto.createHmac("sha256", KEY_SOURCE).update("voycelab-secrets-v1").digest();
 

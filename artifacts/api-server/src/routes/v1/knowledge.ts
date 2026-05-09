@@ -22,8 +22,29 @@ import { embedBatch, chunkText } from "../../lib/embeddings";
 import { encrypt } from "../../lib/secrets";
 import { extractTextFromUpload } from "../../lib/document-extract";
 import multer from "multer";
+import rateLimit from "express-rate-limit";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+
+/** Per-user write limiter: protects upload + DB-config + email-config write paths. */
+const writeLimiter = rateLimit({
+  windowMs: 60_000,
+  limit: 30,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  keyGenerator: (req) => String((req as any).user?.id ?? req.ip ?? "anon"),
+  message: { error: "Too many requests. Slow down and try again in a minute." },
+});
+
+/** Tighter limiter for the embedding-heavy upload paths. */
+const uploadLimiter = rateLimit({
+  windowMs: 60_000,
+  limit: 10,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  keyGenerator: (req) => String((req as any).user?.id ?? req.ip ?? "anon"),
+  message: { error: "Upload limit reached (10/min). Please wait before uploading more." },
+});
 
 const router = Router();
 
@@ -31,7 +52,7 @@ router.use(requireAuth as any);
 
 // ── Knowledge documents ───────────────────────────────────────────────────────
 
-router.post("/documents", async (req: Request, res: Response): Promise<void> => {
+router.post("/documents", uploadLimiter, async (req: Request, res: Response): Promise<void> => {
   const userId = (req as any).user.id as number;
   const { title, text, sourceType = "text", sourceUri } = req.body ?? {};
   if (!title || typeof title !== "string") {
@@ -146,7 +167,7 @@ router.get("/database-connections", async (req: Request, res: Response): Promise
   res.json({ connections: rows });
 });
 
-router.post("/database-connections", async (req: Request, res: Response): Promise<void> => {
+router.post("/database-connections", writeLimiter, async (req: Request, res: Response): Promise<void> => {
   const userId = (req as any).user.id as number;
   const { label = "default", connectionString, schemaHint } = req.body ?? {};
   if (!connectionString || typeof connectionString !== "string") {
@@ -212,7 +233,7 @@ router.get("/email", async (req: Request, res: Response): Promise<void> => {
   res.json({ email: row ?? null });
 });
 
-router.put("/email", async (req: Request, res: Response): Promise<void> => {
+router.put("/email", writeLimiter, async (req: Request, res: Response): Promise<void> => {
   const userId = (req as any).user.id as number;
   const { provider = "resend", apiKey, fromAddress, fromName } = req.body ?? {};
   if (!fromAddress || typeof fromAddress !== "string") {
@@ -256,6 +277,7 @@ router.put("/email", async (req: Request, res: Response): Promise<void> => {
 
 router.post(
   "/documents/upload",
+  uploadLimiter,
   upload.single("file"),
   async (req: Request, res: Response): Promise<void> => {
     const userId = (req as any).user.id as number;
