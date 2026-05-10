@@ -120,20 +120,20 @@ export default function ConnectedServices() {
     <div className="relative flex-1 overflow-hidden px-4 pb-24 pt-16 sm:px-6 lg:px-10">
       <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
         <div
-          className="absolute left-[-12%] top-[-12%] h-[360px] w-[520px] rounded-full blur-3xl"
+          className="absolute left-[-12%] top-[-12%] h-90 w-130 rounded-full blur-3xl"
           style={{ background: "rgba(251, 207, 232, 0.42)" }}
         />
         <div
-          className="absolute right-[-10%] top-[5%] h-[420px] w-[520px] rounded-full blur-3xl"
+          className="absolute right-[-10%] top-[5%] h-105 w-130 rounded-full blur-3xl"
           style={{ background: "rgba(199, 210, 254, 0.30)" }}
         />
         <div
-          className="absolute bottom-[-18%] right-[8%] h-[420px] w-[640px] rounded-full blur-3xl"
+          className="absolute bottom-[-18%] right-[8%] h-105 w-160 rounded-full blur-3xl"
           style={{ background: "rgba(167, 243, 208, 0.26)" }}
         />
       </div>
 
-      <div className="mx-auto w-full max-w-[1180px]">
+      <div className="mx-auto w-full max-w-295">
         <Link
           href="/command"
           className="inline-flex items-center gap-1.5 text-[12px] mb-5 transition-colors"
@@ -144,10 +144,10 @@ export default function ConnectedServices() {
         <div className="mb-9 grid gap-6 lg:grid-cols-[1fr_360px] lg:items-end">
           <div>
             <p className="vl-eyebrow">Connected services</p>
-            <h1 className="vl-display mt-4 max-w-[680px] text-[34px] sm:text-[42px] md:text-[62px]" style={{ color: "var(--color-vl-ink)" }}>
+            <h1 className="vl-display mt-4 max-w-170 text-[34px] sm:text-[42px] md:text-[62px]" style={{ color: "var(--color-vl-ink)" }}>
               Connect the systems your team already trusts.
             </h1>
-            <p className="mt-5 max-w-[640px] text-[16px] leading-relaxed" style={{ color: "var(--color-vl-ink-muted)" }}>
+            <p className="mt-5 max-w-160 text-[16px] leading-relaxed" style={{ color: "var(--color-vl-ink-muted)" }}>
               Start with Square, then bring the rest of your venue stack into voice. Your assistant can read, prepare, and act only where you allow it.
             </p>
           </div>
@@ -233,7 +233,7 @@ export default function ConnectedServices() {
                   <p className="text-[18px] font-semibold" style={{ color: "var(--color-vl-ink)" }}>
                     Connect Square first.
                   </p>
-                  <p className="mt-2 max-w-[520px] text-[14px] leading-relaxed" style={{ color: "var(--color-vl-ink-muted)" }}>
+                  <p className="mt-2 max-w-130 text-[14px] leading-relaxed" style={{ color: "var(--color-vl-ink-muted)" }}>
                     Choose the Square location your assistant will control. You can add more locations later.
                   </p>
                 </div>
@@ -327,13 +327,13 @@ export default function ConnectedServices() {
               <div key={p.id} className="vl-card group relative overflow-hidden p-5">
                 <div
                   aria-hidden
-                  className="absolute right-[-40px] top-[-50px] h-28 w-28 rounded-full transition-transform duration-300 group-hover:scale-125"
+                  className="absolute -right-10 -top-12.5 h-28 w-28 rounded-full transition-transform duration-300 group-hover:scale-125"
                   style={{ background: "rgba(251, 207, 232, 0.28)" }}
                 />
                 <div className="relative flex items-start justify-between gap-3">
                   <div>
                     <span className="text-[15px] font-semibold" style={{ color: "var(--color-vl-ink)" }}>{p.name}</span>
-                    <p className="mt-2 min-h-[36px] text-[12.5px] leading-relaxed" style={{ color: "var(--color-vl-ink-muted)" }}>{p.description}</p>
+                    <p className="mt-2 min-h-9 text-[12.5px] leading-relaxed" style={{ color: "var(--color-vl-ink-muted)" }}>{p.description}</p>
                   </div>
                   <span
                     className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
@@ -366,7 +366,7 @@ export default function ConnectedServices() {
       {/* Location picker modal */}
       {showLocationPicker && locations.length > 0 && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(10, 10, 11,0.36)] p-4 backdrop-blur-sm">
-          <div className="vl-card-glass w-full max-w-[520px] p-6 md:p-7">
+          <div className="vl-card-glass w-full max-w-130 p-6 md:p-7">
             <div className="mb-5 flex items-start justify-between gap-4">
               <div>
                 <p className="vl-eyebrow">Connect Square</p>

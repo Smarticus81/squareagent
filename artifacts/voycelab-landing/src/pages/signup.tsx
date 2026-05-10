@@ -36,7 +36,7 @@ export default function Signup() {
         <ArrowLeft className="w-3.5 h-3.5" /> Back
       </Link>
 
-      <div className="relative w-full max-w-[420px]">
+      <div className="relative w-full max-w-105">
         <div className="flex justify-center mb-8">
           <Logo size="lg" withTagline />
         </div>

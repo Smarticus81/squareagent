@@ -89,7 +89,7 @@ export default function DataSources() {
 
   return (
     <div className="flex-1 pt-20 sm:pt-24 pb-16">
-      <div className="w-full max-w-[960px] mx-auto px-4 sm:px-6 lg:px-10">
+      <div className="w-full max-w-240 mx-auto px-4 sm:px-6 lg:px-10">
       <Link
         href="/command"
         className="inline-flex items-center gap-2 text-sm mb-6"
@@ -197,7 +197,7 @@ function KnowledgeSection() {
   };
 
   return (
-    <section className="rounded-2xl border border-black/[0.06] bg-white p-6 shadow-[0_1px_2px_rgba(10,10,11,0.04),0_8px_24px_-12px_rgba(10,10,11,0.10)]">
+    <section className="rounded-2xl border border-black/6 bg-white p-6 shadow-[0_1px_2px_rgba(10,10,11,0.04),0_8px_24px_-12px_rgba(10,10,11,0.10)]">
       <div className="flex items-center gap-3 mb-4">
         <FileText className="w-5 h-5" style={{ color: "var(--color-vl-accent)" }} />
         <h2 className="text-xl font-semibold" style={{ color: "var(--color-vl-ink)" }}>Knowledge base</h2>
@@ -214,14 +214,14 @@ function KnowledgeSection() {
             placeholder="Title"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            className="w-full bg-white border border-black/[0.12] rounded-lg px-3 py-2 text-sm text-[color:var(--color-vl-ink)] placeholder:text-black/35"
+            className="w-full bg-white border border-black/12 rounded-lg px-3 py-2 text-sm text-(--color-vl-ink) placeholder:text-black/35"
           />
           <textarea
             placeholder="Paste text here…"
             value={text}
             onChange={(e) => setText(e.target.value)}
             rows={6}
-            className="w-full bg-white border border-black/[0.12] rounded-lg px-3 py-2 text-sm text-[color:var(--color-vl-ink)] placeholder:text-black/35 resize-y"
+            className="w-full bg-white border border-black/12 rounded-lg px-3 py-2 text-sm text-(--color-vl-ink) placeholder:text-black/35 resize-y"
           />
           <button
             type="submit"
@@ -232,7 +232,7 @@ function KnowledgeSection() {
           </button>
         </form>
 
-        <label className="flex flex-col items-center justify-center border-2 border-dashed border-black/[0.12] rounded-lg p-6 cursor-pointer hover:border-black/[0.25] bg-[var(--color-vl-cream)]/50">
+        <label className="flex flex-col items-center justify-center border-2 border-dashed border-black/12 rounded-lg p-6 cursor-pointer hover:border-black/25 bg-(--color-vl-cream)/50">
           <Upload className="w-6 h-6 mb-2" style={{ color: "var(--color-vl-accent)" }} />
           <div className="text-sm" style={{ color: "var(--color-vl-ink)" }}>Upload a file</div>
           <div className="text-xs mt-1" style={{ color: "rgba(10,10,11,0.52)" }}>PDF, DOCX, TXT, MD, HTML - up to 10 MB</div>
@@ -264,7 +264,7 @@ function KnowledgeSection() {
       ) : docs.length === 0 ? (
         <div className="text-sm" style={{ color: "rgba(10,10,11,0.52)" }}>No documents yet.</div>
       ) : (
-        <ul className="divide-y divide-black/[0.06]">
+        <ul className="divide-y divide-black/6">
           {docs.map((d) => (
             <li key={d.id} className="flex items-center justify-between py-3">
               <div>
@@ -275,7 +275,7 @@ function KnowledgeSection() {
               </div>
               <button
                 onClick={() => remove(d.id)}
-                className="p-2 rounded-md text-black/45 hover:text-rose-600 hover:bg-black/[0.04]"
+                className="p-2 rounded-md text-black/45 hover:text-rose-600 hover:bg-black/4"
                 aria-label="Delete document"
               >
                 <Trash2 className="w-4 h-4" />
@@ -350,7 +350,7 @@ function DatabaseSection() {
   };
 
   return (
-    <section className="rounded-2xl border border-black/[0.06] bg-white p-6 shadow-[0_1px_2px_rgba(10,10,11,0.04),0_8px_24px_-12px_rgba(10,10,11,0.10)]">
+    <section className="rounded-2xl border border-black/6 bg-white p-6 shadow-[0_1px_2px_rgba(10,10,11,0.04),0_8px_24px_-12px_rgba(10,10,11,0.10)]">
       <div className="flex items-center gap-3 mb-4">
         <Database className="w-5 h-5" style={{ color: "var(--color-vl-accent)" }} />
         <h2 className="text-xl font-semibold" style={{ color: "var(--color-vl-ink)" }}>Database</h2>
@@ -373,14 +373,14 @@ function DatabaseSection() {
             placeholder="Label (e.g. analytics)"
             value={label}
             onChange={(e) => setLabel(e.target.value)}
-            className="bg-white border border-black/[0.12] rounded-lg px-3 py-2 text-sm text-[color:var(--color-vl-ink)] placeholder:text-black/35"
+            className="bg-white border border-black/12 rounded-lg px-3 py-2 text-sm text-(--color-vl-ink) placeholder:text-black/35"
           />
           <input
             type="text"
             placeholder="postgres://user:pass@host:5432/db"
             value={connectionString}
             onChange={(e) => setConnectionString(e.target.value)}
-            className="md:col-span-2 bg-white border border-black/[0.12] rounded-lg px-3 py-2 text-sm font-mono text-[color:var(--color-vl-ink)] placeholder:text-black/35"
+            className="md:col-span-2 bg-white border border-black/12 rounded-lg px-3 py-2 text-sm font-mono text-(--color-vl-ink) placeholder:text-black/35"
           />
         </div>
         <textarea
@@ -388,7 +388,7 @@ function DatabaseSection() {
           value={schemaHint}
           onChange={(e) => setSchemaHint(e.target.value)}
           rows={3}
-          className="w-full bg-white border border-black/[0.12] rounded-lg px-3 py-2 text-sm text-[color:var(--color-vl-ink)] placeholder:text-black/35 resize-y"
+          className="w-full bg-white border border-black/12 rounded-lg px-3 py-2 text-sm text-(--color-vl-ink) placeholder:text-black/35 resize-y"
         />
         <button
           type="submit"
@@ -408,7 +408,7 @@ function DatabaseSection() {
       ) : conns.length === 0 ? (
         <div className="text-sm" style={{ color: "rgba(10,10,11,0.52)" }}>No connections configured.</div>
       ) : (
-        <ul className="divide-y divide-black/[0.06]">
+        <ul className="divide-y divide-black/6">
           {conns.map((c) => (
             <li key={c.id} className="flex items-center justify-between py-3">
               <div>
@@ -420,7 +420,7 @@ function DatabaseSection() {
               </div>
               <button
                 onClick={() => remove(c.id)}
-                className="p-2 rounded-md text-black/45 hover:text-rose-600 hover:bg-black/[0.04]"
+                className="p-2 rounded-md text-black/45 hover:text-rose-600 hover:bg-black/4"
                 aria-label="Delete connection"
               >
                 <Trash2 className="w-4 h-4" />
@@ -569,7 +569,7 @@ function EmailSection() {
   const isResendConnected = config?.provider === "resend";
 
   return (
-    <section className="rounded-2xl border border-black/[0.06] bg-white p-6 shadow-[0_1px_2px_rgba(10,10,11,0.04),0_8px_24px_-12px_rgba(10,10,11,0.10)]">
+    <section className="rounded-2xl border border-black/6 bg-white p-6 shadow-[0_1px_2px_rgba(10,10,11,0.04),0_8px_24px_-12px_rgba(10,10,11,0.10)]">
       <div className="flex items-center gap-3 mb-4">
         <Mail className="w-5 h-5" style={{ color: "var(--color-vl-accent)" }} />
         <h2 className="text-xl font-semibold" style={{ color: "var(--color-vl-ink)" }}>Email</h2>
@@ -588,7 +588,7 @@ function EmailSection() {
               role="tab"
               aria-selected={provider === "gmail_oauth"}
               onClick={() => setProvider("gmail_oauth")}
-              className={`px-3 py-1.5 text-sm rounded-full border transition ${provider === "gmail_oauth" ? "bg-[color:var(--color-vl-ink)] text-white border-transparent" : "border-black/[0.12] text-[color:var(--color-vl-ink)]"}`}
+              className={`px-3 py-1.5 text-sm rounded-full border transition ${provider === "gmail_oauth" ? "bg-(--color-vl-ink) text-white border-transparent" : "border-black/12 text-(--color-vl-ink)"}`}
             >
               Gmail
             </button>
@@ -597,7 +597,7 @@ function EmailSection() {
               role="tab"
               aria-selected={provider === "resend"}
               onClick={() => setProvider("resend")}
-              className={`px-3 py-1.5 text-sm rounded-full border transition ${provider === "resend" ? "bg-[color:var(--color-vl-ink)] text-white border-transparent" : "border-black/[0.12] text-[color:var(--color-vl-ink)]"}`}
+              className={`px-3 py-1.5 text-sm rounded-full border transition ${provider === "resend" ? "bg-(--color-vl-ink) text-white border-transparent" : "border-black/12 text-(--color-vl-ink)"}`}
             >
               Resend
             </button>
@@ -620,7 +620,7 @@ function EmailSection() {
                 placeholder="From name (optional, e.g. Acme Bar)"
                 value={fromName}
                 onChange={(e) => setFromName(e.target.value)}
-                className="w-full bg-white border border-black/[0.12] rounded-lg px-3 py-2 text-sm text-[color:var(--color-vl-ink)] placeholder:text-black/35"
+                className="w-full bg-white border border-black/12 rounded-lg px-3 py-2 text-sm text-(--color-vl-ink) placeholder:text-black/35"
               />
 
               <div className="flex gap-3">
@@ -655,7 +655,7 @@ function EmailSection() {
                   placeholder="From address (e.g. ops@yourdomain.com)"
                   value={fromAddress}
                   onChange={(e) => setFromAddress(e.target.value)}
-                  className="bg-white border border-black/[0.12] rounded-lg px-3 py-2 text-sm text-[color:var(--color-vl-ink)] placeholder:text-black/35"
+                  className="bg-white border border-black/12 rounded-lg px-3 py-2 text-sm text-(--color-vl-ink) placeholder:text-black/35"
                   required
                 />
                 <input
@@ -663,7 +663,7 @@ function EmailSection() {
                   placeholder="From name (optional)"
                   value={fromName}
                   onChange={(e) => setFromName(e.target.value)}
-                  className="bg-white border border-black/[0.12] rounded-lg px-3 py-2 text-sm text-[color:var(--color-vl-ink)] placeholder:text-black/35"
+                  className="bg-white border border-black/12 rounded-lg px-3 py-2 text-sm text-(--color-vl-ink) placeholder:text-black/35"
                 />
               </div>
               <input
@@ -671,7 +671,7 @@ function EmailSection() {
                 placeholder={isResendConnected ? "Resend API key (leave blank to keep current)" : "Resend API key (re_…)"}
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
-                className="w-full bg-white border border-black/[0.12] rounded-lg px-3 py-2 text-sm font-mono text-[color:var(--color-vl-ink)] placeholder:text-black/35"
+                className="w-full bg-white border border-black/12 rounded-lg px-3 py-2 text-sm font-mono text-(--color-vl-ink) placeholder:text-black/35"
                 autoComplete="new-password"
               />
               <div className="flex gap-3">
