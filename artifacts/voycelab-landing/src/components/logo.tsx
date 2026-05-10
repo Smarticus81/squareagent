@@ -114,18 +114,26 @@ export function Logo({
   variant = "dark",
 }: LogoProps) {
   const dim = { sm: 22, md: 30, lg: 42, xl: 62 }[size];
-  const wordSize = { sm: "text-[15px]", md: "text-[20px]", lg: "text-[29px]", xl: "text-[43px]" }[size];
+  const markWidth = Math.round(dim * (184 / 104));
+  const wordSize = { sm: "text-[6.8px]", md: "text-[9.2px]", lg: "text-[12.8px]", xl: "text-[19px]" }[size];
   const wordColor =
     variant === "light" ? "#FFFFFF" : variant === "mono" ? "currentColor" : "#0A0A0B";
 
   if (iconOnly) return <LogoMark size={dim} variant={variant} className={className} />;
 
   return (
-    <div className={cn("inline-flex flex-col items-center gap-2.5 select-none leading-none", className)}>
+    <div className={cn("inline-flex flex-col items-center gap-1.5 select-none leading-none", className)}>
       <LogoMark size={dim} variant={variant} />
       <span
-        className={cn("font-black uppercase block", wordSize)}
-        style={{ color: wordColor, letterSpacing: "0.02em" }}
+        className={cn("uppercase block text-center", wordSize)}
+        style={{
+          color: wordColor,
+          fontFamily: "var(--font-logo)",
+          fontWeight: 800,
+          letterSpacing: "0.012em",
+          lineHeight: 0.9,
+          width: markWidth,
+        }}
       >
         Voycelab
       </span>
