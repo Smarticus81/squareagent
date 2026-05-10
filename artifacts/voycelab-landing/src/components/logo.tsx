@@ -13,10 +13,16 @@ interface LogoProps {
 /**
  * VoyceLab — symbol mark.
  *
- * A compact stereo waveform: short violet pulse on the left, ascending
- * coral bars at the centre, soft sage tail on the right. Reads as
- * "voice running hospitality" — warm, not corporate.
+ * Seven rounded "pill" bars in a soft waveform — short → tall → tall → short —
+ * sharing a single vertical gradient that fades from lilac at the top through
+ * magenta to a warm amber/coral at the base. Reads as "voice running
+ * hospitality" — warm, sensory, never corporate.
+ *
+ * Use a unique gradient id per mount so multiple marks on a page don't
+ * collide when styled.
  */
+let __vlMarkSeq = 0;
+
 export function LogoMark({
   size = 32,
   className,
@@ -25,49 +31,54 @@ export function LogoMark({
   variant?: "dark" | "light" | "mono";
   className?: string;
 }) {
-  const width = Math.round(size * (52 / 32));
-  const uid = `vl-mark`;
+  // viewBox tuned to the new lockup: 7 pills across a 64-wide canvas.
+  const width = Math.round(size * (64 / 40));
+  const uid = `vl-mark-${++__vlMarkSeq}`;
+
+  // Heights and y-offsets for the 7 bars (canvas height = 40).
+  // Pattern: medium, tall, very-tall, very-tall, tall, medium, short.
+  const bars: Array<{ x: number; h: number }> = [
+    { x: 2, h: 18 },
+    { x: 11, h: 28 },
+    { x: 20, h: 38 },
+    { x: 29, h: 38 },
+    { x: 38, h: 28 },
+    { x: 47, h: 18 },
+    { x: 56, h: 10 },
+  ];
 
   return (
     <svg
       className={cn("block select-none", className)}
       width={width}
       height={size}
-      viewBox="0 0 52 32"
+      viewBox="0 0 64 40"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden="true"
     >
       <defs>
-        <linearGradient id={`${uid}-coral`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#FF8A66" />
-          <stop offset="100%" stopColor="#000000" />
-        </linearGradient>
-        <linearGradient id={`${uid}-lilac`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#D9CBF0" />
-          <stop offset="100%" stopColor="#A38EDC" />
-        </linearGradient>
-        <linearGradient id={`${uid}-sage`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#B9DBBE" />
-          <stop offset="100%" stopColor="#7FB386" />
+        {/* Single shared vertical gradient — lilac → magenta → coral → amber. */}
+        <linearGradient id={`${uid}-wave`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%"   stopColor="#C9B6E8" />
+          <stop offset="28%"  stopColor="#E879A8" />
+          <stop offset="58%"  stopColor="#FF5A7E" />
+          <stop offset="82%"  stopColor="#FF7A45" />
+          <stop offset="100%" stopColor="#F2A93D" />
         </linearGradient>
       </defs>
 
-      {/* Lilac entry pulse — small, low */}
-      <rect x="1" y="14" width="3" height="4" rx="1.5" fill={`url(#${uid}-lilac)`} />
-      <rect x="6" y="11" width="3" height="10" rx="1.5" fill={`url(#${uid}-lilac)`} />
-
-      {/* Coral peaks — the brand voice */}
-      <rect x="11" y="6" width="3" height="20" rx="1.5" fill={`url(#${uid}-coral)`} />
-      <rect x="16" y="2" width="3" height="28" rx="1.5" fill={`url(#${uid}-coral)`} />
-      <rect x="21" y="0" width="3" height="32" rx="1.5" fill={`url(#${uid}-coral)`} />
-      <rect x="26" y="2" width="3" height="28" rx="1.5" fill={`url(#${uid}-coral)`} />
-      <rect x="31" y="6" width="3" height="20" rx="1.5" fill={`url(#${uid}-coral)`} />
-
-      {/* Sage tail — the calm settle */}
-      <rect x="36" y="10" width="3" height="12" rx="1.5" fill={`url(#${uid}-sage)`} />
-      <rect x="41" y="13" width="3" height="6" rx="1.5" fill={`url(#${uid}-sage)`} />
-      <rect x="46" y="14" width="3" height="4" rx="1.5" fill={`url(#${uid}-sage)`} />
+      {bars.map((b) => (
+        <rect
+          key={b.x}
+          x={b.x}
+          y={(40 - b.h) / 2}
+          width={6}
+          height={b.h}
+          rx={3}
+          fill={`url(#${uid}-wave)`}
+        />
+      ))}
     </svg>
   );
 }
@@ -101,19 +112,19 @@ export function Logo({
       <LogoMark size={dim} variant={variant} />
       <div className="leading-none">
         <span
-          className={cn("font-semibold uppercase tracking-[0.02em] block", wordSize)}
-          style={{ color: wordColor, letterSpacing: "0.04em" }}
+          className={cn("font-extrabold uppercase block", wordSize)}
+          style={{ color: wordColor, letterSpacing: "0.005em" }}
         >
           Voycelab
         </span>
         {withTagline && (
           <span
             className={cn(
-              "block mt-1 font-normal",
+              "block mt-1 font-medium uppercase",
               tagSize,
               hideTaglineOnMobile && "hidden sm:block",
             )}
-            style={{ color: tagColor, letterSpacing: "0.02em" }}
+            style={{ color: tagColor, letterSpacing: "0.14em" }}
           >
             Where voice runs hospitality
           </span>

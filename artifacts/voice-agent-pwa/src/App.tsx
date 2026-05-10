@@ -348,31 +348,23 @@ export default function App() {
           <Menu size={18} />
         </button>
         <div className="brand-row">
-          <svg width="36" height="22" viewBox="0 0 52 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <svg width="36" height="22" viewBox="0 0 64 40" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
             <defs>
-              <linearGradient id="vl-top-lilac" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#D9CBF0"/>
-                <stop offset="100%" stopColor="#A38EDC"/>
-              </linearGradient>
-              <linearGradient id="vl-top-coral" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#FF8A66"/>
-                <stop offset="100%" stopColor="#000000"/>
-              </linearGradient>
-              <linearGradient id="vl-top-sage" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#B9DBBE"/>
-                <stop offset="100%" stopColor="#7FB386"/>
+              <linearGradient id="vl-top-wave" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#C9B6E8"/>
+                <stop offset="28%" stopColor="#E879A8"/>
+                <stop offset="58%" stopColor="#FF5A7E"/>
+                <stop offset="82%" stopColor="#FF7A45"/>
+                <stop offset="100%" stopColor="#F2A93D"/>
               </linearGradient>
             </defs>
-            <rect x="1" y="14" width="3" height="4" rx="1.5" fill="url(#vl-top-lilac)"/>
-            <rect x="6" y="11" width="3" height="10" rx="1.5" fill="url(#vl-top-lilac)"/>
-            <rect x="11" y="6" width="3" height="20" rx="1.5" fill="url(#vl-top-coral)"/>
-            <rect x="16" y="2" width="3" height="28" rx="1.5" fill="url(#vl-top-coral)"/>
-            <rect x="21" y="0" width="3" height="32" rx="1.5" fill="url(#vl-top-coral)"/>
-            <rect x="26" y="2" width="3" height="28" rx="1.5" fill="url(#vl-top-coral)"/>
-            <rect x="31" y="6" width="3" height="20" rx="1.5" fill="url(#vl-top-coral)"/>
-            <rect x="36" y="10" width="3" height="12" rx="1.5" fill="url(#vl-top-sage)"/>
-            <rect x="41" y="13" width="3" height="6" rx="1.5" fill="url(#vl-top-sage)"/>
-            <rect x="46" y="14" width="3" height="4" rx="1.5" fill="url(#vl-top-sage)"/>
+            <rect x="2"  y="11" width="6" height="18" rx="3" fill="url(#vl-top-wave)"/>
+            <rect x="11" y="6"  width="6" height="28" rx="3" fill="url(#vl-top-wave)"/>
+            <rect x="20" y="1"  width="6" height="38" rx="3" fill="url(#vl-top-wave)"/>
+            <rect x="29" y="1"  width="6" height="38" rx="3" fill="url(#vl-top-wave)"/>
+            <rect x="38" y="6"  width="6" height="28" rx="3" fill="url(#vl-top-wave)"/>
+            <rect x="47" y="11" width="6" height="18" rx="3" fill="url(#vl-top-wave)"/>
+            <rect x="56" y="15" width="6" height="10" rx="3" fill="url(#vl-top-wave)"/>
           </svg>
           <span className="brand-text" style={{ color: "var(--logo-text)" }}>
             Voyce<span style={{ fontWeight: 500, opacity: 0.92 }}>Lab</span>
