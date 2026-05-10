@@ -498,23 +498,24 @@ export default function MainScreen() {
         </Pressable>
 
         <View style={s.brandRow}>
-          <Svg width={36} height={22} viewBox="0 0 64 40">
+          <Svg width={32} height={40} viewBox="0 0 80 100">
             <Defs>
-              <SvgLinearGradient id="vl-top-wave" x1="0" y1="0" x2="0" y2="1">
-                <Stop offset="0%" stopColor="#C9B6E8" />
-                <Stop offset="28%" stopColor="#E879A8" />
-                <Stop offset="58%" stopColor="#FF5A7E" />
-                <Stop offset="82%" stopColor="#FF7A45" />
-                <Stop offset="100%" stopColor="#F2A93D" />
+              <SvgLinearGradient id="vl-top-wave" x1="0" y1="0" x2="0" y2="98" gradientUnits="userSpaceOnUse">
+                <Stop offset="0%"   stopColor="#B89AE0" />
+                <Stop offset="22%"  stopColor="#D26FB0" />
+                <Stop offset="48%"  stopColor="#FF4F7A" />
+                <Stop offset="74%"  stopColor="#FF7A3C" />
+                <Stop offset="100%" stopColor="#F5B23A" />
               </SvgLinearGradient>
             </Defs>
-            <Rect x={2}  y={11} width={6} height={18} rx={3} fill="url(#vl-top-wave)" />
-            <Rect x={11} y={6}  width={6} height={28} rx={3} fill="url(#vl-top-wave)" />
-            <Rect x={20} y={1}  width={6} height={38} rx={3} fill="url(#vl-top-wave)" />
-            <Rect x={29} y={1}  width={6} height={38} rx={3} fill="url(#vl-top-wave)" />
-            <Rect x={38} y={6}  width={6} height={28} rx={3} fill="url(#vl-top-wave)" />
-            <Rect x={47} y={11} width={6} height={18} rx={3} fill="url(#vl-top-wave)" />
-            <Rect x={56} y={15} width={6} height={10} rx={3} fill="url(#vl-top-wave)" />
+            <Rect x={1}  y={48} width={9} height={50} rx={4.5} fill="url(#vl-top-wave)" />
+            <Rect x={11} y={26} width={9} height={72} rx={4.5} fill="url(#vl-top-wave)" />
+            <Rect x={21} y={14} width={9} height={84} rx={4.5} fill="url(#vl-top-wave)" />
+            <Rect x={31} y={6}  width={9} height={92} rx={4.5} fill="url(#vl-top-wave)" />
+            <Rect x={41} y={20} width={9} height={78} rx={4.5} fill="url(#vl-top-wave)" />
+            <Rect x={51} y={40} width={9} height={58} rx={4.5} fill="url(#vl-top-wave)" />
+            <Rect x={61} y={66} width={9} height={32} rx={4.5} fill="url(#vl-top-wave)" />
+            <Rect x={71} y={84} width={9} height={14} rx={4.5} fill="url(#vl-top-wave)" />
           </Svg>
           <View style={s.brandWords}>
             <Text style={[s.brandVoyce, { color: t.logoText }]}>Voyce</Text>

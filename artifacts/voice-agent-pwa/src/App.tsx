@@ -348,23 +348,24 @@ export default function App() {
           <Menu size={18} />
         </button>
         <div className="brand-row">
-          <svg width="36" height="22" viewBox="0 0 64 40" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <svg width="32" height="40" viewBox="0 0 80 100" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
             <defs>
-              <linearGradient id="vl-top-wave" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#C9B6E8"/>
-                <stop offset="28%" stopColor="#E879A8"/>
-                <stop offset="58%" stopColor="#FF5A7E"/>
-                <stop offset="82%" stopColor="#FF7A45"/>
-                <stop offset="100%" stopColor="#F2A93D"/>
+              <linearGradient id="vl-top-wave" x1="0" y1="0" x2="0" y2="98" gradientUnits="userSpaceOnUse">
+                <stop offset="0%"   stopColor="#B89AE0"/>
+                <stop offset="22%"  stopColor="#D26FB0"/>
+                <stop offset="48%"  stopColor="#FF4F7A"/>
+                <stop offset="74%"  stopColor="#FF7A3C"/>
+                <stop offset="100%" stopColor="#F5B23A"/>
               </linearGradient>
             </defs>
-            <rect x="2"  y="11" width="6" height="18" rx="3" fill="url(#vl-top-wave)"/>
-            <rect x="11" y="6"  width="6" height="28" rx="3" fill="url(#vl-top-wave)"/>
-            <rect x="20" y="1"  width="6" height="38" rx="3" fill="url(#vl-top-wave)"/>
-            <rect x="29" y="1"  width="6" height="38" rx="3" fill="url(#vl-top-wave)"/>
-            <rect x="38" y="6"  width="6" height="28" rx="3" fill="url(#vl-top-wave)"/>
-            <rect x="47" y="11" width="6" height="18" rx="3" fill="url(#vl-top-wave)"/>
-            <rect x="56" y="15" width="6" height="10" rx="3" fill="url(#vl-top-wave)"/>
+            <rect x="1"  y="48" width="9" height="50" rx="4.5" fill="url(#vl-top-wave)"/>
+            <rect x="11" y="26" width="9" height="72" rx="4.5" fill="url(#vl-top-wave)"/>
+            <rect x="21" y="14" width="9" height="84" rx="4.5" fill="url(#vl-top-wave)"/>
+            <rect x="31" y="6"  width="9" height="92" rx="4.5" fill="url(#vl-top-wave)"/>
+            <rect x="41" y="20" width="9" height="78" rx="4.5" fill="url(#vl-top-wave)"/>
+            <rect x="51" y="40" width="9" height="58" rx="4.5" fill="url(#vl-top-wave)"/>
+            <rect x="61" y="66" width="9" height="32" rx="4.5" fill="url(#vl-top-wave)"/>
+            <rect x="71" y="84" width="9" height="14" rx="4.5" fill="url(#vl-top-wave)"/>
           </svg>
           <span className="brand-text" style={{ color: "var(--logo-text)" }}>
             Voyce<span style={{ fontWeight: 500, opacity: 0.92 }}>Lab</span>
