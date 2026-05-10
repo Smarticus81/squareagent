@@ -348,24 +348,38 @@ export default function App() {
           <Menu size={18} />
         </button>
         <div className="brand-row">
-          <svg width="32" height="40" viewBox="0 0 80 100" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <svg width="46" height="26" viewBox="0 0 184 104" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
             <defs>
-              <linearGradient id="vl-top-wave" x1="0" y1="0" x2="0" y2="98" gradientUnits="userSpaceOnUse">
-                <stop offset="0%"   stopColor="#B89AE0"/>
-                <stop offset="22%"  stopColor="#D26FB0"/>
-                <stop offset="48%"  stopColor="#FF4F7A"/>
-                <stop offset="74%"  stopColor="#FF7A3C"/>
-                <stop offset="100%" stopColor="#F5B23A"/>
+              <clipPath id="vl-top-clip">
+                <rect x="0" y="39" width="22" height="54" rx="11"/>
+                <rect x="27" y="25" width="22" height="76" rx="11"/>
+                <rect x="54" y="10" width="22" height="94" rx="11"/>
+                <rect x="81" y="0" width="22" height="104" rx="11"/>
+                <rect x="108" y="18" width="22" height="82" rx="11"/>
+                <rect x="135" y="26" width="22" height="66" rx="11"/>
+                <rect x="162" y="37" width="22" height="53" rx="11"/>
+              </clipPath>
+              <linearGradient id="vl-top-wave" x1="0" y1="0" x2="0" y2="104" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stopColor="#AD91D8"/>
+                <stop offset="32%" stopColor="#E44B9A"/>
+                <stop offset="62%" stopColor="#FF6245"/>
+                <stop offset="100%" stopColor="#FDBA2E"/>
               </linearGradient>
             </defs>
-            <rect x="1"  y="48" width="9" height="50" rx="4.5" fill="url(#vl-top-wave)"/>
-            <rect x="11" y="26" width="9" height="72" rx="4.5" fill="url(#vl-top-wave)"/>
-            <rect x="21" y="14" width="9" height="84" rx="4.5" fill="url(#vl-top-wave)"/>
-            <rect x="31" y="6"  width="9" height="92" rx="4.5" fill="url(#vl-top-wave)"/>
-            <rect x="41" y="20" width="9" height="78" rx="4.5" fill="url(#vl-top-wave)"/>
-            <rect x="51" y="40" width="9" height="58" rx="4.5" fill="url(#vl-top-wave)"/>
-            <rect x="61" y="66" width="9" height="32" rx="4.5" fill="url(#vl-top-wave)"/>
-            <rect x="71" y="84" width="9" height="14" rx="4.5" fill="url(#vl-top-wave)"/>
+            <rect x="0" y="39" width="22" height="54" rx="11" fill="url(#vl-top-wave)" opacity="0.72"/>
+            <rect x="27" y="25" width="22" height="76" rx="11" fill="url(#vl-top-wave)"/>
+            <rect x="54" y="10" width="22" height="94" rx="11" fill="url(#vl-top-wave)"/>
+            <rect x="81" y="0" width="22" height="104" rx="11" fill="url(#vl-top-wave)"/>
+            <rect x="108" y="18" width="22" height="82" rx="11" fill="url(#vl-top-wave)"/>
+            <rect x="135" y="26" width="22" height="66" rx="11" fill="url(#vl-top-wave)"/>
+            <rect x="162" y="37" width="22" height="53" rx="11" fill="url(#vl-top-wave)"/>
+            <g clipPath="url(#vl-top-clip)">
+              <ellipse cx="13" cy="61" rx="25" ry="24" fill="#E2C7E8" fillOpacity="0.62"/>
+              <ellipse cx="55" cy="73" rx="63" ry="31" fill="#E52F8E" fillOpacity="0.46"/>
+              <ellipse cx="98" cy="78" rx="45" ry="31" fill="#FF6B37" fillOpacity="0.45"/>
+              <ellipse cx="144" cy="49" rx="18" ry="18" fill="#F2A0C6" fillOpacity="0.58"/>
+              <ellipse cx="166" cy="72" rx="19" ry="22" fill="#FDB62F" fillOpacity="0.76"/>
+            </g>
           </svg>
           <span className="brand-text" style={{ color: "var(--logo-text)" }}>
             Voyce<span style={{ fontWeight: 500, opacity: 0.92 }}>Lab</span>

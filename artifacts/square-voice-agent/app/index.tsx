@@ -5,7 +5,7 @@ import {
   View, Text, StyleSheet, Pressable, Platform,
   FlatList, Modal, ActivityIndicator, Linking, useColorScheme,
 } from "react-native";
-import Svg, { Defs, LinearGradient as SvgLinearGradient, Rect, Stop } from "react-native-svg";
+import Svg, { ClipPath, Defs, Ellipse, LinearGradient as SvgLinearGradient, Rect, Stop } from "react-native-svg";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
@@ -498,24 +498,36 @@ export default function MainScreen() {
         </Pressable>
 
         <View style={s.brandRow}>
-          <Svg width={32} height={40} viewBox="0 0 80 100">
+          <Svg width={46} height={26} viewBox="0 0 184 104">
             <Defs>
-              <SvgLinearGradient id="vl-top-wave" x1="0" y1="0" x2="0" y2="98" gradientUnits="userSpaceOnUse">
-                <Stop offset="0%"   stopColor="#B89AE0" />
-                <Stop offset="22%"  stopColor="#D26FB0" />
-                <Stop offset="48%"  stopColor="#FF4F7A" />
-                <Stop offset="74%"  stopColor="#FF7A3C" />
-                <Stop offset="100%" stopColor="#F5B23A" />
+              <ClipPath id="vl-top-clip">
+                <Rect x={0} y={39} width={22} height={54} rx={11} />
+                <Rect x={27} y={25} width={22} height={76} rx={11} />
+                <Rect x={54} y={10} width={22} height={94} rx={11} />
+                <Rect x={81} y={0} width={22} height={104} rx={11} />
+                <Rect x={108} y={18} width={22} height={82} rx={11} />
+                <Rect x={135} y={26} width={22} height={66} rx={11} />
+                <Rect x={162} y={37} width={22} height={53} rx={11} />
+              </ClipPath>
+              <SvgLinearGradient id="vl-top-wave" x1="0" y1="0" x2="0" y2="104" gradientUnits="userSpaceOnUse">
+                <Stop offset="0%" stopColor="#AD91D8" />
+                <Stop offset="32%" stopColor="#E44B9A" />
+                <Stop offset="62%" stopColor="#FF6245" />
+                <Stop offset="100%" stopColor="#FDBA2E" />
               </SvgLinearGradient>
             </Defs>
-            <Rect x={1}  y={48} width={9} height={50} rx={4.5} fill="url(#vl-top-wave)" />
-            <Rect x={11} y={26} width={9} height={72} rx={4.5} fill="url(#vl-top-wave)" />
-            <Rect x={21} y={14} width={9} height={84} rx={4.5} fill="url(#vl-top-wave)" />
-            <Rect x={31} y={6}  width={9} height={92} rx={4.5} fill="url(#vl-top-wave)" />
-            <Rect x={41} y={20} width={9} height={78} rx={4.5} fill="url(#vl-top-wave)" />
-            <Rect x={51} y={40} width={9} height={58} rx={4.5} fill="url(#vl-top-wave)" />
-            <Rect x={61} y={66} width={9} height={32} rx={4.5} fill="url(#vl-top-wave)" />
-            <Rect x={71} y={84} width={9} height={14} rx={4.5} fill="url(#vl-top-wave)" />
+            <Rect x={0} y={39} width={22} height={54} rx={11} fill="url(#vl-top-wave)" opacity={0.72} />
+            <Rect x={27} y={25} width={22} height={76} rx={11} fill="url(#vl-top-wave)" />
+            <Rect x={54} y={10} width={22} height={94} rx={11} fill="url(#vl-top-wave)" />
+            <Rect x={81} y={0} width={22} height={104} rx={11} fill="url(#vl-top-wave)" />
+            <Rect x={108} y={18} width={22} height={82} rx={11} fill="url(#vl-top-wave)" />
+            <Rect x={135} y={26} width={22} height={66} rx={11} fill="url(#vl-top-wave)" />
+            <Rect x={162} y={37} width={22} height={53} rx={11} fill="url(#vl-top-wave)" />
+            <Ellipse cx={13} cy={61} rx={25} ry={24} fill="#E2C7E8" fillOpacity={0.62} clipPath="url(#vl-top-clip)" />
+            <Ellipse cx={55} cy={73} rx={63} ry={31} fill="#E52F8E" fillOpacity={0.46} clipPath="url(#vl-top-clip)" />
+            <Ellipse cx={98} cy={78} rx={45} ry={31} fill="#FF6B37" fillOpacity={0.45} clipPath="url(#vl-top-clip)" />
+            <Ellipse cx={144} cy={49} rx={18} ry={18} fill="#F2A0C6" fillOpacity={0.58} clipPath="url(#vl-top-clip)" />
+            <Ellipse cx={166} cy={72} rx={19} ry={22} fill="#FDB62F" fillOpacity={0.76} clipPath="url(#vl-top-clip)" />
           </Svg>
           <View style={s.brandWords}>
             <Text style={[s.brandVoyce, { color: t.logoText }]}>Voyce</Text>

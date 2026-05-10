@@ -14,12 +14,10 @@ interface LogoProps {
 /**
  * VoyceLab — symbol mark.
  *
- * Eight rounded capsules sitting on a shared baseline, rising and falling
- * like a sound wave. A single vertical gradient — lilac at the very top,
- * through hot magenta and coral, into a warm amber at the base — is shared
- * across the whole canvas, so each pill reveals the slice of the gradient
- * its height occupies. Tall bars carry the full lilac→amber sweep; short
- * bars show only the warm amber base. Reads as "voice running hospitality".
+ * Seven rounded capsules rising and falling like the supplied mark. The base
+ * vertical gradient is shared across the full canvas, then soft translucent
+ * color blooms are clipped inside the capsules to mirror the reference's
+ * painterly magenta, coral, amber, and lilac overlaps.
  *
  * Use a unique gradient id per mount so multiple marks on a page don't
  * collide when styled.
@@ -34,24 +32,18 @@ export function LogoMark({
   variant?: "dark" | "light" | "mono";
   className?: string;
 }) {
-  // 80 wide × 100 tall canvas, 8 pills sitting on a baseline at y=98.
-  const width = Math.round(size * (80 / 100));
+  const width = Math.round(size * (184 / 104));
   const uid = `vl-mark-${++__vlMarkSeq}`;
 
-  // Pill geometry: width 9, step 10 (1px optical breathing room).
-  // Heights tuned to the reference wave: med, tall, taller, tallest, tall,
-  // med, short, dot.
-  const baseline = 98;
-  const barW = 9;
-  const bars: Array<{ x: number; h: number }> = [
-    { x: 1,  h: 50 },
-    { x: 11, h: 72 },
-    { x: 21, h: 84 },
-    { x: 31, h: 92 },
-    { x: 41, h: 78 },
-    { x: 51, h: 58 },
-    { x: 61, h: 32 },
-    { x: 71, h: 14 },
+  const barW = 22;
+  const bars: Array<{ x: number; y: number; h: number; opacity?: number }> = [
+    { x: 0, y: 39, h: 54, opacity: 0.72 },
+    { x: 27, y: 25, h: 76 },
+    { x: 54, y: 11, h: 94 },
+    { x: 81, y: 0, h: 104 },
+    { x: 108, y: 19, h: 82 },
+    { x: 135, y: 26, h: 66 },
+    { x: 162, y: 37, h: 53 },
   ];
 
   return (
@@ -59,27 +51,29 @@ export function LogoMark({
       className={cn("block select-none", className)}
       width={width}
       height={size}
-      viewBox="0 0 80 100"
+      viewBox="0 0 184 104"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden="true"
     >
       <defs>
-        {/* Single shared vertical gradient mapped to the full canvas height,
-            so each pill samples the slice of the gradient at its own y. */}
+        <clipPath id={`${uid}-clip`}>
+          {bars.map((b) => (
+            <rect key={b.x} x={b.x} y={b.y} width={barW} height={b.h} rx={barW / 2} />
+          ))}
+        </clipPath>
         <linearGradient
           id={`${uid}-wave`}
           x1="0"
           y1="0"
           x2="0"
-          y2={baseline}
+          y2="104"
           gradientUnits="userSpaceOnUse"
         >
-          <stop offset="0%"   stopColor="#B89AE0" />
-          <stop offset="22%"  stopColor="#D26FB0" />
-          <stop offset="48%"  stopColor="#FF4F7A" />
-          <stop offset="74%"  stopColor="#FF7A3C" />
-          <stop offset="100%" stopColor="#F5B23A" />
+          <stop offset="0%" stopColor="#AD91D8" />
+          <stop offset="32%" stopColor="#E44B9A" />
+          <stop offset="62%" stopColor="#FF6245" />
+          <stop offset="100%" stopColor="#FDBA2E" />
         </linearGradient>
       </defs>
 
@@ -87,13 +81,22 @@ export function LogoMark({
         <rect
           key={b.x}
           x={b.x}
-          y={baseline - b.h}
+          y={b.y}
           width={barW}
           height={b.h}
           rx={barW / 2}
           fill={`url(#${uid}-wave)`}
+          opacity={b.opacity ?? 1}
         />
       ))}
+
+      <g clipPath={`url(#${uid}-clip)`}>
+        <ellipse cx="13" cy="61" rx="25" ry="24" fill="#E2C7E8" fillOpacity="0.62" />
+        <ellipse cx="55" cy="73" rx="63" ry="31" fill="#E52F8E" fillOpacity="0.46" />
+        <ellipse cx="98" cy="78" rx="45" ry="31" fill="#FF6B37" fillOpacity="0.45" />
+        <ellipse cx="144" cy="49" rx="18" ry="18" fill="#F2A0C6" fillOpacity="0.58" />
+        <ellipse cx="166" cy="72" rx="19" ry="22" fill="#FDB62F" fillOpacity="0.76" />
+      </g>
     </svg>
   );
 }
@@ -110,19 +113,19 @@ export function Logo({
   size = "md",
   variant = "dark",
 }: LogoProps) {
-  const dim = { sm: 24, md: 32, lg: 44, xl: 64 }[size];
-  const wordSize = { sm: "text-[14px]", md: "text-[18px]", lg: "text-[26px]", xl: "text-[40px]" }[size];
+  const dim = { sm: 22, md: 30, lg: 42, xl: 62 }[size];
+  const wordSize = { sm: "text-[15px]", md: "text-[20px]", lg: "text-[29px]", xl: "text-[43px]" }[size];
   const wordColor =
     variant === "light" ? "#FFFFFF" : variant === "mono" ? "currentColor" : "#0A0A0B";
 
   if (iconOnly) return <LogoMark size={dim} variant={variant} className={className} />;
 
   return (
-    <div className={cn("inline-flex flex-col items-center gap-2 select-none leading-none", className)}>
+    <div className={cn("inline-flex flex-col items-center gap-2.5 select-none leading-none", className)}>
       <LogoMark size={dim} variant={variant} />
       <span
         className={cn("font-black uppercase block", wordSize)}
-        style={{ color: wordColor, letterSpacing: "0.08em" }}
+        style={{ color: wordColor, letterSpacing: "0.02em" }}
       >
         Voycelab
       </span>
