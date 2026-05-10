@@ -49,11 +49,17 @@ function stateLabel(state: AgentState, mode: AppMode, wakeWordActive: boolean): 
 function buildWakeWords(wakePhrase: string): string[] {
   const normalized = wakePhrase.toLowerCase().trim();
   const compact = normalized.replace(/[^\p{L}\p{N}\s]/gu, "").replace(/\s+/g, " ");
-  const words = new Set(["hey voyce", "hey voicelab", "hey voycelab", "voycelab"]);
+  // Always include a small set of safe, multi-syllable defaults.
+  const words = new Set<string>(["hey voyce", "hey voicelab", "hey voycelab", "voycelab"]);
   if (compact) {
+    // Always include the full configured phrase as-is.
     words.add(compact);
-    if (compact.startsWith("hey ")) words.add(compact.slice(4));
-    else words.add(`hey ${compact}`);
+    // Ensure a "hey {name}" variant exists, but never the bare name on its
+    // own — single-word names like "bev" or "max" overlap with common
+    // English ("beverage", "maximum") and produce false wakes.
+    if (!compact.startsWith("hey ")) {
+      words.add(`hey ${compact}`);
+    }
   } else {
     words.add("hey bar");
   }
@@ -294,7 +300,7 @@ export default function App() {
 
   useEffect(() => {
     if (mode !== "command" || !partialTranscript?.trim()) return;
-    const kind = matchTermination(partialTranscript);
+    const kind = matchTermination(partialTranscript, { partial: true });
     if (kind) applyVoiceTermination(kind);
   }, [partialTranscript, mode, applyVoiceTermination]);
 

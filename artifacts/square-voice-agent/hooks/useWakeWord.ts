@@ -3,9 +3,14 @@
  * Metro uses useWakeWord.native.ts on iOS/Android.
  */
 import { useRef, useCallback, useState } from "react";
-import { HARD_SHUTDOWN_PHRASES, SOFT_BACK_TO_WAKE_PHRASES } from "@/lib/voice-termination";
+import {
+  HARD_SHUTDOWN_PHRASES,
+  SOFT_BACK_TO_WAKE_PHRASES,
+  matchTermination,
+  matchWakeWord,
+} from "@/lib/voice-termination";
 
-export const WAKE_WORDS = ["hey bar", "hey bars", "a bar", "okay bar", "hey voyce", "voycelab"];
+export const WAKE_WORDS = ["hey bar", "hey bars", "okay bar", "hey voyce", "hey voicelab", "voycelab"];
 export const STOP_PHRASES = [...SOFT_BACK_TO_WAKE_PHRASES];
 export const SHUTDOWN_PHRASES = [...HARD_SHUTDOWN_PHRASES];
 
@@ -130,24 +135,26 @@ export function useWakeWord({
         }
         if (transcripts.length === 0) continue;
         const combined = transcripts.join(" ");
-        console.log("[WakeWord] Transcript:", combined);
+        const isFinal = !!result.isFinal;
+        console.log("[WakeWord] Transcript:", combined, isFinal ? "(final)" : "(interim)");
 
-        if (shutdownPhrasesRef.current.some((p) => combined.includes(p))) {
+        const term = matchTermination(combined, { partial: !isFinal });
+        if (term === "hard") {
           console.log("[WakeWord] Shutdown phrase:", combined);
           stop();
           onShutdownRef.current();
           return;
         }
-
-        if (stopPhrasesRef.current.some((p) => combined.includes(p))) {
+        if (term === "soft") {
           console.log("[WakeWord] Stop phrase:", combined);
           stop();
           onStopRef.current();
           return;
         }
 
-        if (wakeWordsRef.current.some((w) => combined.includes(w))) {
-          console.log("[WakeWord] Wake word:", combined);
+        const hit = matchWakeWord(combined, wakeWordsRef.current);
+        if (hit) {
+          console.log("[WakeWord] Wake word:", hit, "in", combined);
           stop();
           onWakeRef.current();
           return;

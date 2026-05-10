@@ -5,9 +5,14 @@
  * Also detects stop/terminate phrases for mode transitions.
  */
 import { useRef, useCallback, useState } from "react";
-import { HARD_SHUTDOWN_PHRASES, SOFT_BACK_TO_WAKE_PHRASES } from "@/lib/voice-termination";
+import {
+  HARD_SHUTDOWN_PHRASES,
+  SOFT_BACK_TO_WAKE_PHRASES,
+  matchTermination,
+  matchWakeWord,
+} from "@/lib/voice-termination";
 
-export const WAKE_WORDS = ["hey bar", "hey bars", "a bar", "okay bar", "hey voyce", "voycelab"];
+export const WAKE_WORDS = ["hey bar", "hey bars", "okay bar", "hey voyce", "hey voicelab", "voycelab"];
 
 /** Soft termination — back to wake listening after closing live agent session */
 export const STOP_PHRASES = [...SOFT_BACK_TO_WAKE_PHRASES];
@@ -136,28 +141,30 @@ export function useWakeWord({
         }
         if (transcripts.length === 0) continue;
         const combined = transcripts.join(" ");
-        console.log("[WakeWord] Transcript:", combined);
+        const isFinal = !!result.isFinal;
+        console.log("[WakeWord] Transcript:", combined, isFinal ? "(final)" : "(interim)");
 
-        // Check shutdown phrases first (highest priority)
-        if (shutdownPhrasesRef.current.some((p) => combined.includes(p))) {
+        // Termination phrases use the shared matcher: hard anywhere, soft
+        // requires end-of-utterance for interim transcripts.
+        const term = matchTermination(combined, { partial: !isFinal });
+        if (term === "hard") {
           console.log("[WakeWord] Shutdown phrase:", combined);
           stop();
           onShutdownRef.current();
           return;
         }
-
-        // Check stop/terminate phrases
-        if (stopPhrasesRef.current.some((p) => combined.includes(p))) {
+        if (term === "soft") {
           console.log("[WakeWord] Stop phrase:", combined);
-          // Don't stop wake word — caller handles transition
           stop();
           onStopRef.current();
           return;
         }
 
-        // Check wake words
-        if (wakeWordsRef.current.some((w) => combined.includes(w))) {
-          console.log("[WakeWord] Wake word detected:", combined);
+        // Wake words: word-boundary match so "hey bars" doesn't fire on
+        // "hey bartender".
+        const hit = matchWakeWord(combined, wakeWordsRef.current);
+        if (hit) {
+          console.log("[WakeWord] Wake word detected:", hit, "in", combined);
           stop();
           onWakeRef.current();
           return;

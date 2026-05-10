@@ -13,10 +13,15 @@ import {
   ExpoSpeechRecognitionModule,
   useSpeechRecognitionEvent,
 } from "expo-speech-recognition";
-import { HARD_SHUTDOWN_PHRASES, SOFT_BACK_TO_WAKE_PHRASES } from "@/lib/voice-termination";
+import {
+  HARD_SHUTDOWN_PHRASES,
+  SOFT_BACK_TO_WAKE_PHRASES,
+  matchTermination,
+  matchWakeWord,
+} from "@/lib/voice-termination";
 
 export const WAKE_WORDS = [
-  "hey bar", "hey bars", "a bar", "okay bar", "hey voyce", "voycelab",
+  "hey bar", "hey bars", "okay bar", "hey voyce", "hey voicelab", "voycelab",
 ];
 export const STOP_PHRASES = [...SOFT_BACK_TO_WAKE_PHRASES];
 export const SHUTDOWN_PHRASES = [...HARD_SHUTDOWN_PHRASES];
@@ -138,22 +143,25 @@ export function useWakeWord({
     if (!activeRef.current) return;
     for (const result of ev.results) {
       const text = result.transcript.toLowerCase().trim();
-      console.log("[WakeWord:native] Transcript:", text);
+      const isFinal = !!(result as any).isFinal;
+      console.log("[WakeWord:native] Transcript:", text, isFinal ? "(final)" : "(interim)");
 
-      if (shutdownPhrasesRef.current.some((p) => text.includes(p))) {
+      const term = matchTermination(text, { partial: !isFinal });
+      if (term === "hard") {
         console.log("[WakeWord:native] Shutdown phrase:", text);
         stop();
         onShutdownRef.current();
         return;
       }
-      if (stopPhrasesRef.current.some((p) => text.includes(p))) {
+      if (term === "soft") {
         console.log("[WakeWord:native] Soft terminate phrase:", text);
         stop();
         onStopRef.current();
         return;
       }
-      if (wakeWordsRef.current.some((w) => text.includes(w))) {
-        console.log("[WakeWord:native] Wake word:", text);
+      const hit = matchWakeWord(text, wakeWordsRef.current);
+      if (hit) {
+        console.log("[WakeWord:native] Wake word:", hit, "in", text);
         stop();
         onWakeRef.current();
         return;

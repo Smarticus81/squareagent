@@ -1,5 +1,12 @@
 /**
  * Voice UI termination — soft vs hard shutdown (shared semantics with PWA).
+ *
+ * Matching rules:
+ *   - Phrase comparisons use word boundaries to prevent mid-word false
+ *     positives (e.g. "hey bars" must not fire on "hey bartender").
+ *   - When matching against a partial / interim transcript, soft phrases
+ *     must occur at the END of the utterance so mid-sentence speech
+ *     ("we're done with the apps, now add…") does not terminate the session.
  */
 
 export type TerminationKind = "soft" | "hard";
@@ -7,7 +14,8 @@ export type TerminationKind = "soft" | "hard";
 export function normalizeVoiceUtterance(raw: string): string {
   return raw
     .toLowerCase()
-    .replace(/\u2019/g, "'")
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u201C\u201D]/g, '"')
     .trim();
 }
 
@@ -18,6 +26,7 @@ export const HARD_SHUTDOWN_PHRASES: readonly string[] = [
   "stop listening",
   "quit listening",
   "stop the microphone",
+  "stop the mic",
 ];
 
 export const SOFT_BACK_TO_WAKE_PHRASES: readonly string[] = [
@@ -26,7 +35,6 @@ export const SOFT_BACK_TO_WAKE_PHRASES: readonly string[] = [
   "goodbye",
   "good bye",
   "bye for now",
-  "no more",
   "we're done",
   "we are done",
   "were done",
@@ -35,21 +43,53 @@ export const SOFT_BACK_TO_WAKE_PHRASES: readonly string[] = [
   "were finished",
   "that's all",
   "thats all",
-  "nothing else",
-  "see you",
-  "that's enough",
-  "thats enough",
   "all done",
   "wake word mode",
   "back to sleep",
   "go to sleep",
   "stop agent",
+  "stop the agent",
 ];
 
-export function matchTermination(text: string): TerminationKind | null {
+const REGEX_META = /[.*+?^${}()|[\]\\]/g;
+function escapeRegex(s: string): string {
+  return s.replace(REGEX_META, "\\$&");
+}
+
+function phraseRegex(phrase: string, opts?: { atEnd?: boolean }): RegExp {
+  const escaped = escapeRegex(phrase);
+  const before = "(?:^|[^a-z0-9])";
+  const after = opts?.atEnd ? "[^a-z0-9]*$" : "(?:[^a-z0-9]|$)";
+  return new RegExp(`${before}${escaped}${after}`, "i");
+}
+
+export function phraseInText(text: string, phrase: string, opts?: { atEnd?: boolean }): boolean {
+  return phraseRegex(phrase, opts).test(text);
+}
+
+export interface MatchTerminationOptions {
+  partial?: boolean;
+}
+
+export function matchTermination(
+  text: string,
+  opts: MatchTerminationOptions = {},
+): TerminationKind | null {
   const t = normalizeVoiceUtterance(text);
   if (!t) return null;
-  if (HARD_SHUTDOWN_PHRASES.some((p) => t.includes(p))) return "hard";
-  if (SOFT_BACK_TO_WAKE_PHRASES.some((p) => t.includes(p))) return "soft";
+  if (HARD_SHUTDOWN_PHRASES.some((p) => phraseInText(t, p))) return "hard";
+  const atEnd = !!opts.partial;
+  if (SOFT_BACK_TO_WAKE_PHRASES.some((p) => phraseInText(t, p, { atEnd }))) return "soft";
+  return null;
+}
+
+export function matchWakeWord(text: string, wakeWords: readonly string[]): string | null {
+  const t = normalizeVoiceUtterance(text);
+  if (!t) return null;
+  for (const w of wakeWords) {
+    const wn = normalizeVoiceUtterance(w);
+    if (!wn) continue;
+    if (phraseInText(t, wn)) return wn;
+  }
   return null;
 }
