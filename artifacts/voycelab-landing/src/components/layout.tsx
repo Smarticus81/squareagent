@@ -56,8 +56,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
       {!isAuthPage && (
         <header className={`fixed top-0 inset-x-0 z-50 ${isLanding ? "vl-landing-header" : ""}`}>
           <div className="vl-glass">
-            <div className="w-full max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-10 h-[64px] sm:h-[72px] flex items-center justify-between gap-2 sm:gap-4">
-              <Link href="/" className="hover:opacity-90 transition-opacity min-w-0 flex-shrink">
+            <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-10 h-16 sm:h-18 flex items-center justify-between gap-2 sm:gap-4">
+              <Link href="/" className="hover:opacity-90 transition-opacity min-w-0 shrink">
                 <Logo size={isLanding ? "md" : "md"} withTagline={isLanding} hideTaglineOnMobile={isLanding} />
               </Link>
 
@@ -203,19 +203,19 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </header>
       )}
 
-      <main className={`flex-1 flex flex-col ${isAuthPage ? "" : "pt-[64px] sm:pt-[72px]"}`}>{children}</main>
+      <main className={`flex-1 flex flex-col ${isAuthPage ? "" : "pt-16 sm:pt-18"}`}>{children}</main>
 
       {!isAuthPage && (
         <footer
           className={`mt-auto ${isLanding ? "vl-landing-footer" : ""}`}
           style={{ borderTop: "1px solid rgba(10, 10, 11,0.08)" }}
         >
-          <div className="w-full max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-10 py-10 sm:py-14">
+          <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-10 py-10 sm:py-14">
             <div className="grid sm:grid-cols-2 md:grid-cols-[1.6fr_1fr_1fr_1fr] gap-8 md:gap-10">
               <div>
                 <Logo size="md" withTagline />
                 <p
-                  className="text-[13px] mt-5 max-w-[340px] leading-relaxed"
+                  className="text-[13px] mt-5 max-w-85 leading-relaxed"
                   style={{ color: "var(--color-vl-ink-muted)" }}
                 >
                   Hospitality, orchestrated by voice. VoyceLab connects to your POS,

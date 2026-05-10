@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link, useLocation } from "wouter";
 import { motion } from "framer-motion";
 import {
@@ -23,7 +23,7 @@ import {
 import { VoiceOrb } from "@/components/voice-orb";
 import { useVoycelabDemoRealtime } from "@/hooks/use-voycelab-demo-realtime";
 
-/* â”€â”€ animation config â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── animation config ─────────────────────────────────────────── */
 const ease = [0.22, 1, 0.36, 1] as const;
 const fadeUp = {
   hidden: { opacity: 0, y: 22 },
@@ -42,9 +42,9 @@ const childFade = {
   visible: { opacity: 1, y: 0, transition: { duration: 0.55, ease } },
 };
 
-/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+/* ─────────────────────────────────────────────────────────────────
    PAGE
-   â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+   ───────────────────────────────────────────────────────────────── */
 export default function Landing() {
   const [, navigate] = useLocation();
   const [name, setName] = useState("");
@@ -63,13 +63,13 @@ export default function Landing() {
   );
 }
 
-/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+/* ═══════════════════════════════════════════════════════════════
    HERO
-   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+   ═══════════════════════════════════════════════════════════════ */
 function Hero({ onStart }: { onStart: () => void }) {
   return (
     <section className="relative pt-28 md:pt-36 pb-16 md:pb-24 overflow-hidden">
-      {/* Painterly hero washes â€” peach top-left, lilac top-right, sage right */}
+      {/* Painterly hero washes — peach top-left, lilac top-right, sage right */}
       <div aria-hidden className="absolute inset-0 pointer-events-none">
         <div
           className="vl-blob"
@@ -115,7 +115,7 @@ function Hero({ onStart }: { onStart: () => void }) {
 
       <div className="relative section-container">
         <div className="grid lg:grid-cols-[1fr_1.05fr] gap-10 lg:gap-14 items-start">
-          {/* â”€â”€ LEFT: copy column â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+          {/* ── LEFT: copy column ────────────────────────────────── */}
           <div className="pt-2">
             <motion.div
               initial="hidden"
@@ -146,7 +146,7 @@ function Hero({ onStart }: { onStart: () => void }) {
               animate="visible"
               custom={2}
               variants={fadeUp}
-              className="mt-7 text-[17px] md:text-[18px] leading-relaxed max-w-[460px]"
+              className="mt-7 text-[17px] md:text-[18px] leading-relaxed max-w-115"
               style={{ color: "var(--color-vl-ink-soft)" }}
             >
               VoyceLab gives business owners a voice assistant they can talk to
@@ -202,7 +202,7 @@ function Hero({ onStart }: { onStart: () => void }) {
               </span>
             </motion.div>
 
-            {/* Try asking â€” quote chips */}
+            {/* Try asking — quote chips */}
             <motion.div
               initial="hidden"
               animate="visible"
@@ -245,7 +245,7 @@ function Hero({ onStart }: { onStart: () => void }) {
             </motion.div>
           </div>
 
-          {/* â”€â”€ RIGHT: scene with floating assistants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+          {/* ── RIGHT: scene with floating assistants ────────────── */}
           <motion.div
             initial="hidden"
             animate="visible"
@@ -327,7 +327,7 @@ function MinimalLanding({ onStart }: { onStart: () => void }) {
   );
 }
 
-/* ── Hero scene: orbit rings + central waveform sphere + 3 floating assistant cards */
+/* -- Hero scene: orbit rings + central waveform sphere + 3 floating assistant cards */
 function HeroScene() {
   const demo = useVoycelabDemoRealtime();
   const [orbSize, setOrbSize] = useState<number>(() => {
@@ -343,8 +343,8 @@ function HeroScene() {
   }, []);
 
   return (
-    <div className="relative aspect-[1/1.05] w-full max-w-[640px] mx-auto lg:ml-auto">
-      {/* Single soft orbit ring â€” anchors the orb without competing with it */}
+    <div className="relative aspect-[1/1.05] w-full max-w-160 mx-auto lg:ml-auto">
+      {/* Single soft orbit ring — anchors the orb without competing with it */}
       <div aria-hidden className="absolute inset-0">
         <div
           className="vl-orbit-ring"
@@ -352,7 +352,7 @@ function HeroScene() {
         />
       </div>
 
-      {/* Central voice orb â€” user mic starts the session; particles react to assistant output */}
+      {/* Central voice orb — user mic starts the session; particles react to assistant output */}
       <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10">
         <VoiceOrb
           size={orbSize}
@@ -373,7 +373,7 @@ function HeroScene() {
         />
       </div>
 
-      {/* Floating command chip #1 â€” POS (top-right) — hidden on narrow screens */}
+      {/* Floating command chip #1 — POS (top-right) � hidden on narrow screens */}
       <FloatingAssistantCard
         className="hidden sm:block absolute top-[8%] right-[-2%] md:right-[-6%] vl-float-slow"
         index="1"
@@ -383,7 +383,7 @@ function HeroScene() {
         questionRest="into 3 ways and add a tip."
       />
 
-      {/* Floating command chip #2 â€” Inventory (right middle) */}
+      {/* Floating command chip #2 — Inventory (right middle) */}
       <FloatingAssistantCard
         className="hidden sm:block absolute top-[48%] right-[-8%] md:right-[-12%] vl-float-medium"
         index="2"
@@ -393,12 +393,12 @@ function HeroScene() {
         questionRest="for tonight?"
       />
 
-      {/* Floating command chip #3 â€” Venue (bottom-left) */}
+      {/* Floating command chip #3 — Venue (bottom-left) */}
       <FloatingAssistantCard
         className="hidden sm:block absolute bottom-[8%] left-[-8%] md:left-[-14%] vl-float-fast"
         index="3"
         title="VENUE ASSISTANT"
-        question="Hey Voyce, whatâ€™s"
+        question="Hey Voyce, what’s"
         questionAccent="the timeline"
         questionRest="for the Johnson wedding?"
       />
@@ -424,7 +424,7 @@ function FloatingAssistantCard({
   return (
     <div className={className}>
       <div
-        className="relative rounded-full pl-2 pr-4 py-2 flex items-center gap-2.5 max-w-[300px]"
+        className="relative rounded-full pl-2 pr-4 py-2 flex items-center gap-2.5 max-w-75"
         style={{
           background: "rgba(255,255,255,0.72)",
           backdropFilter: "blur(20px) saturate(1.4)",
@@ -463,11 +463,11 @@ function FloatingAssistantCard({
             {questionRest}
           </p>
         </div>
-        <div className="flex items-end gap-[2px] h-3.5 ml-1 shrink-0">
+        <div className="flex items-end gap-0.5 h-3.5 ml-1 shrink-0">
           {[0.5, 0.9, 0.6, 1, 0.7].map((h, i) => (
             <span
               key={i}
-              className="w-[2px] rounded-full"
+              className="w-0.5 rounded-full"
               style={{
                 background: "var(--color-vl-coral)",
                 height: `${h * 100}%`,
@@ -481,9 +481,9 @@ function FloatingAssistantCard({
   );
 }
 
-/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+/* ═══════════════════════════════════════════════════════════════
    INTEGRATIONS STRIP
-   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+   ═══════════════════════════════════════════════════════════════ */
 function IntegrationsStrip() {
   const integrations = [
     { name: "Square", color: "#0A0A0B" },
@@ -506,7 +506,7 @@ function IntegrationsStrip() {
               className="mt-3 text-[14px] leading-relaxed"
               style={{ color: "var(--color-vl-ink-muted)" }}
             >
-              VoyceLab flows into the systems you already use â€” securely and beautifully.
+              VoyceLab flows into the systems you already use — securely and beautifully.
             </p>
             <Link
               href="/services"
@@ -539,9 +539,9 @@ function IntegrationsStrip() {
   );
 }
 
-/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-   CONVERSATION SECTION â€” Live VoyceLab voice FAQ (OpenAI Realtime WebRTC)
-   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+/* ═══════════════════════════════════════════════════════════════
+   CONVERSATION SECTION — Live VoyceLab voice FAQ (OpenAI Realtime WebRTC)
+   ═══════════════════════════════════════════════════════════════ */
 function ConversationSection({ compact = false }: { compact?: boolean }) {
   const demo = useVoycelabDemoRealtime();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -557,13 +557,13 @@ function ConversationSection({ compact = false }: { compact?: boolean }) {
       case "idle":
         return { label: "Ready", color: "var(--color-vl-ink-muted)" };
       case "connecting":
-        return { label: "Connectingâ€¦", color: "var(--color-vl-honey)" };
+        return { label: "Connecting…", color: "var(--color-vl-honey)" };
       case "listening":
-        return { label: "Listening â€” ask anything about VoyceLab", color: "var(--color-vl-success)" };
+        return { label: "Listening — ask anything about VoyceLab", color: "var(--color-vl-success)" };
       case "thinking":
-        return { label: "Thinkingâ€¦", color: "var(--color-vl-lilac)" };
+        return { label: "Thinking…", color: "var(--color-vl-lilac)" };
       case "speaking":
-        return { label: "Speakingâ€¦", color: "var(--color-vl-coral-deep)" };
+        return { label: "Speaking…", color: "var(--color-vl-coral-deep)" };
       case "error":
         return { label: "Something went wrong", color: "var(--color-vl-danger)" };
       default:
@@ -584,16 +584,16 @@ function ConversationSection({ compact = false }: { compact?: boolean }) {
         <div className={compact ? "grid gap-4" : "grid lg:grid-cols-[1fr_1.2fr] gap-10 lg:gap-14 items-start"}>
           {!compact && <div>
             <p className="vl-eyebrow">Less busywork. More guest magic.</p>
-            <h2 className="vl-section-heading mt-5 max-w-[460px]">
+            <h2 className="vl-section-heading mt-5 max-w-115">
               Let's put your venue
               <br />
               <em>in conversation.</em>
             </h2>
             <p
-              className="mt-6 text-[16px] leading-relaxed max-w-[440px]"
+              className="mt-6 text-[16px] leading-relaxed max-w-110"
               style={{ color: "var(--color-vl-ink-muted)" }}
             >
-              This is a live, low-latency voice line powered by OpenAI Realtime â€” ask aloud about VoyceLab:
+              This is a live, low-latency voice line powered by OpenAI Realtime — ask aloud about VoyceLab:
               integrations, assistants, pricing overview, and how operators use voice day-to-day.
             </p>
 
@@ -610,11 +610,11 @@ function ConversationSection({ compact = false }: { compact?: boolean }) {
 
             <div className="mt-5 flex items-center gap-2 text-[13px]" style={{ color: "var(--color-vl-ink-muted)" }}>
               <ShieldCheck className="w-3.5 h-3.5" style={{ color: "var(--color-vl-success)" }} />
-              Microphone required Â· Answers only cover VoyceLab (demo sandbox â€” no POS tools).
+              Microphone required · Answers only cover VoyceLab (demo sandbox — no POS tools).
             </div>
 
-            <p className="mt-4 text-[12px] max-w-[440px]" style={{ color: "var(--color-vl-ink-faint)" }}>
-              Hint phrases below are prompts â€” speak naturally after you tap Start.
+            <p className="mt-4 text-[12px] max-w-110" style={{ color: "var(--color-vl-ink-faint)" }}>
+              Hint phrases below are prompts — speak naturally after you tap Start.
             </p>
           </div>}
 
@@ -699,13 +699,13 @@ function ConversationSection({ compact = false }: { compact?: boolean }) {
             {/* Transcript */}
             <div
               ref={scrollRef}
-              className={(compact ? "max-h-[190px]" : "max-h-[min(340px,50vh)]") + " overflow-y-auto space-y-3 pr-1"}
+              className={(compact ? "max-h-47.5" : "max-h-[min(340px,50vh)]") + " overflow-y-auto space-y-3 pr-1"}
               style={{ scrollbarWidth: "thin" }}
             >
               {!demo.isLive && demo.conversation.length === 0 && (
                 <p className="text-[14px] leading-relaxed py-4 text-center" style={{ color: "var(--color-vl-ink-muted)" }}>
                   Tap <strong style={{ color: "var(--color-vl-ink)" }}>Start voice demo</strong>, allow your microphone,
-                  then ask out loud â€” you'll hear answers through your speakers or headset.
+                  then ask out loud — you'll hear answers through your speakers or headset.
                 </p>
               )}
 
@@ -799,7 +799,7 @@ function DemoStatusWaveform({ state }: { state: DemoWaveState }) {
   const active =
     state === "listening" || state === "speaking" || state === "thinking" || state === "connecting";
   return (
-    <div className="flex items-center gap-[3px] h-6">
+    <div className="flex items-center gap-0.75 h-6">
       {Array.from({ length: bars }, (_, i) => {
         const center = (bars - 1) / 2;
         const distance = Math.abs(i - center) / center;
@@ -810,7 +810,7 @@ function DemoStatusWaveform({ state }: { state: DemoWaveState }) {
         return (
           <div
             key={i}
-            className="w-[3px] rounded-full"
+            className="w-0.75 rounded-full"
             style={{
               background:
                 state === "error"
@@ -829,9 +829,9 @@ function DemoStatusWaveform({ state }: { state: DemoWaveState }) {
   );
 }
 
-/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-   ASSISTANT TOUR â€” three numbered hospitality assistants
-   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+/* ═══════════════════════════════════════════════════════════════
+   ASSISTANT TOUR — three numbered hospitality assistants
+   ═══════════════════════════════════════════════════════════════ */
 function AssistantTour() {
   const items = [
     {
@@ -855,7 +855,7 @@ function AssistantTour() {
     {
       index: "03",
       title: "Venue Assistant",
-      blurb: "Events, timelines, staffing, packages â€” orchestrated by voice across the night.",
+      blurb: "Events, timelines, staffing, packages — orchestrated by voice across the night.",
       icon: <CalendarRange className="w-5 h-5" />,
       accent: "var(--color-vl-coral)",
       tint: "var(--color-vl-coral-tint)",
@@ -964,9 +964,9 @@ function AssistantTour() {
   );
 }
 
-/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-   SHIFT SECTION â€” old way vs voycelab way
-   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+/* ═══════════════════════════════════════════════════════════════
+   SHIFT SECTION — old way vs voycelab way
+   ═══════════════════════════════════════════════════════════════ */
 function ShiftSection() {
   const oldWay = [
     "Open POS",
@@ -1070,9 +1070,9 @@ function ShiftSection() {
   );
 }
 
-/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+/* ═══════════════════════════════════════════════════════════════
    ACTIONS SECTION
-   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+   ═══════════════════════════════════════════════════════════════ */
 function ActionsSection() {
   const actions = [
     {
@@ -1085,7 +1085,7 @@ function ActionsSection() {
     {
       icon: <Bell className="w-5 h-5" />,
       title: "Notify bar lead",
-      desc: "Alerts your bar lead about what needs attention before doors open â€” no phone tree, no text chain.",
+      desc: "Alerts your bar lead about what needs attention before doors open — no phone tree, no text chain.",
       tint: "var(--color-vl-honey-soft)",
       color: "#B7791F",
     },
@@ -1178,9 +1178,9 @@ function ActionsSection() {
   );
 }
 
-/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+/* ═══════════════════════════════════════════════════════════════
    VENUE OUTCOMES
-   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+   ═══════════════════════════════════════════════════════════════ */
 function VenueOutcomes() {
   const outcomes = [
     "No more surprise shortages",
@@ -1288,9 +1288,9 @@ function VenueOutcomes() {
   );
 }
 
-/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+/* ═══════════════════════════════════════════════════════════════
    FINAL CTA
-   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+   ═══════════════════════════════════════════════════════════════ */
 function FinalCTA({
   name,
   setName,
@@ -1342,7 +1342,7 @@ function FinalCTA({
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Name your assistant â€” Bev, Sage, Marloweâ€¦"
+                placeholder="Name your assistant — Bev, Sage, Marlowe…"
                 className="vl-input flex-1"
                 onKeyDown={(e) => e.key === "Enter" && onStart()}
               />
@@ -1360,7 +1360,7 @@ function FinalCTA({
                 Book a live demo
               </Link>
               <span className="text-[13px]" style={{ color: "var(--color-vl-ink-muted)" }}>
-                14-day trial Â· No card required
+                14-day trial · No card required
               </span>
             </div>
           </motion.div>

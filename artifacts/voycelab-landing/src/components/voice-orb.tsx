@@ -472,7 +472,7 @@ export function VoiceOrb({
         }}
         aria-label={ariaLabel}
         aria-pressed={state === "listening"}
-        className="absolute inset-0 rounded-full cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-vl-accent)] focus-visible:ring-offset-4 focus-visible:ring-offset-white"
+        className="absolute inset-0 rounded-full cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-(--color-vl-accent) focus-visible:ring-offset-4 focus-visible:ring-offset-white"
       >
         <span
           ref={mountRef}

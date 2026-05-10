@@ -170,11 +170,11 @@ export default function Settings() {
   return (
     <div className="relative flex-1 overflow-hidden px-4 pb-24 pt-16 sm:px-6 lg:px-10">
       <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
-        <div className="absolute left-[-12%] top-[-18%] h-[380px] w-[560px] rounded-full blur-3xl" style={{ background: "rgba(251, 207, 232, 0.42)" }} />
-        <div className="absolute right-[-14%] top-[6%] h-[480px] w-[620px] rounded-full blur-3xl" style={{ background: "rgba(199, 210, 254, 0.28)" }} />
-        <div className="absolute bottom-[-18%] right-[10%] h-[420px] w-[680px] rounded-full blur-3xl" style={{ background: "rgba(167, 243, 208, 0.22)" }} />
+        <div className="absolute left-[-12%] top-[-18%] h-95 w-140 rounded-full blur-3xl" style={{ background: "rgba(251, 207, 232, 0.42)" }} />
+        <div className="absolute right-[-14%] top-[6%] h-120 w-155 rounded-full blur-3xl" style={{ background: "rgba(199, 210, 254, 0.28)" }} />
+        <div className="absolute bottom-[-18%] right-[10%] h-105 w-170 rounded-full blur-3xl" style={{ background: "rgba(167, 243, 208, 0.22)" }} />
       </div>
-      <div className="mx-auto w-full max-w-[920px]">
+      <div className="mx-auto w-full max-w-230">
         {/* Back to the console */}
         <Link
           href="/command"
@@ -188,7 +188,7 @@ export default function Settings() {
         <h1 className="vl-display mt-3 text-[44px] md:text-[58px]" style={{ color: "var(--color-vl-ink)" }}>
           Your account
         </h1>
-        <p className="mt-4 max-w-[560px] text-[15px] leading-relaxed" style={{ color: "var(--color-vl-ink-muted)" }}>
+        <p className="mt-4 max-w-140 text-[15px] leading-relaxed" style={{ color: "var(--color-vl-ink-muted)" }}>
           Manage sign-in, password, and billing in one polished control room.
         </p>
 

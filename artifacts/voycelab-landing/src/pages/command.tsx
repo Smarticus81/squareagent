@@ -130,7 +130,7 @@ export default function Command() {
 
   return (
     <div className="flex-1 pt-20 sm:pt-24 pb-16">
-      <div className="w-full max-w-[960px] mx-auto px-4 sm:px-6 lg:px-10">
+      <div className="w-full max-w-240 mx-auto px-4 sm:px-6 lg:px-10">
         {/* Greeting */}
         <div className="mb-8 md:mb-10">
           <p className="vl-eyebrow">Console</p>
@@ -143,7 +143,7 @@ export default function Command() {
 
         {/* Single intent card — the one thing that matters right now */}
         <article
-          className="relative overflow-hidden rounded-2xl border border-black/[0.06] bg-white p-7 md:p-10 shadow-[0_1px_2px_rgba(10,10,11,0.04),0_8px_24px_-12px_rgba(10,10,11,0.10)]"
+          className="relative overflow-hidden rounded-2xl border border-black/6 bg-white p-7 md:p-10 shadow-[0_1px_2px_rgba(10,10,11,0.04),0_8px_24px_-12px_rgba(10,10,11,0.10)]"
         >
           <div
             aria-hidden
@@ -187,13 +187,13 @@ export default function Command() {
           </div>
 
           {primary.kind === "open" && (
-            <div className="relative mt-10 pt-7 border-t border-black/[0.06]">
+            <div className="relative mt-10 pt-7 border-t border-black/6">
               <VoiceRail state="ready" intensity={0.55} />
             </div>
           )}
 
           {primary.kind === "connect" && (
-            <div className="relative mt-10 pt-7 border-t border-black/[0.06] grid sm:grid-cols-2 gap-6">
+            <div className="relative mt-10 pt-7 border-t border-black/6 grid sm:grid-cols-2 gap-6">
               <Step n="1" active label="Connect Square" body="OAuth to your merchant and pick a location." />
               <Step n="2" label="Create your assistant" body="Name it, pick a voice, choose what it can do." />
             </div>
@@ -202,7 +202,7 @@ export default function Command() {
 
         {/* Trial countdown strip — only when useful */}
         {trialActive && trialEndsAt && (
-          <div className="mt-4 flex items-center justify-between gap-4 px-5 py-3 rounded-xl border border-black/[0.06] bg-white">
+          <div className="mt-4 flex items-center justify-between gap-4 px-5 py-3 rounded-xl border border-black/6 bg-white">
             <p className="text-[12.5px]" style={{ color: "rgba(10,10,11,0.62)" }}>
               Trial ends {trialEndsAt.toLocaleDateString()} ·{" "}
               <span style={{ color: "var(--color-vl-ink)" }}>
@@ -216,7 +216,7 @@ export default function Command() {
         )}
 
         {/* Three tight rows — not a dashboard, a router */}
-        <nav className="mt-12 border-t border-black/[0.06]">
+        <nav className="mt-12 border-t border-black/6">
           <RouterRow
             icon={<Sparkles className="w-3.5 h-3.5" />}
             label="Assistant"
@@ -387,7 +387,7 @@ function RouterRow({
   return (
     <Link
       href={href}
-      className={`group flex items-center gap-6 py-5 px-1 ${last ? "" : "border-b border-black/[0.06]"} transition-colors hover:bg-black/[0.02] rounded-lg`}
+      className={`group flex items-center gap-6 py-5 px-1 ${last ? "" : "border-b border-black/6"} transition-colors hover:bg-black/2 rounded-lg`}
     >
       <div className="flex items-center gap-3 shrink-0 w-44" style={{ color: "rgba(10,10,11,0.55)" }}>
         <span style={{ color: "var(--color-vl-accent)" }}>{icon}</span>
@@ -402,7 +402,7 @@ function RouterRow({
         </p>
       </div>
       <span
-        className="text-[12px] inline-flex items-center gap-1 shrink-0 transition-colors group-hover:text-[color:var(--color-vl-ink)]"
+        className="text-[12px] inline-flex items-center gap-1 shrink-0 transition-colors group-hover:text-(--color-vl-ink)"
         style={{ color: "rgba(10,10,11,0.55)" }}
       >
         {cta}

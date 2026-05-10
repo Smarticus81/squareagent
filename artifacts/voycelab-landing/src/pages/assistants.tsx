@@ -57,11 +57,11 @@ export default function Assistants() {
   return (
     <div className="relative flex-1 overflow-hidden px-4 pb-24 pt-16 sm:px-6 lg:px-10">
       <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
-        <div className="absolute left-[-12%] top-[-18%] h-[380px] w-[560px] rounded-full blur-3xl" style={{ background: "rgba(251, 207, 232, 0.42)" }} />
-        <div className="absolute right-[-12%] top-[8%] h-[460px] w-[560px] rounded-full blur-3xl" style={{ background: "rgba(199, 210, 254, 0.30)" }} />
-        <div className="absolute bottom-[-18%] right-[8%] h-[420px] w-[680px] rounded-full blur-3xl" style={{ background: "rgba(167, 243, 208, 0.25)" }} />
+        <div className="absolute left-[-12%] top-[-18%] h-95 w-140 rounded-full blur-3xl" style={{ background: "rgba(251, 207, 232, 0.42)" }} />
+        <div className="absolute right-[-12%] top-[8%] h-115 w-140 rounded-full blur-3xl" style={{ background: "rgba(199, 210, 254, 0.30)" }} />
+        <div className="absolute bottom-[-18%] right-[8%] h-105 w-170 rounded-full blur-3xl" style={{ background: "rgba(167, 243, 208, 0.25)" }} />
       </div>
-      <div className="mx-auto w-full max-w-[1180px]">
+      <div className="mx-auto w-full max-w-295">
         <Link
           href="/command"
           className="inline-flex items-center gap-1.5 text-[12px] mb-5 transition-colors"
@@ -72,10 +72,10 @@ export default function Assistants() {
         <div className="mb-10 flex flex-wrap items-end justify-between gap-5">
           <div>
             <p className="vl-eyebrow">Assistants</p>
-            <h1 className="vl-display mt-4 max-w-[720px] text-[34px] sm:text-[42px] md:text-[62px]" style={{ color: "var(--color-vl-ink)" }}>
+            <h1 className="vl-display mt-4 max-w-180 text-[34px] sm:text-[42px] md:text-[62px]" style={{ color: "var(--color-vl-ink)" }}>
               Your team’s voice assistants.
             </h1>
-            <p className="mt-5 max-w-[620px] text-[16px] leading-relaxed" style={{ color: "var(--color-vl-ink-muted)" }}>
+            <p className="mt-5 max-w-155 text-[16px] leading-relaxed" style={{ color: "var(--color-vl-ink-muted)" }}>
               Create one assistant per venue. Each voice carries its connected service, room behavior, wake phrase, and approval rules.
             </p>
           </div>

@@ -313,11 +313,11 @@ export default function CreateAssistant() {
   return (
     <div className="relative flex-1 overflow-hidden px-4 pb-20 pt-16 sm:px-6 lg:px-10">
       <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
-        <div className="absolute left-[-12%] top-[-18%] h-[380px] w-[560px] rounded-full blur-3xl" style={{ background: "rgba(251, 207, 232, 0.42)" }} />
-        <div className="absolute right-[-14%] top-[5%] h-[480px] w-[600px] rounded-full blur-3xl" style={{ background: "rgba(199, 210, 254, 0.30)" }} />
-        <div className="absolute bottom-[-18%] right-[12%] h-[420px] w-[680px] rounded-full blur-3xl" style={{ background: "rgba(167, 243, 208, 0.23)" }} />
+        <div className="absolute left-[-12%] top-[-18%] h-95 w-140 rounded-full blur-3xl" style={{ background: "rgba(251, 207, 232, 0.42)" }} />
+        <div className="absolute right-[-14%] top-[5%] h-120 w-150 rounded-full blur-3xl" style={{ background: "rgba(199, 210, 254, 0.30)" }} />
+        <div className="absolute bottom-[-18%] right-[12%] h-105 w-170 rounded-full blur-3xl" style={{ background: "rgba(167, 243, 208, 0.23)" }} />
       </div>
-      <div className="mx-auto w-full max-w-[1160px]">
+      <div className="mx-auto w-full max-w-290">
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2 mb-6 text-[12px]">
           <Link href="/assistants" className="inline-flex items-center gap-1.5 transition-colors" style={{ color: "var(--color-vl-ink-muted)" }}>
             <ArrowLeft className="w-3.5 h-3.5" /> Assistants
@@ -1028,7 +1028,7 @@ function ApprovalSelector({
 
 function RoomIntensity({ level, active }: { level: number; active: boolean }) {
   return (
-    <div className="flex items-end gap-[2px]">
+    <div className="flex items-end gap-0.5">
       {[0.2, 0.4, 0.6, 0.8].map((threshold) => (
         <div
           key={threshold}
