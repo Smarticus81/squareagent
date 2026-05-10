@@ -115,7 +115,7 @@ export function Logo({
 }: LogoProps) {
   const dim = { sm: 22, md: 30, lg: 42, xl: 62 }[size];
   const markWidth = Math.round(dim * (184 / 104));
-  const wordSize = { sm: "text-[6.8px]", md: "text-[9.2px]", lg: "text-[12.8px]", xl: "text-[19px]" }[size];
+  const wordSize = { sm: "text-[6.1px]", md: "text-[8.2px]", lg: "text-[11.5px]", xl: "text-[17px]" }[size];
   const wordColor =
     variant === "light" ? "#FFFFFF" : variant === "mono" ? "currentColor" : "#0A0A0B";
 
@@ -129,9 +129,10 @@ export function Logo({
         style={{
           color: wordColor,
           fontFamily: "var(--font-logo)",
-          fontWeight: 800,
-          letterSpacing: "0.012em",
+          fontWeight: 900,
+          letterSpacing: 0,
           lineHeight: 0.9,
+          whiteSpace: "nowrap",
           width: markWidth,
         }}
       >
