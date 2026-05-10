@@ -5,8 +5,9 @@ interface LogoProps {
   iconOnly?: boolean;
   size?: "sm" | "md" | "lg" | "xl";
   variant?: "dark" | "light" | "mono";
+  /** Deprecated — tagline has been removed from the lockup. */
   withTagline?: boolean;
-  /** When true, the tagline is rendered on sm+ screens only. */
+  /** Deprecated — kept for prop-compat with existing call sites. */
   hideTaglineOnMobile?: boolean;
 }
 
@@ -84,52 +85,33 @@ export function LogoMark({
 }
 
 /**
- * Horizontal lockup — symbol + wordmark + (optional) tagline.
+ * Vertical lockup — symbol stacked above wordmark.
  *
  * Wordmark is uppercase, tightly tracked, in the deep navy ink.
- * Tagline ("Where voice runs hospitality") sits beneath in a smaller
- * weight when `withTagline` is on — matches the master brand reference.
+ * No tagline.
  */
 export function Logo({
   className,
   iconOnly = false,
   size = "md",
   variant = "dark",
-  withTagline = false,
-  hideTaglineOnMobile = false,
 }: LogoProps) {
-  const dim = { sm: 18, md: 22, lg: 28, xl: 38 }[size];
-  const wordSize = { sm: "text-[14px]", md: "text-[16px]", lg: "text-[20px]", xl: "text-[26px]" }[size];
-  const tagSize = { sm: "text-[8.5px]", md: "text-[9.5px]", lg: "text-[11px]", xl: "text-[13px]" }[size];
+  const dim = { sm: 22, md: 28, lg: 36, xl: 48 }[size];
+  const wordSize = { sm: "text-[12px]", md: "text-[14px]", lg: "text-[18px]", xl: "text-[24px]" }[size];
   const wordColor =
     variant === "light" ? "#FFFFFF" : variant === "mono" ? "currentColor" : "#0A0A0B";
-  const tagColor = variant === "light" ? "rgba(255, 255, 255,0.65)" : "rgba(10, 10, 11,0.55)";
 
   if (iconOnly) return <LogoMark size={dim} variant={variant} className={className} />;
 
   return (
-    <div className={cn("inline-flex items-center gap-2.5 select-none", className)}>
+    <div className={cn("inline-flex flex-col items-center gap-1.5 select-none leading-none", className)}>
       <LogoMark size={dim} variant={variant} />
-      <div className="leading-none">
-        <span
-          className={cn("font-extrabold uppercase block", wordSize)}
-          style={{ color: wordColor, letterSpacing: "0.005em" }}
-        >
-          Voycelab
-        </span>
-        {withTagline && (
-          <span
-            className={cn(
-              "block mt-1 font-medium uppercase",
-              tagSize,
-              hideTaglineOnMobile && "hidden sm:block",
-            )}
-            style={{ color: tagColor, letterSpacing: "0.14em" }}
-          >
-            Where voice runs hospitality
-          </span>
-        )}
-      </div>
+      <span
+        className={cn("font-extrabold uppercase block", wordSize)}
+        style={{ color: wordColor, letterSpacing: "0.06em" }}
+      >
+        Voycelab
+      </span>
     </div>
   );
 }
