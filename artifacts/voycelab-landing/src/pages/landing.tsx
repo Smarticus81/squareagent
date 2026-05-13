@@ -5,7 +5,6 @@ import {
   ArrowRight,
   Check,
   Mic,
-  Star,
   Play,
   AlertTriangle,
   TrendingUp,
@@ -230,69 +229,38 @@ function Hero({ onStart }: { onStart: () => void }) {
               </a>
             </motion.div>
 
-            {/* Stars + count */}
+            {/* Connected systems — Square / OpenAI / Google */}
             <motion.div
               initial="hidden"
               animate="visible"
               custom={4}
               variants={fadeUp}
-              className="mt-7 flex items-center gap-3"
+              className="mt-10"
             >
-              <AvatarStack />
-              <div className="flex items-center gap-1.5">
-                {[0, 1, 2, 3, 4].map((i) => (
-                  <Star
-                    key={i}
-                    className="w-3.5 h-3.5"
-                    fill="#FDE68A"
-                    style={{ color: "#FDE68A" }}
-                  />
-                ))}
-              </div>
-              <span className="text-[13px]" style={{ color: "var(--color-vl-ink-muted)" }}>
-                4.9 from 200+ venues
-              </span>
-            </motion.div>
-
-            {/* Try asking - quote chips */}
-            <motion.div
-              initial="hidden"
-              animate="visible"
-              custom={5}
-              variants={fadeUp}
-              className="mt-10 flex items-start gap-4"
-            >
-              <div
-                className="w-12 h-12 rounded-full flex items-center justify-center shrink-0 mt-1"
-                style={{
-                  background: "var(--color-vl-coral-tint)",
-                  border: "1px solid rgba(99, 102, 241,0.20)",
-                }}
+              <p
+                className="vl-eyebrow mb-3"
+                style={{ color: "var(--color-vl-ink-soft)" }}
               >
-                <Mic className="w-5 h-5" style={{ color: "var(--color-vl-coral-deep)" }} />
-              </div>
-              <div>
-                <p
-                  className="text-[12px] font-semibold mb-2"
-                  style={{ color: "var(--color-vl-ink-soft)" }}
-                >
-                  Try asking VoyceLab
-                </p>
-                <div className="space-y-1">
-                  {[
-                    `"What are my top-selling cocktails?"`,
-                    `"Show me tonight's reservations."`,
-                    `"Did we hit last night's revenue goal?"`,
-                  ].map((q) => (
-                    <p
-                      key={q}
-                      className="text-[14px] italic"
-                      style={{ color: "var(--color-vl-ink-muted)", fontFamily: "var(--font-display)" }}
-                    >
-                      {q}
-                    </p>
-                  ))}
-                </div>
+                Connected to
+              </p>
+              <div className="grid grid-cols-3 gap-3 max-w-[520px]">
+                {[
+                  { src: "/brand/square-logo.png",     alt: "Square",  height: 44 },
+                  { src: "/brand/openai-wordmark.png", alt: "OpenAI",  height: 26 },
+                  { src: "/brand/google-g.png",        alt: "Google",  height: 40 },
+                ].map((logo) => (
+                  <div
+                    key={logo.alt}
+                    className="vl-card flex items-center justify-center rounded-2xl"
+                    style={{ height: 84, padding: "0 16px" }}
+                  >
+                    <img
+                      src={logo.src}
+                      alt={logo.alt}
+                      style={{ height: logo.height, width: "auto", objectFit: "contain" }}
+                    />
+                  </div>
+                ))}
               </div>
             </motion.div>
           </div>
@@ -310,26 +278,6 @@ function Hero({ onStart }: { onStart: () => void }) {
         </div>
       </div>
     </section>
-  );
-}
-
-function AvatarStack() {
-  const colors = [
-    "linear-gradient(135deg, #FBCFE8, #FF8A66)",
-    "linear-gradient(135deg, #A7F3D0, #6FAA75)",
-    "linear-gradient(135deg, #C7D2FE, #A38EDC)",
-    "linear-gradient(135deg, #FDE68A, #E59B2A)",
-  ];
-  return (
-    <div className="flex -space-x-2">
-      {colors.map((bg, i) => (
-        <span
-          key={i}
-          className="w-7 h-7 rounded-full border-2 border-white shadow-sm"
-          style={{ background: bg }}
-        />
-      ))}
-    </div>
   );
 }
 
