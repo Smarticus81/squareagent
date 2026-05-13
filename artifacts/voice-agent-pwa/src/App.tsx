@@ -4,6 +4,7 @@ import { useVoiceAgent, type AgentState, type OrderCommand, type ConversationMes
 import { useOrder } from "@/contexts/OrderContext";
 import { useSquare } from "@/contexts/SquareContext";
 import { OrderPanel } from "@/components/OrderPanel";
+import { VoiceOrb } from "@/components/VoiceOrb";
 import { useWakeWord, isWakeWordSupported } from "@/hooks/useWakeWord";
 import { soundWake, soundChime, soundItemAdd, soundSubmit, soundError, soundSleep } from "@/lib/sounds";
 import { matchTermination } from "@/lib/voice-termination";
@@ -89,7 +90,7 @@ function RailWaveform({ active }: { active: boolean }) {
 /* ── Main App ─────────────────────────────────────────────────── */
 export default function App() {
   const {
-    agentState, isConnected, conversation, partialTranscript, error,
+    agentState, isConnected, conversation, partialTranscript, error, remoteStream,
     connect, disconnect, setToolHandler, interrupt,
     setCatalog, setCurrentOrder, setSquareCredentials, setAuthParams,
   } = useVoiceAgent();
@@ -108,14 +109,17 @@ export default function App() {
     locationId,
     venueId: sqVenueId,
     authToken: sqAuthToken,
+    agentProfile,
     agentProfileId,
     wakePhrase,
+    assistantKind,
   } = useSquare();
 
   const [panelOpen, setPanelOpen] = useState(false);
   const [panelTab, setPanelTab] = useState<"order" | "menu" | "settings">("order");
   const [mode, setMode] = useState<AppMode>("idle");
   const [micPermissionGranted, setMicPermissionGranted] = useState(false);
+  const [micError, setMicError] = useState<string | null>(null);
   const modeRef = useRef<AppMode>("idle");
   const prevItemCountRef = useRef(0);
   const terminationHandledRef = useRef(false);
@@ -157,7 +161,7 @@ export default function App() {
   useEffect(() => {
     const venueId = sqVenueId || "";
     const authToken = sqAuthToken || "";
-    if (venueId && authToken) setAuthParams(venueId, authToken, agentProfileId ?? undefined);
+    if (authToken && (venueId || agentProfileId)) setAuthParams(venueId, authToken, agentProfileId ?? undefined);
   }, [sqVenueId, sqAuthToken, agentProfileId, setAuthParams]);
 
   // Push current order to voice agent
@@ -306,13 +310,28 @@ export default function App() {
 
   // ── Rail tap / initial activation ─────────────────────────────
   async function handleRailTap() {
+    console.log("[App] rail tap — mode:", mode, "micGranted:", micPermissionGranted, "agentState:", agentState);
     if (mode === "idle" || mode === "shutdown") {
       if (!micPermissionGranted) {
+        if (!navigator.mediaDevices?.getUserMedia) {
+          setMicError("Microphone API unavailable. Use HTTPS or localhost.");
+          console.warn("[App] navigator.mediaDevices.getUserMedia not available");
+          return;
+        }
         try {
           const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
           stream.getTracks().forEach((t) => t.stop());
           setMicPermissionGranted(true);
-        } catch {
+          setMicError(null);
+        } catch (e) {
+          const err = e as DOMException;
+          const msg = err?.name === "NotAllowedError"
+            ? "Microphone permission denied. Enable it in your browser site settings."
+            : err?.name === "NotFoundError"
+              ? "No microphone found."
+              : `Microphone error: ${err?.message ?? String(e)}`;
+          console.warn("[App] getUserMedia failed:", err);
+          setMicError(msg);
           return;
         }
       }
@@ -385,7 +404,7 @@ export default function App() {
             Voyce<span style={{ fontWeight: 500, opacity: 0.92 }}>Lab</span>
           </span>
         </div>
-        {orderCount > 0 ? (
+        {orderCount > 0 && assistantKind === "venue" ? (
           <button className="order-badge" onClick={() => { setPanelTab("order"); setPanelOpen(true); }} aria-label={`${orderCount} items in order`}>
             <span className="order-badge-num">{orderCount}</span>
           </button>
@@ -394,9 +413,13 @@ export default function App() {
 
       {/* Status chips — assistant · connected service · room */}
       <div className="status-chips">
-        <span className="vl-pill vl-pill-brass">Bev</span>
-        {isConfigured && <span className="vl-pill vl-pill-success"><span className="vl-pill-dot" />Square synced</span>}
-        <span className="vl-pill">Bar</span>
+        <span className="vl-pill vl-pill-brass">{agentProfile?.displayName ?? "Assistant"}</span>
+        {assistantKind === "venue" && isConfigured && (
+          <span className="vl-pill vl-pill-success"><span className="vl-pill-dot" />Square synced</span>
+        )}
+        {assistantKind === "general" && (
+          <span className="vl-pill">General</span>
+        )}
       </div>
 
       {/* ── Conversation area ────────────────────────────────── */}
@@ -442,30 +465,33 @@ export default function App() {
         {/* Status messages */}
         <div className="status-area">
           {error && <div className="error-text">{error}</div>}
+          {micError && <div className="error-text">{micError}</div>}
           {isLoadingCatalog && <div className="state-label">LOADING MENU</div>}
           {catalogError && <div className="error-text">Menu: {catalogError}</div>}
         </div>
       </div>
 
-      {/* ── The Bar Rail ─────────────────────────────────────── */}
-      <div className="bar-rail-zone" onClick={handleRailTap}>
-        {/* State label */}
-        <div className="rail-label-row">
-          {label && <span className="rail-label">{label}</span>}
-          {mode === "idle" && <span className="rail-hint">tap to begin</span>}
+      {/* ── Voice Orb ────────────────────────────────────────── */}
+      <div className="orb-stage">
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+          <VoiceOrb
+            state={
+              mode === "idle" || mode === "shutdown" ? "idle" :
+              mode === "wake_word" ? (wakeWordListening ? "wake" : "idle") :
+              agentState === "speaking" ? "speaking" :
+              agentState === "listening" ? "listening" :
+              agentState === "thinking" ? "thinking" :
+              agentState === "connecting" ? "connecting" :
+              agentState === "error" ? "error" :
+              "idle"
+            }
+            remoteStream={remoteStream}
+            onTap={handleRailTap}
+          />
+          <div className="orb-label">{label ?? (mode === "idle" ? "" : "")}</div>
+          {mode === "idle" && <div className="orb-hint">tap to begin</div>}
+          {agentState === "speaking" && <div className="orb-hint">tap to interrupt</div>}
         </div>
-
-        {/* The rail line */}
-        <div className={`bar-rail ${railCls}`}>
-          <div className="rail-glow" />
-          <div className="rail-line" />
-          {showWaveform && <RailWaveform active={agentState === "speaking"} />}
-        </div>
-
-        {/* Interrupt hint */}
-        {agentState === "speaking" && (
-          <div className="rail-interrupt-hint">tap to interrupt</div>
-        )}
       </div>
 
       {/* Panel */}

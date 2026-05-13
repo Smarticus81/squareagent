@@ -46,6 +46,11 @@ interface SquareContextType {
   agentProfile: AgentProfileLaunchInfo | null;
   agentProfileId: string | null;
   wakePhrase: string;
+  /**
+   * 'venue' = POS-attached assistant (Square credentials loaded, order/menu UI active).
+   * 'general' = no POS connection (web/email/knowledge tools only).
+   */
+  assistantKind: "venue" | "general";
   /** Login with email + password. Returns error string or null on success. */
   login: (email: string, password: string) => Promise<string | null>;
   /** Signup with name + email + password. Returns error string or null on success. */
@@ -67,18 +72,18 @@ const SquareContext = createContext<SquareContextType | null>(null);
 const TOKEN_KEY = "square_access_token";
 const LOC_KEY = "square_location_id";
 
-function getWebLaunchParams(): { venueId: string; authToken: string; agentProfileId?: string } | null {
+function getWebLaunchParams(): { venueId?: string; authToken: string; agentProfileId?: string } | null {
   const params = new URLSearchParams(window.location.search);
   // Support both exchange code (new) and direct token (legacy/dev)
   const venueId = params.get("venue");
   const authToken = params.get("token");
   const agentProfileId = params.get("agentProfileId") ?? undefined;
-  if (venueId && authToken) return { venueId, authToken, agentProfileId };
+  if (authToken && (venueId || agentProfileId)) return { venueId: venueId ?? undefined, authToken, agentProfileId };
   return null;
 }
 
 /** Redeem a one-time exchange code to get token + venueId. */
-async function redeemExchangeCode(code: string): Promise<{ venueId: string; authToken: string; agentProfileId?: string } | null> {
+async function redeemExchangeCode(code: string): Promise<{ venueId?: string; authToken: string; agentProfileId?: string } | null> {
   try {
     const res = await fetch(`${getBaseUrl()}api/auth/exchange/redeem`, {
       method: "POST",
@@ -87,8 +92,8 @@ async function redeemExchangeCode(code: string): Promise<{ venueId: string; auth
     });
     if (!res.ok) return null;
     const data = await res.json();
-    return data.token && data.venueId
-      ? { venueId: data.venueId, authToken: data.token, agentProfileId: data.agentProfileId ?? undefined }
+    return data.token && (data.venueId || data.agentProfileId)
+      ? { venueId: data.venueId || undefined, authToken: data.token, agentProfileId: data.agentProfileId ?? undefined }
       : null;
   } catch {
     return null;
@@ -143,7 +148,7 @@ export function SquareProvider({ children }: { children: ReactNode }) {
       const exchangeCode = params.get("code");
       const urlAgentProfileId = params.get("agentProfileId") ?? undefined;
 
-      let launch: { venueId: string; authToken: string; agentProfileId?: string } | null = null;
+      let launch: { venueId?: string; authToken: string; agentProfileId?: string } | null = null;
 
       if (exchangeCode) {
         launch = await redeemExchangeCode(exchangeCode);
@@ -159,7 +164,32 @@ export function SquareProvider({ children }: { children: ReactNode }) {
 
       if (!launch) launch = getWebLaunchParams();
 
-      if (launch) {
+      if (launch?.agentProfileId && !launch.venueId) {
+        try {
+          const res = await fetch(`${getBaseUrl()}api/v1/agent-profiles/${encodeURIComponent(launch.agentProfileId)}`, {
+            headers: { Authorization: `Bearer ${launch.authToken}` },
+          });
+          if (!cancelled && res.ok) {
+            const profile = await res.json();
+            setAuthToken(launch.authToken);
+            setAgentProfile(profile);
+            setAgentProfileId(profile.id);
+            setWakePhrase(profile.wakePhrase || "Hey Bar");
+            localStorage.setItem("voycelab_token", launch.authToken);
+            localStorage.setItem("voycelab_agent_profile_id", profile.id);
+            localStorage.setItem("voycelab_agent_profile", JSON.stringify(profile));
+            localStorage.setItem("voycelab_wake_phrase", profile.wakePhrase || "Hey Bar");
+            localStorage.removeItem("voycelab_venue_id");
+            setVenueId(null);
+            setCredentialsReady(true);
+            return;
+          }
+        } catch (e) {
+          console.warn("Failed to load assistant profile", e);
+        }
+      }
+
+      if (launch?.venueId) {
         try {
           const profileQuery = launch.agentProfileId
             ? `?agentProfileId=${encodeURIComponent(launch.agentProfileId)}`
@@ -480,12 +510,22 @@ export function SquareProvider({ children }: { children: ReactNode }) {
   }
 
   const isConfigured = !!(accessToken && locationId);
+  // 'general' assistants either have an explicit profile.venueId == null, or
+  // simply launched without Square credentials.
+  const assistantKind: "venue" | "general" =
+    agentProfile && (agentProfile as any).venueId == null && !isConfigured
+      ? "general"
+      : isConfigured
+        ? "venue"
+        : agentProfile
+          ? "general"
+          : "venue";
 
   return (
     <SquareContext.Provider value={{
       accessToken, locationId, venueId, authToken, locations, catalogItems, isConfigured,
       isLoadingCatalog, catalogError, connectionError, isReconnecting,
-      userInfo, venues, agentProfile, agentProfileId, wakePhrase, login, signup, logout, selectVenue,
+      userInfo, venues, agentProfile, agentProfileId, wakePhrase, assistantKind, login, signup, logout, selectVenue,
       setCredentials, clearCredentials, refreshCredentials,
       loadCatalog, fetchLocations, searchCatalog,
     }}>

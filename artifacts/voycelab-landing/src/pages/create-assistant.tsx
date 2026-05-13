@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Link, useLocation } from "wouter";
+import { Link, useLocation, useRoute } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { useVenues } from "@/hooks/use-venues";
 import { VoiceRail, type RailState } from "@/components/voice-rail";
@@ -54,8 +54,8 @@ interface PipelineReport {
 
 const STEPS = [
   { n: "01", title: "Name", subtitle: "Name your assistant." },
-  { n: "02", title: "Connect", subtitle: "Connect the service your assistant will control." },
-  { n: "03", title: "Allowed actions", subtitle: "Choose what your assistant can do." },
+  { n: "02", title: "Connection", subtitle: "Choose whether to connect a system now." },
+  { n: "03", title: "Abilities", subtitle: "Choose what your assistant can help with." },
   { n: "04", title: "Room", subtitle: "Tune how your assistant listens." },
   { n: "05", title: "Voice", subtitle: "Choose the voice experience." },
   { n: "06", title: "Test", subtitle: "Test your assistant." },
@@ -67,6 +67,9 @@ const STEPS = [
    ───────────────────────────────────────────────────────────────── */
 export default function CreateAssistant() {
   const [, navigate] = useLocation();
+  const [, editParams] = useRoute<{ id: string }>("/assistants/edit/:id");
+  const editingId = editParams?.id ?? null;
+  const isEditing = Boolean(editingId);
   const { data: auth, isLoading: authLoading } = useAuth();
   const { data: venues } = useVenues();
   const [step, setStep] = useState(1);
@@ -79,8 +82,9 @@ export default function CreateAssistant() {
     return pending ? `Hey ${pending}` : "Hey Bev";
   });
   const [wakePhraseTouched, setWakePhraseTouched] = useState(false);
-  const [assistantKind, setAssistantKind] = useState<"venue" | "general">("venue");
-  const [serviceId, setServiceId] = useState<string>("square");
+  const initialKind = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("kind") === "general" ? "general" : "venue";
+  const [assistantKind, setAssistantKind] = useState<"venue" | "general">(initialKind);
+  const [serviceId, setServiceId] = useState<string>(initialKind === "general" ? "none" : "square");
   const [venueId, setVenueId] = useState<number | null>(null);
   const [room, setRoom] = useState<RoomSettingValue>("bar");
   const [pipelineProvider, setPipelineProvider] = useState<string>(DEFAULT_PIPELINE_PROVIDER);
@@ -121,6 +125,50 @@ export default function CreateAssistant() {
     if (!authLoading && !auth) navigate("/login");
   }, [auth, authLoading, navigate]);
 
+  // ── Edit mode: load existing assistant ─────────────────────────
+  useEffect(() => {
+    if (!isEditing || !editingId) return;
+    let cancelled = false;
+    const token = localStorage.getItem("voycelab_token") || "";
+    fetch(`/api/v1/agent-profiles/${editingId}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((p) => {
+        if (cancelled || !p) return;
+        if (typeof p.displayName === "string") setAssistantName(p.displayName);
+        if (typeof p.wakePhrase === "string") {
+          setWakePhrase(p.wakePhrase);
+          setWakePhraseTouched(true);
+        }
+        if (p.venueId == null) {
+          setAssistantKind("general");
+          setServiceId("none");
+        } else {
+          setAssistantKind("venue");
+          setVenueId(Number(p.venueId));
+          setServiceId(p.connectedServiceId ?? "square");
+        }
+        if (typeof p.noiseMode === "string") setRoom(p.noiseMode as RoomSettingValue);
+        if (typeof p.voicePipelineProvider === "string") setPipelineProvider(p.voicePipelineProvider);
+        if (p.voicePipelineConfig?.voice && typeof p.voicePipelineConfig.voice === "string") {
+          setPipelineVoice(p.voicePipelineConfig.voice);
+        }
+        if (typeof p.voicePipelineConfig?.thinkingLevel === "string") {
+          setThinkingLevel(p.voicePipelineConfig.thinkingLevel);
+        }
+        if (typeof p.voicePipelineConfig?.proactiveAudio === "boolean") {
+          setProactiveAudio(p.voicePipelineConfig.proactiveAudio);
+        }
+        const incomingApprovals = (p.confirmationPolicy?.approvals ?? {}) as Record<string, ApprovalLevel>;
+        if (Object.keys(incomingApprovals).length > 0) {
+          setApprovals((prev) => ({ ...prev, ...incomingApprovals }));
+        }
+      })
+      .catch(() => { /* ignore */ });
+    return () => { cancelled = true; };
+  }, [isEditing, editingId]);
+
   useEffect(() => {
     fetch("/api/v1/connected-service-providers")
       .then((r) => r.json())
@@ -146,11 +194,10 @@ export default function CreateAssistant() {
         }));
         setPipelines(list);
         setPipelineProvider((prev) => {
-          const current = list.find((p) => p.provider === prev);
+          const visible = list.filter(isVisibleVoiceService);
+          const current = visible.find((p) => p.provider === prev);
           if (!current || current.status === "needs_configuration" || current.status === "unavailable") {
-            const firstAvailable = list.find(
-              (p) => p.status === "available" && !p.isFallback,
-            );
+            const firstAvailable = visible.find((p) => p.status === "available") ?? visible[0];
             if (firstAvailable) return firstAvailable.provider;
           }
           return prev;
@@ -209,6 +256,7 @@ export default function CreateAssistant() {
   const isGemini25 =
     pipelineProvider === "google_gemini_2_5_flash_native_audio" ||
     pipelineProvider === "google_gemini_live_native_audio";
+  const canBrowserTestSelectedPipeline = pipelineProvider === "openai_realtime_webrtc";
 
   // Engineering tool ids for the chosen actions — kept internal.
   const allowedTools = useMemo(() => {
@@ -229,8 +277,7 @@ export default function CreateAssistant() {
     return cfg;
   }
 
-  async function save() {
-    if (!venueId) return setError("Choose a venue first.");
+  async function save(options: { openAfterSave?: boolean } = {}) {
     if (!assistantName.trim()) return setError("Give your assistant a name.");
     if (!auth?.organizationId) {
       return setError(
@@ -247,42 +294,66 @@ export default function CreateAssistant() {
       const isUuid =
         /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(serviceId);
       const connectedServiceId = isUuid ? serviceId : undefined;
-      const res = await fetch("/api/v1/agent-profiles", {
-        method: "POST",
+      const trimmedWake = wakePhrase.trim();
+      const url = isEditing ? `/api/v1/agent-profiles/${editingId}` : "/api/v1/agent-profiles";
+      const method = isEditing ? "PATCH" : "POST";
+      const body: Record<string, unknown> = isEditing
+        ? {
+            ...(venueId ? { venueId } : { venueId: null }),
+            ...(connectedServiceId ? { connectedServiceId } : {}),
+            displayName: assistantName.trim(),
+            ...(trimmedWake ? { wakePhrase: trimmedWake } : {}),
+            voicePipelineProvider: pipelineProvider,
+            voicePipelineConfig: buildPipelineConfig(),
+            noiseMode: room,
+            allowedTools,
+            confirmationPolicy: { approvals },
+          }
+        : {
+            organizationId: auth.organizationId,
+            ...(venueId ? { venueId } : {}),
+            ...(connectedServiceId ? { connectedServiceId } : {}),
+            displayName: assistantName.trim(),
+            ...(trimmedWake ? { wakePhrase: trimmedWake } : {}),
+            voicePipelineProvider: pipelineProvider,
+            voicePipelineConfig: buildPipelineConfig(),
+            noiseMode: room,
+            allowedTools,
+            confirmationPolicy: { approvals },
+            personality: "",
+          };
+      const res = await fetch(url, {
+        method,
         headers: {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({
-          organizationId: auth.organizationId,
-          venueId,
-          ...(connectedServiceId ? { connectedServiceId } : {}),
-          displayName: assistantName,
-          wakePhrase: wakePhrase.trim(),
-          voicePipelineProvider: pipelineProvider,
-          voicePipelineConfig: buildPipelineConfig(),
-          noiseMode: room,
-          allowedTools,
-          confirmationPolicy: { approvals },
-          personality: "",
-        }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
-        const body = (await res.json().catch(() => ({}))) as { error?: { message?: string; code?: string } };
-        const code = body.error?.code ?? "";
-        const baseMsg = body.error?.message ?? `Could not save your assistant. (HTTP ${res.status})`;
+        const errBody = (await res.json().catch(() => ({}))) as { error?: { message?: string; code?: string } };
+        const code = errBody.error?.code ?? "";
+        const baseMsg = errBody.error?.message ?? `Could not save your assistant. (HTTP ${res.status})`;
         const friendly =
           code === "pipeline_not_in_plan"
             ? `${baseMsg} Visit /pricing to upgrade.`
             : code === "venue_not_found"
-            ? "We couldn't find that venue. Reload the page and try again."
+            ? "We couldn't find that connected Square location. You can save the assistant without Square and connect it later."
             : baseMsg;
         throw new Error(friendly);
       }
-      const body = await res.json().catch(() => ({}));
-      setSavedId(body?.id ?? "assistant");
+      const respBody = await res.json().catch(() => ({}));
+      const nextId = typeof respBody?.id === "string" ? respBody.id : (isEditing && editingId) ? editingId : "assistant";
+      setSavedId(nextId);
       sessionStorage.removeItem("voycelab.pending_assistant_name");
-      setStep(7);
+      if (isEditing) {
+        navigate("/assistants");
+      } else {
+        setStep(7);
+        if (options.openAfterSave && nextId !== "assistant") {
+          await launchAssistant(venueId, nextId);
+        }
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not save your assistant.");
     } finally {
@@ -374,7 +445,7 @@ export default function CreateAssistant() {
             )}
             <PreviewBar
               name={assistantName}
-              service={connectedServices.find((s) => s.id === serviceId)?.name ?? "Square"}
+              service={serviceName(serviceId, assistantKind)}
               room={roomSettings.find((r) => r.value === room)?.label ?? "Bar"}
               voice={selectedPipeline?.displayName ?? "Choose a voice engine"}
               railState={railState}
@@ -393,7 +464,8 @@ export default function CreateAssistant() {
                       type="button"
                       onClick={() => {
                         setAssistantKind("general");
-                        setServiceId("generic_rest");
+                        setServiceId("none");
+                        setVenueId(null);
                       }}
                       className="text-left vl-panel p-4 transition-colors"
                       style={{
@@ -405,7 +477,7 @@ export default function CreateAssistant() {
                         General business assistant
                       </p>
                       <p className="text-[12px] mt-1" style={{ color: "var(--color-vl-ink-faint)" }}>
-                        Learns your business. Reasons over docs, answers questions, can connect to email, web, databases, and your tools through a custom REST integration.
+                        Answers questions, helps with day-to-day work, and can connect to email, documents, websites, and databases later.
                       </p>
                     </button>
                     <button
@@ -460,16 +532,30 @@ export default function CreateAssistant() {
 
             {step === 2 && (
               <StepShell
-                title="Connect the service your assistant will control."
-                subtitle="Your assistant does not replace your system. It works inside it."
+                title="Connect a system now, or skip it."
+                subtitle="You can create the assistant today and connect Square or other business systems later."
               >
                 <div className="space-y-2">
-                  <p className="vl-eyebrow mb-1">Available</p>
+                  <p className="vl-eyebrow mb-1">Start option</p>
+                  <ServiceRow
+                    provider="none"
+                    label="No connected system yet"
+                    desc="Create the assistant now. It can answer, plan, and use connected data you add later."
+                    status="available"
+                    checked={serviceId === "none"}
+                    onSelect={() => {
+                      setServiceId("none");
+                      setVenueId(null);
+                    }}
+                  />
+
+                  <p className="vl-eyebrow mb-1 mt-6">Connect now</p>
                   {providersWithDefault(providers)
-                    .filter((p) => p.isImplemented)
+                    .filter((p) => p.isImplemented && p.provider !== "mock")
                     .map((p) => (
                       <ServiceRow
                         key={p.provider}
+                        provider={p.provider}
                         label={p.displayName}
                         desc={p.description}
                         status="available"
@@ -480,10 +566,11 @@ export default function CreateAssistant() {
 
                   <p className="vl-eyebrow mb-1 mt-6">Request access</p>
                   {providersWithDefault(providers)
-                    .filter((p) => !p.isImplemented)
+                    .filter((p) => !p.isImplemented && p.provider !== "mock")
                     .map((p) => (
                       <ServiceRow
                         key={p.provider}
+                        provider={p.provider}
                         label={p.displayName}
                         desc={p.description}
                         status="request"
@@ -520,7 +607,7 @@ export default function CreateAssistant() {
                 )}
                 {(!venues || venues.length === 0) && (
                   <div className="mt-6 vl-panel p-5 text-[13px]" style={{ color: "var(--color-vl-ink-muted)" }}>
-                    No venues connected yet. Open{" "}
+                    Square is not connected yet. You can continue now, or open{" "}
                     <button onClick={() => navigate("/services")} className="underline" style={{ color: "var(--color-vl-brass2)" }}>
                       Connected services
                     </button>{" "}
@@ -528,14 +615,14 @@ export default function CreateAssistant() {
                   </div>
                 )}
 
-                <Nav onBack={() => setStep(1)} onNext={() => setStep(3)} canNext={!!serviceId && !!venueId} />
+                <Nav onBack={() => setStep(1)} onNext={() => setStep(3)} canNext={!!serviceId} />
               </StepShell>
             )}
 
             {step === 3 && (
               <StepShell
-                title="Choose what your assistant can do."
-                subtitle="Decide what runs without asking, what asks first, and what is not allowed."
+                title="Choose what your assistant can help with."
+                subtitle="Pick the everyday jobs it can handle, and choose when it should ask you first."
               >
                 <div className="space-y-4">
                   {actionGroups.map((group) => (
@@ -612,7 +699,7 @@ export default function CreateAssistant() {
             {step === 5 && (
               <StepShell
                 title="Pick your voice engine."
-                subtitle="Each assistant runs on a specific provider. Tap any engine to hear it speak the same line, then pick the one your room deserves."
+                subtitle="Choose one ready-to-use voice service. You can hear a quick sample before continuing."
               >
                 {pipelinesLoading ? (
                   <div className="vl-panel p-8 flex items-center justify-center gap-3">
@@ -650,24 +737,40 @@ export default function CreateAssistant() {
             {step === 6 && (
               <StepShell
                 title="Test your assistant."
-                subtitle="Try a real command. The full voice surface launches separately."
+                subtitle={
+                  canBrowserTestSelectedPipeline
+                    ? "Save this setup and open the live voice surface in a new tab."
+                    : "Save this setup now. Gemini Live runs through the relay/native voice path, not the browser WebRTC test surface."
+                }
               >
-                <TestProgress allowedActions={allowedCount} askFirst={askFirstCount} assistantName={assistantName || "Your assistant"} />
+                <TestProgress
+                  allowedActions={allowedCount}
+                  askFirst={askFirstCount}
+                  assistantName={assistantName || "Your assistant"}
+                  voiceName={selectedPipeline?.displayName ?? "Selected voice"}
+                  connectedSystem={serviceName(serviceId, assistantKind)}
+                  voiceProvider={selectedPipeline?.provider ?? pipelineProvider}
+                  canBrowserTest={canBrowserTestSelectedPipeline}
+                />
                 {error && (
                   <p className="text-[13px] mt-4" style={{ color: "var(--color-vl-danger)" }}>{error}</p>
                 )}
 
                 <Nav
                   onBack={() => setStep(5)}
-                  onNext={save}
+                  onNext={() => save({ openAfterSave: canBrowserTestSelectedPipeline })}
                   nextLabel={
                     saving ? (
                       <span className="inline-flex items-center gap-2">
                         <Loader2 className="w-4 h-4 animate-spin" /> Saving…
                       </span>
+                    ) : canBrowserTestSelectedPipeline ? (
+                      <>
+                        Save and open test <ExternalLink className="w-4 h-4" />
+                      </>
                     ) : (
                       <>
-                        Launch <ArrowRight className="w-4 h-4" />
+                        Save configuration <ArrowRight className="w-4 h-4" />
                       </>
                     )
                   }
@@ -690,7 +793,7 @@ export default function CreateAssistant() {
                   <dl className="mt-6 grid sm:grid-cols-2 gap-x-8 gap-y-1.5 text-[13px] text-left max-w-md mx-auto">
                     <Summary k="Assistant" v={assistantName} />
                     <Summary k="Wake phrase" v={wakePhrase} />
-                    <Summary k="Connected service" v={connectedServices.find((s) => s.id === serviceId)?.name ?? "Square"} />
+                    <Summary k="Connected system" v={serviceName(serviceId, assistantKind)} />
                     <Summary k="Room setting" v={roomSettings.find((r) => r.value === room)?.label ?? "Bar"} />
                     <Summary k="Voice engine" v={selectedPipeline?.displayName ?? ""} />
                     {pipelineVoice && <Summary k="Voice character" v={pipelineVoice} />}
@@ -700,13 +803,13 @@ export default function CreateAssistant() {
 
                   <div className="mt-7 flex flex-wrap items-center justify-center gap-2">
                     <button
-                      onClick={() => venueId && savedId && launchAssistant(venueId, savedId)}
+                      onClick={() => savedId && launchAssistant(venueId, savedId)}
                       className="vl-btn-primary inline-flex items-center gap-2"
                     >
                       Open assistant <ExternalLink className="w-4 h-4" />
                     </button>
                     <button
-                      onClick={() => venueId && savedId && copyLaunchLink(venueId, savedId)}
+                      onClick={() => savedId && copyLaunchLink(venueId, savedId)}
                       className="vl-btn-ghost inline-flex items-center gap-2"
                     >
                       <Copy className="w-4 h-4" /> Copy launch link
@@ -911,7 +1014,7 @@ function Nav({
   nextLabel?: ReactNode;
 }) {
   return (
-    <div className="flex items-center gap-3 pt-4">
+    <div className="sticky bottom-4 z-10 mt-2 flex items-center justify-end gap-3 rounded-2xl border bg-white/90 p-3 shadow-[0_12px_32px_-24px_rgba(10,10,11,0.45)] backdrop-blur" style={{ borderColor: "rgba(10,10,11,0.08)" }}>
       {onBack && (
         <button onClick={onBack} className="vl-btn-ghost inline-flex items-center gap-2 text-[13px]">
           <ArrowLeft className="w-4 h-4" /> Back
@@ -933,12 +1036,14 @@ function Nav({
 }
 
 function ServiceRow({
+  provider,
   label,
   desc,
   status,
   checked,
   onSelect,
 }: {
+  provider: string;
   label: string;
   desc: string;
   status: "available" | "request";
@@ -957,6 +1062,7 @@ function ServiceRow({
         background: checked ? "var(--color-vl-coral-tint)" : undefined,
       }}
     >
+      <BrandMark provider={provider} />
       <span
         className="w-4 h-4 rounded-full flex items-center justify-center"
         style={{
@@ -1047,40 +1153,50 @@ function TestProgress({
   allowedActions,
   askFirst,
   assistantName,
+  voiceName,
+  connectedSystem,
+  voiceProvider,
+  canBrowserTest,
 }: {
   allowedActions: number;
   askFirst: number;
   assistantName: string;
+  voiceName: string;
+  connectedSystem: string;
+  voiceProvider: string;
+  canBrowserTest: boolean;
 }) {
-  // Static demo of the test command result. The actual voice surface is a
-  // separate launch from step 7. Here we show user-friendly progress only.
-  const stages = ["Heard", "Understood", "Allowed", "Added", "Synced"] as const;
   return (
     <div className="vl-panel p-5">
-      <p className="vl-eyebrow mb-3">Test command</p>
-      <p className="vl-display text-[28px]" style={{ color: "var(--color-vl-ink)" }}>
-        "Add two ranch waters."
-      </p>
-
-      <div className="mt-6 grid sm:grid-cols-5 gap-px rounded-xl overflow-hidden" style={{ background: "rgba(10, 10, 11,0.08)" }}>
-        {stages.map((s, i) => (
-          <div key={s} className="bg-vl-paper py-3 px-2 text-center">
-            <p className="text-[10px] tracking-[0.18em] uppercase" style={{ color: "rgba(140,145,154,0.7)" }}>
-              {String(i + 1).padStart(2, "0")}
-            </p>
-            <p className="mt-1 text-[13px] font-medium" style={{ color: i === 4 ? "var(--color-vl-success)" : "var(--color-vl-ink)" }}>
-              {s}
-            </p>
-          </div>
-        ))}
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className="vl-eyebrow mb-2">Live test</p>
+          <p className="vl-display text-[28px]" style={{ color: "var(--color-vl-ink)" }}>
+            Open {assistantName} and speak naturally.
+          </p>
+          <p className="mt-2 max-w-xl text-[13px] leading-relaxed" style={{ color: "var(--color-vl-ink-muted)" }}>
+            {canBrowserTest
+              ? "The next button saves this setup, opens the voice app, and passes this assistant profile into the live session."
+              : "The next button saves this assistant with the selected voice service. Use the relay/native voice client to test this provider live."}
+          </p>
+        </div>
+        <BrandMark provider={voiceProvider} size="lg" />
       </div>
 
-      <p className="mt-5 text-[13px]" style={{ color: "var(--color-vl-ink-soft)" }}>
-        {assistantName} can do <strong>{allowedActions}</strong> actions. <strong>{askFirst}</strong> of them will ask before running.
-      </p>
-      <p className="mt-1 text-[12px]" style={{ color: "var(--color-vl-ink-muted)" }}>
-        For sensitive actions you'll see <strong>Confirm</strong> and <strong>Cancel</strong> on the voice surface.
-      </p>
+      <dl className="mt-5 grid gap-2 sm:grid-cols-3">
+        <TestFact k="Voice" v={voiceName} />
+        <TestFact k="Connected system" v={connectedSystem} />
+        <TestFact k="Allowed jobs" v={`${allowedActions} total · ${askFirst} ask first`} />
+      </dl>
+    </div>
+  );
+}
+
+function TestFact({ k, v }: { k: string; v: string }) {
+  return (
+    <div className="rounded-xl border bg-white px-3 py-2" style={{ borderColor: "rgba(10,10,11,0.08)" }}>
+      <dt className="text-[10px] font-semibold uppercase tracking-[0.12em]" style={{ color: "var(--color-vl-ink-faint)" }}>{k}</dt>
+      <dd className="mt-0.5 text-[12px] font-medium" style={{ color: "var(--color-vl-ink)" }}>{v}</dd>
     </div>
   );
 }
@@ -1096,7 +1212,9 @@ function Summary({ k, v }: { k: string; v: string }) {
 
 function providersWithDefault(list: ConnectedServiceProvider[]) {
   // Always show Square at the top, even if the registry is empty.
-  if (list.length > 0) return list;
+  if (list.length > 0) {
+    return list.filter((p) => !/mock development/i.test(p.displayName));
+  }
   return [
     {
       provider: "square",
@@ -1108,13 +1226,18 @@ function providersWithDefault(list: ConnectedServiceProvider[]) {
   ];
 }
 
-async function launchAssistant(venueId: number, agentProfileId: string) {
+function serviceName(serviceId: string, assistantKind: "venue" | "general"): string {
+  if (serviceId === "none") return assistantKind === "general" ? "General assistant" : "Connect later";
+  return connectedServices.find((s) => s.id === serviceId)?.name ?? "Connect later";
+}
+
+async function launchAssistant(venueId: number | null, agentProfileId: string) {
   try {
     const token = localStorage.getItem("voycelab_token") || "";
     const res = await fetch("/api/auth/exchange/create", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ venueId, agentProfileId }),
+      body: JSON.stringify({ ...(venueId ? { venueId } : {}), agentProfileId }),
     });
     if (!res.ok) throw new Error("Could not open the assistant. Try again.");
     const { code } = await res.json();
@@ -1130,13 +1253,13 @@ async function launchAssistant(venueId: number, agentProfileId: string) {
   }
 }
 
-async function copyLaunchLink(venueId: number, agentProfileId: string) {
+async function copyLaunchLink(venueId: number | null, agentProfileId: string) {
   try {
     const token = localStorage.getItem("voycelab_token") || "";
     const res = await fetch("/api/auth/exchange/create", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ venueId, agentProfileId }),
+      body: JSON.stringify({ ...(venueId ? { venueId } : {}), agentProfileId }),
     });
     if (!res.ok) throw new Error("Could not generate a link.");
     const { code } = await res.json();
@@ -1172,7 +1295,7 @@ function PipelinePicker({
 }) {
   const grouped = useMemo(() => {
     const buckets = new Map<string, PipelineReport[]>();
-    for (const p of pipelines) {
+    for (const p of pipelines.filter(isVisibleVoiceService)) {
       const list = buckets.get(p.category) ?? [];
       list.push(p);
       buckets.set(p.category, list);
@@ -1183,15 +1306,14 @@ function PipelinePicker({
   }, [pipelines]);
 
   return (
-    <div className="space-y-7">
+    <div className="space-y-5">
       {grouped.map(({ cat, items }) => (
         <div key={cat.id}>
-          <div className="flex items-baseline justify-between gap-3 mb-2">
+          <div className="mb-2 flex items-baseline justify-between gap-3">
             <p className="vl-eyebrow">{cat.label}</p>
             <p className="text-[11px]" style={{ color: "var(--color-vl-ink-faint)" }}>{items.length} option{items.length === 1 ? "" : "s"}</p>
           </div>
-          <p className="text-[12.5px] mb-3" style={{ color: "var(--color-vl-ink-muted)" }}>{cat.blurb}</p>
-          <div className="grid sm:grid-cols-2 gap-2">
+          <div className="grid gap-2 sm:grid-cols-2">
             {items.map((p) => (
               <PipelineCard
                 key={p.provider}
@@ -1205,8 +1327,25 @@ function PipelinePicker({
           </div>
         </div>
       ))}
+      {grouped.length === 0 && (
+        <div className="vl-panel p-5 text-[13px]" style={{ color: "var(--color-vl-ink-muted)" }}>
+          No live voice services are ready yet. Add a provider key on the server, then refresh this page.
+        </div>
+      )}
     </div>
   );
+}
+
+function isVisibleVoiceService(pipeline: PipelineReport): boolean {
+  if (pipeline.isFallback || pipeline.category === "browser_or_manual_fallback") return false;
+  const implementedInProduct = new Set([
+    "openai_realtime_webrtc",
+    "google_gemini_3_1_flash_live",
+    "google_gemini_2_5_flash_native_audio",
+  ]);
+  if (!implementedInProduct.has(pipeline.provider)) return false;
+  if (/mock/i.test(pipeline.provider) || /mock development/i.test(pipeline.displayName)) return false;
+  return pipeline.status === "available" || pipeline.status === "experimental";
 }
 
 function comparePipelines(a: PipelineReport, b: PipelineReport): number {
@@ -1254,7 +1393,7 @@ function PipelineCard({
 
   return (
     <div
-      className="vl-panel p-5 transition-colors"
+      className="vl-panel p-4 transition-colors"
       style={{
         opacity: disabled ? 0.55 : 1,
         borderColor: active ? "rgba(99, 102, 241,0.36)" : undefined,
@@ -1269,21 +1408,19 @@ function PipelineCard({
         style={{ cursor: disabled ? "not-allowed" : "pointer" }}
       >
         <div className="flex items-start justify-between gap-3">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <p className="text-[15px] font-semibold" style={{ color: "var(--color-vl-ink)" }}>{pipeline.displayName}</p>
+          <BrandMark provider={pipeline.provider} />
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-[13px] font-semibold" style={{ color: "var(--color-vl-ink)" }}>{pipeline.displayName}</p>
               <span
                 className="vl-chip"
-                style={{ color: tone, borderColor: `${tone}55`, fontSize: 10 }}
+                style={{ color: tone, borderColor: `${tone}55`, fontSize: 9.5, padding: "0.18rem 0.48rem" }}
               >
                 {statusLabel[pipeline.status] ?? pipeline.status}
               </span>
-              {pipeline.isFallback && (
-                <span className="vl-chip" style={{ fontSize: 10 }}>Fallback</span>
-              )}
             </div>
             {pipeline.shortDescription && (
-              <p className="text-[12.5px] mt-1.5 leading-snug" style={{ color: "var(--color-vl-ink-muted)" }}>
+              <p className="mt-1 line-clamp-2 text-[11.5px] leading-snug" style={{ color: "var(--color-vl-ink-muted)" }}>
                 {pipeline.shortDescription}
               </p>
             )}
@@ -1305,7 +1442,7 @@ function PipelineCard({
         </div>
       </button>
       {pipeline.sampleAvailable && (pipeline.sampleVoices?.length ?? 0) > 0 && (
-        <div className="mt-3 flex items-center justify-between gap-3 flex-wrap">
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 pl-11">
           <SamplePlayer
             provider={pipeline.provider}
             voice={active && voice ? voice : pipeline.sampleVoices[0]}
@@ -1338,6 +1475,39 @@ function PipelineCard({
       )}
     </div>
   );
+}
+
+function BrandMark({ provider, size = "md" }: { provider: string; size?: "md" | "lg" }) {
+  const brand = brandForProvider(provider);
+  const box = size === "lg" ? "h-14 w-14" : "h-8 w-8";
+  const img = size === "lg" ? "max-h-8 max-w-10" : "max-h-5 max-w-6";
+  return (
+    <span
+      className={`${box} shrink-0 inline-flex items-center justify-center rounded-xl border bg-white`}
+      style={{ borderColor: "rgba(10,10,11,0.08)", boxShadow: "0 1px 2px rgba(10,10,11,0.04)" }}
+      aria-label={brand.label}
+      title={brand.label}
+    >
+      {brand.src ? (
+        <img src={brand.src} alt="" className={img} style={{ objectFit: "contain" }} />
+      ) : (
+        <span className="text-[12px] font-semibold" style={{ color: "var(--color-vl-ink)" }}>{brand.initials}</span>
+      )}
+    </span>
+  );
+}
+
+function brandForProvider(provider: string): { label: string; src?: string; initials: string } {
+  if (provider === "square") return { label: "Square", src: "/brand/square-logo.png", initials: "Sq" };
+  if (provider === "none") return { label: "General assistant", initials: "VA" };
+  if (provider.startsWith("openai_")) return { label: "OpenAI", src: "/brand/openai-wordmark.png", initials: "AI" };
+  if (provider.startsWith("google_gemini_")) return { label: "Google Gemini", src: "/brand/google-g.png", initials: "G" };
+  if (provider.startsWith("hume_")) return { label: "Hume", initials: "Hu" };
+  if (provider.startsWith("elevenlabs_")) return { label: "ElevenLabs", initials: "11" };
+  if (provider.startsWith("deepgram_")) return { label: "Deepgram", initials: "Dg" };
+  if (provider.startsWith("livekit_")) return { label: "LiveKit", initials: "LK" };
+  if (provider.startsWith("pipecat")) return { label: "Pipecat", initials: "Pi" };
+  return { label: "Voice service", initials: "V" };
 }
 
 /* ─────────────────────────────────────────────────────────────────

@@ -40,7 +40,7 @@ export default function Login() {
           <Logo size="lg" withTagline />
         </div>
 
-        <div className="vl-card vl-edge-coral p-8">
+        <div className="vl-card vl-edge-coral p-8 login-card">
           <h1
             className="vl-display text-[28px] text-center"
             style={{ color: "var(--color-vl-ink)" }}
@@ -65,7 +65,7 @@ export default function Login() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="vl-input"
+                className="vl-input login-input"
               />
             </Field>
             <Field label="Password">
@@ -75,7 +75,7 @@ export default function Login() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                className="vl-input"
+                className="vl-input login-input"
               />
             </Field>
 
@@ -111,6 +111,33 @@ export default function Login() {
           </Link>
         </p>
       </div>
+      <style>{`
+        .login-card {
+          background: rgba(255, 255, 255, 0.92);
+          border-color: rgba(10, 10, 11, 0.08);
+          box-shadow:
+            0 1px 2px rgba(10, 10, 11, 0.04),
+            0 18px 48px -32px rgba(10, 10, 11, 0.35);
+        }
+        .login-input {
+          background: #ffffff;
+          border-color: rgba(10, 10, 11, 0.14);
+          color: var(--color-vl-ink);
+          box-shadow: inset 0 1px 0 rgba(10, 10, 11, 0.02);
+        }
+        .login-input:focus {
+          border-color: var(--color-vl-accent);
+          background: #ffffff;
+          box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.14);
+        }
+        .login-input:-webkit-autofill,
+        .login-input:-webkit-autofill:hover,
+        .login-input:-webkit-autofill:focus {
+          -webkit-text-fill-color: var(--color-vl-ink);
+          box-shadow: 0 0 0 1000px #ffffff inset, 0 0 0 4px rgba(99, 102, 241, 0.14);
+          transition: background-color 9999s ease-out 0s;
+        }
+      `}</style>
     </div>
   );
 }

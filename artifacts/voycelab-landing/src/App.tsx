@@ -64,6 +64,7 @@ function Router() {
         <Route path="/command" component={Command} />
         <Route path="/assistants" component={Assistants} />
         <Route path="/assistants/new" component={CreateAssistant} />
+        <Route path="/assistants/edit/:id" component={CreateAssistant} />
         <Route path="/services" component={ConnectedServices} />
         <Route path="/data-sources" component={DataSources} />
         <Route path="/settings" component={Settings} />

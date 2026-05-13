@@ -55,7 +55,7 @@ export const ListProvidersResponse = z.object({
 
 export const CreateServiceConnectionRequest = z.object({
   organizationId: z.string().uuid(),
-  venueId: z.number().int().positive(),
+  venueId: z.number().int().positive().optional(),
   provider: ConnectedServiceProvider,
   credentials: z.record(z.unknown()).default({}),
   config: z.record(z.unknown()).default({}),
@@ -161,7 +161,7 @@ export const RecommendVoicePipelineResponse = z.object({
 
 export const CreateAgentProfileRequest = z.object({
   organizationId: z.string().uuid(),
-  venueId: z.number().int().positive(),
+  venueId: z.number().int().positive().optional(),
   // Optional foreign key to service_connections.id. Only accept UUIDs;
   // empty strings or provider slugs ("square", "toast", …) are coerced to
   // undefined so the server stores NULL instead of failing validation.
@@ -189,7 +189,7 @@ export const UpdateAgentProfileRequest = CreateAgentProfileRequest.partial();
 export const AgentProfileResponse = z.object({
   id: z.string(),
   organizationId: z.string(),
-  venueId: z.number(),
+  venueId: z.number().nullable(),
   connectedServiceId: z.string().nullable(),
   displayName: z.string(),
   wakePhrase: z.string(),

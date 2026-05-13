@@ -24,7 +24,7 @@ router.use(v1RequireAuth as never, requireDb);
 interface AgentProfileRow {
   id: string;
   organizationId: string;
-  venueId: number;
+  venueId: number | null;
   connectedServiceId: string | null;
   displayName: string;
   wakePhrase: string;
@@ -75,7 +75,19 @@ router.post("/", async (req: Request, res: Response) => {
   const user = userFromReq(req);
   const parsed = v1.CreateAgentProfileRequest.safeParse(req.body);
   if (!parsed.success) {
-    jsonError(res, 400, "invalid_request", parsed.error.message);
+    const flat = parsed.error.flatten();
+    console.warn("[agent-profiles] POST validation failed", {
+      issues: parsed.error.issues,
+      body: req.body,
+    });
+    const firstIssue = parsed.error.issues[0];
+    const friendly = firstIssue
+      ? `${firstIssue.path.join(".") || "body"}: ${firstIssue.message}`
+      : "Invalid request body.";
+    jsonError(res, 400, "invalid_request", friendly, {
+      fieldErrors: flat.fieldErrors,
+      formErrors: flat.formErrors,
+    });
     return;
   }
   const body = parsed.data;
@@ -83,14 +95,16 @@ router.post("/", async (req: Request, res: Response) => {
     jsonError(res, 403, "forbidden", "User does not own this organization.");
     return;
   }
-  const [venue] = await db
-    .select()
-    .from(venuesTable)
-    .where(and(eq(venuesTable.id, body.venueId), eq(venuesTable.userId, user.id)))
-    .limit(1);
-  if (!venue) {
-    jsonError(res, 404, "venue_not_found", "Venue not found or not owned by user.");
-    return;
+  if (body.venueId) {
+    const [venue] = await db
+      .select()
+      .from(venuesTable)
+      .where(and(eq(venuesTable.id, body.venueId), eq(venuesTable.userId, user.id)))
+      .limit(1);
+    if (!venue) {
+      jsonError(res, 404, "venue_not_found", "Venue not found or not owned by user.");
+      return;
+    }
   }
 
   // Pipeline-tier gating: prevent picking a pipeline that's not unlocked
@@ -118,7 +132,7 @@ router.post("/", async (req: Request, res: Response) => {
     .insert(agentProfilesTable)
     .values({
       organizationId: body.organizationId,
-      venueId: body.venueId,
+      venueId: body.venueId ?? null,
       connectedServiceId: body.connectedServiceId ?? null,
       displayName: body.displayName,
       wakePhrase,
@@ -158,7 +172,19 @@ router.patch("/:id", async (req: Request, res: Response) => {
   const user = userFromReq(req);
   const parsed = v1.UpdateAgentProfileRequest.safeParse(req.body);
   if (!parsed.success) {
-    jsonError(res, 400, "invalid_request", parsed.error.message);
+    const flat = parsed.error.flatten();
+    console.warn("[agent-profiles] PATCH validation failed", {
+      issues: parsed.error.issues,
+      body: req.body,
+    });
+    const firstIssue = parsed.error.issues[0];
+    const friendly = firstIssue
+      ? `${firstIssue.path.join(".") || "body"}: ${firstIssue.message}`
+      : "Invalid request body.";
+    jsonError(res, 400, "invalid_request", friendly, {
+      fieldErrors: flat.fieldErrors,
+      formErrors: flat.formErrors,
+    });
     return;
   }
   const [existing] = await db

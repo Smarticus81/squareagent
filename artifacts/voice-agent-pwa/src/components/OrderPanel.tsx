@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { X, Menu, Trash2, Loader, Link, ChevronRight, Sun, Moon, RefreshCw, LogIn, User, MapPin, LogOut } from "lucide-react";
+import React, { useEffect, useState } from "react";
+import { X, Menu, Trash2, Loader, Link, ChevronRight, Sun, Moon, RefreshCw, LogIn, User, MapPin, LogOut, Mail } from "lucide-react";
 import { useOrder, type OrderLineItem } from "@/contexts/OrderContext";
 import { useSquare } from "@/contexts/SquareContext";
 
@@ -29,22 +29,27 @@ export function OrderPanel({ open, tab, onTabChange, onClose }: Props) {
 
 /* ── Panel nav + body ─────────────────────────────────────── */
 function PanelContent({ tab, onTabChange, onClose }: { tab: "order" | "menu" | "settings"; onTabChange: (t: "order" | "menu" | "settings") => void; onClose: () => void }) {
-  const tabs = ["order", "menu", "settings"] as const;
+  const { assistantKind } = useSquare();
+  const tabs: ReadonlyArray<"order" | "menu" | "settings"> =
+    assistantKind === "general" ? (["settings"] as const) : (["order", "menu", "settings"] as const);
+
+  // If a non-applicable tab was selected, fall back to settings.
+  const activeTab = tabs.includes(tab) ? tab : "settings";
 
   return (
     <>
       <nav className="panel-nav">
         {tabs.map((t) => (
-          <button key={t} className={`panel-nav-btn${tab === t ? " active" : ""}`} onClick={() => onTabChange(t)}>
+          <button key={t} className={`panel-nav-btn${activeTab === t ? " active" : ""}`} onClick={() => onTabChange(t)}>
             {t}
           </button>
         ))}
         <button className="panel-nav-close" onClick={onClose}><X size={16} /></button>
       </nav>
       <div className="panel-body">
-        {tab === "order" && <OrderTab onTabChange={onTabChange} />}
-        {tab === "menu" && <MenuTab onTabChange={onTabChange} />}
-        {tab === "settings" && <SettingsTab />}
+        {activeTab === "order" && <OrderTab onTabChange={onTabChange} />}
+        {activeTab === "menu" && <MenuTab onTabChange={onTabChange} />}
+        {activeTab === "settings" && <SettingsTab />}
       </div>
     </>
   );
@@ -184,6 +189,7 @@ function SettingsTab() {
   const {
     isConfigured, clearCredentials, connectionError, isReconnecting, refreshCredentials,
     userInfo, venues, login, signup, logout, selectVenue, loadCatalog,
+    agentProfile, assistantKind, authToken,
   } = useSquare();
 
   const [prefs, setPrefs] = useState(getVoicePrefs);
@@ -318,8 +324,8 @@ function SettingsTab() {
           </button>
         </div>
 
-      /* ── Logged in but no venue selected ──────────────────── */
-      ) : isLoggedIn && !isConfigured ? (
+      /* ── Logged in but no venue selected (and not a general assistant) ─── */
+      ) : isLoggedIn && !isConfigured && assistantKind !== "general" ? (
         <div className="auth-section">
           <div className="auth-title">Select your venue</div>
           <div className="auth-sub">Choose the venue to use with the voice agent.</div>
@@ -375,7 +381,8 @@ function SettingsTab() {
             </div>
           )}
 
-          {/* Square Connection */}
+          {/* Square Connection — hide entirely for general (non-POS) assistants */}
+          {assistantKind === "venue" && (
           <div
             className="settings-row"
             style={{ cursor: isConfigured ? "pointer" : "default", borderBottom: "none", padding: "10px 10px" }}
@@ -392,9 +399,10 @@ function SettingsTab() {
             <span className="status-dot" style={{ background: isConfigured ? "#22C55E" : "#EF4444" }} />
             {isConfigured && <ChevronRight size={14} />}
           </div>
+          )}
 
-          {/* Reconnect controls */}
-          {!isConfigured && (
+          {/* Reconnect controls (Square pathway only) */}
+          {assistantKind === "venue" && !isConfigured && (
             <div style={{ padding: "4px 10px 8px", display: "flex", flexDirection: "column", gap: 6 }}>
               {connectionError && (
                 <div className="error-text" style={{ fontSize: 12, textAlign: "left", padding: 0 }}>{connectionError}</div>
@@ -421,6 +429,11 @@ function SettingsTab() {
               </div>
             </div>
           )}
+
+          <div className="divider" style={{ margin: "8px 0" }} />
+
+          {/* Email / Gmail connection */}
+          {isLoggedIn && <GmailSection authToken={authToken} />}
 
           <div className="divider" style={{ margin: "8px 0" }} />
 
@@ -479,6 +492,201 @@ function SettingsTab() {
             </div>
           </div>
         </>
+      )}
+    </div>
+  );
+}
+
+/* ── Gmail connection ───────────────────────────────────────── */
+type EmailConfig = {
+  id: number;
+  provider: string;
+  fromAddress: string | null;
+  fromName: string | null;
+} | null;
+
+function GmailSection({ authToken }: { authToken: string | null }) {
+  const [config, setConfig] = useState<EmailConfig>(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
+  const [fromName, setFromName] = useState("");
+
+  const headers = (): HeadersInit => {
+    const h: Record<string, string> = { "Content-Type": "application/json" };
+    if (authToken) h["Authorization"] = `Bearer ${authToken}`;
+    return h;
+  };
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/v1/knowledge/email", { headers: headers() });
+      const data = await res.json();
+      setConfig(data.email ?? null);
+      if (data.email?.fromName) setFromName(data.email.fromName);
+    } catch {
+      // ignore
+    } finally {
+      setLoading(false);
+    }
+  };
+  useEffect(() => { void load(); }, [authToken]);
+
+  const connect = async () => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const params = new URLSearchParams();
+      if (fromName.trim()) params.set("fromName", fromName.trim());
+      const res = await fetch(`/api/oauth/google/start?${params}`, { headers: headers() });
+      const data = await res.json();
+      if (!res.ok || !data.url) throw new Error(data.error || "Failed to start Gmail OAuth");
+
+      try { localStorage.removeItem("voycelab_gmail_oauth_result"); } catch {}
+      const popup = window.open(data.url, "gmail-oauth", "width=520,height=640");
+      if (!popup) throw new Error("Popup blocked. Allow popups and try again.");
+
+      await new Promise<void>((resolve, reject) => {
+        const start = Date.now();
+        const onMessage = (ev: MessageEvent) => {
+          if (ev.data?.type === "gmail-oauth-result") {
+            cleanup();
+            ev.data.ok ? resolve() : reject(new Error(ev.data.error || "Authorization failed"));
+          }
+        };
+        window.addEventListener("message", onMessage);
+        const interval = window.setInterval(async () => {
+          // 1) localStorage signal from popup
+          try {
+            const raw = localStorage.getItem("voycelab_gmail_oauth_result");
+            if (raw) {
+              localStorage.removeItem("voycelab_gmail_oauth_result");
+              const payload = JSON.parse(raw);
+              cleanup();
+              payload.ok ? resolve() : reject(new Error(payload.error || "Authorization failed"));
+              return;
+            }
+          } catch {}
+          // 2) Server-side check (handles COOP-isolated popups where postMessage/localStorage fail)
+          try {
+            const r = await fetch("/api/v1/knowledge/email", { headers: headers() });
+            if (r.ok) {
+              const d = await r.json();
+              if (d?.provider === "gmail_oauth") { cleanup(); resolve(); return; }
+            }
+          } catch {}
+          if (Date.now() - start > 5 * 60 * 1000) {
+            cleanup();
+            reject(new Error("Authorization timed out."));
+          }
+        }, 2000);
+        function cleanup() {
+          window.removeEventListener("message", onMessage);
+          window.clearInterval(interval);
+          try { popup?.close(); } catch {}
+        }
+      });
+
+      setMsg({ tone: "ok", text: "Gmail connected." });
+      await load();
+    } catch (err) {
+      setMsg({ tone: "error", text: err instanceof Error ? err.message : "Connection failed" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async () => {
+    if (!confirm("Disconnect Gmail?")) return;
+    await fetch("/api/v1/knowledge/email", { method: "DELETE", headers: headers() });
+    setConfig(null);
+    setMsg({ tone: "ok", text: "Gmail disconnected." });
+  };
+
+  const isGmail = config?.provider === "gmail_oauth";
+  const isResend = config?.provider === "resend";
+
+  return (
+    <div style={{ padding: "8px 6px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+        <Mail size={15} />
+        <span className="rec-label" style={{ margin: 0 }}>EMAIL</span>
+      </div>
+      {loading ? (
+        <div className="settings-txt" style={{ fontSize: 12, opacity: 0.7 }}>Loading…</div>
+      ) : isResend ? (
+        <div className="settings-txt" style={{ fontSize: 12, opacity: 0.8, lineHeight: 1.4 }}>
+          Resend is configured ({config?.fromAddress}). Manage email providers from the dashboard.
+        </div>
+      ) : (
+        <>
+          {isGmail ? (
+            <div
+              className="settings-row"
+              style={{ borderBottom: "none", padding: "8px 6px", gap: 8 }}
+            >
+              <span className="status-dot" style={{ background: "#22C55E" }} />
+              <span className="settings-txt" style={{ fontSize: 13, flex: 1, overflow: "hidden", textOverflow: "ellipsis" }}>
+                {config?.fromAddress}
+              </span>
+            </div>
+          ) : (
+            <div className="settings-txt" style={{ fontSize: 12, opacity: 0.75, marginBottom: 8, lineHeight: 1.4 }}>
+              Connect Gmail so the assistant can send messages from your address. Daily limit ~500 emails.
+            </div>
+          )}
+          {!isGmail && (
+            <input
+              type="text"
+              value={fromName}
+              onChange={(e) => setFromName(e.target.value)}
+              placeholder="From name (optional)"
+              className="auth-input"
+              style={{ marginBottom: 8 }}
+            />
+          )}
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button
+              onClick={connect}
+              disabled={busy}
+              style={{
+                display: "flex", alignItems: "center", gap: 5,
+                padding: "8px 14px", borderRadius: 20,
+                background: "rgba(34,197,94,0.12)", color: "#22C55E",
+                border: "1px solid rgba(34,197,94,0.25)",
+                fontSize: 13, fontWeight: 500, cursor: busy ? "wait" : "pointer",
+                opacity: busy ? 0.6 : 1, fontFamily: "var(--font)",
+              }}
+            >
+              {busy ? <Loader size={13} className="spin" /> : <Mail size={13} />}
+              {isGmail ? "Reconnect Gmail" : "Connect Gmail"}
+            </button>
+            {isGmail && (
+              <button
+                onClick={remove}
+                style={{
+                  display: "flex", alignItems: "center", gap: 5,
+                  padding: "8px 14px", borderRadius: 20,
+                  background: "transparent",
+                  border: "1px solid rgba(0,0,0,0.15)",
+                  fontSize: 13, fontWeight: 500, cursor: "pointer",
+                  fontFamily: "var(--font)", color: "inherit",
+                }}
+              >
+                <Trash2 size={13} /> Disconnect
+              </button>
+            )}
+          </div>
+        </>
+      )}
+      {msg && (
+        <div
+          className="settings-txt"
+          style={{ fontSize: 12, marginTop: 8, color: msg.tone === "error" ? "#EF4444" : "#22C55E" }}
+        >
+          {msg.text}
+        </div>
       )}
     </div>
   );

@@ -36,21 +36,21 @@ export default function Assistants() {
 
   const venueById = new Map((venues ?? []).map((v) => [v.id, v]));
   const list = (profiles ?? []).map((profile) => {
-    const venue = venueById.get(profile.venueId);
+    const venue = profile.venueId ? venueById.get(profile.venueId) : undefined;
     const approvals = Object.values((profile.confirmationPolicy?.approvals ?? {}) as Record<string, string>);
     const askFirstCount = approvals.filter((level) => level === "ask_first").length;
     return {
     id: profile.id,
     venueId: profile.venueId,
     name: profile.displayName,
-    venue: venue?.squareLocationName ?? venue?.name ?? "Unnamed venue",
-    service: "Square",
+    venue: profile.venueId ? venue?.squareLocationName ?? venue?.name ?? "Unnamed venue" : "General assistant",
+    service: profile.venueId ? "Square" : "Not connected yet",
     voice: pipelineLabel(profile.voicePipelineProvider),
     room: roomLabel(profile.noiseMode),
     wakePhrase: profile.wakePhrase,
     allowedCount: profile.allowedTools.length,
     askFirstCount,
-    state: venue?.squareLocationId ? ("ready" as const) : ("offline" as const),
+    state: !profile.venueId || venue?.squareLocationId ? ("ready" as const) : ("offline" as const),
   };
   });
 
@@ -79,12 +79,6 @@ export default function Assistants() {
               Create one assistant per venue. Each voice carries its connected service, room behavior, wake phrase, and approval rules.
             </p>
           </div>
-          <button
-            onClick={() => setLocation("/assistants/new")}
-            className="vl-btn-primary inline-flex items-center gap-2 text-[14px]"
-          >
-            <Plus className="w-4 h-4" /> Create your assistant
-          </button>
         </div>
 
         {venuesError && (
@@ -155,7 +149,7 @@ export default function Assistants() {
                     Open assistant <ExternalLink className="h-3.5 w-3.5" />
                   </button>
                   <button
-                    onClick={() => setLocation("/assistants/new")}
+                    onClick={() => setLocation(`/assistants/edit/${a.id}`)}
                     className="vl-btn-ghost inline-flex items-center gap-2 text-[13px]"
                   >
                     <Settings2 className="w-4 h-4" /> Reconfigure
@@ -227,7 +221,7 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
 
 interface AgentProfile {
   id: string;
-  venueId: number;
+  venueId: number | null;
   displayName: string;
   wakePhrase: string;
   voicePipelineProvider: string;
@@ -287,13 +281,13 @@ function roomLabel(noiseMode: string): string {
   return noiseMode.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-async function launchAssistant(venueId: number, agentProfileId: string) {
+async function launchAssistant(venueId: number | null, agentProfileId: string) {
   try {
     const token = localStorage.getItem("voycelab_token") || "";
     const res = await fetch("/api/auth/exchange/create", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ venueId, agentProfileId }),
+      body: JSON.stringify({ ...(venueId ? { venueId } : {}), agentProfileId }),
     });
     if (!res.ok) throw new Error("Could not open the assistant. Try again.");
     const { code } = await res.json();

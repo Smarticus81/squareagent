@@ -22,7 +22,7 @@ import { embedBatch, chunkText } from "../../lib/embeddings";
 import { encrypt } from "../../lib/secrets";
 import { extractTextFromUpload } from "../../lib/document-extract";
 import multer from "multer";
-import rateLimit from "express-rate-limit";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
@@ -32,7 +32,10 @@ const writeLimiter = rateLimit({
   limit: 30,
   standardHeaders: "draft-7",
   legacyHeaders: false,
-  keyGenerator: (req) => String((req as any).user?.id ?? req.ip ?? "anon"),
+  keyGenerator: (req, res) => {
+    const uid = (req as any).user?.id;
+    return uid ? `u:${uid}` : ipKeyGenerator(req.ip ?? "");
+  },
   message: { error: "Too many requests. Slow down and try again in a minute." },
 });
 
@@ -42,7 +45,10 @@ const uploadLimiter = rateLimit({
   limit: 10,
   standardHeaders: "draft-7",
   legacyHeaders: false,
-  keyGenerator: (req) => String((req as any).user?.id ?? req.ip ?? "anon"),
+  keyGenerator: (req, res) => {
+    const uid = (req as any).user?.id;
+    return uid ? `u:${uid}` : ipKeyGenerator(req.ip ?? "");
+  },
   message: { error: "Upload limit reached (10/min). Please wait before uploading more." },
 });
 

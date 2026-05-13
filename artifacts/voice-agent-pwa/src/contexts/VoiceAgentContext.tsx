@@ -35,6 +35,7 @@ interface VoiceAgentContextType {
   conversation: ConversationMessage[];
   partialTranscript: string;
   error: string | null;
+  remoteStream: MediaStream | null;
   connect: () => Promise<void>;
   disconnect: () => Promise<void>;
   clearConversation: () => void;
@@ -60,6 +61,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
   const [conversation, setConversation] = useState<ConversationMessage[]>([]);
   const [partialTranscript, setPartialTranscript] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const dcRef = useRef<RTCDataChannel | null>(null);
@@ -402,6 +404,7 @@ General:
       pc.ontrack = (e) => {
         console.log("[WebRTC] Got remote audio track");
         audioEl.srcObject = e.streams[0];
+        setRemoteStream(e.streams[0] ?? null);
       };
 
       // 4. Add local mic track
@@ -489,6 +492,7 @@ General:
       audioElRef.current = null;
     }
 
+    setRemoteStream(null);
     setAgentState("disconnected");
   }, []);
 
@@ -509,7 +513,7 @@ General:
 
   return (
     <VoiceAgentContext.Provider value={{
-      agentState, isConnected, conversation, partialTranscript, error,
+      agentState, isConnected, conversation, partialTranscript, error, remoteStream,
       connect, disconnect, clearConversation, setToolHandler, interrupt,
       setCatalog, setCurrentOrder, setSquareCredentials, setAuthParams,
     }}>

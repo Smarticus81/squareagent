@@ -362,7 +362,7 @@ router.post("/exchange/create", requireAuth as any, async (req: Request, res: Re
 
   const token = extractToken(req)!;
   const { venueId, agentProfileId } = req.body ?? {};
-  if (!venueId) { res.status(400).json({ error: "venueId is required" }); return; }
+  if (!venueId && !agentProfileId) { res.status(400).json({ error: "venueId or agentProfileId is required" }); return; }
 
   const code = crypto.randomBytes(32).toString("hex");
   const expiresAt = new Date(Date.now() + 5 * 60_000);
@@ -371,7 +371,7 @@ router.post("/exchange/create", requireAuth as any, async (req: Request, res: Re
     await db.insert(exchangeCodesTable).values({
       code,
       token,
-      venueId: String(venueId),
+      venueId: venueId ? String(venueId) : "",
       agentProfileId: agentProfileId || null,
       expiresAt,
     });

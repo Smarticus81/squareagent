@@ -52,6 +52,11 @@ interface SquareContextType {
   /** Assistant settings loaded with the selected venue. */
   agentProfile: AgentProfileLaunchInfo | null;
   wakePhrase: string;
+  /**
+   * 'venue' = POS-attached assistant (Square credentials loaded, order/menu UI active).
+   * 'general' = no POS connection (web/email/knowledge tools only).
+   */
+  assistantKind: "venue" | "general";
   setCredentials: (token: string, locationId: string) => Promise<void>;
   clearCredentials: () => Promise<void>;
   refreshCredentials: () => Promise<boolean>;
@@ -440,8 +445,6 @@ export function SquareProvider({ children }: { children: ReactNode }) {
     );
   }
 
-  const isConfigured = !!(accessToken && locationId);
-
   // ── VoyceLab Account Auth (native login/signup) ─────────────────────────────
 
   /** Fetch the user's venues list from the API */
@@ -584,8 +587,24 @@ export function SquareProvider({ children }: { children: ReactNode }) {
 
   async function selectAgentProfile(agentProfileId: string): Promise<string | null> {
     const profile = agentProfiles.find((p) => p.id === agentProfileId);
-    if (!profile?.venueId) return "Assistant is not attached to a venue";
-    return selectVenue(profile.venueId, profile.id);
+    if (!profile) return "Assistant not found";
+    // Venue-attached assistants (POS pathway): load Square credentials.
+    if (profile.venueId) return selectVenue(profile.venueId, profile.id);
+    // General assistants (no Square venue): just store the profile and clear
+    // any Square credentials so the UI hides POS-only surfaces.
+    await applyAgentLaunchInfo({ agentProfile: profile });
+    setAccessToken(null);
+    setLocationId(null);
+    setVenueId(null);
+    setCatalogItems([]);
+    await Promise.all([
+      AsyncStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN),
+      AsyncStorage.removeItem(STORAGE_KEYS.LOCATION_ID),
+      AsyncStorage.removeItem(STORAGE_KEYS.VENUE_ID),
+    ]);
+    await AsyncStorage.setItem(STORAGE_KEYS.AGENT_PROFILE_ID, profile.id);
+    setConnectionError(null);
+    return null;
   }
 
   // On mount, also try to restore user session and load venues
@@ -607,6 +626,13 @@ export function SquareProvider({ children }: { children: ReactNode }) {
       } catch {}
     })();
   }, []);
+
+  const isConfigured = !!(accessToken && locationId);
+  const assistantKind: "venue" | "general" = isConfigured
+    ? "venue"
+    : agentProfile
+      ? "general"
+      : "venue";
 
   return (
     <SquareContext.Provider
@@ -630,6 +656,7 @@ export function SquareProvider({ children }: { children: ReactNode }) {
         isLoadingAgentProfiles,
         agentProfile,
         wakePhrase,
+        assistantKind,
         setCredentials,
         clearCredentials,
         refreshCredentials,

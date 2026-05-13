@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import * as WebBrowser from "expo-web-browser";
 import Animated, { FadeInDown } from "react-native-reanimated";
 
 import Colors from "@/constants/colors";
@@ -573,8 +574,179 @@ export default function SetupScreen() {
             Voice and speed apply when you next start a session.
           </Text>
         </Animated.View>
+
+        {/* ── Gmail Connection ─────────────────────────────────────────── */}
+        {authToken ? <GmailSection authToken={authToken} /> : null}
       </ScrollView>
     </View>
+  );
+}
+
+// ── Gmail OAuth section (native) ────────────────────────────────────────────
+function getApiBaseUrl(): string {
+  const domain = process.env.EXPO_PUBLIC_DOMAIN;
+  const protocol = domain?.startsWith("localhost") ? "http" : "https";
+  return domain ? `${protocol}://${domain}/` : "http://localhost:8080/";
+}
+
+type EmailConfig = { provider: string; fromAddress: string; fromName?: string | null } | null;
+
+function GmailSection({ authToken }: { authToken: string }) {
+  const [config, setConfig] = useState<EmailConfig>(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [fromName, setFromName] = useState("");
+
+  const baseUrl = getApiBaseUrl();
+
+  const load = React.useCallback(async () => {
+    try {
+      const r = await fetch(`${baseUrl}api/v1/knowledge/email`, {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      if (r.status === 404) { setConfig(null); }
+      else if (r.ok) { const d = await r.json(); setConfig(d); }
+      else { setError(`Failed to load (${r.status})`); }
+    } catch (e: any) { setError(e?.message ?? "Network error"); }
+    finally { setLoading(false); }
+  }, [authToken, baseUrl]);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function connect() {
+    setError(null);
+    setBusy(true);
+    try {
+      const url = `${baseUrl}api/oauth/google/start${fromName ? `?fromName=${encodeURIComponent(fromName)}` : ""}`;
+      const startRes = await fetch(url, { headers: { Authorization: `Bearer ${authToken}` } });
+      if (!startRes.ok) throw new Error(`Failed to start OAuth (${startRes.status})`);
+      const { url: authUrl } = await startRes.json();
+      if (!authUrl) throw new Error("No auth URL returned");
+
+      // Open browser; user will land on a self-closing popup page after consent.
+      // We don't get a deep link back, so we poll the email config endpoint to detect success.
+      const browserPromise = WebBrowser.openAuthSessionAsync(authUrl, baseUrl);
+
+      // Poll while browser is open (up to 5 min).
+      const deadline = Date.now() + 5 * 60_000;
+      let connected: EmailConfig = null;
+      while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 2000));
+        try {
+          const r = await fetch(`${baseUrl}api/v1/knowledge/email`, {
+            headers: { Authorization: `Bearer ${authToken}` },
+          });
+          if (r.ok) {
+            const d = await r.json();
+            if (d?.provider === "gmail_oauth") { connected = d; break; }
+          }
+        } catch { /* ignore */ }
+      }
+
+      // Try to dismiss the browser if still open
+      try { WebBrowser.dismissAuthSession(); } catch { /* ignore */ }
+      await browserPromise.catch(() => undefined);
+
+      if (connected) {
+        setConfig(connected);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } else {
+        setError("Connection timed out. Please try again.");
+      }
+    } catch (e: any) {
+      setError(e?.message ?? "Failed to connect");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function disconnect() {
+    setBusy(true); setError(null);
+    try {
+      const r = await fetch(`${baseUrl}api/v1/knowledge/email`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      if (!r.ok && r.status !== 404) throw new Error(`Failed (${r.status})`);
+      setConfig(null);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    } catch (e: any) {
+      setError(e?.message ?? "Failed to disconnect");
+    } finally { setBusy(false); }
+  }
+
+  const isGmail = config?.provider === "gmail_oauth";
+
+  return (
+    <Animated.View entering={FadeInDown.delay(320).duration(300)} style={styles.voiceSection}>
+      <View style={styles.voiceSectionHeader}>
+        <Feather name="mail" size={16} color={Colors.dark.accent} />
+        <Text style={styles.voiceSectionTitle}>Gmail</Text>
+      </View>
+      <Text style={styles.voiceHint}>
+        Let your assistant send emails on your behalf from your Gmail account.
+      </Text>
+
+      {loading ? (
+        <View style={{ paddingVertical: 12 }}><ActivityIndicator size="small" color={Colors.dark.accent} /></View>
+      ) : isGmail ? (
+        <View style={{ marginTop: 10, gap: 10 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#22C55E" }} />
+            <Text style={{ fontFamily: "Inter_500Medium", fontSize: 13, color: Colors.dark.text }}>
+              Connected
+            </Text>
+          </View>
+          <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: Colors.dark.textSecondary }}>
+            {config?.fromAddress}{config?.fromName ? ` · ${config.fromName}` : ""}
+          </Text>
+          <Pressable
+            onPress={disconnect}
+            disabled={busy}
+            style={[styles.disconnectBtn, { opacity: busy ? 0.5 : 1, alignSelf: "flex-start" }]}
+          >
+            <Text style={styles.disconnectText}>{busy ? "Disconnecting..." : "Disconnect Gmail"}</Text>
+          </Pressable>
+        </View>
+      ) : (
+        <View style={{ marginTop: 10, gap: 10 }}>
+          <Text style={[styles.voiceLabel, { marginTop: 0 }]}>From name (optional)</Text>
+          <TextInput
+            value={fromName}
+            onChangeText={setFromName}
+            placeholder="e.g. The Vineyard Team"
+            placeholderTextColor={Colors.dark.textMuted}
+            style={styles.input}
+            autoCapitalize="words"
+            editable={!busy}
+          />
+          <Pressable
+            onPress={connect}
+            disabled={busy}
+            style={[styles.fetchBtn, { opacity: busy ? 0.6 : 1 }]}
+          >
+            {busy ? (
+              <ActivityIndicator size="small" color={Colors.dark.accent} />
+            ) : (
+              <>
+                <Feather name="link" size={14} color={Colors.dark.accent} />
+                <Text style={styles.fetchBtnText}>Connect Gmail</Text>
+              </>
+            )}
+          </Pressable>
+          <Text style={styles.voiceHint}>
+            You'll be sent to Google to grant permission. Return here when done.
+          </Text>
+        </View>
+      )}
+
+      {error ? (
+        <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: "#EF4444", marginTop: 8 }}>
+          {error}
+        </Text>
+      ) : null}
+    </Animated.View>
   );
 }
 

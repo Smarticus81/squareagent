@@ -102,7 +102,7 @@ export type ServiceConnectionRow = typeof serviceConnectionsTable.$inferSelect;
 export const agentProfilesTable = pgTable("agent_profiles", {
   id: uuid("id").defaultRandom().primaryKey(),
   organizationId: uuid("organization_id").notNull().references(() => organizationsTable.id, { onDelete: "cascade" }),
-  venueId: integer("venue_id").notNull().references(() => venuesTable.id, { onDelete: "cascade" }),
+  venueId: integer("venue_id").references(() => venuesTable.id, { onDelete: "set null" }),
   connectedServiceId: uuid("connected_service_id").references(() => serviceConnectionsTable.id, { onDelete: "set null" }),
   displayName: text("display_name").notNull(),
   wakePhrase: text("wake_phrase").notNull(),

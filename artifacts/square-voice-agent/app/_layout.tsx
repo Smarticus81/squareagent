@@ -15,6 +15,7 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { BiometricGate } from "@/components/BiometricGate";
 import { VoiceAgentProvider } from "@/context/VoiceAgentContext";
 import { OrderProvider } from "@/context/OrderContext";
 import { SquareProvider } from "@/context/SquareContext";
@@ -26,7 +27,7 @@ const queryClient = new QueryClient();
 
 function RootLayoutNav() {
   return (
-    <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: Colors.dark.background } }}>
+    <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: Colors.light.background } }}>
       <Stack.Screen name="index" />
       <Stack.Screen name="setup" />
     </Stack>
@@ -62,13 +63,15 @@ export default function RootLayout() {
         <QueryClientProvider client={queryClient}>
           <GestureHandlerRootView style={{ flex: 1 }}>
             <KeyboardProvider>
-              <SquareProvider>
-                <OrderProvider>
-                  <VoiceAgentProvider>
-                    <RootLayoutNav />
-                  </VoiceAgentProvider>
-                </OrderProvider>
-              </SquareProvider>
+              <BiometricGate>
+                <SquareProvider>
+                  <OrderProvider>
+                    <VoiceAgentProvider>
+                      <RootLayoutNav />
+                    </VoiceAgentProvider>
+                  </OrderProvider>
+                </SquareProvider>
+              </BiometricGate>
             </KeyboardProvider>
           </GestureHandlerRootView>
         </QueryClientProvider>

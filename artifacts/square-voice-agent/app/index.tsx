@@ -32,14 +32,14 @@ type RailKey = AgentState | "wake";
 
 const RAIL_COLORS = {
   light: {
-    line:       "rgba(17,19,24,0.12)",
-    glow:       "rgba(17,19,24,0.05)",
-    active:     "rgba(150,110,40,0.55)",
-    listening:  "rgba(94,86,230,0.55)",
-    speaking:   "rgba(150,110,40,0.55)",
-    thinking:   "rgba(220,90,30,0.50)",
-    error:      "rgba(180,40,40,0.55)",
-    bar:        "rgba(17,19,24,0.18)",
+    line:       "rgba(10,10,11,0.10)",
+    glow:       "rgba(10,10,11,0.04)",
+    active:     "rgba(99,102,241,0.55)",
+    listening:  "rgba(99,102,241,0.55)",
+    speaking:   "rgba(255,107,71,0.55)",
+    thinking:   "rgba(99,102,241,0.50)",
+    error:      "rgba(220,38,38,0.55)",
+    bar:        "rgba(10,10,11,0.18)",
   },
   dark: {
     line:       "rgba(245,239,227,0.10)",
@@ -114,45 +114,45 @@ const NUM_BARS = 24;
 // ── Theme ──────────────────────────────────────────────────────────────────────
 const THEMES = {
   light: {
-    bg:           "#F5EFE3" as const,
-    bgGrad:       ["#F8F2E5", "#F0E7D2", "#F5EFE3"] as const,
-    logoText:     "rgba(17,19,24,0.78)",
-    stateText:    "rgba(17,19,24,0.48)",
-    tapHint:      "rgba(17,19,24,0.35)",
-    errorText:    "rgba(180,40,40,0.90)",
-    hamburger:    "rgba(17,19,24,0.45)",
-    badgeBorder:  "rgba(150,110,40,0.32)",
-    badgeText:    "rgba(150,110,40,0.85)",
-    msgAgent:     (op: number) => `rgba(17,19,24,${op})`,
-    msgUser:      (op: number) => `rgba(17,19,24,${op})`,
-    partial:      "rgba(17,19,24,0.42)",
+    bg:           "#FFFFFF" as const,
+    bgGrad:       ["#FFFFFF", "#FAFAFB", "#FFFFFF"] as const,
+    logoText:     "rgba(10,10,11,0.86)",
+    stateText:    "rgba(10,10,11,0.50)",
+    tapHint:      "rgba(10,10,11,0.38)",
+    errorText:    "rgba(220,38,38,0.92)",
+    hamburger:    "rgba(10,10,11,0.55)",
+    badgeBorder:  "rgba(99,102,241,0.32)",
+    badgeText:    "rgba(79,70,229,0.92)",
+    msgAgent:     (op: number) => `rgba(10,10,11,${op})`,
+    msgUser:      (op: number) => `rgba(10,10,11,${op})`,
+    partial:      "rgba(10,10,11,0.42)",
     panelBg:      "#FFFFFF",
-    panelBorder:  "rgba(17,19,24,0.10)",
-    panelHandle:  "rgba(17,19,24,0.18)",
-    navText:      "rgba(17,19,24,0.46)",
-    navActive:    "rgba(17,19,24,0.86)",
-    divider:      "rgba(17,19,24,0.10)",
-    recTotal:     "rgba(17,19,24,0.86)",
-    recLabel:     "rgba(17,19,24,0.32)",
-    rowName:      "rgba(17,19,24,0.78)",
-    rowQty:       "rgba(17,19,24,0.42)",
-    rowPrice:     "rgba(17,19,24,0.55)",
-    emptyTxt:     "rgba(17,19,24,0.42)",
-    emptyHint:    "rgba(17,19,24,0.30)",
-    orderTotal:   "rgba(17,19,24,0.82)",
+    panelBorder:  "rgba(10,10,11,0.10)",
+    panelHandle:  "rgba(10,10,11,0.18)",
+    navText:      "rgba(10,10,11,0.50)",
+    navActive:    "rgba(10,10,11,0.92)",
+    divider:      "rgba(10,10,11,0.08)",
+    recTotal:     "rgba(10,10,11,0.92)",
+    recLabel:     "rgba(10,10,11,0.42)",
+    rowName:      "rgba(10,10,11,0.86)",
+    rowQty:       "rgba(10,10,11,0.46)",
+    rowPrice:     "rgba(10,10,11,0.60)",
+    emptyTxt:     "rgba(10,10,11,0.46)",
+    emptyHint:    "rgba(10,10,11,0.32)",
+    orderTotal:   "rgba(10,10,11,0.92)",
     orderFtrBg:   "#FFFFFF",
-    clearBorder:  "rgba(180,40,40,0.28)",
-    clearIcon:    "rgba(180,40,40,0.74)",
-    submitBg:     "rgba(198,154,82,0.10)",
-    submitBorder: "rgba(198,154,82,0.32)",
-    submitText:   "rgba(150,110,40,0.85)",
-    catName:      "rgba(17,19,24,0.78)",
-    catCat:       "rgba(17,19,24,0.42)",
-    catPrice:     "rgba(17,19,24,0.55)",
-    settingsTxt:  "rgba(17,19,24,0.78)",
-    settingsIcon: "rgba(17,19,24,0.55)",
-    chevron:      "rgba(17,19,24,0.32)",
-    link:         "rgba(150,110,40,0.85)",
+    clearBorder:  "rgba(220,38,38,0.28)",
+    clearIcon:    "rgba(220,38,38,0.78)",
+    submitBg:     "rgba(99,102,241,0.10)",
+    submitBorder: "rgba(99,102,241,0.32)",
+    submitText:   "rgba(79,70,229,0.92)",
+    catName:      "rgba(10,10,11,0.86)",
+    catCat:       "rgba(10,10,11,0.46)",
+    catPrice:     "rgba(10,10,11,0.60)",
+    settingsTxt:  "rgba(10,10,11,0.86)",
+    settingsIcon: "rgba(10,10,11,0.60)",
+    chevron:      "rgba(10,10,11,0.32)",
+    link:         "rgba(79,70,229,0.92)",
   },
   dark: {
     bg:           "#07080A" as const,
@@ -274,13 +274,15 @@ export default function MainScreen() {
   } = useOrder();
 
   const { isConfigured, catalogItems, isLoadingCatalog, accessToken, locationId, venueId, authToken,
-    connectionError, isReconnecting, refreshCredentials, wakePhrase, agentProfile } = useSquare();
+    connectionError, isReconnecting, refreshCredentials, wakePhrase, agentProfile, assistantKind } = useSquare();
+  const isGeneral = assistantKind === "general";
   const { voice, speed, setVoice, setSpeed, loaded: voicePrefsLoaded, voices } = useVoicePrefs(
     agentProfile?.voicePipelineProvider,
     agentProfile?.voicePipelineConfig,
   );
   const [panelOpen, setPanelOpen] = useState(false);
   const [panelTab,  setPanelTab]  = useState<"order" | "menu" | "settings">("order");
+  useEffect(() => { if (isGeneral && panelTab !== "settings") setPanelTab("settings"); }, [isGeneral, panelTab]);
 
   // Refs so handleCmds never has a stale closure on catalog or order
   const catalogItemsRef = useRef(catalogItems);
@@ -542,7 +544,7 @@ export default function MainScreen() {
           ) : null}
         </View>
 
-        {orderCount > 0 ? (
+        {orderCount > 0 && !isGeneral ? (
           <Pressable onPress={() => { setPanelTab("order"); setPanelOpen(true); }} hitSlop={22}>
             <View style={[s.orderBadge, { borderColor: t.badgeBorder }]}>
               <Text style={[s.orderBadgeNum, { color: t.badgeText }]}>{orderCount}</Text>
@@ -669,7 +671,7 @@ export default function MainScreen() {
         <View style={[s.panel, { backgroundColor: t.panelBg, borderColor: t.panelBorder, paddingBottom: bottomPad + 20 }]}>
           <View style={[s.panelHandle, { backgroundColor: t.panelHandle }]} />
           <View style={s.panelNav}>
-            {(["order", "menu", "settings"] as const).map((tab) => (
+            {((isGeneral ? ["settings"] : ["order", "menu", "settings"]) as readonly ("order" | "menu" | "settings")[]).map((tab) => (
               <Pressable key={tab} onPress={() => setPanelTab(tab)} style={s.panelNavBtn}>
                 <Text style={[s.panelNavTxt, { color: panelTab === tab ? t.navActive : t.navText },
                   panelTab === tab && s.panelNavOn]}>
@@ -793,16 +795,18 @@ export default function MainScreen() {
           {panelTab === "settings" && (
             <View style={s.settingsPanel}>
               {/* Square connection */}
-              <Pressable style={[s.settingsRow, { borderBottomColor: t.divider }]}
-                onPress={() => { setPanelOpen(false); router.push("/setup"); }}>
-                <Feather name="link" size={16} color={t.settingsIcon} />
-                <Text style={[s.settingsRowTxt, { color: t.settingsTxt }]}>Square Connection</Text>
-                <View style={[s.statusDot, { backgroundColor: isConfigured ? "#22C55E" : "#EF4444" }]} />
-                <Feather name="chevron-right" size={15} color={t.chevron} />
-              </Pressable>
+              {!isGeneral && (
+                <Pressable style={[s.settingsRow, { borderBottomColor: t.divider }]}
+                  onPress={() => { setPanelOpen(false); router.push("/setup"); }}>
+                  <Feather name="link" size={16} color={t.settingsIcon} />
+                  <Text style={[s.settingsRowTxt, { color: t.settingsTxt }]}>Square Connection</Text>
+                  <View style={[s.statusDot, { backgroundColor: isConfigured ? "#22C55E" : "#EF4444" }]} />
+                  <Feather name="chevron-right" size={15} color={t.chevron} />
+                </Pressable>
+              )}
 
               {/* Reconnect */}
-              {connectionError && (
+              {!isGeneral && connectionError && (
                 <View style={[s.settingsRow, { borderBottomColor: t.divider, flexDirection: "column", alignItems: "flex-start", gap: 6 }]}>
                   <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: t.errorText }}>{connectionError}</Text>
                   <Pressable onPress={refreshCredentials} disabled={isReconnecting}
@@ -813,6 +817,14 @@ export default function MainScreen() {
                   </Pressable>
                 </View>
               )}
+
+              {/* Gmail */}
+              <Pressable style={[s.settingsRow, { borderBottomColor: t.divider }]}
+                onPress={() => { setPanelOpen(false); router.push("/setup"); }}>
+                <Feather name="mail" size={16} color={t.settingsIcon} />
+                <Text style={[s.settingsRowTxt, { color: t.settingsTxt }]}>Gmail</Text>
+                <Feather name="chevron-right" size={15} color={t.chevron} />
+              </Pressable>
 
               {/* Voice */}
               <View style={[s.settingsRow, { borderBottomColor: t.divider, flexDirection: "column", alignItems: "flex-start", gap: 8 }]}>

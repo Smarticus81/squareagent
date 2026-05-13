@@ -112,10 +112,12 @@ export default function Command() {
       return {
         kind: "connect" as const,
         eyebrow: venuesLoading ? "Loading..." : "Step 1 of 2",
-        title: "Connect Square to get started.",
-        body: "VoyceLab works inside your POS. Link Square to give your assistant something to control.",
-        ctaLabel: "Connect Square",
-        ctaAction: () => setLocation("/services"),
+        title: "Choose how you want to start.",
+        body: "Create a general voice assistant now, or connect Square first if you want live POS actions today.",
+        ctaLabel: "Create general assistant",
+        ctaAction: () => setLocation("/assistants/new?kind=general"),
+        secondaryLabel: "Connect Square",
+        secondaryAction: () => setLocation("/services"),
       };
     }
     return {
@@ -184,6 +186,16 @@ export default function Command() {
               {primary.ctaLabel}
               <ArrowRight className="w-4 h-4" />
             </button>
+            {"secondaryLabel" in primary && primary.secondaryLabel && (
+              <button
+                type="button"
+                onClick={() => primary.secondaryAction?.()}
+                className="vl-btn-outline inline-flex items-center gap-2 text-[14px] px-6 py-3 shrink-0"
+              >
+                <Plug className="w-4 h-4" />
+                {primary.secondaryLabel}
+              </button>
+            )}
           </div>
 
           {primary.kind === "open" && (
@@ -194,8 +206,8 @@ export default function Command() {
 
           {primary.kind === "connect" && (
             <div className="relative mt-10 pt-7 border-t border-black/6 grid sm:grid-cols-2 gap-6">
-              <Step n="1" active label="Connect Square" body="OAuth to your merchant and pick a location." />
-              <Step n="2" label="Create your assistant" body="Name it, pick a voice, choose what it can do." />
+              <Step n="1" active label="Create an assistant" body="Start with a voice assistant for questions, notes, and connected business data." />
+              <Step n="2" label="Connect Square when ready" body="Add POS actions later from connected services." />
             </div>
           )}
         </article>

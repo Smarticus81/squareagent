@@ -10,12 +10,12 @@
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "voycelab",
-    "userInterfaceStyle": "dark",
+    "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
       "image": "./assets/images/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#07080A"
+      "backgroundColor": "#FFFFFF"
     },
     "updates": {
       "url": "https://u.expo.dev/0157afb7-7402-4132-b38c-fa73c6c2a6b2"
@@ -27,6 +27,7 @@
       "infoPlist": {
         "NSMicrophoneUsageDescription": "VoyceLab uses your microphone to control your connected service by voice.",
         "NSSpeechRecognitionUsageDescription": "VoyceLab uses speech recognition for the wake-word feature.",
+        "NSFaceIDUsageDescription": "VoyceLab uses Face ID to keep your venue data private on this device.",
         "ITSAppUsesNonExemptEncryption": false,
         "UIBackgroundModes": [
           "audio"
@@ -34,7 +35,7 @@
       }
     },
     "android": {
-      "backgroundColor": "#07080A",
+      "backgroundColor": "#FFFFFF",
       "package": "com.voycelab.app",
       "permissions": [
         "android.permission.RECORD_AUDIO",
@@ -74,6 +75,12 @@
           "microphonePermission": "Allow VoyceLab to access your microphone for voice control.",
           "speechRecognitionPermission": "Allow VoyceLab to use speech recognition for the wake-word feature.",
           "androidSpeechServicePackages": ["com.google.android.googlequicksearchbox"]
+        }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "VoyceLab uses Face ID to keep your venue data private on this device."
         }
       ]
     ],
