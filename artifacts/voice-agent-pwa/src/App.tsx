@@ -157,11 +157,13 @@ export default function App() {
     if (accessToken && locationId) setSquareCredentials(accessToken, locationId);
   }, [accessToken, locationId, setSquareCredentials]);
 
-  // Pass venueId + auth JWT to voice agent for server-side credential lookup
+  // Pass venueId + auth JWT to voice agent for server-side credential lookup.
+  // Always pass the auth token whenever we have one — the general assistant
+  // works without a venue or assistant profile and just needs the JWT.
   useEffect(() => {
     const venueId = sqVenueId || "";
     const authToken = sqAuthToken || "";
-    if (authToken && (venueId || agentProfileId)) setAuthParams(venueId, authToken, agentProfileId ?? undefined);
+    if (authToken) setAuthParams(venueId, authToken, agentProfileId ?? undefined);
   }, [sqVenueId, sqAuthToken, agentProfileId, setAuthParams]);
 
   // Push current order to voice agent

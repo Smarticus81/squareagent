@@ -349,7 +349,7 @@ General:
     setError(null);
 
     if (!authTokenRef.current) {
-      setError("Not authenticated. Please open the VoyceLab dashboard, select your venue, and launch the voice agent from there.");
+      setError("Sign in from the VoyceLab dashboard to start your assistant.");
       setAgentState("error");
       return;
     }

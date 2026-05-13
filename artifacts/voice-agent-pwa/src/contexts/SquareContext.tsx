@@ -510,16 +510,14 @@ export function SquareProvider({ children }: { children: ReactNode }) {
   }
 
   const isConfigured = !!(accessToken && locationId);
-  // 'general' assistants either have an explicit profile.venueId == null, or
-  // simply launched without Square credentials.
+  // Default to the general business assistant unless we have an explicit
+  // venue-bound assistant profile AND Square credentials. This means a
+  // signed-in user who opens the PWA directly (no venue selected) gets the
+  // general assistant ready to go — no setup required.
   const assistantKind: "venue" | "general" =
-    agentProfile && (agentProfile as any).venueId == null && !isConfigured
-      ? "general"
-      : isConfigured
-        ? "venue"
-        : agentProfile
-          ? "general"
-          : "venue";
+    isConfigured && (!agentProfile || (agentProfile as any).venueId != null)
+      ? "venue"
+      : "general";
 
   return (
     <SquareContext.Provider value={{

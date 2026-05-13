@@ -628,11 +628,13 @@ export function SquareProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const isConfigured = !!(accessToken && locationId);
-  const assistantKind: "venue" | "general" = isConfigured
-    ? "venue"
-    : agentProfile
-      ? "general"
-      : "venue";
+  // Default to the general business assistant unless we have an explicit
+  // venue-bound assistant profile AND Square credentials. A signed-in user
+  // with no venue selected gets the general assistant ready to go.
+  const assistantKind: "venue" | "general" =
+    isConfigured && (!agentProfile || (agentProfile as any).venueId != null)
+      ? "venue"
+      : "general";
 
   return (
     <SquareContext.Provider

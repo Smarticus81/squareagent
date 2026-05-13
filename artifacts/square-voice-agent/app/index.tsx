@@ -389,7 +389,7 @@ export default function MainScreen() {
   useEffect(() => { if (accessToken && locationId) setSquareCredentials(accessToken, locationId); }, [accessToken, locationId, setSquareCredentials]);
 
   // Forward auth params so voice agent can authenticate server-side tool calls
-  useEffect(() => { if (venueId && authToken) setAuthParams(venueId, authToken); }, [venueId, authToken, setAuthParams]);
+  useEffect(() => { if (authToken) setAuthParams(venueId ?? "", authToken); }, [venueId, authToken, setAuthParams]);
 
   // Forward the assistant's configured voice pipeline so the connection path
   // matches what was set up on the dashboard (OpenAI vs Gemini vs Deepgram
