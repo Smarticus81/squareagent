@@ -229,40 +229,7 @@ function Hero({ onStart }: { onStart: () => void }) {
               </a>
             </motion.div>
 
-            {/* Connected systems — Square / OpenAI / Google */}
-            <motion.div
-              initial="hidden"
-              animate="visible"
-              custom={4}
-              variants={fadeUp}
-              className="mt-10"
-            >
-              <p
-                className="vl-eyebrow mb-3"
-                style={{ color: "var(--color-vl-ink-soft)" }}
-              >
-                Connected to
-              </p>
-              <div className="grid grid-cols-3 gap-3 max-w-[520px]">
-                {[
-                  { src: "/brand/square-logo.png",     alt: "Square",  height: 44 },
-                  { src: "/brand/openai-wordmark.png", alt: "OpenAI",  height: 26 },
-                  { src: "/brand/google-g.png",        alt: "Google",  height: 40 },
-                ].map((logo) => (
-                  <div
-                    key={logo.alt}
-                    className="vl-card flex items-center justify-center rounded-2xl"
-                    style={{ height: 84, padding: "0 16px" }}
-                  >
-                    <img
-                      src={logo.src}
-                      alt={logo.alt}
-                      style={{ height: logo.height, width: "auto", objectFit: "contain" }}
-                    />
-                  </div>
-                ))}
-              </div>
-            </motion.div>
+            {/* Connected systems moved below the grid so the cards span full hero width */}
           </div>
 
           {/* - RIGHT: scene with floating assistants - */}
@@ -276,6 +243,41 @@ function Hero({ onStart }: { onStart: () => void }) {
             <HeroScene />
           </motion.div>
         </div>
+
+        {/* Connected systems — Square / OpenAI / Google (full hero width) */}
+        <motion.div
+          initial="hidden"
+          animate="visible"
+          custom={4}
+          variants={fadeUp}
+          className="mt-12"
+        >
+          <p
+            className="vl-eyebrow mb-4"
+            style={{ color: "var(--color-vl-ink-soft)" }}
+          >
+            Connected to
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 w-full">
+            {[
+              { src: "/brand/square-logo.png",     alt: "Square",  height: 88 },
+              { src: "/brand/openai-wordmark.png", alt: "OpenAI",  height: 56 },
+              { src: "/brand/google-g.png",        alt: "Google",  height: 80 },
+            ].map((logo) => (
+              <div
+                key={logo.alt}
+                className="vl-card flex items-center justify-center rounded-2xl"
+                style={{ height: 180, padding: "0 32px" }}
+              >
+                <img
+                  src={logo.src}
+                  alt={logo.alt}
+                  style={{ height: logo.height, width: "auto", objectFit: "contain" }}
+                />
+              </div>
+            ))}
+          </div>
+        </motion.div>
       </div>
     </section>
   );
