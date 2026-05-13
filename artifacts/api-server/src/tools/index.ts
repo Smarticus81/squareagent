@@ -26,6 +26,7 @@ import * as workflows from "../workflows";
 import * as generalWeb from "./general/web";
 import * as generalKnowledge from "./general/knowledge";
 import * as generalEmail from "./general/email";
+import * as generalEmailRead from "./general/email-read";
 import * as generalDatabase from "./general/database";
 import metaSkill from "../skills/meta.skill";
 
@@ -49,6 +50,7 @@ const DOMAIN_MODULES = [
   generalWeb,
   generalKnowledge,
   generalEmail,
+  generalEmailRead,
   generalDatabase,
 ];
 

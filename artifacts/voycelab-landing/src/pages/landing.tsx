@@ -58,8 +58,60 @@ export default function Landing() {
   return (
     <div className="vl-landing">
       <Hero onStart={startAssistant} />
+      <ConnectedSystems />
       <MinimalLanding onStart={startAssistant} />
     </div>
+  );
+}
+
+/* -
+   CONNECTED SYSTEMS — large brand badges
+   - */
+function ConnectedSystems() {
+  const brands: Array<{ src: string; alt: string; height: number }> = [
+    { src: "/brand/square-logo.png",     alt: "Square",  height: 96 },
+    { src: "/brand/openai-wordmark.png", alt: "OpenAI",  height: 64 },
+    { src: "/brand/google-g.png",        alt: "Google",  height: 96 },
+  ];
+  return (
+    <section className="relative py-16 md:py-24">
+      <div className="section-container">
+        <div className="text-center mb-10 md:mb-14">
+          <p className="vl-eyebrow">Connected systems</p>
+          <h2
+            className="vl-display mt-3 text-[clamp(1.85rem,4vw,3rem)]"
+            style={{ color: "var(--color-vl-ink)" }}
+          >
+            Built on the systems you already trust.
+          </h2>
+          <p
+            className="mt-4 max-w-xl mx-auto text-[15px] leading-relaxed"
+            style={{ color: "var(--color-vl-ink-muted)" }}
+          >
+            VoyceLab plugs into Square POS, OpenAI's Realtime voice models,
+            and Google Workspace — so your assistant can see your sales,
+            speak naturally, and act on your inbox.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8">
+          {brands.map((b) => (
+            <div
+              key={b.alt}
+              className="vl-card flex items-center justify-center px-6 py-10 md:py-14"
+              style={{ minHeight: 180 }}
+            >
+              <img
+                src={b.src}
+                alt={b.alt}
+                style={{ height: b.height, maxWidth: "85%", objectFit: "contain" }}
+                loading="lazy"
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
   );
 }
 

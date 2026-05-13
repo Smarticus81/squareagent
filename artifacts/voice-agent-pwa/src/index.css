@@ -653,6 +653,29 @@ html[data-theme="dark"] .venue-row:hover { background: rgba(255,255,255,0.06); }
   color: var(--state-text); text-transform: uppercase;
 }
 
+/* Connected systems strip */
+.brand-strip {
+  display: flex; align-items: center; justify-content: center; gap: 18px;
+  padding: 14px 16px 22px;
+  flex-wrap: wrap;
+}
+.brand-strip-label {
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--tap-hint);
+  opacity: 0.75;
+}
+.brand-strip-logo {
+  height: 22px;
+  width: auto;
+  opacity: 0.78;
+  filter: grayscale(0.05);
+  transition: opacity 0.2s ease;
+}
+.brand-strip-logo:hover { opacity: 1; }
+.brand-strip-logo-narrow { height: 18px; }
+
 /* ── Desktop optimizations ───────────────────────────────────── */
 @media (min-width: 768px) {
   .panel { max-height: 65vh; }

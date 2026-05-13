@@ -3,7 +3,7 @@ import React, {
 } from "react";
 import {
   View, Text, StyleSheet, Pressable, Platform,
-  FlatList, Modal, ActivityIndicator, Linking, useColorScheme,
+  FlatList, Modal, ActivityIndicator, Linking, useColorScheme, Image,
 } from "react-native";
 import Svg, { ClipPath, Defs, Ellipse, LinearGradient as SvgLinearGradient, Rect, Stop } from "react-native-svg";
 import { LinearGradient } from "expo-linear-gradient";
@@ -659,6 +659,14 @@ export default function MainScreen() {
 
           <View style={{ width: 24 }} />
         </View>
+
+        {/* Connected systems */}
+        <View style={s.brandStrip} pointerEvents="none">
+          <Text style={[s.brandStripLabel, { color: t.tapHint }]}>CONNECTED TO</Text>
+          <Image source={require("@/assets/brand/square-logo.png")} style={s.brandLogo} resizeMode="contain" />
+          <Image source={require("@/assets/brand/openai-wordmark.png")} style={[s.brandLogo, s.brandLogoNarrow]} resizeMode="contain" />
+          <Image source={require("@/assets/brand/google-g.png")} style={[s.brandLogo, s.brandLogoNarrow]} resizeMode="contain" />
+        </View>
       </View>
 
       {/* Slide-up panel */}
@@ -970,6 +978,18 @@ const s = StyleSheet.create({
     flex: 1, textAlign: "center",
     fontFamily: "Inter_300Light", fontSize: 9, letterSpacing: 2,
   },
+
+  // Connected systems brand strip
+  brandStrip: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center",
+    gap: 14, paddingTop: 14, paddingBottom: 6, flexWrap: "wrap",
+  },
+  brandStripLabel: {
+    fontFamily: "Inter_300Light", fontSize: 9, letterSpacing: 2,
+    marginRight: 4,
+  },
+  brandLogo: { height: 18, width: 60, opacity: 0.78 },
+  brandLogoNarrow: { height: 14, width: 56 },
 
   // Panel
   backdrop: { flex: 1 },

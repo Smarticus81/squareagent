@@ -494,6 +494,14 @@ export default function App() {
         </div>
       </div>
 
+      {/* Connected systems — brand strip */}
+      <div className="brand-strip" aria-label="Connected systems">
+        <span className="brand-strip-label">Connected to</span>
+        <img src="/agent/brand/square-logo.png" alt="Square" className="brand-strip-logo" />
+        <img src="/agent/brand/openai-wordmark.png" alt="OpenAI" className="brand-strip-logo brand-strip-logo-narrow" />
+        <img src="/agent/brand/google-g.png" alt="Google" className="brand-strip-logo brand-strip-logo-narrow" />
+      </div>
+
       {/* Panel */}
       <OrderPanel
         open={panelOpen}
