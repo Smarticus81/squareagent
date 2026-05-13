@@ -420,7 +420,7 @@ export default function App() {
           <span className="vl-pill vl-pill-success"><span className="vl-pill-dot" />Square synced</span>
         )}
         {assistantKind === "general" && (
-          <span className="vl-pill">General</span>
+          <span className="vl-pill vl-pill-muted">General assistant</span>
         )}
       </div>
 
@@ -458,6 +458,29 @@ export default function App() {
           </svg>
         </div>
         <div className="convo-area">
+          {msgs.length === 0 && !partialTranscript && (mode === "idle" || mode === "shutdown" || mode === "wake_word") && (
+            <div className="welcome">
+              <span className="welcome-eyebrow">VoyceLab · Live</span>
+              <h1 className="welcome-title">
+                {assistantKind === "general"
+                  ? <>How can I <em>help</em> today?</>
+                  : <>Your venue, <em>on voice</em>.</>}
+              </h1>
+              <p className="welcome-sub">
+                {assistantKind === "general"
+                  ? "Tap the orb and speak naturally. I can summarize, plan, draft, and answer questions in real time."
+                  : "Tap the orb and speak — I’ll handle orders, inventory and reports across your connected systems."}
+              </p>
+              <div className="suggestion-row">
+                {(assistantKind === "general"
+                  ? ["Summarize my morning", "Draft a quick reply", "Brainstorm ideas"]
+                  : ["What sold today?", "Open orders", "Low stock report"]
+                ).map((s) => (
+                  <button key={s} className="suggestion-chip" onClick={handleRailTap}>{s}</button>
+                ))}
+              </div>
+            </div>
+          )}
           {msgs.map((m, i) => (
             <GhostLine key={m.id} msg={m} rank={msgs.length - 1 - i} />
           ))}

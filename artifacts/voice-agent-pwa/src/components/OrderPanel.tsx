@@ -396,7 +396,7 @@ function SettingsTab() {
             <span className="settings-txt" style={{ fontSize: 14 }}>
               {isConfigured ? "Square Connected" : "Square Not Connected"}
             </span>
-            <span className="status-dot" style={{ background: isConfigured ? "#22C55E" : "#EF4444" }} />
+            <span className="status-dot" style={{ background: isConfigured ? "#10B981" : "#A1A1AA" }} />
             {isConfigured && <ChevronRight size={14} />}
           </div>
           )}
@@ -415,12 +415,13 @@ function SettingsTab() {
                     await refreshCredentials();
                   }}
                   style={{
-                    display: "flex", alignItems: "center", gap: 5,
-                    padding: "8px 14px", borderRadius: 20,
-                    background: "rgba(34,197,94,0.12)", color: "#22C55E",
-                    border: "1px solid rgba(34,197,94,0.25)",
-                    fontSize: 13, fontWeight: 500, cursor: isReconnecting ? "wait" : "pointer",
+                    display: "flex", alignItems: "center", gap: 6,
+                    padding: "9px 16px", borderRadius: 999,
+                    background: "var(--brand)", color: "#FFFFFF",
+                    border: "1px solid var(--brand)",
+                    fontSize: 13, fontWeight: 600, cursor: isReconnecting ? "wait" : "pointer",
                     opacity: isReconnecting ? 0.6 : 1, fontFamily: "var(--font)",
+                    boxShadow: "0 4px 14px rgba(99,102,241,0.28)",
                   }}
                 >
                   {isReconnecting ? <Loader size={13} className="spin" /> : <RefreshCw size={13} />}
@@ -626,7 +627,7 @@ function GmailSection({ authToken }: { authToken: string | null }) {
               className="settings-row"
               style={{ borderBottom: "none", padding: "8px 6px", gap: 8 }}
             >
-              <span className="status-dot" style={{ background: "#22C55E" }} />
+              <span className="status-dot" style={{ background: "#10B981" }} />
               <span className="settings-txt" style={{ fontSize: 13, flex: 1, overflow: "hidden", textOverflow: "ellipsis" }}>
                 {config?.fromAddress}
               </span>
@@ -651,12 +652,13 @@ function GmailSection({ authToken }: { authToken: string | null }) {
               onClick={connect}
               disabled={busy}
               style={{
-                display: "flex", alignItems: "center", gap: 5,
-                padding: "8px 14px", borderRadius: 20,
-                background: "rgba(34,197,94,0.12)", color: "#22C55E",
-                border: "1px solid rgba(34,197,94,0.25)",
-                fontSize: 13, fontWeight: 500, cursor: busy ? "wait" : "pointer",
+                display: "flex", alignItems: "center", gap: 6,
+                padding: "9px 16px", borderRadius: 999,
+                background: "var(--brand)", color: "#FFFFFF",
+                border: "1px solid var(--brand)",
+                fontSize: 13, fontWeight: 600, cursor: busy ? "wait" : "pointer",
                 opacity: busy ? 0.6 : 1, fontFamily: "var(--font)",
+                boxShadow: "0 4px 14px rgba(99,102,241,0.28)",
               }}
             >
               {busy ? <Loader size={13} className="spin" /> : <Mail size={13} />}
@@ -683,7 +685,7 @@ function GmailSection({ authToken }: { authToken: string | null }) {
       {msg && (
         <div
           className="settings-txt"
-          style={{ fontSize: 12, marginTop: 8, color: msg.tone === "error" ? "#EF4444" : "#22C55E" }}
+          style={{ fontSize: 12, marginTop: 8, color: msg.tone === "error" ? "#EF4444" : "#047857" }}
         >
           {msg.text}
         </div>
