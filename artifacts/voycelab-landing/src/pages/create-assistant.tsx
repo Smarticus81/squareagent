@@ -299,7 +299,7 @@ export default function CreateAssistant() {
       const method = isEditing ? "PATCH" : "POST";
       const body: Record<string, unknown> = isEditing
         ? {
-            ...(venueId ? { venueId } : { venueId: null }),
+            ...(venueId ? { venueId } : {}),
             ...(connectedServiceId ? { connectedServiceId } : {}),
             displayName: assistantName.trim(),
             ...(trimmedWake ? { wakePhrase: trimmedWake } : {}),
