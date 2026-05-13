@@ -614,72 +614,30 @@ html[data-theme="dark"] .venue-row:hover { background: rgba(255,255,255,0.06); }
   background: transparent; border: 0; padding: 0; cursor: pointer;
   border-radius: 50%;
   -webkit-tap-highlight-color: transparent;
-  transform: scale(var(--orb-scale, 1));
-  transition: transform 240ms cubic-bezier(.2,.7,.2,1);
+  transform: scale(var(--orb-pulse, 1));
+  transition: transform 220ms cubic-bezier(.2,.7,.2,1);
+  filter: drop-shadow(0 24px 48px color-mix(in oklab, var(--orb-accent) 28%, transparent))
+          drop-shadow(0 0 calc(40px * var(--orb-glow, 0.4)) color-mix(in oklab, var(--orb-accent) 60%, transparent));
+  isolation: isolate;
 }
-.orb:active { transform: scale(0.97); }
-.orb-glow {
-  position: absolute; inset: -22%;
-  border-radius: 50%;
-  background: radial-gradient(circle at 50% 50%,
-    color-mix(in oklab, var(--orb-accent) 70%, transparent) 0%,
-    color-mix(in oklab, var(--orb-accent) 30%, transparent) 35%,
-    transparent 65%);
-  opacity: var(--orb-glow, 0.3);
-  filter: blur(18px);
-  transition: opacity 220ms ease;
+.orb:active { transform: scale(calc(var(--orb-pulse, 1) * 0.97)); }
+.orb-svg { display: block; overflow: visible; }
+.orb-svg circle, .orb-svg ellipse, .orb-svg g {
+  transform-box: fill-box;
 }
-.orb-ring {
-  position: absolute; inset: 0; border-radius: 50%;
-  border: 1px solid color-mix(in oklab, var(--orb-accent) 35%, transparent);
-}
-.orb-ring-1 { transform: scale(calc(var(--orb-amp, 1))); transition: transform 80ms linear; }
-.orb-ring-2 { inset: -6%; opacity: 0.55; animation: orbBreath 4.2s ease-in-out infinite; }
-.orb-ring-3 { inset: -12%; opacity: 0.30; animation: orbBreath 5.8s ease-in-out infinite reverse; }
+.orb-idle, .orb-shutdown { filter: saturate(0.5) brightness(0.95) drop-shadow(0 18px 36px rgba(0,0,0,0.18)); }
+.orb-thinking { animation: orbWobble 1.6s ease-in-out infinite; }
+.orb-error { animation: orbShake 0.4s cubic-bezier(.36,.07,.19,.97) both; }
 
-.orb-core {
-  position: absolute; inset: 14%;
-  border-radius: 50%;
-  background:
-    radial-gradient(circle at 35% 30%, rgba(255,255,255,0.9), rgba(255,255,255,0.0) 55%),
-    radial-gradient(circle at 50% 50%,
-      color-mix(in oklab, var(--orb-accent) 80%, var(--surface)) 0%,
-      color-mix(in oklab, var(--orb-accent) 60%, var(--surface)) 60%,
-      color-mix(in oklab, var(--orb-accent) 40%, var(--surface)) 100%);
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.5),
-    inset 0 -8px 24px color-mix(in oklab, var(--orb-accent) 50%, transparent),
-    0 12px 36px color-mix(in oklab, var(--orb-accent) 22%, transparent);
-  transform: scale(calc(0.94 + (var(--orb-amp, 1) - 1) * 1.4));
-  transition: transform 80ms linear, box-shadow 220ms ease;
+@keyframes orbWobble {
+  0%, 100% { transform: scale(var(--orb-pulse, 1)) rotate(-1deg); }
+  50%      { transform: scale(calc(var(--orb-pulse, 1) * 1.02)) rotate(1deg); }
 }
-.orb-shimmer {
-  position: absolute; inset: 14%;
-  border-radius: 50%;
-  background: conic-gradient(from 0deg,
-    transparent 0deg,
-    color-mix(in oklab, var(--orb-accent) 60%, transparent) 80deg,
-    transparent 160deg,
-    color-mix(in oklab, var(--orb-accent) 60%, transparent) 240deg,
-    transparent 320deg);
-  mix-blend-mode: overlay;
-  opacity: 0.0;
-  animation: orbSpin 8s linear infinite;
-}
-.orb-listening .orb-shimmer,
-.orb-thinking  .orb-shimmer,
-.orb-speaking  .orb-shimmer { opacity: 0.55; }
-.orb-thinking  .orb-shimmer { animation-duration: 2.4s; }
-
-.orb-idle .orb-core,
-.orb-shutdown .orb-core { filter: saturate(0.4) brightness(0.96); }
-
-@keyframes orbBreath {
-  0%, 100% { transform: scale(1); opacity: 0.35; }
-  50%      { transform: scale(1.04); opacity: 0.55; }
-}
-@keyframes orbSpin {
-  to { transform: rotate(360deg); }
+@keyframes orbShake {
+  10%, 90% { transform: translateX(-2px); }
+  20%, 80% { transform: translateX(3px); }
+  30%, 50%, 70% { transform: translateX(-5px); }
+  40%, 60% { transform: translateX(5px); }
 }
 
 .orb-hint {

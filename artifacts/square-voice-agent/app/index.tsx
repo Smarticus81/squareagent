@@ -23,6 +23,7 @@ import { useOrder } from "@/context/OrderContext";
 import { useSquare } from "@/context/SquareContext";
 import { useVoicePrefs, SPEEDS } from "@/hooks/useVoicePrefs";
 import { OrderCard } from "@/components/OrderCard";
+import { VoiceOrb } from "@/components/VoiceOrb";
 
 const WEB_TOP = 67;
 const WEB_BOT = 34;
@@ -603,8 +604,8 @@ export default function MainScreen() {
         </View>
       </View>
 
-      {/* ── Bar Rail Zone ────────────────────────────────────────── */}
-      <Pressable onPress={handleOrbPress} style={[s.railZone, { paddingBottom: bottomPad + 22 }]}>
+      {/* ── Voice Orb Zone ───────────────────────────────────────── */}
+      <View style={[s.railZone, { paddingBottom: bottomPad + 22 }]}>
         {/* State label / tap hint */}
         <View style={s.railLabelRow}>
           {stateLabel ? (
@@ -617,24 +618,19 @@ export default function MainScreen() {
           ) : null}
         </View>
 
-        {/* The rail itself */}
-        <View style={s.barRail}>
-          {/* Glow behind rail */}
-          <View style={[s.railGlow, { backgroundColor: rc.glow, opacity: rc.glowOp }]} />
-          {/* Main rail line */}
-          <View style={[s.railLine, {
-            backgroundColor: rc.line,
-            opacity: railKey === "disconnected" ? 0.5 : 1,
-            height: ["listening", "speaking", "error"].includes(railKey) ? 3 : 2,
-          }]} />
-          {/* Waveform bars */}
-          {showWaveform && (
-            <View style={s.railWaveform}>
-              {Array.from({ length: NUM_BARS }).map((_, i) => (
-                <RailBar key={i} index={i} active={agentState === "speaking"} color={agentState === "speaking" ? rc.bar : rc.bar} />
-              ))}
-            </View>
-          )}
+        {/* The orb itself */}
+        <View style={s.orbWrap}>
+          <VoiceOrb
+            state={
+              wakeMode === "wake"
+                ? "wake"
+                : (railKey === "disconnected" ? "idle" : (railKey as any))
+            }
+            onPress={handleOrbPress}
+            size={220}
+            accent={isDark ? "#7C6EF5" : "#6366F1"}
+            accentDeep={isDark ? "#A78BFA" : "#4F46E5"}
+          />
         </View>
 
         {/* Interrupt hint + wake toggle row */}
@@ -663,7 +659,7 @@ export default function MainScreen() {
 
           <View style={{ width: 24 }} />
         </View>
-      </Pressable>
+      </View>
 
       {/* Slide-up panel */}
       <Modal visible={panelOpen} transparent animationType="slide" onRequestClose={() => setPanelOpen(false)}>
@@ -948,6 +944,10 @@ const s = StyleSheet.create({
   },
   barRail: {
     height: 28, alignItems: "center", justifyContent: "center",
+  },
+  orbWrap: {
+    alignItems: "center", justifyContent: "center",
+    paddingVertical: 12, minHeight: 240,
   },
   railGlow: {
     position: "absolute", left: "10%", right: "10%", height: 20,
