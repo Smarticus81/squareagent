@@ -215,12 +215,16 @@ function buildDemoRealtimeSessionConfig(voice: string, speed: number) {
       input: {
         format: { type: "audio/pcm" as const, rate: 24000 as const },
         transcription: { model: "whisper-1" },
+        // semantic_vad uses a model to detect natural turn ends rather than
+        // a fixed silence timer. eagerness="low" waits longer before
+        // committing the turn so users can pause mid-sentence without being
+        // cut off (the previous server_vad with 180ms silence was clipping
+        // every breath). See OpenAI Realtime prompting guide.
         turn_detection: {
-          type: "server_vad" as const,
-          threshold: 0.42,
-          prefix_padding_ms: 80,
-          silence_duration_ms: 180,
+          type: "semantic_vad" as const,
+          eagerness: "low" as const,
           create_response: true,
+          interrupt_response: true,
         },
       },
       output: {
@@ -252,12 +256,16 @@ function buildRealtimeSessionConfig(voice: string, speed: number, catalog: Catal
       input: {
         format: { type: "audio/pcm" as const, rate: 24000 as const },
         transcription: { model: "whisper-1" },
+        // semantic_vad with low eagerness lets the user finish a thought
+        // before the model takes a turn. The previous server_vad with a
+        // 300ms silence window was cutting users off mid-sentence whenever
+        // they paused to think, which felt like the agent was "cutting off
+        // every 3 seconds." See OpenAI Realtime prompting guide.
         turn_detection: {
-          type: "server_vad" as const,
-          threshold: 0.5,
-          prefix_padding_ms: 150,
-          silence_duration_ms: 300,
+          type: "semantic_vad" as const,
+          eagerness: "low" as const,
           create_response: true,
+          interrupt_response: true,
         },
       },
       output: {
