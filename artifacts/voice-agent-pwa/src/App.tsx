@@ -426,37 +426,6 @@ export default function App() {
 
       {/* ── Conversation area ────────────────────────────────── */}
       <div className="content">
-        {/* Subtle watermark — equalizer mark */}
-        <div className="watermark">
-          <svg width="190" height="118" viewBox="0 0 52 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-            <defs>
-              <linearGradient id="vl-wm-lilac" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#D9CBF0"/>
-                <stop offset="100%" stopColor="#A38EDC"/>
-              </linearGradient>
-              <linearGradient id="vl-wm-coral" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#FF8A66"/>
-                <stop offset="100%" stopColor="#000000"/>
-              </linearGradient>
-              <linearGradient id="vl-wm-sage" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#B9DBBE"/>
-                <stop offset="100%" stopColor="#7FB386"/>
-              </linearGradient>
-            </defs>
-            <g opacity="0.08">
-              <rect x="1" y="14" width="3" height="4" rx="1.5" fill="url(#vl-wm-lilac)"/>
-              <rect x="6" y="11" width="3" height="10" rx="1.5" fill="url(#vl-wm-lilac)"/>
-              <rect x="11" y="6" width="3" height="20" rx="1.5" fill="url(#vl-wm-coral)"/>
-              <rect x="16" y="2" width="3" height="28" rx="1.5" fill="url(#vl-wm-coral)"/>
-              <rect x="21" y="0" width="3" height="32" rx="1.5" fill="url(#vl-wm-coral)"/>
-              <rect x="26" y="2" width="3" height="28" rx="1.5" fill="url(#vl-wm-coral)"/>
-              <rect x="31" y="6" width="3" height="20" rx="1.5" fill="url(#vl-wm-coral)"/>
-              <rect x="36" y="10" width="3" height="12" rx="1.5" fill="url(#vl-wm-sage)"/>
-              <rect x="41" y="13" width="3" height="6" rx="1.5" fill="url(#vl-wm-sage)"/>
-              <rect x="46" y="14" width="3" height="4" rx="1.5" fill="url(#vl-wm-sage)"/>
-            </g>
-          </svg>
-        </div>
         <div className="convo-area">
           {msgs.length === 0 && !partialTranscript && (mode === "idle" || mode === "shutdown" || mode === "wake_word") && (
             <div className="welcome">

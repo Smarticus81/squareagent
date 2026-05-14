@@ -556,36 +556,6 @@ export default function MainScreen() {
 
       {/* ── Content (conversation area fills space) ──────────────── */}
       <View style={s.content}>
-        {/* Watermark — equalizer mark */}
-        <View style={s.watermark} pointerEvents="none">
-          <Svg width={190} height={118} viewBox="0 0 52 32" opacity={0.08}>
-            <Defs>
-              <SvgLinearGradient id="vl-wm-lilac" x1="0" y1="0" x2="0" y2="1">
-                <Stop offset="0%" stopColor="#D9CBF0" />
-                <Stop offset="100%" stopColor="#A38EDC" />
-              </SvgLinearGradient>
-              <SvgLinearGradient id="vl-wm-coral" x1="0" y1="0" x2="0" y2="1">
-                <Stop offset="0%" stopColor="#FF8A66" />
-                <Stop offset="100%" stopColor="#E2502E" />
-              </SvgLinearGradient>
-              <SvgLinearGradient id="vl-wm-sage" x1="0" y1="0" x2="0" y2="1">
-                <Stop offset="0%" stopColor="#B9DBBE" />
-                <Stop offset="100%" stopColor="#7FB386" />
-              </SvgLinearGradient>
-            </Defs>
-            <Rect x={1} y={14} width={3} height={4} rx={1.5} fill="url(#vl-wm-lilac)" />
-            <Rect x={6} y={11} width={3} height={10} rx={1.5} fill="url(#vl-wm-lilac)" />
-            <Rect x={11} y={6} width={3} height={20} rx={1.5} fill="url(#vl-wm-coral)" />
-            <Rect x={16} y={2} width={3} height={28} rx={1.5} fill="url(#vl-wm-coral)" />
-            <Rect x={21} y={0} width={3} height={32} rx={1.5} fill="url(#vl-wm-coral)" />
-            <Rect x={26} y={2} width={3} height={28} rx={1.5} fill="url(#vl-wm-coral)" />
-            <Rect x={31} y={6} width={3} height={20} rx={1.5} fill="url(#vl-wm-coral)" />
-            <Rect x={36} y={10} width={3} height={12} rx={1.5} fill="url(#vl-wm-sage)" />
-            <Rect x={41} y={13} width={3} height={6} rx={1.5} fill="url(#vl-wm-sage)" />
-            <Rect x={46} y={14} width={3} height={4} rx={1.5} fill="url(#vl-wm-sage)" />
-          </Svg>
-        </View>
-
         {/* Conversation ghost text */}
         <View style={s.convoArea} pointerEvents="none">
           {msgs.map((m, i) => (

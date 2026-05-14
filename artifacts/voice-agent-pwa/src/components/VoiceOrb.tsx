@@ -17,42 +17,51 @@ interface Props {
 }
 
 /**
- * VoiceOrb — soft pastel rainbow waveform on a glowing halo.
+ * VoiceOrb — pure waveform that mirrors the assistant's actual speech output.
  *
- * Design:
- *   • Round halo behind (peach → coral → pink → lilac → sky)
- *   • 7 vertical capsule bars in pastel rainbow gradient (orange → coral →
- *     magenta → pink → purple → indigo → sky), each mirrored vertically below
- *     the baseline at reduced opacity for a "reflection" feel.
- *   • Two flanking accent dots (warm orange left, cool sky right).
- *   • Bar heights animate from FFT bands of the assistant's audio when
- *     speaking, otherwise from a per-state pseudo-wave (idle breathing,
- *     listening rolling, thinking pulse, etc.).
+ * Rules of the design:
+ *   • When the assistant is speaking AND audio is flowing, bars rise from FFT
+ *     bands of the remote MediaStream. The wave is the speech, in real time.
+ *   • In every other state — idle, wake, listening, thinking, connecting,
+ *     error, or "speaking with no audio yet" — bars sit at a flat baseline.
+ *     No procedural sine waves, no fake breathing. Silence is silent.
+ *   • A faint thinking pulse (one bar travels across the row) is the only
+ *     non-audio motion, and only during `thinking` / `connecting`, to signal
+ *     liveness without imitating speech.
  *
- * Works on light or dark backgrounds — the halo provides its own glow.
+ * Visually: 9 vertical capsule bars in a pastel rainbow gradient. No halo,
+ * no reflection, no accent dots — the bars are the entire object.
  */
 
-const BAR_COUNT = 7;
-// Pastel rainbow palette, left → right
+const BAR_COUNT = 9;
+// Symmetric pastel rainbow: low energy on the edges, hottest in the middle.
 const BAR_COLORS: Array<[string, string]> = [
-  ["#FFB37A", "#FF9A5C"], // orange
-  ["#FF9AA2", "#FF6B7A"], // coral
-  ["#FF7AB6", "#FF4D8A"], // pink-magenta
-  ["#E97FD8", "#D158C0"], // magenta
-  ["#B58CE6", "#8E64D8"], // purple
-  ["#8C9CF0", "#5F73E0"], // indigo
   ["#7FCBF2", "#4FB1E8"], // sky
+  ["#8C9CF0", "#5F73E0"], // indigo
+  ["#B58CE6", "#8E64D8"], // purple
+  ["#FF7AB6", "#FF4D8A"], // pink
+  ["#FF6B47", "#E04323"], // coral (center)
+  ["#FF7AB6", "#FF4D8A"],
+  ["#B58CE6", "#8E64D8"],
+  ["#8C9CF0", "#5F73E0"],
+  ["#7FCBF2", "#4FB1E8"],
 ];
+
+const VB_W = 240;
+const VB_H = 120;
+const CY = VB_H / 2;
+const BAR_W = 8;
+const GAP = 10;
+const TOTAL_W = BAR_COUNT * BAR_W + (BAR_COUNT - 1) * GAP;
+const X_START = (VB_W - TOTAL_W) / 2;
+const FLAT_H = 5; // resting bar height = flat line of capsules
+const MAX_H = 84; // tallest peak (top half)
 
 export function VoiceOrb({ state, remoteStream, onTap, size = 240 }: Props) {
   const uid = useId().replace(/[:]/g, "");
 
   const rootRef = useRef<HTMLButtonElement | null>(null);
-  const haloRef = useRef<SVGEllipseElement | null>(null);
   const barRefs = useRef<Array<SVGRectElement | null>>([]);
-  const reflRefs = useRef<Array<SVGRectElement | null>>([]);
-  const dotLeftRef = useRef<SVGCircleElement | null>(null);
-  const dotRightRef = useRef<SVGCircleElement | null>(null);
 
   const rafRef = useRef<number | null>(null);
   const ctxRef = useRef<AudioContext | null>(null);
@@ -61,9 +70,7 @@ export function VoiceOrb({ state, remoteStream, onTap, size = 240 }: Props) {
   const freqBufRef = useRef<Uint8Array<ArrayBuffer> | null>(null);
 
   const stateRef = useRef<OrbState>(state);
-  // Smoothed bar heights 0..1
-  const heightsRef = useRef<number[]>(new Array(BAR_COUNT).fill(0.15));
-  const energyRef = useRef(0.1);
+  const heightsRef = useRef<number[]>(new Array(BAR_COUNT).fill(FLAT_H));
 
   useEffect(() => {
     stateRef.current = state;
@@ -83,7 +90,7 @@ export function VoiceOrb({ state, remoteStream, onTap, size = 240 }: Props) {
       const src = ctx.createMediaStreamSource(remoteStream);
       const an = ctx.createAnalyser();
       an.fftSize = 512;
-      an.smoothingTimeConstant = 0.7;
+      an.smoothingTimeConstant = 0.78;
       src.connect(an);
       ctxRef.current = ctx;
       sourceRef.current = src;
@@ -109,131 +116,79 @@ export function VoiceOrb({ state, remoteStream, onTap, size = 240 }: Props) {
     freqBufRef.current = null;
   }
 
-  // Single rAF loop drives all bar animations via DOM mutation.
+  // Single rAF loop drives bar heights via direct DOM mutation.
   useEffect(() => {
     const t0 = performance.now();
     const tick = (now: number) => {
       const t = (now - t0) / 1000;
       const s = stateRef.current;
       const heights = heightsRef.current;
-
-      // Compute target heights per bar based on state + audio.
       const targets = new Array<number>(BAR_COUNT);
+
       const an = analyserRef.current;
       const buf = freqBufRef.current;
-      let totalEnergy = 0;
 
-      if (an && buf && (s === "speaking" || s === "listening")) {
+      // Only one condition produces real motion: assistant is speaking AND
+      // its audio stream is actually putting energy on the wire.
+      let drivingFromAudio = false;
+      if (s === "speaking" && an && buf) {
         an.getByteFrequencyData(buf);
         const n = buf.length;
-        // Map bar index → frequency window (skip very lowest bins)
         const start = 2;
-        const end = Math.min(n, Math.floor(n * 0.55));
+        const end = Math.min(n, Math.floor(n * 0.6));
         const span = Math.max(1, end - start);
-        for (let i = 0; i < BAR_COUNT; i++) {
-          const a = start + Math.floor((i / BAR_COUNT) * span);
-          const b = start + Math.floor(((i + 1) / BAR_COUNT) * span);
-          let peak = 0;
-          for (let j = a; j < b; j++) if (buf[j] > peak) peak = buf[j];
-          const v = Math.min(1, Math.pow(peak / 255, 0.65) * 1.2);
-          targets[i] = s === "listening" ? 0.18 + v * 0.35 : 0.2 + v * 0.8;
-          totalEnergy += v;
+        // Quick gate: ignore noise floor. If the loudest bin is below this,
+        // treat it as silence and let bars relax to flat.
+        let max = 0;
+        for (let j = start; j < end; j++) if (buf[j] > max) max = buf[j];
+        if (max > 18) {
+          drivingFromAudio = true;
+          for (let i = 0; i < BAR_COUNT; i++) {
+            const a = start + Math.floor((i / BAR_COUNT) * span);
+            const b = start + Math.floor(((i + 1) / BAR_COUNT) * span);
+            let peak = 0;
+            for (let j = a; j < b; j++) if (buf[j] > peak) peak = buf[j];
+            const v = Math.min(1, Math.pow(peak / 255, 0.62) * 1.25);
+            targets[i] = FLAT_H + v * (MAX_H - FLAT_H);
+          }
         }
-        totalEnergy /= BAR_COUNT;
-      } else {
-        // Procedural per-state wave — looks alive without audio input.
-        const baseByState: Record<OrbState, number> = {
-          idle: 0.16,
-          wake: 0.45,
-          listening: 0.32,
-          thinking: 0.5,
-          speaking: 0.55,
-          connecting: 0.32,
-          error: 0.5,
-        };
-        const ampByState: Record<OrbState, number> = {
-          idle: 0.1,
-          wake: 0.25,
-          listening: 0.18,
-          thinking: 0.25,
-          speaking: 0.35,
-          connecting: 0.25,
-          error: 0.22,
-        };
-        const speedByState: Record<OrbState, number> = {
-          idle: 1.1,
-          wake: 3.5,
-          listening: 2.4,
-          thinking: 3.2,
-          speaking: 4.6,
-          connecting: 2.8,
-          error: 5.5,
-        };
-        const base = baseByState[s];
-        const amp = ampByState[s];
-        const speed = speedByState[s];
-        for (let i = 0; i < BAR_COUNT; i++) {
-          // Sine wave with phase offset per bar gives the "rolling wave" feel.
-          const phase = (i / BAR_COUNT) * Math.PI * 2;
-          const wave = Math.sin(t * speed + phase) * 0.5 + 0.5;
-          const detail = Math.sin(t * speed * 0.6 + phase * 1.7) * 0.18;
-          targets[i] = Math.max(0.06, base + (wave + detail) * amp);
-        }
-        totalEnergy = base;
       }
 
-      // Smooth toward target (low-pass)
-      const k = 0.28;
-      let avg = 0;
+      if (!drivingFromAudio) {
+        // Default = flat. The "thinking"/"connecting" states get a tiny
+        // travelling shimmer (~6px peak) so the surface still reads as
+        // "alive" without imitating speech.
+        const showShimmer = s === "thinking" || s === "connecting";
+        const peak = showShimmer ? 12 : 0;
+        const headIdx = showShimmer ? (t * 2.4) % BAR_COUNT : -1;
+        for (let i = 0; i < BAR_COUNT; i++) {
+          if (showShimmer) {
+            const dist = Math.min(
+              Math.abs(i - headIdx),
+              Math.abs(i - headIdx + BAR_COUNT),
+              Math.abs(i - headIdx - BAR_COUNT),
+            );
+            const falloff = Math.max(0, 1 - dist / 2.2);
+            targets[i] = FLAT_H + peak * falloff;
+          } else {
+            targets[i] = FLAT_H;
+          }
+        }
+      }
+
+      // Smooth toward target. Faster attack when audio drives, slower when
+      // relaxing back to flat — feels natural.
+      const k = drivingFromAudio ? 0.32 : 0.12;
       for (let i = 0; i < BAR_COUNT; i++) {
         heights[i] += (targets[i] - heights[i]) * k;
-        avg += heights[i];
-      }
-      avg /= BAR_COUNT;
-      energyRef.current += (avg - energyRef.current) * 0.18;
-
-      // Apply to DOM
-      const cy = 100; // viewBox 200x200, baseline at vertical center
-      const maxBarHeight = 86; // tallest bar half (top half + reflection)
-      const barWidth = 7;
-      const gap = 8;
-      const totalWidth = BAR_COUNT * barWidth + (BAR_COUNT - 1) * gap;
-      const xStart = 100 - totalWidth / 2;
-
-      for (let i = 0; i < BAR_COUNT; i++) {
-        const h = Math.max(4, heights[i] * maxBarHeight);
+        const h = Math.max(FLAT_H, heights[i]);
         const top = barRefs.current[i];
         if (top) {
-          top.setAttribute("y", String(cy - h));
+          // Symmetric capsule: grows up AND down from baseline so flat
+          // looks like a perfectly balanced equalizer line.
+          top.setAttribute("y", String(CY - h / 2));
           top.setAttribute("height", String(h));
-          top.setAttribute("x", String(xStart + i * (barWidth + gap)));
         }
-        const ref = reflRefs.current[i];
-        if (ref) {
-          // Reflection: slightly shorter, fades downward via gradient mask.
-          const rh = h * 0.55;
-          ref.setAttribute("y", String(cy + 2));
-          ref.setAttribute("height", String(rh));
-          ref.setAttribute("x", String(xStart + i * (barWidth + gap)));
-        }
-      }
-
-      // Halo breathes with overall energy.
-      const halo = haloRef.current;
-      if (halo) {
-        const e = energyRef.current;
-        halo.setAttribute("rx", String(78 + e * 16));
-        halo.setAttribute("ry", String(60 + e * 14));
-        halo.setAttribute("opacity", String(0.55 + e * 0.35));
-      }
-
-      // Accent dots subtle pulse.
-      const pulse = 0.5 + 0.5 * Math.sin(t * 1.6);
-      if (dotLeftRef.current) {
-        dotLeftRef.current.setAttribute("r", String(3.4 + pulse * 0.8));
-      }
-      if (dotRightRef.current) {
-        dotRightRef.current.setAttribute("r", String(3.4 + (1 - pulse) * 0.8));
       }
 
       rafRef.current = requestAnimationFrame(tick);
@@ -245,117 +200,42 @@ export function VoiceOrb({ state, remoteStream, onTap, size = 240 }: Props) {
     };
   }, []);
 
+  const dimW = Math.round(size);
+  const dimH = Math.round(size * (VB_H / VB_W));
+
   return (
     <button
       ref={rootRef}
       type="button"
       onClick={onTap}
       className={`orb orb-${state}`}
-      style={{ width: size, height: size, background: "transparent", border: 0, padding: 0, cursor: "pointer" }}
+      style={{ width: dimW, height: dimH, background: "transparent", border: 0, padding: 0, cursor: "pointer" }}
       aria-label="Voice surface"
     >
-      <svg
-        viewBox="0 0 200 200"
-        width={size}
-        height={size}
-        aria-hidden
-      >
+      <svg viewBox={`0 0 ${VB_W} ${VB_H}`} width={dimW} height={dimH} aria-hidden>
         <defs>
-          {/* Soft halo gradient */}
-          <radialGradient id={`halo-${uid}`} cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="#FFD8C2" stopOpacity="0.95" />
-            <stop offset="35%" stopColor="#FFB7D0" stopOpacity="0.7" />
-            <stop offset="70%" stopColor="#C9B8EE" stopOpacity="0.45" />
-            <stop offset="100%" stopColor="#A6D5F2" stopOpacity="0" />
-          </radialGradient>
-
-          {/* Per-bar vertical gradients */}
           {BAR_COLORS.map(([light, dark], i) => (
             <linearGradient key={i} id={`bar-${uid}-${i}`} x1="0%" y1="0%" x2="0%" y2="100%">
               <stop offset="0%" stopColor={light} />
               <stop offset="100%" stopColor={dark} />
             </linearGradient>
           ))}
-
-          {/* Reflection mask: fade to transparent downward */}
-          <linearGradient id={`refl-${uid}`} x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stopColor="white" stopOpacity="0.38" />
-            <stop offset="100%" stopColor="white" stopOpacity="0" />
-          </linearGradient>
-          <mask id={`reflmask-${uid}`}>
-            <rect x="0" y="100" width="200" height="100" fill={`url(#refl-${uid})`} />
-          </mask>
-
-          {/* Soft glow filter for bars */}
-          <filter id={`glow-${uid}`} x="-30%" y="-30%" width="160%" height="160%">
-            <feGaussianBlur stdDeviation="1.4" result="blur" />
-            <feMerge>
-              <feMergeNode in="blur" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
-          </filter>
         </defs>
-
-        {/* Halo */}
-        <ellipse
-          ref={haloRef}
-          cx="100"
-          cy="100"
-          rx="82"
-          ry="62"
-          fill={`url(#halo-${uid})`}
-          style={{ mixBlendMode: "screen" }}
-        />
-
-        {/* Bars (top) */}
-        <g filter={`url(#glow-${uid})`}>
+        <g>
           {BAR_COLORS.map((_, i) => (
             <rect
-              key={`top-${i}`}
+              key={i}
               ref={(el) => { barRefs.current[i] = el; }}
-              x="0"
-              y="60"
-              width="7"
-              height="40"
-              rx="3.5"
-              ry="3.5"
+              x={X_START + i * (BAR_W + GAP)}
+              y={CY - FLAT_H / 2}
+              width={BAR_W}
+              height={FLAT_H}
+              rx={BAR_W / 2}
+              ry={BAR_W / 2}
               fill={`url(#bar-${uid}-${i})`}
             />
           ))}
         </g>
-
-        {/* Bars (reflection) — masked downward fade */}
-        <g mask={`url(#reflmask-${uid})`}>
-          {BAR_COLORS.map((_, i) => (
-            <rect
-              key={`refl-${i}`}
-              ref={(el) => { reflRefs.current[i] = el; }}
-              x="0"
-              y="102"
-              width="7"
-              height="22"
-              rx="3.5"
-              ry="3.5"
-              fill={`url(#bar-${uid}-${i})`}
-            />
-          ))}
-        </g>
-
-        {/* Accent dots */}
-        <circle
-          ref={dotLeftRef}
-          cx="20"
-          cy="100"
-          r="3.6"
-          fill="#FF8A4A"
-        />
-        <circle
-          ref={dotRightRef}
-          cx="180"
-          cy="100"
-          r="3.6"
-          fill="#5FB7E8"
-        />
       </svg>
     </button>
   );
