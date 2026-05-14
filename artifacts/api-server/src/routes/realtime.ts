@@ -214,7 +214,7 @@ function buildDemoRealtimeSessionConfig(voice: string, speed: number) {
     audio: {
       input: {
         format: { type: "audio/pcm" as const, rate: 24000 as const },
-        transcription: { model: "whisper-1" },
+        transcription: { model: "gpt-realtime-whisper" },
         // semantic_vad uses a model to detect natural turn ends rather than
         // a fixed silence timer. eagerness="low" waits longer before
         // committing the turn so users can pause mid-sentence without being
@@ -255,7 +255,7 @@ function buildRealtimeSessionConfig(voice: string, speed: number, catalog: Catal
     audio: {
       input: {
         format: { type: "audio/pcm" as const, rate: 24000 as const },
-        transcription: { model: "whisper-1" },
+        transcription: { model: "gpt-realtime-whisper" },
         // semantic_vad with low eagerness lets the user finish a thought
         // before the model takes a turn. The previous server_vad with a
         // 300ms silence window was cutting users off mid-sentence whenever
