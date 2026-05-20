@@ -105,33 +105,6 @@ export const loggingMiddleware: ToolMiddleware = async (toolName, args, ctx, nex
   return next(args, ctx);
 };
 
-/**
- * Rate limiting middleware — per-venue sliding window counter.
- * Limits to maxCalls per windowMs per Square token.
- */
-export function rateLimitMiddleware(maxCalls = 60, windowMs = 60_000): ToolMiddleware {
-  const windows = new Map<string, { count: number; resetAt: number }>();
-
-  return async (toolName, args, ctx, next) => {
-    const key = ctx.squareToken?.slice(0, 8) ?? "anon";
-    const now = Date.now();
-    let window = windows.get(key);
-
-    if (!window || now > window.resetAt) {
-      window = { count: 0, resetAt: now + windowMs };
-      windows.set(key, window);
-    }
-
-    window.count++;
-    if (window.count > maxCalls) {
-      console.warn(`[Tool] Rate limit hit for venue ${key}: ${window.count}/${maxCalls} in window`);
-      return { result: "Too many requests — please slow down and try again in a moment." };
-    }
-
-    return next(args, ctx);
-  };
-}
-
 // ── Default middleware stack ─────────────────────────────────────────────────
 
 /** Standard middleware stack applied to all tool executors. */

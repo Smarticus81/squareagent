@@ -2,6 +2,7 @@ import type {
   VoicePipelineAdapter,
   VoicePipelineEnvContext,
   VoicePipelineProvider,
+  VoicePipelineAvailability,
 } from "@workspace/voicelab-core/voice-pipeline";
 import {
   VOICE_PIPELINE_PROVIDERS,
@@ -21,10 +22,43 @@ import { ModularCascadedAdapter, MODULAR_ADAPTER_SPECS } from "./modular/cascade
 import { BrowserSpeechApiAdapter } from "./fallback/browser-speech-api";
 import { PushToTalkTextAdapter, TextOnlyAdapter } from "./fallback/push-to-talk";
 
+const REQUEST_ONLY_PROVIDERS = new Set<VoicePipelineProvider>([
+  "livekit_agents",
+  "pipecat",
+  "deepgram_flux_cartesia",
+  "deepgram_flux_aura",
+  "cartesia_ink_sonic",
+  "assemblyai_openai_cartesia",
+  "hume_evi_3",
+]);
+
+function wrapRequestOnly(adapter: VoicePipelineAdapter): VoicePipelineAdapter {
+  return {
+    ...adapter,
+    async availability(_ctx: VoicePipelineEnvContext): Promise<VoicePipelineAvailability> {
+      return {
+        status: "request_access",
+        reason: "Contact sales for enterprise provisioning",
+      };
+    },
+    async createSession(): Promise<never> {
+      const err: any = new Error(
+        `Pipeline "${adapter.provider}" is request-only. Contact sales for enterprise provisioning.`,
+      );
+      err.code = "pipeline_not_provisioned";
+      throw err;
+    },
+  };
+}
+
 const adapters = new Map<VoicePipelineProvider, VoicePipelineAdapter>();
 
 function register(adapter: VoicePipelineAdapter): void {
-  adapters.set(adapter.provider, adapter);
+  if (REQUEST_ONLY_PROVIDERS.has(adapter.provider)) {
+    adapters.set(adapter.provider, wrapRequestOnly(adapter));
+  } else {
+    adapters.set(adapter.provider, adapter);
+  }
 }
 
 register(new OpenAiRealtimeWebRtcAdapter());
@@ -56,13 +90,11 @@ export function readVoicePipelineEnvCredentials(): Record<string, boolean> {
   for (const meta of Object.values(VOICE_PIPELINE_PROVIDERS)) {
     for (const k of meta.requiredCredentials) keys.add(k);
   }
-  // Include the legacy OpenAI alias so availability is honest with both names.
   keys.add("AI_INTEGRATIONS_OPENAI_API_KEY");
   const out: Record<string, boolean> = {};
   for (const k of keys) {
     out[k] = process.env[k] !== undefined && process.env[k] !== "";
   }
-  // OpenAI key is satisfied by either name.
   if (out["AI_INTEGRATIONS_OPENAI_API_KEY"]) out["OPENAI_API_KEY"] = true;
   return out;
 }

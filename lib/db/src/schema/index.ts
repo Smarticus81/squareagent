@@ -122,27 +122,12 @@ export const agentProfilesTable = pgTable("agent_profiles", {
 
 export type AgentProfileRow = typeof agentProfilesTable.$inferSelect;
 
-// ── Voice Pipeline Configs ────────────────────────────────────────────────────
-// Org-wide presets. Agent profiles can either inline config or reference
-// a preset by id.
-
-export const voicePipelineConfigsTable = pgTable("voice_pipeline_configs", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  organizationId: uuid("organization_id").notNull().references(() => organizationsTable.id, { onDelete: "cascade" }),
-  name: text("name").notNull(),
-  provider: text("provider").notNull(),
-  config: jsonb("config").notNull().default({}),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
-}, (table) => [
-  index("voice_pipeline_configs_org_idx").on(table.organizationId),
-]);
-
 // ── Subscriptions ─────────────────────────────────────────────────────────────
 
 export const subscriptionsTable = pgTable("subscriptions", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  organizationId: uuid("organization_id").references(() => organizationsTable.id, { onDelete: "cascade" }),
   stripeCustomerId: text("stripe_customer_id"),
   stripeSubscriptionId: text("stripe_subscription_id"),
   plan: text("plan").notNull().default("trial"),
@@ -154,6 +139,7 @@ export const subscriptionsTable = pgTable("subscriptions", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (table) => [
   index("subscriptions_user_id_idx").on(table.userId),
+  index("subscriptions_org_id_idx").on(table.organizationId),
 ]);
 
 export const insertSubscriptionSchema = createInsertSchema(subscriptionsTable).omit({ id: true, createdAt: true, updatedAt: true });
@@ -208,25 +194,13 @@ export const voiceSessionsTable = pgTable("voice_sessions", {
 
 export type VoiceSession = typeof voiceSessionsTable.$inferSelect;
 
-// ── Voice Session Events ──────────────────────────────────────────────────────
-// Append-only log: speech transcripts, tool intents, confirmation prompts,
-// pipeline-level events. Used for audit, replay, and analytics.
-
-export const voiceSessionEventsTable = pgTable("voice_session_events", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  sessionId: text("session_id").notNull(),
-  eventType: text("event_type").notNull(),
-  payload: jsonb("payload").notNull().default({}),
-  occurredAt: timestamp("occurred_at").notNull().defaultNow(),
-}, (table) => [
-  index("voice_session_events_session_idx").on(table.sessionId),
-  index("voice_session_events_type_idx").on(table.eventType),
-]);
-
 // ── Tool Calls ────────────────────────────────────────────────────────────────
 
 export const toolCallsTable = pgTable("tool_calls", {
   id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizationsTable.id, { onDelete: "cascade" }),
+  userId: integer("user_id").references(() => usersTable.id, { onDelete: "set null" }),
+  venueId: integer("venue_id").references(() => venuesTable.id, { onDelete: "set null" }),
   sessionId: text("session_id"),
   agentProfileId: uuid("agent_profile_id").references(() => agentProfilesTable.id, { onDelete: "set null" }),
   connectedServiceId: uuid("connected_service_id").references(() => serviceConnectionsTable.id, { onDelete: "set null" }),
@@ -235,45 +209,15 @@ export const toolCallsTable = pgTable("tool_calls", {
   result: jsonb("result"),
   riskLevel: text("risk_level").notNull().default("medium"),
   confirmedByUser: boolean("confirmed_by_user").notNull().default(false),
-  status: text("status").notNull().default("pending"), // pending | succeeded | failed | denied
+  status: text("status").notNull().default("pending"),
   errorMessage: text("error_message"),
   durationMs: integer("duration_ms"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (table) => [
   index("tool_calls_session_idx").on(table.sessionId),
   index("tool_calls_agent_idx").on(table.agentProfileId),
+  index("tool_calls_org_idx").on(table.organizationId),
   index("tool_calls_status_idx").on(table.status),
-]);
-
-// ── Confirmation Gates ────────────────────────────────────────────────────────
-
-export const confirmationGatesTable = pgTable("confirmation_gates", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  toolCallId: uuid("tool_call_id").references(() => toolCallsTable.id, { onDelete: "cascade" }),
-  sessionId: text("session_id").notNull(),
-  toolName: text("tool_name").notNull(),
-  riskLevel: text("risk_level").notNull(),
-  prompt: text("prompt").notNull(),
-  resolution: text("resolution"), // confirmed | denied | timed_out
-  resolvedAt: timestamp("resolved_at"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-}, (table) => [
-  index("confirmation_gates_session_idx").on(table.sessionId),
-]);
-
-// ── Integration Sync Runs ─────────────────────────────────────────────────────
-
-export const integrationSyncRunsTable = pgTable("integration_sync_runs", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  connectedServiceId: uuid("connected_service_id").notNull().references(() => serviceConnectionsTable.id, { onDelete: "cascade" }),
-  kind: text("kind").notNull(), // catalog | inventory | locations
-  status: text("status").notNull().default("running"),
-  startedAt: timestamp("started_at").notNull().defaultNow(),
-  finishedAt: timestamp("finished_at"),
-  rowsAffected: integer("rows_affected"),
-  errorMessage: text("error_message"),
-}, (table) => [
-  index("sync_runs_connection_idx").on(table.connectedServiceId),
 ]);
 
 // ── Usage Events ──────────────────────────────────────────────────────────────
