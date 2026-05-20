@@ -13,6 +13,7 @@
     "preview": "vite preview --port 8081"
   },
   "dependencies": {
+    "@workspace/voicelab-client": "workspace:*",
     "lucide-react": "^0.460.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"

@@ -109,14 +109,14 @@ export const PLANS: PlanDefinition[] = [
     trialDays: 14,
     maxVenues: 1,
     maxAssistants: 3,
-    includedVoiceMinutes: 200,
+    includedVoiceMinutes: 100,
     overagePerMinuteUsd: 0,
     skillTiers: ["core", "standard", "premium"],
-    allowedPipelines: PIPELINES_PREMIUM,
+    allowedPipelines: ["openai_realtime_webrtc" as VoicePipelineProvider, ...PIPELINES_FALLBACK],
     cta: "Start free trial",
     bullets: [
-      { text: "Every feature unlocked for 14 days" },
-      { text: "200 voice minutes" },
+      { text: "OpenAI Realtime voice for 14 days" },
+      { text: "100 voice minutes" },
       { text: "Build, test, and demo with your team" },
     ],
   },
@@ -128,8 +128,8 @@ export const PLANS: PlanDefinition[] = [
     yearlyPriceUsdPerMonth: 65,
     maxVenues: 1,
     maxAssistants: 2,
-    includedVoiceMinutes: 500,
-    overagePerMinuteUsd: 0.18,
+    includedVoiceMinutes: 250,
+    overagePerMinuteUsd: 0.20,
     skillTiers: ["core"],
     allowedPipelines: PIPELINES_STARTER,
     cta: "Pick Starter",
@@ -137,9 +137,10 @@ export const PLANS: PlanDefinition[] = [
     stripeYearlyPriceEnvVar: "STRIPE_PRICE_STARTER_YEARLY",
     bullets: [
       { text: "1 venue, 2 voice assistants" },
-      { text: "500 voice minutes / month included" },
+      { text: "250 voice minutes / month included" },
       { text: "OpenAI Realtime (WebRTC + WebSocket)" },
       { text: "POS, orders, reporting" },
+      { text: "Overage billed at $0.20/min, capped at 1.5x your plan" },
       { text: "Email support" },
     ],
   },
@@ -153,8 +154,8 @@ export const PLANS: PlanDefinition[] = [
     ribbon: "Most popular",
     maxVenues: 3,
     maxAssistants: 10,
-    includedVoiceMinutes: 2000,
-    overagePerMinuteUsd: 0.15,
+    includedVoiceMinutes: 1000,
+    overagePerMinuteUsd: 0.17,
     skillTiers: ["core", "standard"],
     allowedPipelines: PIPELINES_PROFESSIONAL,
     cta: "Pick Professional",
@@ -162,12 +163,13 @@ export const PLANS: PlanDefinition[] = [
     stripeYearlyPriceEnvVar: "STRIPE_PRICE_PROFESSIONAL_YEARLY",
     bullets: [
       { text: "Up to 3 venues, 10 assistants" },
-      { text: "2,000 voice minutes / month included" },
+      { text: "1,000 voice minutes / month included" },
       {
         text: "OpenAI Realtime + Gemini 3.1 Flash Live + Gemini 2.5 Native Audio",
         emphasis: true,
       },
       { text: "Inventory, catalog management, customers & payments" },
+      { text: "Overage billed at $0.17/min, capped at 1.5x your plan" },
       { text: "Priority email + chat support" },
     ],
   },
@@ -179,8 +181,8 @@ export const PLANS: PlanDefinition[] = [
     yearlyPriceUsdPerMonth: 415,
     maxVenues: -1,
     maxAssistants: -1,
-    includedVoiceMinutes: 10000,
-    overagePerMinuteUsd: 0.12,
+    includedVoiceMinutes: 4000,
+    overagePerMinuteUsd: 0.14,
     skillTiers: ["core", "standard", "premium"],
     allowedPipelines: PIPELINES_PREMIUM,
     cta: "Pick Premium",
@@ -188,9 +190,10 @@ export const PLANS: PlanDefinition[] = [
     stripeYearlyPriceEnvVar: "STRIPE_PRICE_PREMIUM_YEARLY",
     bullets: [
       { text: "Unlimited venues and assistants" },
-      { text: "10,000 voice minutes / month included" },
+      { text: "4,000 voice minutes / month included" },
       { text: "Every voice engine: ElevenLabs, Deepgram, LiveKit, Hume, modular cascaded", emphasis: true },
       { text: "Team & labor: shifts, clock-in, who's on the floor right now" },
+      { text: "Overage billed at $0.14/min, capped at 1.5x your plan" },
       { text: "24/7 chat + dedicated customer success" },
     ],
   },
@@ -221,25 +224,12 @@ export function getPlan(id: string): PlanDefinition | undefined {
   return PLANS.find((p) => p.id === id);
 }
 
-/**
- * Returns the resolved skill tiers for a plan.
- * Backwards compatible with the legacy plan ids ("pos_only",
- * "inventory_only", "complete") still present in the database.
- */
+/** Returns the resolved skill tiers for a plan. Falls back to premium tiers for unknown ids. */
 export function getPlanSkillTiers(planId: string | null | undefined): SkillTier[] {
   if (!planId) return ["core", "standard", "premium"];
   const direct = PLANS.find((p) => p.id === planId);
   if (direct) return direct.skillTiers;
-  switch (planId) {
-    case "pos_only":
-      return ["core"];
-    case "inventory_only":
-      return ["core", "standard"];
-    case "complete":
-      return ["core", "standard", "premium"];
-    default:
-      return ["core", "standard", "premium"];
-  }
+  return ["core", "standard", "premium"];
 }
 
 /**
@@ -252,16 +242,7 @@ export function getPlanAllowedPipelines(
   if (!planId) return PIPELINES_PREMIUM;
   const direct = PLANS.find((p) => p.id === planId);
   if (direct) return direct.allowedPipelines;
-  switch (planId) {
-    case "pos_only":
-      return PIPELINES_STARTER;
-    case "inventory_only":
-      return PIPELINES_PROFESSIONAL;
-    case "complete":
-      return PIPELINES_PREMIUM;
-    default:
-      return PIPELINES_PREMIUM;
-  }
+  return PIPELINES_PREMIUM;
 }
 
 export function planAllowsPipeline(

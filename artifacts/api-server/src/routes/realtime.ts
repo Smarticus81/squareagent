@@ -412,6 +412,15 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
 
   console.log(`[Realtime] Creating session: plan=${plan}, provider=${provider}, skills=[${skillSummary(skills)}], venue=${venueId || "none"}`);
 
+  const sessionConfig = buildRealtimeSessionConfig(
+    String(providerConfig.voice ?? voice),
+    Number(providerConfig.speed ?? speed),
+    catalog,
+    order,
+    plan,
+    assistantKind,
+  );
+
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15000);
@@ -423,16 +432,7 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
         "Content-Type": "application/json",
       },
       signal: controller.signal,
-      body: JSON.stringify({
-        session: buildRealtimeSessionConfig(
-          String(providerConfig.voice ?? voice),
-          Number(providerConfig.speed ?? speed),
-          catalog,
-          order,
-          plan,
-          assistantKind,
-        ),
-      }),
+      body: JSON.stringify({ session: sessionConfig }),
     });
     clearTimeout(timeout);
 
@@ -444,10 +444,11 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
     }
 
     const data = (await response.json()) as any;
-    // Normalize GA response → shape the PWA client expects: { id, client_secret: { value } }
     res.json({
       id: data.session?.id ?? "",
       client_secret: { value: data.value, expires_at: data.expires_at },
+      instructions: sessionConfig.instructions,
+      assistantKind,
     });
   } catch (e: any) {
     console.error("[Realtime] Session error:", e.message);

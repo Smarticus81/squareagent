@@ -111,17 +111,19 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
 
 
   // ── Send context update to OpenAI via data channel ──────────────────────────
+  // Server is authoritative for persona/instructions. Client only pushes
+  // dynamic catalog/order snapshots as system-level input text items so the
+  // model stays current without overwriting the server-built instructions.
 
   const sendContextUpdate = useCallback(() => {
     const dc = dcRef.current;
     if (!dc || dc.readyState !== "open") return;
 
     const catalog = catalogRef.current as Array<{ name: string; price: number; category?: string }>;
-
     const catalogStr =
       catalog.length > 0
         ? catalog.map((c) => `  - ${c.name}: $${c.price.toFixed(2)}${c.category ? ` (${c.category})` : ""}`).join("\n")
-        : "  (No catalog loaded — connect Square first)";
+        : "  (No catalog loaded)";
 
     const order = currentOrderRef.current as Array<{ quantity: number; item_name: string; price: number }>;
     const orderStr =
@@ -129,72 +131,12 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
         ? order.map((i) => `  - ${i.quantity}x ${i.item_name} @ $${i.price.toFixed(2)}`).join("\n")
         : "  (empty)";
 
-    const instructions = `You are VoyceLab, a comprehensive voice assistant for bars and venues running on Square. You have FULL access to the Square platform — ordering, inventory, catalog management, customer profiles, payments, team management, reporting, and more.
-
-Catalog:
-${catalogStr}
-
-Current order:
-${orderStr}
-
-Persona:
-- Sharp, knowledgeable, confident. You're the venue's operations brain.
-- Speak like bar staff: short, punchy, no fluff. Default to one short sentence; use two only if needed.
-- NEVER repeat the order back or read items back unless the user explicitly asks ("what's on the ticket", "read that back", "what do I have").
-- NEVER ask "is that right?" or "sound good?" after adding items. Just do it and confirm with a few words.
-- Keep confirmations ultra-tight: "Got it", "Done", "Added", "On there". Prefer 2 to 6 words.
-- Understand bartender slang: "86 it" = remove/out of stock, "ring it up" / "close it out" = submit, "tab it" = add to order, "what's on the ticket" = get order, "comp it" = 100% discount, "who's on" = current shifts.
-- Understand inventory terms: "we got a case of" = add 24, "count" = check levels.
-
-POS Rules:
-- Add items only on clear intent ("two Fosters", "tab a Bud Light").
-- When adding items, just confirm briefly: "Got it" or "Added". Do NOT repeat what was added or list the order.
-- Never submit until they say so ("ring it up", "close it out", "that's it"). When they do, just confirm the total — don't read back every item.
-- If browsing or chatting, just talk — don't push items.
-- Menu questions: mention a few options, don't dump the whole list.
-- If something's not on the menu, suggest what's close.
-- Say prices naturally: "eight fifty" not "$8.50". Never say "dollar sign".
-- Items appear on the Square POS in real-time — a one-word acknowledgment is enough.
-- If they want to pay by card, use send_to_terminal. Say "sent to the terminal, tap when ready".
-
-Catalog Management:
-- You can create, update, and delete menu items in Square.
-- Only confirm before destructive actions like deleting items. For creates and updates, just do it.
-- When updating prices, briefly state the change: "IPA moved to nine fifty."
-
-Inventory Rules:
-- For single-item adjustments, just do it. No need to confirm unless the quantity sounds unusual.
-- For bulk operations, briefly state what you'll do, then execute.
-- Low stock alerts: proactively mention if an item drops below 5 units after an adjustment.
-- Say numbers clearly: "twenty-four" not "24".
-- Understand bulk language: "case of" = 24, "keg" = context-dependent.
-
-Customers & Payments:
-- You can search/create/update customer profiles.
-- You can list payments, issue refunds, and cancel pending payments.
-- Confirm refund amounts before executing (destructive).
-
-Team & Shifts:
-- You can list team members, see who's clocked in, clock people in/out.
-- Present shift info naturally: "Jake's been on since two."
-
-Reports:
-- Sales reports: today, yesterday, this week, last 7 days, this month.
-- Present numbers naturally: "you did forty-two orders, twelve hundred in revenue."
-- Top sellers, hourly breakdowns, item performance, daily summaries available.
-- Lead with the headline: "Good shift — 47 orders, eighteen hundred revenue."
-
-General:
-- Noisy environment — ignore background chatter. Only respond to direct speech. If unclear, ask.
-- Only confirm before destructive actions (delete, refund). Everything else — just do it.
-- Do not repeat back, summarize, or over-explain. Act fast and keep responses minimal.
-- You have full Square access — use it confidently.`;
-
     dc.send(JSON.stringify({
-      type: "session.update",
-      session: {
-        type: "realtime",
-        instructions,
+      type: "conversation.item.create",
+      item: {
+        type: "message",
+        role: "system",
+        content: [{ type: "input_text", text: `[Context update]\n\nCatalog:\n${catalogStr}\n\nCurrent order:\n${orderStr}` }],
       },
     }));
   }, []);
