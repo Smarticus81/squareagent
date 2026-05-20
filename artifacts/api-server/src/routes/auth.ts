@@ -10,7 +10,7 @@ import { Router, Request, Response } from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
-import { db, usersTable, sessionsTable, subscriptionsTable, exchangeCodesTable } from "@workspace/db";
+import { db, usersTable, sessionsTable, subscriptionsTable, exchangeCodesTable, organizationMembershipsTable } from "@workspace/db";
 import { eq, lt } from "drizzle-orm";
 
 const router = Router();
@@ -175,8 +175,24 @@ export async function requireAuth(req: Request, res: Response, next: Function): 
     let [subscription] = await db.select().from(subscriptionsTable).where(eq(subscriptionsTable.userId, user.id));
     if (!subscription && isAdmin) subscription = buildAdminSubscription(user.id) as never;
 
+    // Attach organization membership if one exists
+    let organization: { id: string; role: string } | null = null;
+    try {
+      const [membership] = await db
+        .select()
+        .from(organizationMembershipsTable)
+        .where(eq(organizationMembershipsTable.userId, user.id))
+        .limit(1);
+      if (membership) {
+        organization = { id: membership.organizationId, role: membership.role };
+      }
+    } catch {
+      // organization_memberships table may not exist yet; continue without it
+    }
+
     (req as any).user = user;
     (req as any).subscription = subscription ?? null;
+    (req as any).organization = organization;
     (req as any).isAdmin = isAdmin;
     next();
   } catch (e: any) {

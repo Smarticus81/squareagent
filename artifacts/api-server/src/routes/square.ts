@@ -1,5 +1,6 @@
 import { Router, type IRouter, Request, Response } from "express";
 import crypto from "crypto";
+import { encrypt, decrypt } from "../lib/secrets";
 
 const router: IRouter = Router();
 
@@ -159,7 +160,7 @@ router.get("/oauth/callback", async (req: Request, res: Response): Promise<void>
 
     const ts = crypto.randomUUID();
     pendingTokens.set(ts, {
-      token: data.access_token,
+      token: encrypt(data.access_token),
       merchantId: data.merchant_id ?? "",
       timestamp: Date.now(),
     });
@@ -186,7 +187,7 @@ router.get("/oauth/token", (req: Request, res: Response): void => {
   const pending = pendingTokens.get(ts);
   if (!pending) { res.status(404).json({ error: "Token not found or already claimed" }); return; }
   pendingTokens.delete(ts);
-  res.json({ token: pending.token, merchantId: pending.merchantId });
+  res.json({ token: decrypt(pending.token), merchantId: pending.merchantId });
 });
 
 // ── Popup HTML helper ─────────────────────────────────────────────────────────

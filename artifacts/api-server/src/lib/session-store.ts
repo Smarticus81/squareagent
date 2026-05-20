@@ -12,6 +12,9 @@ import {
   cancelLiveOrder,
   type LiveSession,
 } from "./square-helpers";
+import { createComponentLogger } from "./logger";
+
+const log = createComponentLogger("session-store");
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -162,7 +165,7 @@ async function persistDirtySessions(): Promise<void> {
         });
       entry.dirty = false;
     } catch (e: any) {
-      console.warn(`[SessionStore] Failed to persist session ${id}:`, e.message);
+      log.warn({ sessionId: id, err: e.message }, "failed to persist session");
     }
   }
 }
@@ -177,7 +180,7 @@ async function cleanupStaleSessions(): Promise<void> {
     if (now - entry.lastAccess > SESSION_TTL_MS) {
       // Cancel orphaned live orders
       if (entry.session.squareOrderId && entry.squareToken && entry.squareLocationId) {
-        console.log(`[SessionStore] Canceling orphaned order ${entry.session.squareOrderId} for session ${key}`);
+        log.info({ sessionId: key, squareOrderId: entry.session.squareOrderId }, "canceling orphaned order");
         cancelLiveOrder(entry.session, entry.squareToken, entry.squareLocationId).catch(() => {});
       }
       memoryStore.delete(key);
@@ -193,7 +196,7 @@ async function cleanupStaleSessions(): Promise<void> {
   }
 
   if (cleaned > 0) {
-    console.log(`[SessionStore] Cleaned ${cleaned} stale session(s). Active: ${memoryStore.size}`);
+    log.info({ cleaned, active: memoryStore.size }, "cleaned stale sessions");
   }
 }
 

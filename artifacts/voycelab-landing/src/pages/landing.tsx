@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { VoiceOrb } from "@/components/voice-orb";
 import { useVoycelabDemoRealtime } from "@/hooks/use-voycelab-demo-realtime";
+import { MockBarDemo } from "@/components/mock-bar-demo";
 
 /* animation config */
 const ease = [0.22, 1, 0.36, 1] as const;
@@ -57,6 +58,7 @@ export default function Landing() {
   return (
     <div className="vl-landing">
       <Hero onStart={startAssistant} />
+      <MockBarDemo />
       <MinimalLanding onStart={startAssistant} />
     </div>
   );
@@ -123,7 +125,7 @@ function Hero({ onStart }: { onStart: () => void }) {
               variants={fadeUp}
               className="flex items-center gap-3 flex-wrap"
             >
-              <span className="vl-eyebrow">Voice assistant for business owners</span>
+              <span className="vl-eyebrow">Voice POS for hospitality</span>
             </motion.div>
 
             <motion.h1
@@ -133,11 +135,9 @@ function Hero({ onStart }: { onStart: () => void }) {
               variants={fadeUp}
               className="vl-display mt-5 text-[clamp(2.75rem,6.4vw,4.6rem)]"
             >
-              The Voice Assistant
+              Run your bar without
               <br />
-              that helps you run your
-              <br />
-              <em>business.</em>
+              leaving the <em>floor.</em>
             </motion.h1>
 
             <motion.p
@@ -148,9 +148,9 @@ function Hero({ onStart }: { onStart: () => void }) {
               className="mt-7 text-[17px] md:text-[18px] leading-relaxed max-w-115"
               style={{ color: "var(--color-vl-ink-soft)" }}
             >
-              VoyceLab gives business owners a voice assistant they can talk to
-              anywhere. Ask about sales, stock, orders, bookings, payments, and
-              daily operations without sitting in front of a computer.
+              VoyceLab is a voice assistant for hospitality operators. Talk to
+              Square — add items, run reports, count stock, send to terminal —
+              without picking up the iPad.
             </motion.p>
 
             <motion.div
@@ -160,13 +160,13 @@ function Hero({ onStart }: { onStart: () => void }) {
               variants={fadeUp}
               className="mt-8 flex flex-wrap items-center gap-3"
             >
-              <button onClick={onStart} className="vl-btn-primary inline-flex items-center gap-2.5">
-                Book a demo
+              <Link href="/signup" className="vl-btn-primary inline-flex items-center gap-2.5">
+                Start free trial
                 <span className="w-5 h-5 rounded-full bg-white/25 flex items-center justify-center">
                   <ArrowRight className="w-3 h-3 text-white" />
                 </span>
-              </button>
-              <a href="#voice-demo" className="vl-btn-outline inline-flex items-center gap-2.5">
+              </Link>
+              <a href="#demo" className="vl-btn-outline inline-flex items-center gap-2.5">
                 See it in action
                 <span
                   className="w-5 h-5 rounded-full flex items-center justify-center"

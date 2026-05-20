@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { Menu } from "lucide-react";
-import { useVoiceAgent, type AgentState, type OrderCommand, type ConversationMessage } from "@/contexts/VoiceAgentContext";
+import { useVoiceAgent, type AgentState, type OrderCommand, type ConversationMessage, type PendingConfirmation } from "@/contexts/VoiceAgentContext";
 import { useOrder } from "@/contexts/OrderContext";
 import { useSquare } from "@/contexts/SquareContext";
 import { OrderPanel } from "@/components/OrderPanel";
@@ -91,8 +91,9 @@ function RailWaveform({ active }: { active: boolean }) {
 export default function App() {
   const {
     agentState, isConnected, conversation, partialTranscript, error, remoteStream,
-    connect, disconnect, setToolHandler, interrupt,
+    pendingConfirmation, connect, disconnect, setToolHandler, interrupt,
     setCatalog, setCurrentOrder, setSquareCredentials, setAuthParams,
+    confirmPending, denyPending,
   } = useVoiceAgent();
 
   const {
@@ -116,7 +117,6 @@ export default function App() {
   } = useSquare();
 
   const [panelOpen, setPanelOpen] = useState(false);
-  const [panelTab, setPanelTab] = useState<"order" | "menu" | "settings">("order");
   const [mode, setMode] = useState<AppMode>("idle");
   const [micPermissionGranted, setMicPermissionGranted] = useState(false);
   const [micError, setMicError] = useState<string | null>(null);
@@ -205,7 +205,6 @@ export default function App() {
           if (orderRef.current?.items.length) {
             soundSubmit();
             markVoiceOrderSubmitted();
-            setPanelTab("order");
             setPanelOpen(true);
           }
           break;
@@ -407,7 +406,7 @@ export default function App() {
           </span>
         </div>
         {orderCount > 0 && assistantKind === "venue" ? (
-          <button className="order-badge" onClick={() => { setPanelTab("order"); setPanelOpen(true); }} aria-label={`${orderCount} items in order`}>
+          <button className="order-badge" onClick={() => setPanelOpen(true)} aria-label={`${orderCount} items in order`}>
             <span className="order-badge-num">{orderCount}</span>
           </button>
         ) : <div style={{ width: 22 }} />}
@@ -499,9 +498,10 @@ export default function App() {
       {/* Panel */}
       <OrderPanel
         open={panelOpen}
-        tab={panelTab}
-        onTabChange={setPanelTab}
         onClose={() => setPanelOpen(false)}
+        pendingConfirmation={pendingConfirmation}
+        onConfirm={confirmPending}
+        onDeny={denyPending}
       />
     </div>
   );

@@ -6,6 +6,13 @@
  */
 
 import type { ToolExecutor, ToolContext, ToolResult } from "./types";
+import { requiresConfirmation, getToolRisk } from "@workspace/voicelab-core/confirmation";
+import { createComponentLogger } from "../lib/logger";
+import { db, toolCallsTable } from "@workspace/db";
+
+const log = createComponentLogger("tool");
+
+const SENSITIVE_KEY_RE = /password|token|secret|key/i;
 
 // ── Middleware type ─────────────────────────────────────────────────────────
 
@@ -70,8 +77,11 @@ export const timingMiddleware: ToolMiddleware = async (toolName, args, ctx, next
   const start = Date.now();
   const result = await next(args, ctx);
   const durationMs = Date.now() - start;
-  const level = durationMs > 2000 ? "warn" : "log";
-  console[level](`[Tool] ${toolName} completed in ${durationMs}ms`);
+  if (durationMs > 2000) {
+    log.warn({ toolName, durationMs }, "tool completed (slow)");
+  } else {
+    log.info({ toolName, durationMs }, "tool completed");
+  }
   return result;
 };
 
@@ -83,7 +93,7 @@ export const errorMiddleware: ToolMiddleware = async (toolName, args, ctx, next)
   try {
     return await next(args, ctx);
   } catch (e: any) {
-    console.error(`[Tool] ${toolName} threw:`, e.message);
+    log.error({ toolName, err: e.message }, "tool threw");
     return { result: `Tool error: ${e.message}` };
   }
 };
@@ -101,7 +111,75 @@ export const loggingMiddleware: ToolMiddleware = async (toolName, args, ctx, nex
       sanitized[key] = val;
     }
   }
-  console.log(`[Tool] ${toolName} called:`, JSON.stringify(sanitized));
+  log.info({ toolName, args: sanitized }, "tool called");
+  return next(args, ctx);
+};
+
+/**
+ * Audit middleware — fire-and-forget insert into toolCallsTable after execution.
+ * Runs after the executor so it can capture the result and duration.
+ */
+export const auditMiddleware: ToolMiddleware = async (toolName, args, ctx, next) => {
+  const start = Date.now();
+  const result = await next(args, ctx);
+  const durationMs = Date.now() - start;
+
+  setImmediate(() => {
+    try {
+      const sanitizedArgs: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(args)) {
+        sanitizedArgs[k] = SENSITIVE_KEY_RE.test(k) ? "[REDACTED]" : v;
+      }
+
+      const isError = result.result?.startsWith("Tool error:");
+      db.insert(toolCallsTable)
+        .values({
+          toolName,
+          args: sanitizedArgs,
+          result: { result: result.result },
+          status: isError ? "failed" : "succeeded",
+          errorMessage: isError ? result.result : null,
+          durationMs,
+          userId: ctx.userId ?? null,
+          venueId: ctx.venueId ?? null,
+        })
+        .catch((err: any) => {
+          log.warn({ toolName, err: err.message }, "audit insert failed");
+        });
+    } catch {
+      // never block the response
+    }
+  });
+
+  return result;
+};
+
+/**
+ * Confirmation middleware — blocks tool execution when the tool's risk level
+ * exceeds the threshold for the session's noise mode, unless the caller has
+ * already set `confirmed: true` in the context. Returns a structured
+ * REQUIRES_CONFIRMATION result so the client can prompt the user.
+ */
+export const confirmationMiddleware: ToolMiddleware = async (toolName, args, ctx, next) => {
+  const noiseMode = ctx.noiseMode ?? "restaurant";
+  const confirmed = ctx.confirmed ?? false;
+
+  const riskLevel = getToolRisk(toolName);
+  const needsConfirmation = requiresConfirmation(toolName, riskLevel, noiseMode);
+
+  if (needsConfirmation && !confirmed) {
+    return {
+      result: JSON.stringify({
+        status: "REQUIRES_CONFIRMATION",
+        confirmation: {
+          tool_name: toolName,
+          args,
+          risk_level: riskLevel,
+          prompt: `Confirm ${toolName}?`,
+        },
+      }),
+    };
+  }
   return next(args, ctx);
 };
 
@@ -109,7 +187,9 @@ export const loggingMiddleware: ToolMiddleware = async (toolName, args, ctx, nex
 
 /** Standard middleware stack applied to all tool executors. */
 export const DEFAULT_MIDDLEWARES: ToolMiddleware[] = [
+  confirmationMiddleware,
   errorMiddleware,
   timingMiddleware,
   loggingMiddleware,
+  auditMiddleware,
 ];

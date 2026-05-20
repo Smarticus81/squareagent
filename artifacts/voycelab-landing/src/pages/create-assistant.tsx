@@ -32,7 +32,7 @@ export default function CreateAssistant() {
   const [venueId, setVenueId] = useState<number | null>(null);
   const [voice, setVoice] = useState("verse");
 
-  const [noiseMode, setNoiseMode] = useState("bar");
+  const [noiseMode, setNoiseMode] = useState("restaurant");
   const [voicePipelineProvider] = useState("openai_realtime_webrtc");
   const [wakePhrase, setWakePhrase] = useState("Hey Voyce");
   const [personality, setPersonality] = useState("");
@@ -251,10 +251,12 @@ export default function CreateAssistant() {
                     onChange={(e) => setNoiseMode(e.target.value)}
                     className="vl-input appearance-none pr-10"
                   >
-                    <option value="quiet">Quiet</option>
+                    <option value="quiet_room">Quiet room</option>
+                    <option value="restaurant">Restaurant</option>
                     <option value="bar">Bar</option>
-                    <option value="loud">Loud</option>
-                    <option value="outdoor">Outdoor</option>
+                    <option value="nightclub">Nightclub</option>
+                    <option value="event_venue">Event venue</option>
+                    <option value="manual_push_to_talk">Push to talk</option>
                   </select>
                   <ChevronDown
                     className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4"

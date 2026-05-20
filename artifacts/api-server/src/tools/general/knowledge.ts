@@ -5,10 +5,10 @@
  *  - list_knowledge:   show what documents are available.
  */
 
-import { db, knowledgeDocumentsTable, knowledgeChunksTable } from "@workspace/db";
-import { and, eq, desc } from "drizzle-orm";
+import { db, pool, knowledgeDocumentsTable, knowledgeChunksTable } from "@workspace/db";
+import { eq, desc } from "drizzle-orm";
 import type { ToolDefinition, ToolExecutor, ToolContext, ToolResult } from "../types";
-import { embed, cosineSimilarity } from "../../lib/embeddings";
+import { embed } from "../../lib/embeddings";
 
 export const definitions: ToolDefinition[] = [
   {
@@ -48,44 +48,34 @@ async function searchKnowledge(args: Record<string, unknown>, ctx: ToolContext):
     return { result: `search_knowledge: embedding failed — ${e.message}` };
   }
 
-  const rows = await db
-    .select({
-      id: knowledgeChunksTable.id,
-      documentId: knowledgeChunksTable.documentId,
-      text: knowledgeChunksTable.text,
-      embedding: knowledgeChunksTable.embedding,
-    })
-    .from(knowledgeChunksTable)
-    .where(eq(knowledgeChunksTable.userId, ctx.userId));
+  const vecStr = `[${queryVec.join(",")}]`;
+
+  const { rows } = await pool.query(
+    `SELECT c.id, c.document_id, c.text, d.title,
+            c.embedding <=> $1::vector AS distance
+     FROM knowledge_chunks c
+     JOIN knowledge_documents d ON d.id = c.document_id
+     WHERE c.user_id = $2
+     ORDER BY distance
+     LIMIT $3`,
+    [vecStr, ctx.userId, topK],
+  );
 
   if (rows.length === 0) {
     return { result: "Your knowledge base is empty. Upload documents in the dashboard first." };
   }
 
-  const titles = await db
-    .select({ id: knowledgeDocumentsTable.id, title: knowledgeDocumentsTable.title })
-    .from(knowledgeDocumentsTable)
-    .where(eq(knowledgeDocumentsTable.userId, ctx.userId));
-  const titleById = new Map(titles.map((t: { id: string; title: string }) => [t.id, t.title] as const));
+  const out = rows.map((r: { title: string; text: string; distance: number }, i: number) => {
+    const score = 1 - r.distance;
+    if (score <= 0) return null;
+    const snippet = r.text.slice(0, 600);
+    return `[${i + 1}] ${r.title} (score=${score.toFixed(2)})\n${snippet}`;
+  }).filter(Boolean);
 
-  const scored = rows
-    .map((r: typeof rows[number]) => {
-      const emb = Array.isArray(r.embedding) ? (r.embedding as number[]) : [];
-      return { ...r, score: cosineSimilarity(queryVec, emb) };
-    })
-    .filter((r: { score: number }) => r.score > 0)
-    .sort((a: { score: number }, b: { score: number }) => b.score - a.score)
-    .slice(0, topK);
-
-  if (scored.length === 0) {
+  if (out.length === 0) {
     return { result: "No relevant passages found in the knowledge base." };
   }
 
-  const out = scored.map((s: { documentId: string; text: string; score: number }, i: number) => {
-    const title = titleById.get(s.documentId) ?? "Untitled";
-    const snippet = s.text.slice(0, 600);
-    return `[${i + 1}] ${title} (score=${s.score.toFixed(2)})\n${snippet}`;
-  });
   return { result: out.join("\n\n") };
 }
 

@@ -3,13 +3,18 @@ import path from "path";
 import express, { type Express } from "express";
 import cors from "cors";
 import helmet from "helmet";
+import pinoHttp from "pino-http";
 import rateLimit from "express-rate-limit";
+import { logger } from "./lib/logger";
 import router from "./routes";
 
 const app: Express = express();
 const workspaceRoot = process.cwd();
 const landingDist = path.resolve(workspaceRoot, "artifacts", "voycelab-landing", "dist", "public");
 const voiceAgentDist = path.resolve(workspaceRoot, "artifacts", "voice-agent-pwa", "dist");
+
+// ── Structured request logging
+app.use(pinoHttp({ logger }));
 
 // ── Security headers
 app.use(helmet({

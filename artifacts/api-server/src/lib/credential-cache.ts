@@ -7,6 +7,7 @@
 
 import { db, venuesTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
+import { decrypt } from "../lib/secrets";
 
 interface CachedCredentials {
   squareToken: string;
@@ -48,7 +49,7 @@ export async function getCachedCredentials(
   }
 
   const creds = {
-    squareToken: venue.squareAccessToken ?? "",
+    squareToken: decrypt(venue.squareAccessToken),
     squareLocationId: venue.squareLocationId ?? "",
   };
 

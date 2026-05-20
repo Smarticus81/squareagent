@@ -29,6 +29,14 @@ export interface OrderCommand {
 
 export type CommandHandler = (commands: OrderCommand[]) => void;
 
+export interface PendingConfirmation {
+  tool_name: string;
+  args: Record<string, unknown>;
+  risk_level: string;
+  prompt: string;
+  call_id: string;
+}
+
 interface VoiceAgentContextType {
   agentState: AgentState;
   isConnected: boolean;
@@ -36,6 +44,7 @@ interface VoiceAgentContextType {
   partialTranscript: string;
   error: string | null;
   remoteStream: MediaStream | null;
+  pendingConfirmation: PendingConfirmation | null;
   connect: () => Promise<void>;
   disconnect: () => Promise<void>;
   clearConversation: () => void;
@@ -45,6 +54,8 @@ interface VoiceAgentContextType {
   setCurrentOrder: (order: unknown[]) => void;
   setSquareCredentials: (token: string, locationId: string) => void;
   setAuthParams: (venueId: string, authToken: string, agentProfileId?: string) => void;
+  confirmPending: () => void;
+  denyPending: () => void;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -62,6 +73,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
   const [partialTranscript, setPartialTranscript] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+  const [pendingConfirmation, setPendingConfirmation] = useState<PendingConfirmation | null>(null);
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const dcRef = useRef<RTCDataChannel | null>(null);
@@ -77,6 +89,8 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
   const isRunning = useRef(false);
   const agentStateRef = useRef<AgentState>("disconnected");
   const sessionIdRef = useRef("");
+  const sessionStartTsRef = useRef<number>(0);
+  const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ── Shared helpers ──────────────────────────────────────────────────────────
 
@@ -174,7 +188,23 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
       const data = await res.json();
       console.log(`[WebRTC] Tool result (${toolName}):`, data.result);
 
-      // Send tool output back to OpenAI via data channel
+      let parsed: any = null;
+      try { parsed = JSON.parse(data.result); } catch { /* not JSON */ }
+
+      if (parsed?.status === "REQUIRES_CONFIRMATION" && parsed.confirmation) {
+        setPendingConfirmation({ ...parsed.confirmation, call_id: callId });
+        dc.send(JSON.stringify({
+          type: "conversation.item.create",
+          item: {
+            type: "function_call_output",
+            call_id: callId,
+            output: `Waiting for user confirmation for ${toolName}. Tell the user you need their confirmation before proceeding.`,
+          },
+        }));
+        dc.send(JSON.stringify({ type: "response.create" }));
+        return;
+      }
+
       dc.send(JSON.stringify({
         type: "conversation.item.create",
         item: {
@@ -185,7 +215,6 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
       }));
       dc.send(JSON.stringify({ type: "response.create" }));
 
-      // Handle order commands locally
       if (data.command) {
         commandHandlerRef.current?.([data.command]);
       }
@@ -366,6 +395,23 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
       dc.onopen = () => {
         console.log("[WebRTC] Data channel open");
         isRunning.current = true;
+        sessionStartTsRef.current = Date.now();
+
+        if (heartbeatIntervalRef.current) clearInterval(heartbeatIntervalRef.current);
+        heartbeatIntervalRef.current = setInterval(() => {
+          if (!sessionIdRef.current || !sessionStartTsRef.current) return;
+          const baseUrl = getBaseUrl();
+          const headers: Record<string, string> = { "Content-Type": "application/json" };
+          if (authTokenRef.current) headers["Authorization"] = `Bearer ${authTokenRef.current}`;
+          fetch(`${baseUrl}api/realtime/session/${sessionIdRef.current}/heartbeat`, {
+            method: "POST",
+            headers,
+            body: JSON.stringify({
+              elapsedMs: Date.now() - sessionStartTsRef.current,
+              venueId: venueIdRef.current || undefined,
+            }),
+          }).catch(() => {});
+        }, 60_000);
       };
 
       dc.onmessage = (e) => handleDcEvent(e.data);
@@ -414,11 +460,38 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
 
   // ── Disconnect ─────────────────────────────────────────────────────────────
 
+  const sendSessionEnd = useCallback(() => {
+    if (!sessionIdRef.current || !sessionStartTsRef.current) return;
+    const durationMs = Date.now() - sessionStartTsRef.current;
+    if (durationMs <= 0) return;
+    const baseUrl = getBaseUrl();
+    const payload = JSON.stringify({
+      durationMs,
+      venueId: venueIdRef.current || undefined,
+    });
+    const url = `${baseUrl}api/realtime/session/${sessionIdRef.current}/end`;
+
+    if (typeof navigator.sendBeacon === "function") {
+      navigator.sendBeacon(url, new Blob([payload], { type: "application/json" }));
+    } else {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (authTokenRef.current) headers["Authorization"] = `Bearer ${authTokenRef.current}`;
+      fetch(url, { method: "POST", headers, body: payload, keepalive: true }).catch(() => {});
+    }
+  }, []);
+
   const disconnect = useCallback(async () => {
+    if (heartbeatIntervalRef.current) {
+      clearInterval(heartbeatIntervalRef.current);
+      heartbeatIntervalRef.current = null;
+    }
+
+    sendSessionEnd();
+
     isRunning.current = false;
     agentStateRef.current = "disconnected";
+    sessionStartTsRef.current = 0;
 
-    // Stop all tracks
     pcRef.current?.getSenders().forEach((sender) => {
       sender.track?.stop();
     });
@@ -436,7 +509,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
 
     setRemoteStream(null);
     setAgentState("disconnected");
-  }, []);
+  }, [sendSessionEnd]);
 
   const interrupt = useCallback(() => {
     const dc = dcRef.current;
@@ -451,13 +524,71 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
     setPartialTranscript("");
   }, []);
 
+  useEffect(() => {
+    const handler = () => sendSessionEnd();
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [sendSessionEnd]);
+
   const isConnected = agentState !== "disconnected" && agentState !== "error";
+
+  const confirmPending = useCallback(() => {
+    const conf = pendingConfirmation;
+    if (!conf) return;
+    setPendingConfirmation(null);
+    const dc = dcRef.current;
+    if (!dc || dc.readyState !== "open") return;
+    const baseUrl = getBaseUrl();
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (authTokenRef.current) headers["Authorization"] = `Bearer ${authTokenRef.current}`;
+    fetch(`${baseUrl}api/realtime/tools`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        session_id: sessionIdRef.current,
+        tool_name: conf.tool_name,
+        arguments: conf.args,
+        confirmed: true,
+        catalog: catalogRef.current,
+        order: currentOrderRef.current,
+        venueId: venueIdRef.current || undefined,
+        agentProfileId: agentProfileIdRef.current || undefined,
+      }),
+    }).then(r => r.json()).then(data => {
+      dc.send(JSON.stringify({
+        type: "conversation.item.create",
+        item: { type: "function_call_output", call_id: conf.call_id, output: data.result ?? "Confirmed and executed." },
+      }));
+      dc.send(JSON.stringify({ type: "response.create" }));
+      if (data.command) commandHandlerRef.current?.([data.command]);
+    }).catch(e => {
+      dc.send(JSON.stringify({
+        type: "conversation.item.create",
+        item: { type: "function_call_output", call_id: conf.call_id, output: `Error: ${e.message}` },
+      }));
+      dc.send(JSON.stringify({ type: "response.create" }));
+    });
+  }, [pendingConfirmation]);
+
+  const denyPending = useCallback(() => {
+    const conf = pendingConfirmation;
+    if (!conf) return;
+    setPendingConfirmation(null);
+    const dc = dcRef.current;
+    if (!dc || dc.readyState !== "open") return;
+    dc.send(JSON.stringify({
+      type: "conversation.item.create",
+      item: { type: "function_call_output", call_id: conf.call_id, output: "User declined this action." },
+    }));
+    dc.send(JSON.stringify({ type: "response.create" }));
+  }, [pendingConfirmation]);
 
   return (
     <VoiceAgentContext.Provider value={{
       agentState, isConnected, conversation, partialTranscript, error, remoteStream,
-      connect, disconnect, clearConversation, setToolHandler, interrupt,
+      pendingConfirmation, connect, disconnect, clearConversation, setToolHandler, interrupt,
       setCatalog, setCurrentOrder, setSquareCredentials, setAuthParams,
+      confirmPending, denyPending,
     }}>
       {children}
     </VoiceAgentContext.Provider>

@@ -1,6 +1,18 @@
-import { pgTable, text, serial, timestamp, integer, index, jsonb, boolean, uuid } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, index, jsonb, boolean, uuid, customType } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+
+export const vector = customType<{ data: number[]; driverParam: string }>({
+  dataType() {
+    return "vector(1536)";
+  },
+  toDriver(value: number[]): string {
+    return `[${value.join(",")}]`;
+  },
+  fromDriver(value: string): number[] {
+    return JSON.parse(value.replace("(", "[").replace(")", "]"));
+  },
+});
 
 // ── Users ─────────────────────────────────────────────────────────────────────
 
@@ -239,8 +251,8 @@ export const usageEventsTable = pgTable("usage_events", {
 
 // -- Knowledge Base ------------------------------------------------------------
 // User-uploaded text documents that the general assistant can search via the
-// search_knowledge tool. Embeddings are stored as JSONB number[] so we can
-// run cosine similarity in JS without requiring pgvector.
+// search_knowledge tool. Embeddings are stored as pgvector vector(1536) columns
+// with an HNSW index for fast cosine similarity search.
 
 export const knowledgeDocumentsTable = pgTable("knowledge_documents", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -266,8 +278,7 @@ export const knowledgeChunksTable = pgTable("knowledge_chunks", {
   venueId: integer("venue_id").references(() => venuesTable.id, { onDelete: "cascade" }),
   chunkIndex: integer("chunk_index").notNull(),
   text: text("text").notNull(),
-  /** OpenAI text-embedding-3-small produces 1536 floats. Stored as number[]. */
-  embedding: jsonb("embedding").notNull().default([]),
+  embedding: vector("embedding").notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (table) => [
   index("knowledge_chunks_document_idx").on(table.documentId),
