@@ -264,9 +264,18 @@ router.post("/signup", async (req: Request, res: Response): Promise<void> => {
     await db.insert(sessionsTable).values({ id: sessionId, userId: user.id, expiresAt });
 
     const token = signToken(user.id, sessionId);
+
+    let organizationId: string | null = null;
+    try {
+      const { ensureUserOrganization } = await import("./v1/_helpers");
+      const org = await ensureUserOrganization(user);
+      organizationId = org.id;
+    } catch { /* org tables may not exist yet */ }
+
     res.json({
       token,
       user: { id: user.id, email: user.email, name: user.name, isAdmin },
+      organizationId,
       trialEndsAt,
       isAdmin,
     });
@@ -300,10 +309,19 @@ router.post("/login", async (req: Request, res: Response): Promise<void> => {
     if (isAdmin) await ensureAdminSubscription(user.id);
     let [subscription] = await db.select().from(subscriptionsTable).where(eq(subscriptionsTable.userId, user.id));
     if (!subscription && isAdmin) subscription = buildAdminSubscription(user.id) as never;
+
+    let organizationId: string | null = null;
+    try {
+      const { ensureUserOrganization } = await import("./v1/_helpers");
+      const org = await ensureUserOrganization(user);
+      organizationId = org.id;
+    } catch { /* org tables may not exist yet */ }
+
     res.json({
       token,
       user: { id: user.id, email: user.email, name: user.name, isAdmin },
       subscription: subscription ?? null,
+      organizationId,
       isAdmin,
     });
   } catch (e: any) {

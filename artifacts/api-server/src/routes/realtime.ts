@@ -632,6 +632,7 @@ router.post("/demo-bar-session", async (req: any, res: any) => {
     res.json({
       id: data.session?.id ?? "",
       client_secret: { value: data.value, expires_at: data.expires_at },
+      model: OPENAI_REALTIME_MODEL,
       instructions,
       catalog: MOCK_BAR_CATALOG,
     });

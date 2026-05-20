@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useLocation } from "wouter";
+import { Link, useLocation, useParams, useSearch } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { useVenues } from "@/hooks/use-venues";
 import {
@@ -14,15 +14,32 @@ import {
 
 const VOICES = [
   { id: "verse", label: "Verse", gender: "male" },
-  { id: "ballad", label: "Ballad", gender: "female" },
+  { id: "ballad", label: "Ballad", gender: "male" },
   { id: "ash", label: "Ash", gender: "male" },
   { id: "coral", label: "Coral", gender: "female" },
 ] as const;
 
 const SAMPLE_LINE = "Hey, ready when you are. Two ranch waters and a Bud heavy?";
 
+interface AgentProfile {
+  id: string;
+  displayName: string;
+  venueId: number | null;
+  wakePhrase: string;
+  voicePipelineProvider: string;
+  voicePipelineConfig: Record<string, unknown>;
+  noiseMode: string;
+  personality: string;
+}
+
 export default function CreateAssistant() {
   const [, navigate] = useLocation();
+  const params = useParams<{ id?: string }>();
+  const searchString = useSearch();
+  const searchParams = new URLSearchParams(searchString);
+  const kind = searchParams.get("kind");
+  const editId = params?.id ?? null;
+
   const { data: auth, isLoading: authLoading } = useAuth();
   const { data: venues } = useVenues();
 
@@ -31,7 +48,6 @@ export default function CreateAssistant() {
   });
   const [venueId, setVenueId] = useState<number | null>(null);
   const [voice, setVoice] = useState("verse");
-
   const [noiseMode, setNoiseMode] = useState("restaurant");
   const [voicePipelineProvider] = useState("openai_realtime_webrtc");
   const [wakePhrase, setWakePhrase] = useState("Hey Voyce");
@@ -39,14 +55,44 @@ export default function CreateAssistant() {
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadingProfile, setLoadingProfile] = useState(!!editId);
 
   useEffect(() => {
     if (!authLoading && !auth) navigate("/login");
   }, [auth, authLoading, navigate]);
 
   useEffect(() => {
-    if (!venueId && venues && venues.length > 0) setVenueId(venues[0].id);
-  }, [venues, venueId]);
+    if (!editId) return;
+    (async () => {
+      try {
+        const token = localStorage.getItem("voycelab_token") || "";
+        const res = await fetch(`/api/v1/agent-profiles/${encodeURIComponent(editId)}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) throw new Error("Could not load assistant");
+        const data = await res.json();
+        const profile = (data.profile ?? data) as AgentProfile;
+        setName(profile.displayName);
+        setVenueId(profile.venueId);
+        setWakePhrase(profile.wakePhrase || "Hey Voyce");
+        setNoiseMode(profile.noiseMode || "restaurant");
+        setPersonality(profile.personality || "");
+        const cfg = profile.voicePipelineConfig as { voice?: string } | undefined;
+        if (cfg?.voice) setVoice(cfg.voice);
+      } catch {
+        setError("Could not load this assistant for editing.");
+      } finally {
+        setLoadingProfile(false);
+      }
+    })();
+  }, [editId]);
+
+  useEffect(() => {
+    if (editId) return;
+    if (!venueId && venues && venues.length > 0 && kind !== "general") {
+      setVenueId(venues[0].id);
+    }
+  }, [venues, venueId, kind, editId]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -73,8 +119,13 @@ export default function CreateAssistant() {
       };
       if (venueId) body.venueId = venueId;
 
-      const res = await fetch("/api/v1/agent-profiles", {
-        method: "POST",
+      const url = editId
+        ? `/api/v1/agent-profiles/${encodeURIComponent(editId)}`
+        : "/api/v1/agent-profiles";
+      const method = editId ? "PATCH" : "POST";
+
+      const res = await fetch(url, {
+        method,
         headers: {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -91,7 +142,7 @@ export default function CreateAssistant() {
         );
       }
       sessionStorage.removeItem("voycelab.pending_assistant_name");
-      navigate("/command");
+      navigate(editId ? "/assistants" : "/command");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save.");
     } finally {
@@ -99,7 +150,7 @@ export default function CreateAssistant() {
     }
   }
 
-  if (authLoading) {
+  if (authLoading || loadingProfile) {
     return (
       <div className="flex-1 flex items-center justify-center">
         <Loader2
@@ -109,6 +160,15 @@ export default function CreateAssistant() {
       </div>
     );
   }
+
+  const isGeneral = kind === "general" && !editId;
+  const pageTitle = editId ? "Edit assistant" : "New assistant";
+  const pageSubtitle = editId
+    ? "Update your assistant's name, voice, and behavior."
+    : isGeneral
+    ? "A general assistant for questions, notes, and connected data. You can connect Square later."
+    : "Name it, connect it, pick a voice. Everything else has sane defaults.";
+  const submitLabel = editId ? "Save changes" : "Create assistant";
 
   return (
     <div className="relative flex-1 overflow-hidden px-4 pb-20 pt-16 sm:px-6 lg:px-10">
@@ -138,18 +198,18 @@ export default function CreateAssistant() {
           </Link>
         </div>
 
-        <p className="vl-eyebrow">Create</p>
+        <p className="vl-eyebrow">{editId ? "Edit" : "Create"}</p>
         <h1
           className="vl-display mt-3 text-[34px]"
           style={{ color: "var(--color-vl-ink)" }}
         >
-          New assistant
+          {pageTitle}
         </h1>
         <p
           className="mt-2 text-[14px] leading-relaxed"
           style={{ color: "var(--color-vl-ink-muted)" }}
         >
-          Name it, connect it, pick a voice. Everything else has sane defaults.
+          {pageSubtitle}
         </p>
 
         <form onSubmit={handleSubmit} className="mt-8 space-y-6">
@@ -160,7 +220,7 @@ export default function CreateAssistant() {
               autoFocus
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Bev at the Den"
+              placeholder={isGeneral ? "My Business Assistant" : "Bev at the Den"}
               className="vl-input"
               maxLength={32}
               required
@@ -168,54 +228,78 @@ export default function CreateAssistant() {
           </label>
 
           {/* ── Connection ───────────────────────────────────── */}
-          <div>
-            <span className="vl-eyebrow block mb-1.5">Connection</span>
-            {venues && venues.length > 0 ? (
-              <div className="relative">
-                <select
-                  value={venueId ?? ""}
-                  onChange={(e) =>
-                    setVenueId(e.target.value ? Number(e.target.value) : null)
-                  }
-                  className="vl-input appearance-none pr-10"
+          {!isGeneral && (
+            <div>
+              <span className="vl-eyebrow block mb-1.5">Connection</span>
+              {venues && venues.length > 0 ? (
+                <div className="relative">
+                  <select
+                    value={venueId ?? ""}
+                    onChange={(e) =>
+                      setVenueId(e.target.value ? Number(e.target.value) : null)
+                    }
+                    className="vl-input appearance-none pr-10"
+                  >
+                    <option value="">No venue -- general assistant</option>
+                    {venues.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {v.name ?? v.squareLocationName ?? `Venue ${v.id}`}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown
+                    className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4"
+                    style={{ color: "var(--color-vl-ink-faint)" }}
+                  />
+                </div>
+              ) : (
+                <div
+                  className="vl-card p-4 text-[13px]"
+                  style={{ color: "var(--color-vl-ink-muted)" }}
                 >
-                  <option value="">No venue connected</option>
-                  {venues.map((v) => (
-                    <option key={v.id} value={v.id}>
-                      {v.name ?? v.squareLocationName ?? `Venue ${v.id}`}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown
-                  className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4"
-                  style={{ color: "var(--color-vl-ink-faint)" }}
-                />
-              </div>
-            ) : (
-              <div
-                className="vl-card p-4 text-[13px]"
-                style={{ color: "var(--color-vl-ink-muted)" }}
-              >
-                No venues connected yet.{" "}
+                  No venues connected yet.{" "}
+                  <Link
+                    href="/services"
+                    className="underline"
+                    style={{ color: "var(--color-vl-brass2)" }}
+                  >
+                    Connect Square
+                  </Link>{" "}
+                  to enable POS actions, or create a general assistant now.
+                </div>
+              )}
+              {venues && venues.length > 0 && (
                 <Link
                   href="/services"
-                  className="underline"
+                  className="inline-block mt-2 text-[12px] underline"
                   style={{ color: "var(--color-vl-brass2)" }}
                 >
-                  Connect a new venue
+                  Manage connections
                 </Link>
-              </div>
-            )}
-            {venues && venues.length > 0 && (
+              )}
+            </div>
+          )}
+
+          {isGeneral && (
+            <div
+              className="rounded-xl border p-4 text-[13px]"
+              style={{
+                color: "rgba(10,10,11,0.62)",
+                background: "rgba(199,210,254,0.12)",
+                borderColor: "rgba(99,102,241,0.12)",
+              }}
+            >
+              This assistant won't connect to Square. It can use your knowledge base, database, and email.{" "}
               <Link
                 href="/services"
-                className="inline-block mt-2 text-[12px] underline"
-                style={{ color: "var(--color-vl-brass2)" }}
+                className="underline"
+                style={{ color: "var(--color-vl-accent)" }}
               >
-                Connect a new venue
-              </Link>
-            )}
-          </div>
+                Connect Square later
+              </Link>{" "}
+              from Integrations.
+            </div>
+          )}
 
           {/* ── Voice ────────────────────────────────────────── */}
           <fieldset>
@@ -263,6 +347,9 @@ export default function CreateAssistant() {
                     style={{ color: "var(--color-vl-ink-faint)" }}
                   />
                 </div>
+                <p className="mt-1.5 text-[11.5px]" style={{ color: "rgba(10,10,11,0.42)" }}>
+                  Controls how aggressively the assistant filters background noise and when it starts listening.
+                </p>
               </label>
 
               <label className="block">
@@ -277,27 +364,18 @@ export default function CreateAssistant() {
               </label>
 
               <label className="block">
-                <span className="vl-eyebrow block mb-1.5">
-                  Voice pipeline provider
-                </span>
-                <input
-                  value={voicePipelineProvider}
-                  readOnly
-                  className="vl-input"
-                  style={{ opacity: 0.6 }}
-                />
-              </label>
-
-              <label className="block">
                 <span className="vl-eyebrow block mb-1.5">Personality</span>
                 <textarea
                   value={personality}
                   onChange={(e) => setPersonality(e.target.value)}
-                  placeholder="Optional personality instructions..."
+                  placeholder="Optional: describe how the assistant should behave, its tone, special knowledge..."
                   className="vl-input"
                   rows={3}
                   style={{ height: "auto", padding: "12px 16px" }}
                 />
+                <p className="mt-1.5 text-[11.5px]" style={{ color: "rgba(10,10,11,0.42)" }}>
+                  Add custom instructions the assistant will follow during every conversation.
+                </p>
               </label>
             </div>
           </details>
@@ -322,7 +400,7 @@ export default function CreateAssistant() {
               </>
             ) : (
               <>
-                <Check className="w-4 h-4" /> Create assistant
+                <Check className="w-4 h-4" /> {submitLabel}
               </>
             )}
           </button>
@@ -408,11 +486,11 @@ function VoiceOption({
       await audio.play();
       setPlayState("playing");
     } catch {
-      fallbackBrowserVoice(voiceId);
+      fallbackBrowserVoice();
     }
   }
 
-  function fallbackBrowserVoice(voiceName: string) {
+  function fallbackBrowserVoice() {
     if (!window.speechSynthesis) {
       setPlayState("error");
       return;

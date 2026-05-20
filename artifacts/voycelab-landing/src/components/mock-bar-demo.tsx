@@ -128,7 +128,8 @@ export function MockBarDemo() {
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
 
-      const sdpResp = await fetch("https://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-12-17", {
+      const realtimeModel = data.model ?? "gpt-4o-realtime-preview-2024-12-17";
+      const sdpResp = await fetch(`https://api.openai.com/v1/realtime?model=${encodeURIComponent(realtimeModel)}`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/sdp" },
         body: offer.sdp,

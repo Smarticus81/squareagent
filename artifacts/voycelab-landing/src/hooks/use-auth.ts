@@ -23,6 +23,7 @@ export const AuthResponseSchema = z.object({
   token: z.string(),
   user: UserSchema,
   subscription: SubscriptionSchema.nullable().optional(),
+  organizationId: z.string().nullable().optional(),
   trialEndsAt: z.string().nullable().optional(),
   isAdmin: z.boolean().optional(),
 });
@@ -104,10 +105,10 @@ export function useLogin() {
       return validated;
     },
     onSuccess: (data) => {
-      // Set auth data immediately so dashboard sees the user without a refetch race
       queryClient.setQueryData(["/api/auth/me"], {
         user: data.user,
         subscription: data.subscription ?? null,
+        organizationId: data.organizationId ?? null,
       });
     },
   });
@@ -135,6 +136,7 @@ export function useSignup() {
       queryClient.setQueryData(["/api/auth/me"], {
         user: data.user,
         subscription: data.subscription ?? null,
+        organizationId: data.organizationId ?? null,
       });
     },
   });
