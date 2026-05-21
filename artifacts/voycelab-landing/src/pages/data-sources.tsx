@@ -494,6 +494,29 @@ function EmailSection() {
     }
   };
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const raw = params.get("gmail_oauth_result");
+    if (!raw) return;
+
+    const url = new URL(window.location.href);
+    url.searchParams.delete("gmail_oauth_result");
+    window.history.replaceState({}, "", url.pathname + url.search);
+
+    try {
+      const payload = JSON.parse(raw);
+      if (payload.ok) {
+        setMsg({ tone: "ok", text: `Gmail connected as ${payload.email ?? "your account"}.` });
+        setProvider("gmail_oauth");
+        load();
+      } else {
+        setMsg({ tone: "error", text: payload.error || "Gmail authorization failed." });
+      }
+    } catch {
+      setMsg({ tone: "error", text: "Could not parse Gmail OAuth result." });
+    }
+  }, []);
+
   const connectGmail = async () => {
     setBusy(true);
     setMsg(null);
@@ -504,54 +527,9 @@ function EmailSection() {
       const data = await res.json();
       if (!res.ok || !data.url) throw new Error(data.error || "Failed to start Gmail OAuth");
 
-      // Clear any stale signal then open the popup.
-      try { localStorage.removeItem("voycelab_gmail_oauth_result"); } catch {}
-      const popup = window.open(data.url, "gmail-oauth", "width=520,height=640");
-      if (!popup) throw new Error("Popup blocked. Allow popups and try again.");
-      const popupRef = popup;
-
-      // Poll localStorage (works even if the popup ends up cross-origin temporarily).
-      await new Promise<void>((resolve, reject) => {
-        const start = Date.now();
-        const onMessage = (ev: MessageEvent) => {
-          if (ev.data?.type === "gmail-oauth-result") {
-            cleanup();
-            ev.data.ok ? resolve() : reject(new Error(ev.data.error || "Authorization failed"));
-          }
-        };
-        window.addEventListener("message", onMessage);
-        const interval = window.setInterval(() => {
-          try {
-            const raw = localStorage.getItem("voycelab_gmail_oauth_result");
-            if (raw) {
-              localStorage.removeItem("voycelab_gmail_oauth_result");
-              const payload = JSON.parse(raw);
-              cleanup();
-              payload.ok ? resolve() : reject(new Error(payload.error || "Authorization failed"));
-              return;
-            }
-          } catch {}
-          if (popupRef.closed && Date.now() - start > 1500) {
-            cleanup();
-            reject(new Error("Popup was closed before authorization completed."));
-          }
-          if (Date.now() - start > 5 * 60 * 1000) {
-            cleanup();
-            reject(new Error("Authorization timed out."));
-          }
-        }, 500);
-        function cleanup() {
-          window.removeEventListener("message", onMessage);
-          window.clearInterval(interval);
-          try { popupRef.close(); } catch {}
-        }
-      });
-
-      setMsg({ tone: "ok", text: "Gmail connected." });
-      await load();
+      window.location.href = data.url;
     } catch (err) {
       setMsg({ tone: "error", text: err instanceof Error ? err.message : "Connection failed" });
-    } finally {
       setBusy(false);
     }
   };

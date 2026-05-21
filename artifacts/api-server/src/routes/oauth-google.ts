@@ -4,8 +4,11 @@
  * - GET  /api/oauth/google/start    (auth required)  -> { url } popup target
  *                                                         user approves Gmail send scope
  * - GET  /api/oauth/google/callback                  -> token exchange + DB write,
- *                                                       returns popup HTML that
- *                                                       posts result to opener
+ *                                                       redirects to frontend with result
+ *
+ * The callback redirects to the frontend origin (not the API origin) so the popup
+ * shares the same origin as the parent window. This lets postMessage and localStorage
+ * work in both local dev (Vite on :5173, API on :8080) and production (single server).
  *
  * Refresh tokens are encrypted at rest in email_credentials.oauth_refresh_token.
  * The send_email tool (provider=gmail_oauth) uses googleapis to mint short-lived
@@ -38,9 +41,21 @@ function getRedirectUri(): string {
   if (process.env.RAILWAY_PUBLIC_DOMAIN) {
     return `https://${process.env.RAILWAY_PUBLIC_DOMAIN}/api/oauth/google/callback`;
   }
-  const domain = process.env.REPLIT_DEV_DOMAIN ?? `localhost:${process.env.PORT ?? 8080}`;
-  const protocol = domain.startsWith("localhost") ? "http" : "https";
-  return `${protocol}://${domain}/api/oauth/google/callback`;
+  const port = process.env.PORT ?? "8080";
+  return `http://localhost:${port}/api/oauth/google/callback`;
+}
+
+function getFrontendOrigin(req: Request): string {
+  const explicit = process.env.PUBLIC_BASE_URL ?? process.env.PUBLIC_API_URL ?? process.env.APP_URL;
+  if (explicit) return explicit.replace(/\/$/, "");
+  if (process.env.RAILWAY_PUBLIC_DOMAIN) {
+    return `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`;
+  }
+  const referer = req.headers.referer;
+  if (referer) {
+    try { return new URL(referer).origin; } catch {}
+  }
+  return `http://localhost:${process.env.PORT ?? "8080"}`;
 }
 
 function getOAuthClient() {
@@ -52,42 +67,7 @@ function getOAuthClient() {
   return new google.auth.OAuth2(clientId, clientSecret, getRedirectUri());
 }
 
-function popupHtml(payload: { ok: true; email: string } | { ok: false; error: string }): string {
-  const payloadB64 = Buffer.from(JSON.stringify({ type: "gmail-oauth-result", ...payload })).toString("base64");
-  const ok = payload.ok;
-  return `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>${ok ? "Gmail connected" : "Gmail authorization failed"}</title>
-  <style>
-    body { font-family: -apple-system, sans-serif; background: #FBF7F1; color: #0E1B2C;
-           display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
-    .card { text-align: center; padding: 32px; }
-    .icon { font-size: 48px; margin-bottom: 16px; }
-    p { color: rgba(14,27,44,0.62); margin-top: 8px; }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <div class="icon">${ok ? "✅" : "❌"}</div>
-    <h2>${ok ? "Gmail connected!" : "Authorization failed"}</h2>
-    <p>${ok ? "Closing window…" : "You can close this window and try again."}</p>
-  </div>
-  <script>
-    try {
-      var payload = JSON.parse(atob("${payloadB64}"));
-      localStorage.setItem("voycelab_gmail_oauth_result", JSON.stringify(payload));
-      if (window.opener) { window.opener.postMessage(payload, '*'); }
-    } catch(e) { console.error('Gmail OAuth signal failed', e); }
-    setTimeout(function() { try { window.close(); } catch(e) {} }, 1500);
-  </script>
-</body>
-</html>`;
-}
-
 // ── GET /api/oauth/google/start ──────────────────────────────────────────────
-// Requires auth. Returns a Google consent URL the client opens in a popup.
 
 router.get("/start", requireAuth as any, async (req: Request, res: Response): Promise<void> => {
   try {
@@ -96,15 +76,17 @@ router.get("/start", requireAuth as any, async (req: Request, res: Response): Pr
     const fromAddress = typeof req.query.from === "string" ? req.query.from.trim() : "";
     const fromName = typeof req.query.fromName === "string" ? req.query.fromName.trim() : "";
 
+    const frontendOrigin = getFrontendOrigin(req);
+
     const state = jwt.sign(
-      { uid: userId, fromAddress, fromName, kind: "gmail-oauth" },
+      { uid: userId, fromAddress, fromName, kind: "gmail-oauth", frontendOrigin },
       process.env.JWT_SECRET ?? "dev-secret",
       { expiresIn: STATE_TTL_SECONDS },
     );
 
     const url = client.generateAuthUrl({
       access_type: "offline",
-      prompt: "consent", // force a refresh token even on subsequent connects
+      prompt: "consent",
       scope: GMAIL_SCOPES,
       state,
       include_granted_scopes: true,
@@ -119,23 +101,35 @@ router.get("/start", requireAuth as any, async (req: Request, res: Response): Pr
 // ── GET /api/oauth/google/callback ───────────────────────────────────────────
 
 router.get("/callback", async (req: Request, res: Response): Promise<void> => {
-  const { code, state, error } = req.query as Record<string, string | undefined>;
+  const { code, state, error: oauthError } = req.query as Record<string, string | undefined>;
 
-  if (error) {
-    res.status(400).send(popupHtml({ ok: false, error }));
+  interface OAuthClaim { uid: number; fromAddress?: string; fromName?: string; frontendOrigin?: string }
+  let claim: OAuthClaim | null = null;
+  if (state) {
+    try {
+      claim = jwt.verify(state, process.env.JWT_SECRET ?? "dev-secret") as OAuthClaim;
+    } catch {}
+  }
+
+  const frontendOrigin = claim?.frontendOrigin ?? getFrontendOrigin(req);
+
+  function redirectWithResult(result: { ok: boolean; email?: string; error?: string }) {
+    const params = new URLSearchParams();
+    params.set("gmail_oauth_result", JSON.stringify({ type: "gmail-oauth-result", ...result }));
+    res.redirect(`${frontendOrigin}/data-sources?${params.toString()}`);
+  }
+
+  if (oauthError) {
+    redirectWithResult({ ok: false, error: oauthError });
     return;
   }
   if (!code || !state) {
-    res.status(400).send(popupHtml({ ok: false, error: "Missing code or state" }));
+    redirectWithResult({ ok: false, error: "Missing code or state" });
     return;
   }
 
-  let claim: { uid: number; fromAddress?: string; fromName?: string };
-  try {
-    claim = jwt.verify(state, process.env.JWT_SECRET ?? "dev-secret") as any;
-    if (!claim.uid) throw new Error("Invalid state payload");
-  } catch (e: any) {
-    res.status(400).send(popupHtml({ ok: false, error: "Invalid or expired state" }));
+  if (!claim || !claim.uid) {
+    redirectWithResult({ ok: false, error: "Invalid or expired state" });
     return;
   }
 
@@ -143,20 +137,19 @@ router.get("/callback", async (req: Request, res: Response): Promise<void> => {
     const client = getOAuthClient();
     const { tokens } = await client.getToken(code);
     if (!tokens.refresh_token) {
-      res.status(400).send(popupHtml({
+      redirectWithResult({
         ok: false,
         error: "Google did not return a refresh token. Revoke VoyceLab access in your Google Account and reconnect.",
-      }));
+      });
       return;
     }
     client.setCredentials(tokens);
 
-    // Resolve the authenticated Gmail address.
     const oauth2 = google.oauth2({ version: "v2", auth: client });
     const profile = await oauth2.userinfo.get();
     const email = profile.data.email ?? claim.fromAddress;
     if (!email) {
-      res.status(400).send(popupHtml({ ok: false, error: "Could not resolve Gmail address" }));
+      redirectWithResult({ ok: false, error: "Could not resolve Gmail address" });
       return;
     }
 
@@ -196,10 +189,10 @@ router.get("/callback", async (req: Request, res: Response): Promise<void> => {
       });
     }
 
-    res.send(popupHtml({ ok: true, email }));
+    redirectWithResult({ ok: true, email });
   } catch (e: any) {
     console.error("[Gmail OAuth] callback error:", e?.message ?? e);
-    res.status(500).send(popupHtml({ ok: false, error: e?.message ?? "Token exchange failed" }));
+    redirectWithResult({ ok: false, error: e?.message ?? "Token exchange failed" });
   }
 });
 
