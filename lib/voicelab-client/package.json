@@ -1,0 +1,28 @@
+{
+  "name": "@workspace/voicelab-client",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@9.15.9",
+  "engines": {
+    "node": "22"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./voice-termination": "./src/voice-termination.ts",
+    "./voice-prefs": "./src/voice-prefs.ts",
+    "./order-core": "./src/order-context-core.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --build"
+  },
+  "peerDependencies": {
+    "react": ">=18",
+    "react-dom": ">=18"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:"
+  }
+}

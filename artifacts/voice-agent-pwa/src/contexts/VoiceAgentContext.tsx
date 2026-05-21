@@ -29,6 +29,14 @@ export interface OrderCommand {
 
 export type CommandHandler = (commands: OrderCommand[]) => void;
 
+export interface PendingConfirmation {
+  tool_name: string;
+  args: Record<string, unknown>;
+  risk_level: string;
+  prompt: string;
+  call_id: string;
+}
+
 interface VoiceAgentContextType {
   agentState: AgentState;
   isConnected: boolean;
@@ -36,6 +44,7 @@ interface VoiceAgentContextType {
   partialTranscript: string;
   error: string | null;
   remoteStream: MediaStream | null;
+  pendingConfirmation: PendingConfirmation | null;
   connect: () => Promise<void>;
   disconnect: () => Promise<void>;
   clearConversation: () => void;
@@ -45,6 +54,8 @@ interface VoiceAgentContextType {
   setCurrentOrder: (order: unknown[]) => void;
   setSquareCredentials: (token: string, locationId: string) => void;
   setAuthParams: (venueId: string, authToken: string, agentProfileId?: string) => void;
+  confirmPending: () => void;
+  denyPending: () => void;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -62,6 +73,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
   const [partialTranscript, setPartialTranscript] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+  const [pendingConfirmation, setPendingConfirmation] = useState<PendingConfirmation | null>(null);
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const dcRef = useRef<RTCDataChannel | null>(null);
@@ -77,6 +89,8 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
   const isRunning = useRef(false);
   const agentStateRef = useRef<AgentState>("disconnected");
   const sessionIdRef = useRef("");
+  const sessionStartTsRef = useRef<number>(0);
+  const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ── Shared helpers ──────────────────────────────────────────────────────────
 
@@ -111,17 +125,19 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
 
 
   // ── Send context update to OpenAI via data channel ──────────────────────────
+  // Server is authoritative for persona/instructions. Client only pushes
+  // dynamic catalog/order snapshots as system-level input text items so the
+  // model stays current without overwriting the server-built instructions.
 
   const sendContextUpdate = useCallback(() => {
     const dc = dcRef.current;
     if (!dc || dc.readyState !== "open") return;
 
     const catalog = catalogRef.current as Array<{ name: string; price: number; category?: string }>;
-
     const catalogStr =
       catalog.length > 0
         ? catalog.map((c) => `  - ${c.name}: $${c.price.toFixed(2)}${c.category ? ` (${c.category})` : ""}`).join("\n")
-        : "  (No catalog loaded — connect Square first)";
+        : "  (No catalog loaded)";
 
     const order = currentOrderRef.current as Array<{ quantity: number; item_name: string; price: number }>;
     const orderStr =
@@ -129,72 +145,12 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
         ? order.map((i) => `  - ${i.quantity}x ${i.item_name} @ $${i.price.toFixed(2)}`).join("\n")
         : "  (empty)";
 
-    const instructions = `You are VoyceLab, a comprehensive voice assistant for bars and venues running on Square. You have FULL access to the Square platform — ordering, inventory, catalog management, customer profiles, payments, team management, reporting, and more.
-
-Catalog:
-${catalogStr}
-
-Current order:
-${orderStr}
-
-Persona:
-- Sharp, knowledgeable, confident. You're the venue's operations brain.
-- Speak like bar staff: short, punchy, no fluff. Default to one short sentence; use two only if needed.
-- NEVER repeat the order back or read items back unless the user explicitly asks ("what's on the ticket", "read that back", "what do I have").
-- NEVER ask "is that right?" or "sound good?" after adding items. Just do it and confirm with a few words.
-- Keep confirmations ultra-tight: "Got it", "Done", "Added", "On there". Prefer 2 to 6 words.
-- Understand bartender slang: "86 it" = remove/out of stock, "ring it up" / "close it out" = submit, "tab it" = add to order, "what's on the ticket" = get order, "comp it" = 100% discount, "who's on" = current shifts.
-- Understand inventory terms: "we got a case of" = add 24, "count" = check levels.
-
-POS Rules:
-- Add items only on clear intent ("two Fosters", "tab a Bud Light").
-- When adding items, just confirm briefly: "Got it" or "Added". Do NOT repeat what was added or list the order.
-- Never submit until they say so ("ring it up", "close it out", "that's it"). When they do, just confirm the total — don't read back every item.
-- If browsing or chatting, just talk — don't push items.
-- Menu questions: mention a few options, don't dump the whole list.
-- If something's not on the menu, suggest what's close.
-- Say prices naturally: "eight fifty" not "$8.50". Never say "dollar sign".
-- Items appear on the Square POS in real-time — a one-word acknowledgment is enough.
-- If they want to pay by card, use send_to_terminal. Say "sent to the terminal, tap when ready".
-
-Catalog Management:
-- You can create, update, and delete menu items in Square.
-- Only confirm before destructive actions like deleting items. For creates and updates, just do it.
-- When updating prices, briefly state the change: "IPA moved to nine fifty."
-
-Inventory Rules:
-- For single-item adjustments, just do it. No need to confirm unless the quantity sounds unusual.
-- For bulk operations, briefly state what you'll do, then execute.
-- Low stock alerts: proactively mention if an item drops below 5 units after an adjustment.
-- Say numbers clearly: "twenty-four" not "24".
-- Understand bulk language: "case of" = 24, "keg" = context-dependent.
-
-Customers & Payments:
-- You can search/create/update customer profiles.
-- You can list payments, issue refunds, and cancel pending payments.
-- Confirm refund amounts before executing (destructive).
-
-Team & Shifts:
-- You can list team members, see who's clocked in, clock people in/out.
-- Present shift info naturally: "Jake's been on since two."
-
-Reports:
-- Sales reports: today, yesterday, this week, last 7 days, this month.
-- Present numbers naturally: "you did forty-two orders, twelve hundred in revenue."
-- Top sellers, hourly breakdowns, item performance, daily summaries available.
-- Lead with the headline: "Good shift — 47 orders, eighteen hundred revenue."
-
-General:
-- Noisy environment — ignore background chatter. Only respond to direct speech. If unclear, ask.
-- Only confirm before destructive actions (delete, refund). Everything else — just do it.
-- Do not repeat back, summarize, or over-explain. Act fast and keep responses minimal.
-- You have full Square access — use it confidently.`;
-
     dc.send(JSON.stringify({
-      type: "session.update",
-      session: {
-        type: "realtime",
-        instructions,
+      type: "conversation.item.create",
+      item: {
+        type: "message",
+        role: "system",
+        content: [{ type: "input_text", text: `[Context update]\n\nCatalog:\n${catalogStr}\n\nCurrent order:\n${orderStr}` }],
       },
     }));
   }, []);
@@ -232,7 +188,23 @@ General:
       const data = await res.json();
       console.log(`[WebRTC] Tool result (${toolName}):`, data.result);
 
-      // Send tool output back to OpenAI via data channel
+      let parsed: any = null;
+      try { parsed = JSON.parse(data.result); } catch { /* not JSON */ }
+
+      if (parsed?.status === "REQUIRES_CONFIRMATION" && parsed.confirmation) {
+        setPendingConfirmation({ ...parsed.confirmation, call_id: callId });
+        dc.send(JSON.stringify({
+          type: "conversation.item.create",
+          item: {
+            type: "function_call_output",
+            call_id: callId,
+            output: `Waiting for user confirmation for ${toolName}. Tell the user you need their confirmation before proceeding.`,
+          },
+        }));
+        dc.send(JSON.stringify({ type: "response.create" }));
+        return;
+      }
+
       dc.send(JSON.stringify({
         type: "conversation.item.create",
         item: {
@@ -243,7 +215,6 @@ General:
       }));
       dc.send(JSON.stringify({ type: "response.create" }));
 
-      // Handle order commands locally
       if (data.command) {
         commandHandlerRef.current?.([data.command]);
       }
@@ -424,6 +395,23 @@ General:
       dc.onopen = () => {
         console.log("[WebRTC] Data channel open");
         isRunning.current = true;
+        sessionStartTsRef.current = Date.now();
+
+        if (heartbeatIntervalRef.current) clearInterval(heartbeatIntervalRef.current);
+        heartbeatIntervalRef.current = setInterval(() => {
+          if (!sessionIdRef.current || !sessionStartTsRef.current) return;
+          const baseUrl = getBaseUrl();
+          const headers: Record<string, string> = { "Content-Type": "application/json" };
+          if (authTokenRef.current) headers["Authorization"] = `Bearer ${authTokenRef.current}`;
+          fetch(`${baseUrl}api/realtime/session/${sessionIdRef.current}/heartbeat`, {
+            method: "POST",
+            headers,
+            body: JSON.stringify({
+              elapsedMs: Date.now() - sessionStartTsRef.current,
+              venueId: venueIdRef.current || undefined,
+            }),
+          }).catch(() => {});
+        }, 60_000);
       };
 
       dc.onmessage = (e) => handleDcEvent(e.data);
@@ -472,11 +460,38 @@ General:
 
   // ── Disconnect ─────────────────────────────────────────────────────────────
 
+  const sendSessionEnd = useCallback(() => {
+    if (!sessionIdRef.current || !sessionStartTsRef.current) return;
+    const durationMs = Date.now() - sessionStartTsRef.current;
+    if (durationMs <= 0) return;
+    const baseUrl = getBaseUrl();
+    const payload = JSON.stringify({
+      durationMs,
+      venueId: venueIdRef.current || undefined,
+    });
+    const url = `${baseUrl}api/realtime/session/${sessionIdRef.current}/end`;
+
+    if (typeof navigator.sendBeacon === "function") {
+      navigator.sendBeacon(url, new Blob([payload], { type: "application/json" }));
+    } else {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (authTokenRef.current) headers["Authorization"] = `Bearer ${authTokenRef.current}`;
+      fetch(url, { method: "POST", headers, body: payload, keepalive: true }).catch(() => {});
+    }
+  }, []);
+
   const disconnect = useCallback(async () => {
+    if (heartbeatIntervalRef.current) {
+      clearInterval(heartbeatIntervalRef.current);
+      heartbeatIntervalRef.current = null;
+    }
+
+    sendSessionEnd();
+
     isRunning.current = false;
     agentStateRef.current = "disconnected";
+    sessionStartTsRef.current = 0;
 
-    // Stop all tracks
     pcRef.current?.getSenders().forEach((sender) => {
       sender.track?.stop();
     });
@@ -494,7 +509,7 @@ General:
 
     setRemoteStream(null);
     setAgentState("disconnected");
-  }, []);
+  }, [sendSessionEnd]);
 
   const interrupt = useCallback(() => {
     const dc = dcRef.current;
@@ -509,13 +524,71 @@ General:
     setPartialTranscript("");
   }, []);
 
+  useEffect(() => {
+    const handler = () => sendSessionEnd();
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [sendSessionEnd]);
+
   const isConnected = agentState !== "disconnected" && agentState !== "error";
+
+  const confirmPending = useCallback(() => {
+    const conf = pendingConfirmation;
+    if (!conf) return;
+    setPendingConfirmation(null);
+    const dc = dcRef.current;
+    if (!dc || dc.readyState !== "open") return;
+    const baseUrl = getBaseUrl();
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (authTokenRef.current) headers["Authorization"] = `Bearer ${authTokenRef.current}`;
+    fetch(`${baseUrl}api/realtime/tools`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        session_id: sessionIdRef.current,
+        tool_name: conf.tool_name,
+        arguments: conf.args,
+        confirmed: true,
+        catalog: catalogRef.current,
+        order: currentOrderRef.current,
+        venueId: venueIdRef.current || undefined,
+        agentProfileId: agentProfileIdRef.current || undefined,
+      }),
+    }).then(r => r.json()).then(data => {
+      dc.send(JSON.stringify({
+        type: "conversation.item.create",
+        item: { type: "function_call_output", call_id: conf.call_id, output: data.result ?? "Confirmed and executed." },
+      }));
+      dc.send(JSON.stringify({ type: "response.create" }));
+      if (data.command) commandHandlerRef.current?.([data.command]);
+    }).catch(e => {
+      dc.send(JSON.stringify({
+        type: "conversation.item.create",
+        item: { type: "function_call_output", call_id: conf.call_id, output: `Error: ${e.message}` },
+      }));
+      dc.send(JSON.stringify({ type: "response.create" }));
+    });
+  }, [pendingConfirmation]);
+
+  const denyPending = useCallback(() => {
+    const conf = pendingConfirmation;
+    if (!conf) return;
+    setPendingConfirmation(null);
+    const dc = dcRef.current;
+    if (!dc || dc.readyState !== "open") return;
+    dc.send(JSON.stringify({
+      type: "conversation.item.create",
+      item: { type: "function_call_output", call_id: conf.call_id, output: "User declined this action." },
+    }));
+    dc.send(JSON.stringify({ type: "response.create" }));
+  }, [pendingConfirmation]);
 
   return (
     <VoiceAgentContext.Provider value={{
       agentState, isConnected, conversation, partialTranscript, error, remoteStream,
-      connect, disconnect, clearConversation, setToolHandler, interrupt,
+      pendingConfirmation, connect, disconnect, clearConversation, setToolHandler, interrupt,
       setCatalog, setCurrentOrder, setSquareCredentials, setAuthParams,
+      confirmPending, denyPending,
     }}>
       {children}
     </VoiceAgentContext.Provider>

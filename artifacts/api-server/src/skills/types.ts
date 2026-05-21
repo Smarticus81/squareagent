@@ -36,8 +36,7 @@ export interface SkillDefinition {
  * Source of truth lives in @workspace/voicelab-core/pricing — this map is a
  * runtime-friendly snapshot for skills selection. The canonical mapping
  * (and the pipeline allowlist) is `getPlanSkillTiers` /
- * `getPlanAllowedPipelines` from the pricing module. Legacy plan ids are
- * kept here so existing subscriptions keep resolving correctly.
+ * `getPlanAllowedPipelines` from the pricing module.
  */
 export const PLAN_TIERS: Record<string, SkillTier[]> = {
   trial:          ["core", "standard", "premium"],
@@ -45,7 +44,4 @@ export const PLAN_TIERS: Record<string, SkillTier[]> = {
   professional:   ["core", "standard"],
   premium:        ["core", "standard", "premium"],
   enterprise:     ["core", "standard", "premium"],
-  pos_only:       ["core"],
-  inventory_only: ["core", "standard"],
-  complete:       ["core", "standard", "premium"],
 };

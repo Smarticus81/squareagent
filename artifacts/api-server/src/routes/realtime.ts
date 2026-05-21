@@ -14,13 +14,14 @@
 
 import { Router } from "express";
 import { requireAuth, requirePlan } from "./auth";
-import { db, agentProfilesTable, serviceConnectionsTable } from "@workspace/db";
+import { db, agentProfilesTable, serviceConnectionsTable, usageEventsTable } from "@workspace/db";
 import {
   PLANS,
   listConnectedServiceProviders,
   listVoicePipelineProviders,
 } from "@workspace/voicelab-core";
-import { eq } from "drizzle-orm";
+import { getNoiseModeBehavior, type NoiseMode } from "@workspace/voicelab-core/noise";
+import { eq, sql, and, gte } from "drizzle-orm";
 import {
   syncLiveOrderToSquare,
   cancelLiveOrder,
@@ -236,10 +237,57 @@ function buildDemoRealtimeSessionConfig(voice: string, speed: number) {
   };
 }
 
-function buildRealtimeSessionConfig(voice: string, speed: number, catalog: CatalogItem[], order: OrderItem[], plan?: string, assistantKind: "venue" | "general" = "venue") {
+function buildTurnDetection(noiseMode: NoiseMode): Record<string, unknown> | null {
+  switch (noiseMode) {
+    case "quiet_room":
+      return {
+        type: "semantic_vad",
+        eagerness: "high",
+        create_response: true,
+        interrupt_response: true,
+      };
+    case "restaurant":
+      return {
+        type: "semantic_vad",
+        eagerness: "auto",
+        create_response: true,
+        interrupt_response: true,
+      };
+    case "bar":
+      return {
+        type: "server_vad",
+        threshold: 0.55,
+        prefix_padding_ms: 400,
+        silence_duration_ms: 700,
+        create_response: true,
+        interrupt_response: true,
+      };
+    case "nightclub":
+      return {
+        type: "server_vad",
+        threshold: 0.75,
+        silence_duration_ms: 1200,
+        create_response: true,
+        interrupt_response: false,
+      };
+    case "event_venue":
+      return {
+        type: "server_vad",
+        threshold: 0.7,
+        create_response: true,
+        interrupt_response: true,
+      };
+    case "manual_push_to_talk":
+      return null;
+  }
+}
+
+function buildRealtimeSessionConfig(voice: string, speed: number, catalog: CatalogItem[], order: OrderItem[], plan?: string, assistantKind: "venue" | "general" = "venue", noiseMode: NoiseMode = "restaurant") {
   const skills = getSkillsForSession(plan ?? "trial", { kind: assistantKind });
   const tools = buildToolsFromSkills(skills);
   const instructions = buildInstructionsFromSkills(skills, catalog, order, assistantKind);
+
+  const turnDetection = buildTurnDetection(noiseMode);
 
   return {
     type: "realtime" as const,
@@ -248,25 +296,12 @@ function buildRealtimeSessionConfig(voice: string, speed: number, catalog: Catal
     tools,
     tool_choice: "auto" as const,
     output_modalities: ["audio" as const],
-    // Realtime prompting guide: "low" effort is the recommended starting point
-    // for production voice agents — keeps barge-in snappy while adding reasoning
-    // to tool dispatch and multi-step requests.
     reasoning: { effort: OPENAI_REALTIME_REASONING_EFFORT },
     audio: {
       input: {
         format: { type: "audio/pcm" as const, rate: 24000 as const },
         transcription: { model: "gpt-realtime-whisper" },
-        // semantic_vad with low eagerness lets the user finish a thought
-        // before the model takes a turn. The previous server_vad with a
-        // 300ms silence window was cutting users off mid-sentence whenever
-        // they paused to think, which felt like the agent was "cutting off
-        // every 3 seconds." See OpenAI Realtime prompting guide.
-        turn_detection: {
-          type: "semantic_vad" as const,
-          eagerness: "low" as const,
-          create_response: true,
-          interrupt_response: true,
-        },
+        turn_detection: turnDetection,
       },
       output: {
         format: { type: "audio/pcm" as const, rate: 24000 as const },
@@ -341,6 +376,289 @@ router.post("/demo-session", async (req: any, res: any) => {
   }
 });
 
+// ── Mock bar demo ─────────────────────────────────────────────────────────────
+
+const MOCK_BAR_CATALOG = [
+  { name: "Margarita", price: 12, category: "Cocktails" },
+  { name: "Ranch Water", price: 11, category: "Cocktails" },
+  { name: "Old Fashioned", price: 14, category: "Cocktails" },
+  { name: "Moscow Mule", price: 12, category: "Cocktails" },
+  { name: "Paloma", price: 11, category: "Cocktails" },
+  { name: "Modelo Especial", price: 7, category: "Beer" },
+  { name: "Corona", price: 7, category: "Beer" },
+  { name: "Dos Equis", price: 7, category: "Beer" },
+  { name: "Shiner Bock", price: 6, category: "Beer" },
+  { name: "IPA (House)", price: 8, category: "Beer" },
+  { name: "House Red", price: 13, category: "Wine" },
+  { name: "House White", price: 12, category: "Wine" },
+  { name: "Prosecco", price: 14, category: "Wine" },
+  { name: "Coke", price: 3, category: "Non-Alcoholic" },
+  { name: "Sprite", price: 3, category: "Non-Alcoholic" },
+  { name: "Topo Chico", price: 4, category: "Non-Alcoholic" },
+  { name: "Chips & Salsa", price: 8, category: "Food" },
+  { name: "Queso", price: 10, category: "Food" },
+  { name: "Wings (12)", price: 16, category: "Food" },
+  { name: "Loaded Nachos", price: 14, category: "Food" },
+] as const;
+
+const MOCK_BAR_PERSONA = `You are Bev, a bartender assistant for The Den, a demo bar. The user is trying VoyceLab on the marketing site. Help them try natural commands like 'two margaritas and a Modelo'. Keep replies under 6 words. Be warm but efficient.`;
+
+const catalogNames = MOCK_BAR_CATALOG.map((i) => i.name);
+const catalogList = MOCK_BAR_CATALOG.map((i) => `${i.name} ($${i.price}, ${i.category})`).join(", ");
+
+const MOCK_BAR_TOOLS = [
+  {
+    type: "function" as const,
+    name: "add_item",
+    description: `Add item(s) to the order. Available items: ${catalogList}`,
+    parameters: {
+      type: "object",
+      properties: {
+        item_name: { type: "string", description: "Item name from the menu" },
+        quantity: { type: "number", description: "How many to add (default 1)" },
+      },
+      required: ["item_name"],
+    },
+  },
+  {
+    type: "function" as const,
+    name: "remove_item",
+    description: "Remove item(s) from the current order.",
+    parameters: {
+      type: "object",
+      properties: {
+        item_name: { type: "string", description: "Item name to remove" },
+        quantity: { type: "number", description: "How many to remove (default 1)" },
+      },
+      required: ["item_name"],
+    },
+  },
+  {
+    type: "function" as const,
+    name: "get_order",
+    description: "Show the current order with all items and running total.",
+    parameters: { type: "object", properties: {} },
+  },
+  {
+    type: "function" as const,
+    name: "clear_order",
+    description: "Clear all items from the current order.",
+    parameters: { type: "object", properties: {} },
+  },
+  {
+    type: "function" as const,
+    name: "search_menu",
+    description: "Search the menu by name or category.",
+    parameters: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Search term (item name or category)" },
+      },
+      required: ["query"],
+    },
+  },
+];
+
+interface MockOrderItem {
+  name: string;
+  price: number;
+  quantity: number;
+  category: string;
+}
+
+const mockBarOrders = new Map<string, { items: MockOrderItem[]; lastAccess: number }>();
+
+setInterval(() => {
+  const cutoff = Date.now() - 10 * 60 * 1000;
+  for (const [id, entry] of mockBarOrders) {
+    if (entry.lastAccess < cutoff) mockBarOrders.delete(id);
+  }
+}, 60_000);
+
+function fuzzyMatch(input: string): (typeof MOCK_BAR_CATALOG)[number] | undefined {
+  const q = input.toLowerCase().trim();
+  const exact = MOCK_BAR_CATALOG.find((i) => i.name.toLowerCase() === q);
+  if (exact) return exact;
+  const partial = MOCK_BAR_CATALOG.find((i) => i.name.toLowerCase().includes(q));
+  if (partial) return partial;
+  return MOCK_BAR_CATALOG.find((i) => q.includes(i.name.toLowerCase()));
+}
+
+function getMockOrder(sessionId: string): MockOrderItem[] {
+  let entry = mockBarOrders.get(sessionId);
+  if (!entry) {
+    entry = { items: [], lastAccess: Date.now() };
+    mockBarOrders.set(sessionId, entry);
+  }
+  entry.lastAccess = Date.now();
+  return entry.items;
+}
+
+function executeMockBarTool(
+  sessionId: string,
+  toolName: string,
+  args: Record<string, unknown>,
+): { result: string; order: MockOrderItem[] } {
+  const items = getMockOrder(sessionId);
+
+  switch (toolName) {
+    case "add_item": {
+      const match = fuzzyMatch(String(args.item_name ?? ""));
+      if (!match) return { result: `Item "${args.item_name}" not found on menu.`, order: items };
+      const qty = Math.max(1, Math.min(20, Number(args.quantity) || 1));
+      const existing = items.find((i) => i.name === match.name);
+      if (existing) {
+        existing.quantity += qty;
+      } else {
+        items.push({ name: match.name, price: match.price, quantity: qty, category: match.category });
+      }
+      const total = items.reduce((s, i) => s + i.price * i.quantity, 0);
+      return { result: `Added ${qty}x ${match.name}. Total: $${total}.`, order: items };
+    }
+    case "remove_item": {
+      const match = fuzzyMatch(String(args.item_name ?? ""));
+      if (!match) return { result: `Item "${args.item_name}" not found on menu.`, order: items };
+      const qty = Math.max(1, Number(args.quantity) || 1);
+      const idx = items.findIndex((i) => i.name === match.name);
+      if (idx === -1) return { result: `${match.name} is not on the order.`, order: items };
+      items[idx].quantity -= qty;
+      if (items[idx].quantity <= 0) items.splice(idx, 1);
+      const total = items.reduce((s, i) => s + i.price * i.quantity, 0);
+      return { result: `Removed ${qty}x ${match.name}. Total: $${total}.`, order: items };
+    }
+    case "get_order": {
+      if (items.length === 0) return { result: "Order is empty.", order: items };
+      const lines = items.map((i) => `${i.quantity}x ${i.name} ($${i.price * i.quantity})`);
+      const total = items.reduce((s, i) => s + i.price * i.quantity, 0);
+      return { result: `Order: ${lines.join(", ")}. Total: $${total}.`, order: items };
+    }
+    case "clear_order": {
+      items.length = 0;
+      return { result: "Order cleared.", order: items };
+    }
+    case "search_menu": {
+      const q = String(args.query ?? "").toLowerCase();
+      const matches = MOCK_BAR_CATALOG.filter(
+        (i) => i.name.toLowerCase().includes(q) || i.category.toLowerCase().includes(q),
+      );
+      if (matches.length === 0) return { result: `No items matching "${args.query}".`, order: items };
+      const list = matches.map((i) => `${i.name} ($${i.price})`).join(", ");
+      return { result: `Found: ${list}`, order: items };
+    }
+    default:
+      return { result: `Unknown tool: ${toolName}`, order: items };
+  }
+}
+
+router.post("/demo-bar-session", async (req: any, res: any) => {
+  if (process.env.VOYCELAB_DEMO_ENABLED === "0" || process.env.VOYCELAB_DEMO_ENABLED === "false") {
+    res.status(503).json({ error: "demo_disabled", detail: "Voice demo is temporarily unavailable." });
+    return;
+  }
+
+  const apiKey = process.env.OPENAI_API_KEY ?? process.env.AI_INTEGRATIONS_OPENAI_API_KEY ?? "";
+  if (!apiKey) {
+    res.status(503).json({ error: "demo_unavailable", detail: "Voice demo is not configured." });
+    return;
+  }
+
+  const ip = clientIp(req);
+  if (!demoRateLimitOk(ip, false)) {
+    res.status(429).json({
+      error: "too_many_requests",
+      detail: "Too many demo sessions from this network. Try again in a few minutes.",
+    });
+    return;
+  }
+
+  const { voice = "coral", speed = 1.05 } = req.body ?? {};
+  const voiceStr = typeof voice === "string" ? voice : "coral";
+  const speedNum =
+    typeof speed === "number" && Number.isFinite(speed) && speed >= 0.75 && speed <= 1.35 ? speed : 1.05;
+
+  const instructions = MOCK_BAR_PERSONA;
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+
+    const response = await fetch("https://api.openai.com/v1/realtime/client_secrets", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      signal: controller.signal,
+      body: JSON.stringify({
+        session: {
+          type: "realtime" as const,
+          model: OPENAI_REALTIME_MODEL,
+          instructions,
+          tools: MOCK_BAR_TOOLS,
+          tool_choice: "auto" as const,
+          output_modalities: ["audio" as const],
+          reasoning: { effort: OPENAI_REALTIME_REASONING_EFFORT },
+          audio: {
+            input: {
+              format: { type: "audio/pcm" as const, rate: 24000 as const },
+              transcription: { model: "gpt-realtime-whisper" },
+              turn_detection: {
+                type: "semantic_vad" as const,
+                eagerness: "low" as const,
+                create_response: true,
+                interrupt_response: true,
+              },
+            },
+            output: {
+              format: { type: "audio/pcm" as const, rate: 24000 as const },
+              voice: voiceStr,
+              speed: speedNum,
+            },
+          },
+        },
+      }),
+    });
+    clearTimeout(timeout);
+
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error("[Realtime] Demo bar ephemeral token failed:", errText);
+      res.status(response.status).json({ error: "demo_session_failed", detail: errText });
+      return;
+    }
+
+    const data = (await response.json()) as any;
+    demoRateLimitOk(ip);
+    res.json({
+      id: data.session?.id ?? "",
+      client_secret: { value: data.value, expires_at: data.expires_at },
+      model: OPENAI_REALTIME_MODEL,
+      instructions,
+      catalog: MOCK_BAR_CATALOG,
+    });
+  } catch (e: any) {
+    console.error("[Realtime] Demo bar session error:", e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.post("/demo-bar-tools", async (req: any, res: any) => {
+  const ip = clientIp(req);
+  if (!demoRateLimitOk(ip, false)) {
+    res.status(429).json({ error: "too_many_requests", detail: "Rate limited." });
+    return;
+  }
+
+  const { session_id, tool_name, arguments: args = {} } = req.body ?? {};
+  if (!tool_name || !session_id) {
+    res.status(400).json({ error: "session_id and tool_name are required" });
+    return;
+  }
+
+  const { result, order } = executeMockBarTool(String(session_id), String(tool_name), args as Record<string, unknown>);
+  res.json({ result, order });
+});
+
 // ── POST /session — Mint ephemeral OpenAI token ───────────────────────────────
 
 router.post("/session", requireAuth as any, requirePlan() as any, async (req: any, res: any) => {
@@ -348,6 +666,33 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
   if (!apiKey) {
     res.status(500).json({ error: "OpenAI API key not configured" });
     return;
+  }
+
+  const plan = req.subscription?.plan ?? "trial";
+  const PLAN_LIMITS: Record<string, number> = { trial: 100, starter: 250, professional: 1000, premium: 4000 };
+  const limit = PLAN_LIMITS[plan] ?? 100;
+  const overageCap = Math.floor(limit * 1.5);
+
+  try {
+    const periodStart = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const [usage] = await db
+      .select({ total: sql<number>`coalesce(sum(${usageEventsTable.quantity}), 0)` })
+      .from(usageEventsTable)
+      .where(and(
+        eq(usageEventsTable.userId, req.user.id),
+        eq(usageEventsTable.kind, "voice_minutes"),
+        gte(usageEventsTable.occurredAt, periodStart),
+      ));
+    const used = Number(usage?.total ?? 0);
+    if (used >= overageCap) {
+      res.status(429).json({
+        error: "usage_limit_exceeded",
+        detail: `You've used ${used} of ${limit} included minutes (${overageCap} overage cap). Upgrade your plan or wait for the next billing cycle.`,
+      });
+      return;
+    }
+  } catch {
+    // non-critical — allow session to proceed if usage check fails
   }
 
   const { voice = "ash", speed = 1.0, catalog = [], order = [], venueId, agentProfileId } = req.body ?? {};
@@ -363,7 +708,6 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
     }
   }
 
-  const plan = req.subscription?.plan ?? "trial";
   let provider = "openai_realtime_webrtc";
   let providerConfig: Record<string, unknown> = {};
   let assistantKind: "venue" | "general" = "venue";
@@ -412,6 +756,15 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
 
   console.log(`[Realtime] Creating session: plan=${plan}, provider=${provider}, skills=[${skillSummary(skills)}], venue=${venueId || "none"}`);
 
+  const sessionConfig = buildRealtimeSessionConfig(
+    String(providerConfig.voice ?? voice),
+    Number(providerConfig.speed ?? speed),
+    catalog,
+    order,
+    plan,
+    assistantKind,
+  );
+
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15000);
@@ -423,16 +776,7 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
         "Content-Type": "application/json",
       },
       signal: controller.signal,
-      body: JSON.stringify({
-        session: buildRealtimeSessionConfig(
-          String(providerConfig.voice ?? voice),
-          Number(providerConfig.speed ?? speed),
-          catalog,
-          order,
-          plan,
-          assistantKind,
-        ),
-      }),
+      body: JSON.stringify({ session: sessionConfig }),
     });
     clearTimeout(timeout);
 
@@ -444,10 +788,11 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
     }
 
     const data = (await response.json()) as any;
-    // Normalize GA response → shape the PWA client expects: { id, client_secret: { value } }
     res.json({
       id: data.session?.id ?? "",
       client_secret: { value: data.value, expires_at: data.expires_at },
+      instructions: sessionConfig.instructions,
+      assistantKind,
     });
   } catch (e: any) {
     console.error("[Realtime] Session error:", e.message);
@@ -511,6 +856,8 @@ router.post("/tools", requireAuth as any, requirePlan() as any, async (req: any,
     catalog = [],
     order = [],
     venueId,
+    confirmed,
+    agentProfileId,
   } = req.body ?? {};
 
   if (!tool_name) {
@@ -535,6 +882,18 @@ router.post("/tools", requireAuth as any, requirePlan() as any, async (req: any,
   const sessionId = String(session_id || `rt-${req.user.id}-${venueId ?? "general"}`);
   const session = getOrCreateSession(sessionId, squareToken, squareLocationId, req.user.id, Number(venueId ?? 0));
 
+  let noiseMode: import("@workspace/voicelab-core/noise").NoiseMode = "restaurant";
+  if (agentProfileId) {
+    const [profile] = await db
+      .select({ noiseMode: agentProfilesTable.noiseMode })
+      .from(agentProfilesTable)
+      .where(eq(agentProfilesTable.id, String(agentProfileId)))
+      .limit(1);
+    if (profile?.noiseMode) {
+      noiseMode = profile.noiseMode as typeof noiseMode;
+    }
+  }
+
   try {
     const squareClient = squareToken ? new SquareClient(squareToken, squareLocationId) : undefined;
     const assistantKind: "venue" | "general" = squareToken ? "venue" : "general";
@@ -552,6 +911,8 @@ router.post("/tools", requireAuth as any, requirePlan() as any, async (req: any,
         userId: req.user.id,
         venueId: Number(venueId),
         assistantKind,
+        noiseMode,
+        confirmed: confirmed === true,
       },
     );
 
@@ -702,6 +1063,64 @@ router.post("/test-sync", requireAuth as any, async (req: any, res: any) => {
       "Pull down to refresh the orders list after creating a voice order",
     ],
   });
+});
+
+// ── Voice-minute metering ─────────────────────────────────────────────────────
+
+interface HeartbeatEntry {
+  userId: number;
+  venueId: number;
+  lastHeartbeatMs: number;
+  startMs: number;
+}
+
+const heartbeatMap = new Map<string, HeartbeatEntry>();
+
+router.post("/session/:id/heartbeat", requireAuth as any, async (req: any, res: any) => {
+  const sessionId = req.params.id;
+  const { elapsedMs } = req.body ?? {};
+
+  const existing = heartbeatMap.get(sessionId);
+  if (existing) {
+    existing.lastHeartbeatMs = typeof elapsedMs === "number" ? elapsedMs : Date.now() - existing.startMs;
+  } else {
+    heartbeatMap.set(sessionId, {
+      userId: req.user.id,
+      venueId: Number(req.body?.venueId ?? 0),
+      lastHeartbeatMs: typeof elapsedMs === "number" ? elapsedMs : 0,
+      startMs: Date.now(),
+    });
+  }
+
+  res.sendStatus(200);
+});
+
+router.post("/session/:id/end", requireAuth as any, async (req: any, res: any) => {
+  const sessionId = req.params.id;
+  const { durationMs } = req.body ?? {};
+  const entry = heartbeatMap.get(sessionId);
+  const venueId = entry?.venueId ?? Number(req.body?.venueId ?? 0);
+
+  const effectiveDuration = typeof durationMs === "number" && durationMs > 0
+    ? durationMs
+    : entry?.lastHeartbeatMs ?? 0;
+
+  if (effectiveDuration > 0) {
+    try {
+      await db.insert(usageEventsTable).values({
+        kind: "voice_minutes",
+        userId: req.user.id,
+        venueId: venueId || null,
+        quantity: Math.ceil(effectiveDuration / 60000),
+        metadata: { durationMs: effectiveDuration, provider: "openai_realtime_webrtc" },
+      });
+    } catch {
+      // non-critical — don't fail the response
+    }
+  }
+
+  heartbeatMap.delete(sessionId);
+  res.sendStatus(200);
 });
 
 export default router;

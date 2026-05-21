@@ -13,6 +13,7 @@ import { Router, Request, Response } from "express";
 import { db, agentProfilesTable, venuesTable } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
 import { requireAuth } from "./auth";
+import { encrypt, decrypt } from "../lib/secrets";
 
 const router = Router();
 
@@ -94,7 +95,7 @@ router.post("/", requireAuth as any, async (req: Request, res: Response): Promis
       const [updated] = await db
         .update(venuesTable)
         .set({
-          squareAccessToken: accessToken,
+          squareAccessToken: encrypt(accessToken),
           squareMerchantId: merchantId || existing.squareMerchantId,
           squareLocationName: locationName || existing.squareLocationName,
           connectedAt: new Date(),
@@ -121,7 +122,7 @@ router.post("/", requireAuth as any, async (req: Request, res: Response): Promis
         .update(venuesTable)
         .set({
           name: name || locationName || existingMerchantVenue.name,
-          squareAccessToken: accessToken,
+          squareAccessToken: encrypt(accessToken),
           squareMerchantId: merchantId || existingMerchantVenue.squareMerchantId,
           squareLocationId: locationId,
           squareLocationName: locationName || existingMerchantVenue.squareLocationName,
@@ -152,7 +153,7 @@ router.post("/", requireAuth as any, async (req: Request, res: Response): Promis
       .values({
         userId: user.id,
         name: venueName,
-        squareAccessToken: accessToken,
+        squareAccessToken: encrypt(accessToken),
         squareMerchantId: merchantId || null,
         squareLocationId: locationId,
         squareLocationName: locationName || null,
@@ -203,6 +204,7 @@ router.delete("/:id", requireAuth as any, async (req: Request, res: Response): P
       try {
         const appId = process.env.SQUARE_APPLICATION_ID;
         if (appId) {
+          const plainToken = decrypt(venue.squareAccessToken);
           await fetch("https://connect.squareup.com/oauth2/revoke", {
             method: "POST",
             headers: {
@@ -212,7 +214,7 @@ router.delete("/:id", requireAuth as any, async (req: Request, res: Response): P
             },
             body: JSON.stringify({
               client_id: appId,
-              access_token: venue.squareAccessToken,
+              access_token: plainToken,
             }),
           });
         }
@@ -282,7 +284,7 @@ router.get("/:id/credentials", requireAuth as any, async (req: Request, res: Res
       : await profileQuery.orderBy(desc(agentProfilesTable.updatedAt)).limit(1);
 
     res.json({
-      accessToken: venue.squareAccessToken,
+      accessToken: decrypt(venue.squareAccessToken),
       locationId: venue.squareLocationId,
       locationName: venue.squareLocationName,
       merchantId: venue.squareMerchantId,
@@ -317,12 +319,13 @@ router.get("/:id/catalog", requireAuth as any, async (req: Request, res: Respons
       return;
     }
 
+    const plainToken = decrypt(venue.squareAccessToken);
     const items: any[] = [];
     let cursor: string | undefined;
 
     do {
       const url = `${SQUARE_BASE}/catalog/list?types=ITEM&include_deleted_objects=false${cursor ? `&cursor=${cursor}` : ""}`;
-      const response = await fetch(url, { headers: squareHeaders(venue.squareAccessToken) });
+      const response = await fetch(url, { headers: squareHeaders(plainToken) });
       const data = (await response.json()) as any;
 
       if (!response.ok) {

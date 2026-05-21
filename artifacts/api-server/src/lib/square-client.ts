@@ -9,6 +9,10 @@
  *   - Standardized error extraction from Square error format
  */
 
+import { createComponentLogger } from "./logger";
+
+const log = createComponentLogger("square-client");
+
 const SQUARE_BASE = "https://connect.squareup.com/v2";
 const SQUARE_VERSION = "2024-12-18";
 
@@ -56,7 +60,7 @@ function recordFailure(key: string) {
   state.lastFailure = now;
   if (state.failures >= CIRCUIT_FAILURE_THRESHOLD) {
     state.openedAt = now;
-    console.warn(`[SquareClient] Circuit OPEN for venue (${CIRCUIT_FAILURE_THRESHOLD} failures in ${CIRCUIT_FAILURE_WINDOW_MS / 1000}s)`);
+    log.warn({ failures: CIRCUIT_FAILURE_THRESHOLD, windowS: CIRCUIT_FAILURE_WINDOW_MS / 1000 }, "circuit OPEN for venue");
   }
 }
 
@@ -182,17 +186,17 @@ export class SquareClient {
         }
 
         // Retryable — log and continue
-        console.warn(`[SquareClient] ${method} ${path} → ${res.status} (attempt ${attempt + 1}/${MAX_RETRIES})`);
+        log.warn({ method, path, status: res.status, attempt: attempt + 1, maxRetries: MAX_RETRIES }, "retryable error");
       } catch (e: any) {
         lastError = { status: 0, message: e.message || "Network error" };
-        console.warn(`[SquareClient] ${method} ${path} → network error (attempt ${attempt + 1}/${MAX_RETRIES}): ${e.message}`);
+        log.warn({ method, path, attempt: attempt + 1, maxRetries: MAX_RETRIES, err: e.message }, "network error");
       }
     }
 
     // All retries exhausted
     recordFailure(this.circuitKey);
     const durationMs = Date.now() - start;
-    console.error(`[SquareClient] ${method} ${path} FAILED after ${MAX_RETRIES} attempts (${durationMs}ms)`);
+    log.error({ method, path, maxRetries: MAX_RETRIES, durationMs }, "request FAILED after all retries");
     return { ok: false, error: lastError ?? { status: 0, message: "Max retries exceeded" }, durationMs };
   }
 

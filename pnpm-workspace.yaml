@@ -1,5 +1,7 @@
 packages:
-  - artifacts/*
+  - artifacts/api-server
+  - artifacts/voice-agent-pwa
+  - artifacts/voycelab-landing
   - lib/*
 
 autoInstallPeers: false

@@ -6,6 +6,7 @@
 
 import type { CatalogItem, OrderItem, LiveSession, OrderCommand } from "../lib/square-helpers";
 import type { SquareClient } from "../lib/square-client";
+import type { NoiseMode } from "@workspace/voicelab-core/noise";
 
 // ── OpenAI Realtime tool schema (JSON-Schema subset) ──────────────────────────
 
@@ -48,6 +49,10 @@ export interface ToolContext {
   venueId?: number;
   /** Which assistant kind invoked this tool. Helpful for branching behaviour. */
   assistantKind?: "venue" | "general";
+  /** Noise mode for the current session — drives confirmation thresholds. */
+  noiseMode?: NoiseMode;
+  /** Whether the caller has already confirmed this tool invocation. */
+  confirmed?: boolean;
 }
 
 // ── Result returned by every tool executor ────────────────────────────────────

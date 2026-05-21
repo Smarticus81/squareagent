@@ -7,6 +7,9 @@
       "path": "./lib/voicelab-core"
     },
     {
+      "path": "./lib/voicelab-client"
+    },
+    {
       "path": "./lib/db"
     },
     {

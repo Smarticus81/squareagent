@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
-import { ArrowLeft, ArrowRight, ArrowUpRight, CheckCircle2, CreditCard, Loader2, Lock, UserRound } from "lucide-react";
+import { ArrowLeft, ArrowRight, ArrowUpRight, BarChart3, CheckCircle2, CreditCard, Loader2, Lock, UserRound } from "lucide-react";
 
 /**
  * Settings — account only.
@@ -193,6 +193,9 @@ export default function Settings() {
         </p>
 
         <div className="mt-10 space-y-4">
+          {/* Usage */}
+          <UsageCard token={localStorage.getItem("voycelab_token")} plan={auth.subscription?.plan} />
+
           {/* Profile */}
           <Section icon={<UserRound className="h-5 w-5" />} title="Profile" description="Your name and email on the console.">
             <form onSubmit={handleProfileUpdate} className="grid sm:grid-cols-2 gap-4">
@@ -419,4 +422,95 @@ function NextLink({ href, title, hint }: { href: string; title: string; hint: st
 function capitalize(s: string) {
   if (!s) return s;
   return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+const PLAN_MINUTES: Record<string, number> = {
+  trial: 100,
+  starter: 250,
+  professional: 1000,
+  premium: 4000,
+};
+
+function UsageCard({ token, plan }: { token: string | null; plan?: string }) {
+  const [data, setData] = useState<{
+    voiceMinutes: { used: number };
+    topTools: { toolName: string; count: number }[];
+    recentErrors: { toolName: string; errorMessage: string | null; createdAt: string }[];
+  } | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!token) return;
+    setLoading(true);
+    fetch("/api/v1/usage/current", {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => r.json())
+      .then(setData)
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [token]);
+
+  const limit = PLAN_MINUTES[plan ?? "trial"] ?? 100;
+  const used = data?.voiceMinutes?.used ?? 0;
+  const pct = Math.min(100, Math.round((used / limit) * 100));
+
+  return (
+    <Section icon={<BarChart3 className="h-5 w-5" />} title="Usage" description="Voice minutes and tool activity this period.">
+      {loading ? (
+        <div className="flex items-center gap-2 py-4">
+          <Loader2 className="w-4 h-4 animate-spin" style={{ color: "var(--color-vl-brass2)" }} />
+          <span className="text-sm" style={{ color: "var(--color-vl-ink-muted)" }}>Loading usage...</span>
+        </div>
+      ) : (
+        <div className="space-y-5">
+          <div>
+            <div className="flex justify-between text-sm mb-1.5">
+              <span style={{ color: "var(--color-vl-ink)" }}>Voice minutes</span>
+              <span className="tabular-nums" style={{ color: "var(--color-vl-ink-muted)" }}>{used} / {limit}</span>
+            </div>
+            <div className="h-2.5 rounded-full overflow-hidden" style={{ background: "var(--color-vl-ink-faint, #e5e5e5)" }}>
+              <div
+                className="h-full rounded-full transition-all"
+                style={{
+                  width: `${pct}%`,
+                  background: pct > 80 ? "var(--color-vl-coral-deep, #e04323)" : "var(--color-vl-accent, #ff6b47)",
+                }}
+              />
+            </div>
+            {pct >= 80 && (
+              <p className="text-xs mt-1" style={{ color: "var(--color-vl-coral-deep, #e04323)" }}>
+                {pct >= 100 ? "Overage: charges apply beyond your plan limit" : "Approaching plan limit"}
+              </p>
+            )}
+          </div>
+
+          {data?.topTools && data.topTools.length > 0 && (
+            <div>
+              <p className="text-xs uppercase tracking-wider mb-2" style={{ color: "var(--color-vl-ink-faint)" }}>Top commands</p>
+              <div className="space-y-1">
+                {data.topTools.map((t) => (
+                  <div key={t.toolName} className="flex justify-between text-sm">
+                    <span style={{ color: "var(--color-vl-ink)" }}>{t.toolName.replace(/_/g, " ")}</span>
+                    <span className="tabular-nums" style={{ color: "var(--color-vl-ink-muted)" }}>{t.count}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {data?.recentErrors && data.recentErrors.length > 0 && (
+            <div>
+              <p className="text-xs uppercase tracking-wider mb-2" style={{ color: "var(--color-vl-ink-faint)" }}>Recent errors</p>
+              <div className="space-y-1 text-xs" style={{ color: "var(--color-vl-ink-muted)" }}>
+                {data.recentErrors.slice(0, 5).map((e, i) => (
+                  <div key={i}>{e.toolName}: {e.errorMessage ?? "unknown"}</div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </Section>
+  );
 }
