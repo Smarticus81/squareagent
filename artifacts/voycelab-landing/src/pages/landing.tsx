@@ -209,8 +209,8 @@ function Hero({ onStart }: { onStart: () => void }) {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 w-full">
             {[
               { src: "/brand/square-logo.png",     alt: "Square",  height: 88 },
-              { src: "/brand/openai-wordmark.png", alt: "OpenAI",  height: 56 },
-              { src: "/brand/google-g.png",        alt: "Google",  height: 80 },
+              { src: "/brand/openai-wordmark.png", alt: "OpenAI",  height: 99 },
+              { src: "/brand/google-g.png",        alt: "Google",  height: 180},
             ].map((logo) => (
               <div
                 key={logo.alt}
