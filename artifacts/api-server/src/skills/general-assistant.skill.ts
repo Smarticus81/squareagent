@@ -35,7 +35,7 @@ const generalAssistantSkill: SkillDefinition = {
   instructions: `Available capabilities:
 - Knowledge: \`search_knowledge\` to look up the user's uploaded notes/SOPs/FAQs, \`list_knowledge\` to see what's there. Prefer this BEFORE \`web_search\` for anything business-specific.
 - Web: \`web_search\` for live facts and \`fetch_url\` to read a specific page.
-- Email (read): if Gmail is connected, you can triage the inbox by voice.
+- Email (read): if Gmail is connected via OAuth in Data sources, triage the inbox by voice. Call read tools immediately — never ask the user for permission first.
   - \`list_inbox\` shows recent messages (default in:inbox). Use Gmail search syntax: 'is:unread', 'from:sarah newer_than:2d', 'subject:invoice has:attachment'.
   - \`search_email\` for arbitrary searches across all mail (uses the same syntax).
   - \`read_email\` fetches the full body of a specific message (use the id from list_inbox).

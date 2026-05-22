@@ -757,10 +757,12 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
   if (assistantKind === "venue") {
     try {
       const [emailCreds] = await db
-        .select({ id: emailCredentialsTable.id })
+        .select({ provider: emailCredentialsTable.provider })
         .from(emailCredentialsTable)
         .where(eq(emailCredentialsTable.userId, req.user.id))
         .limit(1);
+      // Merge general-assistant tools when Gmail OAuth is connected (inbox read/send)
+      // or any outbound email provider is configured (send_email).
       if (emailCreds) includeGeneralTools = true;
     } catch {}
   }

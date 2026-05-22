@@ -495,6 +495,63 @@ export default function App() {
         <img src="/agent/brand/google-g.png" alt="Google" className="brand-strip-logo brand-strip-logo-narrow" />
       </div>
 
+      {/* Voice confirmation — visible even when order panel is closed */}
+      {pendingConfirmation && (
+        <div
+          style={{
+            position: "fixed",
+            left: 16,
+            right: 16,
+            bottom: 148,
+            zIndex: 40,
+            background: "linear-gradient(135deg, #FFF3E0, #FFE0B2)",
+            border: "2px solid #FF9800",
+            borderRadius: 16,
+            padding: "12px 16px",
+            boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
+          }}
+        >
+          <div style={{ fontSize: 13, fontWeight: 600, color: "#E65100", marginBottom: 8 }}>
+            Confirm: {pendingConfirmation.tool_name.replace(/_/g, " ")}
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              type="button"
+              onClick={confirmPending}
+              style={{
+                flex: 1,
+                padding: 10,
+                borderRadius: 999,
+                background: "#FF6B47",
+                color: "white",
+                border: "none",
+                fontSize: 14,
+                fontWeight: 600,
+                cursor: "pointer",
+                fontFamily: "var(--font)",
+              }}
+            >
+              Confirm
+            </button>
+            <button
+              type="button"
+              onClick={denyPending}
+              style={{
+                padding: "10px 20px",
+                borderRadius: 999,
+                background: "transparent",
+                border: "1px solid rgba(0,0,0,0.2)",
+                fontSize: 13,
+                cursor: "pointer",
+                fontFamily: "var(--font)",
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Panel */}
       <OrderPanel
         open={panelOpen}
