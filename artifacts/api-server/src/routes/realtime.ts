@@ -14,7 +14,7 @@
 
 import { Router } from "express";
 import { requireAuth, requirePlan } from "./auth";
-import { db, agentProfilesTable, serviceConnectionsTable, usageEventsTable } from "@workspace/db";
+import { db, agentProfilesTable, serviceConnectionsTable, usageEventsTable, emailCredentialsTable } from "@workspace/db";
 import {
   PLANS,
   listConnectedServiceProviders,
@@ -287,8 +287,8 @@ function buildTurnDetection(noiseMode: NoiseMode): Record<string, unknown> | nul
   }
 }
 
-function buildRealtimeSessionConfig(voice: string, speed: number, catalog: CatalogItem[], order: OrderItem[], plan?: string, assistantKind: "venue" | "general" = "venue", noiseMode: NoiseMode = "restaurant") {
-  const skills = getSkillsForSession(plan ?? "trial", { kind: assistantKind });
+function buildRealtimeSessionConfig(voice: string, speed: number, catalog: CatalogItem[], order: OrderItem[], plan?: string, assistantKind: "venue" | "general" = "venue", noiseMode: NoiseMode = "restaurant", includeGeneralTools = false) {
+  const skills = getSkillsForSession(plan ?? "trial", { kind: assistantKind, includeGeneralTools });
   const tools = buildToolsFromSkills(skills);
   const instructions = buildInstructionsFromSkills(skills, catalog, order, assistantKind);
 
@@ -717,12 +717,15 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
   let providerConfig: Record<string, unknown> = {};
   let assistantKind: "venue" | "general" = "venue";
 
+  let noiseMode: NoiseMode = "restaurant";
+
   if (agentProfileId) {
     const [profile] = await db
       .select({
         voicePipelineProvider: agentProfilesTable.voicePipelineProvider,
         voicePipelineConfig: agentProfilesTable.voicePipelineConfig,
         connectedServiceId: agentProfilesTable.connectedServiceId,
+        noiseMode: agentProfilesTable.noiseMode,
       })
       .from(agentProfilesTable)
       .where(eq(agentProfilesTable.id, String(agentProfileId)))
@@ -730,8 +733,7 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
     if (profile) {
       provider = profile.voicePipelineProvider;
       providerConfig = (profile.voicePipelineConfig as Record<string, unknown>) ?? {};
-      // Infer assistant kind from the connected service: any non-Square provider
-      // (generic_rest, webhook, mock, etc.) gets the general business persona.
+      if (profile.noiseMode) noiseMode = profile.noiseMode as NoiseMode;
       if (profile.connectedServiceId) {
         const [conn] = await db
           .select({ provider: serviceConnectionsTable.provider })
@@ -748,7 +750,22 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
   // never pretends to be a bar manager when there's no POS to talk to.
   if (assistantKind === "venue" && !squareToken) assistantKind = "general";
 
-  const skills = getSkillsForSession(plan, { kind: assistantKind });
+  // When the user has email credentials or other general data sources
+  // configured, merge general-assistant tools (Gmail, knowledge, web, db)
+  // into the venue session so both POS and email are available.
+  let includeGeneralTools = false;
+  if (assistantKind === "venue") {
+    try {
+      const [emailCreds] = await db
+        .select({ id: emailCredentialsTable.id })
+        .from(emailCredentialsTable)
+        .where(eq(emailCredentialsTable.userId, req.user.id))
+        .limit(1);
+      if (emailCreds) includeGeneralTools = true;
+    } catch {}
+  }
+
+  const skills = getSkillsForSession(plan, { kind: assistantKind, includeGeneralTools });
 
   if (provider !== "openai_realtime_webrtc") {
     res.status(409).json({
@@ -768,6 +785,8 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
     order,
     plan,
     assistantKind,
+    noiseMode,
+    includeGeneralTools,
   );
 
   try {

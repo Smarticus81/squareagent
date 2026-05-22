@@ -62,12 +62,22 @@ export interface GetSkillsOptions {
   kind?: "venue" | "general";
   /** Optional explicit skill-id allow list. */
   skillIds?: string[];
+  /**
+   * When true, merge general-assistant tools (email, knowledge, web, db)
+   * into a venue session so users can access Gmail etc. while also having
+   * full POS/inventory capabilities.
+   */
+  includeGeneralTools?: boolean;
 }
 
 /**
  * Get skills for a session.
  *  - kind="venue"   → plan-filtered venue skills (POS, inventory, …)
  *  - kind="general" → general-assistant skill bundle (web/knowledge/email/db)
+ *
+ * When `includeGeneralTools` is true and kind is "venue", both venue AND
+ * general-assistant skills are loaded — giving access to email, knowledge,
+ * web search alongside POS tools.
  *
  * Backwards-compatible: callers passing a `string[]` as second arg still get
  * the venue-skill behaviour they had before.
@@ -81,11 +91,16 @@ export function getSkillsForSession(
     : optsOrSkillIds ?? {};
   const kind = opts.kind ?? "venue";
   const base = kind === "general" ? GENERAL_SKILLS : getSkillsForPlan(plan);
-  // Meta skills (wait_for_user etc.) are always included so silence and
-  // background-audio handling work the same in every session.
   const pool = [...META_SKILLS, ...base];
+
+  if (opts.includeGeneralTools && kind === "venue") {
+    const seen = new Set(pool.map((s) => s.id));
+    for (const s of GENERAL_SKILLS) {
+      if (!seen.has(s.id)) pool.push(s);
+    }
+  }
+
   if (!opts.skillIds || opts.skillIds.length === 0) return pool;
-  // Always keep meta skills regardless of explicit skill-id filter.
   const allowed = new Set([...META_SKILLS.map((s) => s.id), ...opts.skillIds]);
   return pool.filter((s) => allowed.has(s.id));
 }
