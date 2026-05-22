@@ -6,6 +6,7 @@
 import { createContext, useContext, useState, useRef, useCallback, useEffect, type ReactNode } from "react";
 import { getVoicePrefs } from "@/lib/voice-prefs";
 import { getBaseUrl } from "@/lib/api";
+import { useWakeLock } from "@/hooks/useWakeLock";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -531,6 +532,8 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
   }, [sendSessionEnd]);
 
   const isConnected = agentState !== "disconnected" && agentState !== "error";
+
+  useWakeLock(isConnected);
 
   const confirmPending = useCallback(() => {
     const conf = pendingConfirmation;

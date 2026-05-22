@@ -240,16 +240,18 @@ function buildDemoRealtimeSessionConfig(voice: string, speed: number) {
 function buildTurnDetection(noiseMode: NoiseMode): Record<string, unknown> | null {
   switch (noiseMode) {
     case "quiet_room":
+      // Earphones / quiet space: clean audio means every breath pause triggers
+      // server_vad. semantic_vad with low eagerness lets users pause mid-sentence.
       return {
         type: "semantic_vad",
-        eagerness: "high",
+        eagerness: "low",
         create_response: true,
         interrupt_response: true,
       };
     case "restaurant":
       return {
         type: "semantic_vad",
-        eagerness: "auto",
+        eagerness: "low",
         create_response: true,
         interrupt_response: true,
       };
@@ -258,7 +260,7 @@ function buildTurnDetection(noiseMode: NoiseMode): Record<string, unknown> | nul
         type: "server_vad",
         threshold: 0.55,
         prefix_padding_ms: 400,
-        silence_duration_ms: 700,
+        silence_duration_ms: 900,
         create_response: true,
         interrupt_response: true,
       };
@@ -266,6 +268,7 @@ function buildTurnDetection(noiseMode: NoiseMode): Record<string, unknown> | nul
       return {
         type: "server_vad",
         threshold: 0.75,
+        prefix_padding_ms: 500,
         silence_duration_ms: 1200,
         create_response: true,
         interrupt_response: false,
@@ -274,6 +277,8 @@ function buildTurnDetection(noiseMode: NoiseMode): Record<string, unknown> | nul
       return {
         type: "server_vad",
         threshold: 0.7,
+        prefix_padding_ms: 400,
+        silence_duration_ms: 900,
         create_response: true,
         interrupt_response: true,
       };

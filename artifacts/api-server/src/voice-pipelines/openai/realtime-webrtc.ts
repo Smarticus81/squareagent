@@ -78,11 +78,10 @@ export class OpenAiRealtimeWebRtcAdapter implements VoicePipelineAdapter {
           format: { type: "audio/pcm" as const, rate: 24000 as const },
           transcription: { model: "whisper-1" },
           turn_detection: {
-            type: "server_vad" as const,
-            threshold: 0.5,
-            prefix_padding_ms: 150,
-            silence_duration_ms: 300,
+            type: "semantic_vad" as const,
+            eagerness: "low" as const,
             create_response: true,
+            interrupt_response: true,
           },
         },
         output: {
