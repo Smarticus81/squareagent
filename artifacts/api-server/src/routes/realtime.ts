@@ -287,10 +287,17 @@ function buildTurnDetection(noiseMode: NoiseMode): Record<string, unknown> | nul
   }
 }
 
-function buildRealtimeSessionConfig(voice: string, speed: number, catalog: CatalogItem[], order: OrderItem[], plan?: string, assistantKind: "venue" | "general" = "venue", noiseMode: NoiseMode = "restaurant", includeGeneralTools = false) {
+function buildRealtimeSessionConfig(voice: string, speed: number, catalog: CatalogItem[], order: OrderItem[], plan?: string, assistantKind: "venue" | "general" = "venue", noiseMode: NoiseMode = "restaurant", includeGeneralTools = false, profileDisplayName = "", profilePersonality = "") {
   const skills = getSkillsForSession(plan ?? "trial", { kind: assistantKind, includeGeneralTools });
   const tools = buildToolsFromSkills(skills);
-  const instructions = buildInstructionsFromSkills(skills, catalog, order, assistantKind);
+  let instructions = buildInstructionsFromSkills(skills, catalog, order, assistantKind);
+
+  // Prepend agent identity and custom personality when configured on the profile.
+  if (profileDisplayName || profilePersonality) {
+    const identity = profileDisplayName ? `You are ${profileDisplayName}. ` : "";
+    const personality = profilePersonality ? `${profilePersonality}\n\n` : "";
+    instructions = `${identity}${personality}${instructions}`;
+  }
 
   const turnDetection = buildTurnDetection(noiseMode);
 
@@ -719,6 +726,9 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
 
   let noiseMode: NoiseMode = "restaurant";
 
+  let profileDisplayName = "";
+  let profilePersonality = "";
+
   if (agentProfileId) {
     const [profile] = await db
       .select({
@@ -726,6 +736,8 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
         voicePipelineConfig: agentProfilesTable.voicePipelineConfig,
         connectedServiceId: agentProfilesTable.connectedServiceId,
         noiseMode: agentProfilesTable.noiseMode,
+        displayName: agentProfilesTable.displayName,
+        personality: agentProfilesTable.personality,
       })
       .from(agentProfilesTable)
       .where(eq(agentProfilesTable.id, String(agentProfileId)))
@@ -734,6 +746,8 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
       provider = profile.voicePipelineProvider;
       providerConfig = (profile.voicePipelineConfig as Record<string, unknown>) ?? {};
       if (profile.noiseMode) noiseMode = profile.noiseMode as NoiseMode;
+      profileDisplayName = profile.displayName || "";
+      profilePersonality = profile.personality || "";
       if (profile.connectedServiceId) {
         const [conn] = await db
           .select({ provider: serviceConnectionsTable.provider })
@@ -789,6 +803,8 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
     assistantKind,
     noiseMode,
     includeGeneralTools,
+    profileDisplayName,
+    profilePersonality,
   );
 
   try {

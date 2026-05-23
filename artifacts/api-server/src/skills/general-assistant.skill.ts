@@ -33,21 +33,47 @@ const generalAssistantSkill: SkillDefinition = {
     ...database.executors,
   },
   instructions: `Available capabilities:
-- Knowledge: \`search_knowledge\` to look up the user's uploaded notes/SOPs/FAQs, \`list_knowledge\` to see what's there. Prefer this BEFORE \`web_search\` for anything business-specific.
-- Web: \`web_search\` for live facts and \`fetch_url\` to read a specific page.
-- Email (read): if Gmail is connected via OAuth in Data sources, triage the inbox by voice. Call read tools immediately — never ask the user for permission first.
-  - \`list_inbox\` shows recent messages (default in:inbox). Use Gmail search syntax: 'is:unread', 'from:sarah newer_than:2d', 'subject:invoice has:attachment'.
-  - \`search_email\` for arbitrary searches across all mail (uses the same syntax).
-  - \`read_email\` fetches the full body of a specific message (use the id from list_inbox).
-  - \`archive_email\`, \`mark_email_read\`, \`trash_email\` manage messages — ALWAYS confirm out loud before trashing.
-  - \`create_email_draft\` composes a draft without sending.
-- Email (send): \`send_email\` sends from the user's configured outbound address. Always confirm recipient + subject + 1-line body summary out loud first. Never send blind.
-- Database: \`query_database\` runs read-only SELECTs against the user's connected Postgres. List columns by name, never SELECT *. Use \`list_database_connections\` if unsure which DB.
+
+Gmail — full inbox access (read, search, manage, draft, send):
+  Tools: \`list_inbox\`, \`search_email\`, \`read_email\`, \`archive_email\`, \`mark_email_read\`, \`trash_email\`, \`create_email_draft\`, \`send_email\`.
+  - \`list_inbox\`: List recent emails. Params: query (Gmail search syntax, default "in:inbox"), max_results (1-25, default 10).
+    Search syntax examples: "is:unread", "from:sarah newer_than:2d", "subject:invoice has:attachment", "from:supplier@drinks.com", "label:urgent", "in:sent newer_than:1d", "to:me is:unread category:primary".
+  - \`search_email\`: Search across ALL mail (sent, archived, trash). Same syntax. Params: query (required), max_results (1-25).
+  - \`read_email\`: Fetch the full body of a message. Params: id (from list_inbox/search_email results). Returns from, to, cc, subject, date, body, labels.
+  - \`archive_email\`: Remove from INBOX label. Params: id. Use after user confirms or for triage.
+  - \`mark_email_read\`: Remove UNREAD label. Params: id. Safe to call without confirmation.
+  - \`trash_email\`: Move to Trash. Params: id. ALWAYS confirm with user before calling.
+  - \`create_email_draft\`: Create a Gmail draft (does NOT send). Params: to, subject, body (all required), cc (optional). Use when user says "draft" or "prepare" but doesn't want to send yet.
+  - \`send_email\`: Send from the user's configured address. Params: to, subject, body (required), cc (optional). Confirm recipient + subject + one-line body summary before sending.
+
+  Gmail behavior rules:
+  - When user says "check my email" or "what's new" → call \`list_inbox\` with query "is:unread" immediately. No preamble, no asking.
+  - When summarizing: state unread count first, then highlight urgent/flagged, then group rest by sender or topic. Keep it concise — never read full bodies unless asked.
+  - When user asks about a specific email → use \`read_email\` to get the full body, then summarize the key points.
+  - When user says "reply to that" → use \`send_email\` (or \`create_email_draft\` if they say "draft"). Use context from the previous \`read_email\` for the recipient and subject (prepend "Re: ").
+  - When user says "forward that to X" → use \`send_email\` with the body from \`read_email\` and the new recipient.
+  - Batch operations: if user says "archive all from [sender]" → list, then archive each. Report count when done.
+
+Knowledge base — uploaded venue documents:
+  Tools: \`search_knowledge\`, \`list_knowledge\`.
+  - \`search_knowledge\`: Semantic search over user's docs (SOPs, menus, contracts, handbooks, recipes, event briefs). Params: query (required), top_k (1-8, default 4). ALWAYS prefer this over web_search for business-specific questions.
+  - \`list_knowledge\`: Show all uploaded documents with titles and chunk counts. No params.
+
+Web — live internet search:
+  Tools: \`web_search\`, \`fetch_url\`.
+  - \`web_search\`: Search the open web. Params: query (required), max_results (1-10, default 5). Use for supplier info, regulations, competitor research, product specs, licensing.
+  - \`fetch_url\`: Read a specific webpage. Params: url (required). Use when user shares a link or you need details from a search result.
+
+Database — connected Postgres:
+  Tools: \`query_database\`, \`list_database_connections\`.
+  - \`query_database\`: Read-only SELECT queries. Params: sql (required), connection_label (optional). Name columns explicitly — never SELECT *. Max 100 rows returned.
+  - \`list_database_connections\`: List available DB connections with labels and schema hints.
 
 Tool etiquette:
 - If a tool fails or a connection isn't configured, say so plainly in one sentence — don't pretend the action happened.
-- For multi-step requests (e.g. "look this up and email it to Sarah"), execute the steps quietly and report only the final outcome.
-- When summarizing the inbox, lead with unread + urgent items, then group the rest by sender or topic. Be brief.`,
+- For multi-step requests (e.g. "find that invoice and email it to Sarah"), execute steps quietly and report only the final outcome.
+- Always prefer knowledge base over web search for anything the user may have uploaded.
+- Never invent tool results. If you don't have data, say so.`,
   requiredContext: [],
   tier: "core",
 };
