@@ -459,8 +459,8 @@ export default function App() {
         <div className="status-area">
           {error && <div className="error-text">{error}</div>}
           {micError && <div className="error-text">{micError}</div>}
-          {isLoadingCatalog && <div className="state-label">LOADING MENU</div>}
-          {catalogError && <div className="error-text">Menu: {catalogError}</div>}
+          {assistantKind === "venue" && isLoadingCatalog && <div className="state-label">LOADING MENU</div>}
+          {assistantKind === "venue" && catalogError && <div className="error-text">Menu: {catalogError}</div>}
         </div>
       </div>
 
@@ -489,8 +489,10 @@ export default function App() {
 
       {/* Connected systems — brand strip */}
       <div className="brand-strip" aria-label="Connected systems">
-        <span className="brand-strip-label">Connected to</span>
-        <img src="/agent/brand/square-logo.png" alt="Square" className="brand-strip-logo" />
+        <span className="brand-strip-label">Powered by</span>
+        {assistantKind === "venue" && (
+          <img src="/agent/brand/square-logo.png" alt="Square" className="brand-strip-logo" />
+        )}
         <img src="/agent/brand/openai-wordmark.png" alt="OpenAI" className="brand-strip-logo brand-strip-logo-narrow" />
         <img src="/agent/brand/google-g.png" alt="Google" className="brand-strip-logo brand-strip-logo-narrow" />
       </div>

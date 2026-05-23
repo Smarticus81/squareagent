@@ -126,7 +126,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     <>
                       <Link
                         href="/login"
-                        className="hidden sm:inline text-[13px] font-medium"
+                        className="text-[13px] font-medium"
                         style={{ color: "rgba(10, 10, 11, 0.62)" }}
                       >
                         Sign in

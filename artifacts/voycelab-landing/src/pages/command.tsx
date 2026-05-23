@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { useVenues } from "@/hooks/use-venues";
 import { VoiceRail } from "@/components/voice-rail";
@@ -26,6 +27,7 @@ export default function Command() {
   const [, setLocation] = useLocation();
   const { data: auth, isLoading, isFetching } = useAuth();
   const { data: venues, isLoading: venuesLoading, error: venuesError } = useVenues();
+  const { data: profiles } = useAgentProfiles();
   const [openAiStatus, setOpenAiStatus] = useState<{
     ok: boolean;
     reason: string;
@@ -68,6 +70,21 @@ export default function Command() {
     [venues],
   );
 
+  /** The first general (non-venue) assistant, if any. */
+  const generalProfile = useMemo(
+    () => (profiles ?? []).find((p) => !p.venueId) ?? null,
+    [profiles],
+  );
+
+  /** The venue-bound profile matching the primary venue, if any. */
+  const venueProfile = useMemo(
+    () =>
+      primaryVenue
+        ? (profiles ?? []).find((p) => p.venueId === primaryVenue.id) ?? null
+        : null,
+    [profiles, primaryVenue],
+  );
+
   if (isLoading) {
     return (
       <div className="flex-1 flex items-center justify-center">
@@ -108,6 +125,18 @@ export default function Command() {
         ctaAction: () => setLocation("/pricing"),
       };
     }
+    if (!isConnected && generalProfile) {
+      return {
+        kind: "open" as const,
+        eyebrow: planActive ? "Plan active" : trialActive ? "Trial active" : "Ready",
+        title: `${generalProfile.displayName} is ready.`,
+        body: "General assistant · Web, email, and knowledge tools",
+        ctaLabel: `Open ${generalProfile.displayName}`,
+        ctaAction: () => launchAssistant(undefined, generalProfile.id),
+        secondaryLabel: "Connect Square",
+        secondaryAction: () => setLocation("/services"),
+      };
+    }
     if (!isConnected) {
       return {
         kind: "connect" as const,
@@ -123,10 +152,10 @@ export default function Command() {
     return {
       kind: "open" as const,
       eyebrow: planActive ? "Plan active" : trialActive ? "Trial active" : "Ready",
-      title: "Bev is ready on the floor.",
+      title: `${venueProfile?.displayName ?? "Bev"} is ready on the floor.`,
       body: `${primaryVenue?.squareLocationName ?? "Your venue"} · Bar · Fastest live voice`,
-      ctaLabel: "Open Bev",
-      ctaAction: () => launchAssistant(primaryVenue?.id),
+      ctaLabel: `Open ${venueProfile?.displayName ?? "Bev"}`,
+      ctaAction: () => launchAssistant(primaryVenue?.id, venueProfile?.id),
     };
   })();
 
@@ -232,10 +261,16 @@ export default function Command() {
           <RouterRow
             icon={<Sparkles className="w-3.5 h-3.5" />}
             label="Assistant"
-            detail={isConnected ? "Bev · Bar · Fastest live voice" : "Not configured yet"}
+            detail={
+              isConnected
+                ? `${venueProfile?.displayName ?? "Bev"} · Bar · Fastest live voice`
+                : generalProfile
+                  ? `${generalProfile.displayName} · General assistant`
+                  : "Not configured yet"
+            }
             hint="Rename, retune, or change what it can do."
             href="/assistants"
-            cta={isConnected ? "Configure" : "Set up"}
+            cta={isConnected || generalProfile ? "Configure" : "Set up"}
           />
           <RouterRow
             icon={<Plug className="w-3.5 h-3.5" />}
@@ -424,14 +459,17 @@ function RouterRow({
   );
 }
 
-async function launchAssistant(venueId: number | undefined) {
-  if (!venueId) return;
+async function launchAssistant(venueId: number | undefined, agentProfileId?: string) {
+  if (!venueId && !agentProfileId) return;
   try {
     const token = localStorage.getItem("voycelab_token") || "";
+    const body: Record<string, unknown> = {};
+    if (venueId) body.venueId = venueId;
+    if (agentProfileId) body.agentProfileId = agentProfileId;
     const res = await fetch("/api/auth/exchange/create", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ venueId }),
+      body: JSON.stringify(body),
     });
     if (!res.ok) throw new Error("Could not open the assistant. Try again.");
     const { code } = await res.json();
@@ -441,8 +479,31 @@ async function launchAssistant(venueId: number | undefined) {
     const baseUrl = isLocalDev
       ? `${window.location.protocol}//${window.location.hostname}:8081/`
       : `${window.location.origin}/agent/`;
-    window.open(`${baseUrl}?code=${encodeURIComponent(code)}`, "_blank", "noopener,noreferrer");
+    const profileParam = agentProfileId ? `&agentProfileId=${encodeURIComponent(agentProfileId)}` : "";
+    window.open(`${baseUrl}?code=${encodeURIComponent(code)}${profileParam}`, "_blank", "noopener,noreferrer");
   } catch (e) {
     console.error("Could not open assistant:", e);
   }
+}
+
+interface AgentProfileSummary {
+  id: string;
+  venueId: number | null;
+  displayName: string;
+}
+
+function useAgentProfiles() {
+  return useQuery({
+    queryKey: ["/api/v1/agent-profiles"],
+    queryFn: async () => {
+      const token = localStorage.getItem("voycelab_token") || "";
+      const res = await fetch("/api/v1/agent-profiles", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return (data.profiles ?? []) as AgentProfileSummary[];
+    },
+    enabled: !!localStorage.getItem("voycelab_token"),
+  });
 }
