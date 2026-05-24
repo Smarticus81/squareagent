@@ -419,7 +419,7 @@ export default function App() {
           <span className="vl-pill vl-pill-success"><span className="vl-pill-dot" />Square synced</span>
         )}
         {assistantKind === "general" && (
-          <span className="vl-pill vl-pill-muted">General assistant</span>
+          <span className="vl-pill vl-pill-muted">Connect Square to unlock POS</span>
         )}
       </div>
 
@@ -431,17 +431,17 @@ export default function App() {
               <span className="welcome-eyebrow">VoyceLab · Live</span>
               <h1 className="welcome-title">
                 {assistantKind === "general"
-                  ? <>How can I <em>help</em> today?</>
+                  ? <>Your venue assistant <em>is ready</em>.</>
                   : <>Your venue, <em>on voice</em>.</>}
               </h1>
               <p className="welcome-sub">
                 {assistantKind === "general"
-                  ? "Tap the orb and speak naturally. I can summarize, plan, draft, and answer questions in real time."
+                  ? "Tap the orb and speak. I can handle email, look things up, and answer questions. Connect Square in settings to unlock POS commands."
                   : "Tap the orb and speak — I’ll handle orders, inventory and reports across your connected systems."}
               </p>
               <div className="suggestion-row">
                 {(assistantKind === "general"
-                  ? ["Summarize my morning", "Draft a quick reply", "Brainstorm ideas"]
+                  ? ["Check my inbox", "What's in the knowledge base?", "Search for suppliers"]
                   : ["What sold today?", "Open orders", "Low stock report"]
                 ).map((s) => (
                   <button key={s} className="suggestion-chip" onClick={handleRailTap}>{s}</button>

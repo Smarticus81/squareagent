@@ -1,22 +1,13 @@
 import type { NoiseMode, NoiseModeBehavior } from "./types";
 
+// Collapsed from 6 modes to 3 (2026-05-22):
+//   quiet_room + restaurant → standard
+//   bar + event_venue → loud
+//   nightclub + manual_push_to_talk → push_to_talk
 export const NOISE_MODE_BEHAVIORS: Record<NoiseMode, NoiseModeBehavior> = {
-  quiet_room: {
-    mode: "quiet_room",
-    displayName: "Quiet room",
-    description: "Office, tasting room, or private space. Wake word and natural speech work well.",
-    allowWakeWord: true,
-    pushToTalkPreferred: false,
-    pushToTalkRequired: false,
-    vadSensitivity: "high",
-    bargeInEnabled: true,
-    confirmationStrictness: "low",
-    visualFeedback: "standard",
-    grammarHint: "natural",
-  },
-  restaurant: {
-    mode: "restaurant",
-    displayName: "Restaurant",
+  standard: {
+    mode: "standard",
+    displayName: "Standard",
     description: "Moderate background noise. Wake word still usable; confirm submit/send actions.",
     allowWakeWord: true,
     pushToTalkPreferred: false,
@@ -27,9 +18,9 @@ export const NOISE_MODE_BEHAVIORS: Record<NoiseMode, NoiseModeBehavior> = {
     visualFeedback: "standard",
     grammarHint: "natural",
   },
-  bar: {
-    mode: "bar",
-    displayName: "Bar",
+  loud: {
+    mode: "loud",
+    displayName: "Loud venue",
     description: "Loud, with crowd noise. Push-to-talk prominent. Short commands recommended.",
     allowWakeWord: true,
     pushToTalkPreferred: true,
@@ -40,43 +31,16 @@ export const NOISE_MODE_BEHAVIORS: Record<NoiseMode, NoiseModeBehavior> = {
     visualFeedback: "prominent",
     grammarHint: "short_command",
   },
-  nightclub: {
-    mode: "nightclub",
-    displayName: "Nightclub",
-    description:
-      "Very loud. Push-to-talk default. Wake word discouraged. Prefer noise-canceling pipeline.",
-    allowWakeWord: false,
-    pushToTalkPreferred: true,
-    pushToTalkRequired: true,
-    vadSensitivity: "off",
-    bargeInEnabled: false,
-    confirmationStrictness: "very_high",
-    visualFeedback: "max",
-    grammarHint: "menu_driven",
-  },
-  event_venue: {
-    mode: "event_venue",
-    displayName: "Event venue",
-    description: "Variable noise; events may load specific contexts. Confirmation for batches.",
-    allowWakeWord: true,
-    pushToTalkPreferred: true,
-    pushToTalkRequired: false,
-    vadSensitivity: "strict",
-    bargeInEnabled: true,
-    confirmationStrictness: "high",
-    visualFeedback: "prominent",
-    grammarHint: "short_command",
-  },
-  manual_push_to_talk: {
-    mode: "manual_push_to_talk",
-    displayName: "Manual push-to-talk",
+  push_to_talk: {
+    mode: "push_to_talk",
+    displayName: "Push to talk",
     description: "No wake word, no ambient listening. Button or hardware trigger required.",
     allowWakeWord: false,
     pushToTalkPreferred: true,
     pushToTalkRequired: true,
     vadSensitivity: "off",
     bargeInEnabled: false,
-    confirmationStrictness: "very_high",
+    confirmationStrictness: "low",
     visualFeedback: "max",
     grammarHint: "menu_driven",
   },

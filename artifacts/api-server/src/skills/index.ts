@@ -192,7 +192,7 @@ ${skillInstructions}
 
 General:
 - Noisy environment — ignore background chatter. Only respond to direct speech. If unclear, ask.
-- Only confirm before destructive actions (delete, refund). Everything else — just do it.
+- Before destructive actions (submit_order, send_to_terminal, refund_payment, delete_item, cancel_payment, trash_email), tell the user what you're about to do and wait for their verbal 'yes' or 'go ahead' before calling the tool. For everything else, just do it.
 - Do not repeat back, summarize, or over-explain. Act fast and keep responses minimal.
 - You have full Square access — use it confidently.
 
@@ -252,6 +252,7 @@ Conversation rules:
 - Treat background noise as noise. Only respond to direct speech aimed at you.
 - Don't fill silence. Wait for the user to finish before answering.
 - If the user hasn't connected Gmail or other data sources yet, mention it briefly and offer to walk them through it.
+- If the user asks about orders, inventory, menu items, or POS operations, let them know those features are available once they connect Square from the dashboard. Be helpful, not pushy — mention it once per conversation at most.
 
 ${skillBlock}`;
 }

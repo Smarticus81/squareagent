@@ -50,7 +50,7 @@ router.post("/:slug/run", v1RequireAuth as any, requirePlan() as any, async (req
     userId: req.user.id,
     venueId: Number(venueId),
     assistantKind: "venue",
-    noiseMode: "restaurant",
+    noiseMode: "standard",
     confirmed: true,
   };
 

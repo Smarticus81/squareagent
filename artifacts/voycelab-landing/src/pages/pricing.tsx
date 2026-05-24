@@ -55,10 +55,7 @@ export default function Pricing() {
       else navigate("/signup");
       return;
     }
-    if (plan.id === "enterprise") {
-      window.location.href = "mailto:sales@voycelab.com?subject=Enterprise%20plan%20inquiry";
-      return;
-    }
+    // Enterprise plan removed — no longer needed
     if (!auth?.user) {
       sessionStorage.setItem("voycelab.pending_plan", plan.id);
       sessionStorage.setItem("voycelab.pending_cadence", cadence);
@@ -164,7 +161,7 @@ export default function Pricing() {
             <Tile
               kicker="Overages"
               title="Soft cap, never a hard stop"
-              body="If you blow through your included minutes, your assistants keep working. Overage rate drops as you climb tiers — Premium pays $0.12/min, Starter pays $0.18/min."
+              body="If you blow through your included minutes, your assistants keep working. Overage rate drops as you climb tiers — Business pays $0.12/min, Pro pays $0.18/min."
             />
             <Tile
               kicker="No surprises"
@@ -180,10 +177,11 @@ export default function Pricing() {
             <div>
               <p className="vl-eyebrow">The math</p>
               <h2 className="vl-display text-[28px] md:text-[34px] mt-3" style={{ color: "var(--color-vl-ink)" }}>
-                If your manager saves 4 hours a week, you've already paid for Professional.
+
+                If your manager saves 4 hours a week, you've already paid for Pro.
               </h2>
               <p className="mt-3 text-[14px] max-w-xl leading-relaxed" style={{ color: "var(--color-vl-ink-muted)" }}>
-                Bar managers earn $20-$35 an hour. Four hours a week of saved POS lookups, inventory counts, and report-pulling is $320-$560 of value. Professional is $199.
+                Bar managers earn $20-$35 an hour. Four hours a week of saved POS lookups, inventory counts, and report-pulling is $320-$560 of value. Pro is $149.
               </p>
             </div>
             <Link
@@ -214,11 +212,11 @@ export default function Pricing() {
             />
             <Faq
               q="Is the trial really 14 days, no card?"
-              a="Yes. 200 voice minutes, every feature, every voice engine. Card is collected only if you upgrade."
+              a="Yes. 60 voice minutes and core POS tools. Card is collected only if you upgrade."
             />
             <Faq
               q="What if I'm a chain or hospitality group?"
-              a="Premium covers unlimited venues. If you need SSO, custom audit, or a dedicated regional relay, talk to us about Enterprise."
+              a="Business covers unlimited venues and assistants. If you need SSO, custom audit, or a dedicated regional relay, contact sales@voycelab.com."
             />
           </div>
         </section>
@@ -271,7 +269,7 @@ function PlanCard({
   const monthly = plan.monthlyPriceUsd;
   const yearly = plan.yearlyPriceUsdPerMonth;
   const price = cadence === "yearly" ? yearly : monthly;
-  const isContact = plan.id === "enterprise";
+  const isContact = false;
   const isFree = plan.id === "trial";
 
   return (

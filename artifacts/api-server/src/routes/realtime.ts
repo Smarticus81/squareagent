@@ -23,11 +23,8 @@ import {
 import { getNoiseModeBehavior, type NoiseMode } from "@workspace/voicelab-core/noise";
 import { eq, sql, and, gte } from "drizzle-orm";
 import {
-  syncLiveOrderToSquare,
-  cancelLiveOrder,
   type CatalogItem,
   type OrderItem,
-  type LiveSession,
 } from "../lib/square-helpers";
 import { SquareClient } from "../lib/square-client";
 import { getCachedCredentials } from "../lib/credential-cache";
@@ -122,7 +119,7 @@ How it works:
 - Setup is intentionally lightweight: name the assistant, set a wake phrase such as "Hey Bev", connect a system, choose allowed actions, tune the room, choose the voice engine, test, and launch.
 - Assistants can be configured for a venue assistant, POS assistant, inventory assistant, or a general business assistant.
 - Permission controls matter: owners choose which actions are allowed, which require approval first, and which are not allowed. Sensitive actions such as refunds, catalog changes, item deletion, and team-status changes start locked down.
-- Room modes include quiet room, restaurant, bar, nightclub, event space, and push-to-talk only. Noisy rooms can use more controlled listening or push-to-talk.
+- Room modes include standard, loud venue, and push-to-talk. Noisy rooms can use more controlled listening or push-to-talk.
 - The public demo you are speaking through is a sandbox FAQ. It does not connect to a real venue, access a POS, read customer accounts, or execute business actions.
 
 What VoyceLab can do:
@@ -147,22 +144,21 @@ Square details:
 Voice experiences:
 ${voiceEngines}
 - Fallback options are always available for resilience: ${fallbackVoiceOptions}.
-- Starter focuses on OpenAI Realtime voice. Professional adds Gemini-class native voice. Premium opens every voice engine and enterprise-grade options.
+- Trial includes OpenAI Realtime voice. Pro and Business add Gemini-class native voice and all engines.
 - Customers can change an assistant's voice engine later from assistant settings.
 
 Pricing and trial:
 ${planSummary}
 - Yearly billing saves about 17%.
-- The trial is 14 days, no card required, with 200 voice minutes and every feature unlocked for testing.
+- The trial is 14 days, no card required, with 60 voice minutes and core POS tools for testing.
 - Billing is platform fee plus spoken voice minutes. Idle screens and dashboard work cost nothing.
 - Overage is a soft cap, not a hard stop. Assistants keep working; the overage rate drops on higher tiers.
-- Enterprise is for SSO, SCIM, IP allowlists, custom audit logs, dedicated relay regions, SLA, named customer success, on-prem, or VPC-isolated deployments.
+- For enterprise needs like SSO, SCIM, IP allowlists, custom audit logs, or dedicated deployments, contact sales@voycelab.com.
 
 Who should use each plan:
-- Starter: a single bar or small venue that wants simple POS, orders, and reporting.
-- Professional: multi-venue operators that need inventory, catalog, customers, payments, and Gemini-class voice.
-- Premium: hospitality groups and event venues that need unlimited venues/assistants, team and labor commands, every voice engine, and dedicated support.
-- Enterprise: organizations with custom security, audit, deployment, or compliance needs.
+- Trial: any venue that wants to test voice POS with core tools before committing.
+- Pro: multi-venue operators that need every skill including inventory, catalog, customers, payments, team & labor, and Gemini-class voice.
+- Business: hospitality groups and event venues that need unlimited venues and assistants, every voice engine, and dedicated support.
 
 Good answers to common questions:
 - "What is VoyceLab?" Answer: VoyceLab lets hospitality teams run parts of their business by voice, connecting assistants to Square and other systems so staff can ask questions and take approved actions without stopping service.
@@ -239,55 +235,29 @@ function buildDemoRealtimeSessionConfig(voice: string, speed: number) {
 
 function buildTurnDetection(noiseMode: NoiseMode): Record<string, unknown> | null {
   switch (noiseMode) {
-    case "quiet_room":
-      // Earphones / quiet space: clean audio means every breath pause triggers
-      // server_vad. semantic_vad with low eagerness lets users pause mid-sentence.
+    case "standard":
       return {
         type: "semantic_vad",
         eagerness: "low",
+        silence_duration_ms: 600,
         create_response: true,
         interrupt_response: true,
       };
-    case "restaurant":
-      return {
-        type: "semantic_vad",
-        eagerness: "low",
-        create_response: true,
-        interrupt_response: true,
-      };
-    case "bar":
+    case "loud":
       return {
         type: "server_vad",
-        threshold: 0.55,
+        threshold: 0.6,
         prefix_padding_ms: 400,
-        silence_duration_ms: 900,
-        create_response: true,
-        interrupt_response: true,
-      };
-    case "nightclub":
-      return {
-        type: "server_vad",
-        threshold: 0.75,
-        prefix_padding_ms: 500,
-        silence_duration_ms: 1200,
+        silence_duration_ms: 800,
         create_response: true,
         interrupt_response: false,
       };
-    case "event_venue":
-      return {
-        type: "server_vad",
-        threshold: 0.7,
-        prefix_padding_ms: 400,
-        silence_duration_ms: 900,
-        create_response: true,
-        interrupt_response: true,
-      };
-    case "manual_push_to_talk":
+    case "push_to_talk":
       return null;
   }
 }
 
-function buildRealtimeSessionConfig(voice: string, speed: number, catalog: CatalogItem[], order: OrderItem[], plan?: string, assistantKind: "venue" | "general" = "venue", noiseMode: NoiseMode = "restaurant", includeGeneralTools = false, profileDisplayName = "", profilePersonality = "") {
+function buildRealtimeSessionConfig(voice: string, speed: number, catalog: CatalogItem[], order: OrderItem[], plan?: string, assistantKind: "venue" | "general" = "venue", noiseMode: NoiseMode = "standard", includeGeneralTools = false, profileDisplayName = "", profilePersonality = "") {
   const skills = getSkillsForSession(plan ?? "trial", { kind: assistantKind, includeGeneralTools });
   const tools = buildToolsFromSkills(skills);
   let instructions = buildInstructionsFromSkills(skills, catalog, order, assistantKind);
@@ -324,71 +294,7 @@ function buildRealtimeSessionConfig(voice: string, speed: number, catalog: Catal
   };
 }
 
-// ── POST /demo-session — Public VoyceLab FAQ voice demo (no auth, rate-limited) ─
-
-router.post("/demo-session", async (req: any, res: any) => {
-  if (process.env.VOYCELAB_DEMO_ENABLED === "0" || process.env.VOYCELAB_DEMO_ENABLED === "false") {
-    res.status(503).json({ error: "demo_disabled", detail: "Voice demo is temporarily unavailable." });
-    return;
-  }
-
-  const apiKey = process.env.OPENAI_API_KEY ?? process.env.AI_INTEGRATIONS_OPENAI_API_KEY ?? "";
-  if (!apiKey) {
-    res.status(503).json({ error: "demo_unavailable", detail: "Voice demo is not configured." });
-    return;
-  }
-
-  const ip = clientIp(req);
-  if (!demoRateLimitOk(ip, false)) {
-    res.status(429).json({
-      error: "too_many_requests",
-      detail: "Too many demo sessions from this network. Try again in a few minutes.",
-    });
-    return;
-  }
-
-  const { voice = "coral", speed = 1.05 } = req.body ?? {};
-  const voiceStr = typeof voice === "string" ? voice : "coral";
-  const speedNum =
-    typeof speed === "number" && Number.isFinite(speed) && speed >= 0.75 && speed <= 1.35 ? speed : 1.05;
-
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
-
-    const response = await fetch("https://api.openai.com/v1/realtime/client_secrets", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      signal: controller.signal,
-      body: JSON.stringify({
-        session: buildDemoRealtimeSessionConfig(voiceStr, speedNum),
-      }),
-    });
-    clearTimeout(timeout);
-
-    if (!response.ok) {
-      const errText = await response.text();
-      console.error("[Realtime] Demo ephemeral token failed:", errText);
-      res.status(response.status).json({ error: "demo_session_failed", detail: errText });
-      return;
-    }
-
-    const data = (await response.json()) as any;
-    demoRateLimitOk(ip);
-    res.json({
-      id: data.session?.id ?? "",
-      client_secret: { value: data.value, expires_at: data.expires_at },
-    });
-  } catch (e: any) {
-    console.error("[Realtime] Demo session error:", e.message);
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// ── Mock bar demo ─────────────────────────────────────────────────────────────
+// ── Mock bar demo data ────────────────────────────────────────────────────────
 
 const MOCK_BAR_CATALOG = [
   { name: "Margarita", price: 12, category: "Cocktails" },
@@ -415,7 +321,6 @@ const MOCK_BAR_CATALOG = [
 
 const MOCK_BAR_PERSONA = `You are Bev, a bartender assistant for The Den, a demo bar. The user is trying VoyceLab on the marketing site. Help them try natural commands like 'two margaritas and a Modelo'. Keep replies under 6 words. Be warm but efficient.`;
 
-const catalogNames = MOCK_BAR_CATALOG.map((i) => i.name);
 const catalogList = MOCK_BAR_CATALOG.map((i) => `${i.name} ($${i.price}, ${i.category})`).join(", ");
 
 const MOCK_BAR_TOOLS = [
@@ -562,7 +467,11 @@ function executeMockBarTool(
   }
 }
 
-router.post("/demo-bar-session", async (req: any, res: any) => {
+// ── POST /demo — Unified public demo endpoint (no auth, rate-limited) ─────────
+// Accepts optional `mode` parameter: "faq" (VoyceLab FAQ) or "bar" (mock bar demo).
+// Defaults to "bar". Legacy paths /demo-session and /demo-bar-session are aliases.
+
+async function handleDemoSession(req: any, res: any) {
   if (process.env.VOYCELAB_DEMO_ENABLED === "0" || process.env.VOYCELAB_DEMO_ENABLED === "false") {
     res.status(503).json({ error: "demo_disabled", detail: "Voice demo is temporarily unavailable." });
     return;
@@ -583,12 +492,49 @@ router.post("/demo-bar-session", async (req: any, res: any) => {
     return;
   }
 
-  const { voice = "coral", speed = 1.05 } = req.body ?? {};
+  const { voice = "coral", speed = 1.05, mode: rawMode } = req.body ?? {};
+  // Resolve mode: explicit body param > path-based inference > default "bar"
+  let mode: "faq" | "bar" = "bar";
+  if (rawMode === "faq" || rawMode === "bar") {
+    mode = rawMode;
+  } else if (req.path === "/demo-session") {
+    mode = "faq";
+  }
+
   const voiceStr = typeof voice === "string" ? voice : "coral";
   const speedNum =
     typeof speed === "number" && Number.isFinite(speed) && speed >= 0.75 && speed <= 1.35 ? speed : 1.05;
 
-  const instructions = MOCK_BAR_PERSONA;
+  const isBar = mode === "bar";
+  const instructions = isBar ? MOCK_BAR_PERSONA : VOYCELAB_DEMO_INSTRUCTIONS;
+  const sessionConfig = isBar
+    ? {
+        type: "realtime" as const,
+        model: OPENAI_REALTIME_MODEL,
+        instructions,
+        tools: MOCK_BAR_TOOLS,
+        tool_choice: "auto" as const,
+        output_modalities: ["audio" as const],
+        reasoning: { effort: OPENAI_REALTIME_REASONING_EFFORT },
+        audio: {
+          input: {
+            format: { type: "audio/pcm" as const, rate: 24000 as const },
+            transcription: { model: "gpt-realtime-whisper" },
+            turn_detection: {
+              type: "semantic_vad" as const,
+              eagerness: "low" as const,
+              create_response: true,
+              interrupt_response: true,
+            },
+          },
+          output: {
+            format: { type: "audio/pcm" as const, rate: 24000 as const },
+            voice: voiceStr,
+            speed: speedNum,
+          },
+        },
+      }
+    : buildDemoRealtimeSessionConfig(voiceStr, speedNum);
 
   try {
     const controller = new AbortController();
@@ -601,58 +547,41 @@ router.post("/demo-bar-session", async (req: any, res: any) => {
         "Content-Type": "application/json",
       },
       signal: controller.signal,
-      body: JSON.stringify({
-        session: {
-          type: "realtime" as const,
-          model: OPENAI_REALTIME_MODEL,
-          instructions,
-          tools: MOCK_BAR_TOOLS,
-          tool_choice: "auto" as const,
-          output_modalities: ["audio" as const],
-          reasoning: { effort: OPENAI_REALTIME_REASONING_EFFORT },
-          audio: {
-            input: {
-              format: { type: "audio/pcm" as const, rate: 24000 as const },
-              transcription: { model: "gpt-realtime-whisper" },
-              turn_detection: {
-                type: "semantic_vad" as const,
-                eagerness: "low" as const,
-                create_response: true,
-                interrupt_response: true,
-              },
-            },
-            output: {
-              format: { type: "audio/pcm" as const, rate: 24000 as const },
-              voice: voiceStr,
-              speed: speedNum,
-            },
-          },
-        },
-      }),
+      body: JSON.stringify({ session: sessionConfig }),
     });
     clearTimeout(timeout);
 
     if (!response.ok) {
       const errText = await response.text();
-      console.error("[Realtime] Demo bar ephemeral token failed:", errText);
+      console.error(`[Realtime] Demo (${mode}) ephemeral token failed:`, errText);
       res.status(response.status).json({ error: "demo_session_failed", detail: errText });
       return;
     }
 
     const data = (await response.json()) as any;
     demoRateLimitOk(ip);
-    res.json({
+
+    const payload: Record<string, unknown> = {
       id: data.session?.id ?? "",
       client_secret: { value: data.value, expires_at: data.expires_at },
-      model: OPENAI_REALTIME_MODEL,
-      instructions,
-      catalog: MOCK_BAR_CATALOG,
-    });
+    };
+    if (isBar) {
+      payload.model = OPENAI_REALTIME_MODEL;
+      payload.instructions = instructions;
+      payload.catalog = MOCK_BAR_CATALOG;
+    }
+    res.json(payload);
   } catch (e: any) {
-    console.error("[Realtime] Demo bar session error:", e.message);
+    console.error(`[Realtime] Demo (${mode}) session error:`, e.message);
     res.status(500).json({ error: e.message });
   }
-});
+}
+
+router.post("/demo", handleDemoSession);
+/** @deprecated Alias for POST /demo?mode=faq — kept for backward compat with landing page. */
+router.post("/demo-session", handleDemoSession);
+/** @deprecated Alias for POST /demo?mode=bar — kept for backward compat with landing page. */
+router.post("/demo-bar-session", handleDemoSession);
 
 router.post("/demo-bar-tools", async (req: any, res: any) => {
   const ip = clientIp(req);
@@ -681,7 +610,7 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
   }
 
   const plan = req.subscription?.plan ?? "trial";
-  const PLAN_LIMITS: Record<string, number> = { trial: 100, starter: 250, professional: 1000, premium: 4000 };
+  const PLAN_LIMITS: Record<string, number> = { trial: 60, pro: 500, business: 2000, starter: 500, professional: 500, premium: 2000 };
   const limit = PLAN_LIMITS[plan] ?? 100;
   const overageCap = Math.floor(limit * 1.5);
 
@@ -724,7 +653,7 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
   let providerConfig: Record<string, unknown> = {};
   let assistantKind: "venue" | "general" = "venue";
 
-  let noiseMode: NoiseMode = "restaurant";
+  let noiseMode: NoiseMode = "standard";
 
   let profileDisplayName = "";
   let profilePersonality = "";
@@ -842,51 +771,6 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
   }
 });
 
-router.post("/call", requireAuth as any, requirePlan() as any, async (req: any, res: any) => {
-  const apiKey = process.env.OPENAI_API_KEY ?? process.env.AI_INTEGRATIONS_OPENAI_API_KEY ?? "";
-  if (!apiKey) {
-    res.status(500).json({ error: "OpenAI API key not configured" });
-    return;
-  }
-
-  const { sdp, voice = "ash", speed = 1.0, catalog = [], order = [], venueId } = req.body ?? {};
-  if (!sdp || typeof sdp !== "string") {
-    res.status(400).json({ error: "sdp is required" });
-    return;
-  }
-
-  if (venueId) {
-    await getCachedCredentials(req.user.id, Number(venueId));
-  }
-
-  try {
-    const callPlan = req.subscription?.plan ?? "trial";
-    const formData = new FormData();
-    formData.set("sdp", sdp);
-    formData.set("session", JSON.stringify(buildRealtimeSessionConfig(voice, speed, catalog, order, callPlan)));
-
-    const response = await fetch("https://api.openai.com/v1/realtime/calls", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: formData,
-    });
-
-    const text = await response.text();
-    if (!response.ok) {
-      console.error("[Realtime] Unified call failed:", text);
-      res.status(response.status).json({ error: "Failed to establish realtime call", detail: text });
-      return;
-    }
-
-    res.type("application/sdp").send(text);
-  } catch (e: any) {
-    console.error("[Realtime] Unified call error:", e.message);
-    res.status(500).json({ error: e.message });
-  }
-});
-
 // ── POST /tools — Execute a tool call ─────────────────────────────────────────
 // Session state is managed by the shared session-store (in-memory + DB write-through).
 
@@ -924,7 +808,7 @@ router.post("/tools", requireAuth as any, requirePlan() as any, async (req: any,
   const sessionId = String(session_id || `rt-${req.user.id}-${venueId ?? "general"}`);
   const session = getOrCreateSession(sessionId, squareToken, squareLocationId, req.user.id, Number(venueId ?? 0));
 
-  let noiseMode: import("@workspace/voicelab-core/noise").NoiseMode = "restaurant";
+  let noiseMode: import("@workspace/voicelab-core/noise").NoiseMode = "standard";
   if (agentProfileId) {
     const [profile] = await db
       .select({ noiseMode: agentProfilesTable.noiseMode })
@@ -969,142 +853,6 @@ router.post("/tools", requireAuth as any, requirePlan() as any, async (req: any,
     console.error(`[Realtime] Tool error (${tool_name}):`, e.message);
     res.status(500).json({ error: e.message });
   }
-});
-
-// ── POST /test-sync — Diagnostic: test Square order creation ──────────────────
-
-router.post("/test-sync", requireAuth as any, async (req: any, res: any) => {
-  const { venueId } = req.body ?? {};
-  if (!venueId) {
-    res.status(400).json({ error: "venueId is required" });
-    return;
-  }
-
-  const creds = await getCachedCredentials(req.user.id, Number(venueId));
-  if (!creds) {
-    res.json({ ok: false, error: "Venue not found or not owned by user", step: "lookup" });
-    return;
-  }
-  if (!creds.squareToken) {
-    res.json({ ok: false, error: "No Square access token — reconnect Square OAuth", step: "token" });
-    return;
-  }
-  if (!creds.squareLocationId) {
-    res.json({ ok: false, error: "No Square location ID — complete setup", step: "location" });
-    return;
-  }
-
-  // Step 1: Verify the token works by fetching the location
-  let locationName = "unknown";
-  try {
-    const locRes = await fetch(`https://connect.squareup.com/v2/locations/${creds.squareLocationId}`, {
-      headers: {
-        Authorization: `Bearer ${creds.squareToken}`,
-        "Content-Type": "application/json",
-        "Square-Version": "2024-12-18",
-      },
-    });
-    const locData = (await locRes.json()) as any;
-    if (!locRes.ok) {
-      res.json({
-        ok: false,
-        error: `Square token invalid or expired: ${locData.errors?.[0]?.detail || locRes.status}`,
-        step: "verify_token",
-        hint: "Reconnect Square from the Dashboard",
-      });
-      return;
-    }
-    locationName = locData.location?.name || "unknown";
-  } catch (e: any) {
-    res.json({ ok: false, error: `Cannot reach Square API: ${e.message}`, step: "verify_token" });
-    return;
-  }
-
-  // Step 2: Create a test order
-  const testSession: LiveSession = {
-    items: [{
-      catalogItemId: "test",
-      name: "VoyceLab Sync Test",
-      price: 0.01,
-      quantity: 1,
-    }],
-  };
-
-  const sync = await syncLiveOrderToSquare(testSession, creds.squareToken, creds.squareLocationId);
-  if (!sync.ok) {
-    res.json({
-      ok: false,
-      error: sync.error,
-      step: "create_order",
-      location: locationName,
-      locationId: creds.squareLocationId,
-    });
-    return;
-  }
-
-  // Step 3: Fetch the order back to confirm its state
-  let orderState = "unknown";
-  let orderDetails: any = null;
-  try {
-    const orderRes = await fetch(`https://connect.squareup.com/v2/orders/${testSession.squareOrderId}`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${creds.squareToken}`,
-        "Content-Type": "application/json",
-        "Square-Version": "2024-12-18",
-      },
-      body: JSON.stringify({ order_ids: [testSession.squareOrderId] }),
-    });
-    // Batch retrieve uses POST /v2/orders/batch-retrieve
-    const batchRes = await fetch(`https://connect.squareup.com/v2/orders/batch-retrieve`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${creds.squareToken}`,
-        "Content-Type": "application/json",
-        "Square-Version": "2024-12-18",
-      },
-      body: JSON.stringify({ location_id: creds.squareLocationId, order_ids: [testSession.squareOrderId] }),
-    });
-    const batchData = (await batchRes.json()) as any;
-    const order = batchData.orders?.[0];
-    if (order) {
-      orderState = order.state;
-      orderDetails = {
-        id: order.id,
-        state: order.state,
-        source: order.source?.name,
-        ticketName: order.ticket_name,
-        lineItems: (order.line_items || []).length,
-        fulfillments: (order.fulfillments || []).map((f: any) => ({
-          type: f.type,
-          state: f.state,
-        })),
-        total: order.total_money?.amount ? `$${(order.total_money.amount / 100).toFixed(2)}` : "$0.00",
-        createdAt: order.created_at,
-      };
-    }
-  } catch (e: any) {
-    console.warn("[TestSync] Could not fetch order back:", e.message);
-  }
-
-  // Step 4: Cancel the test order
-  await cancelLiveOrder(testSession, creds.squareToken, creds.squareLocationId);
-
-  res.json({
-    ok: true,
-    message: `Order created and visible at "${locationName}". If you don't see it on the iPad, check: 1) Open Tickets is enabled in Square POS settings, 2) iPad is signed into "${locationName}", 3) Check the Orders tab (not just the register screen).`,
-    location: locationName,
-    locationId: creds.squareLocationId,
-    testOrderId: sync.squareOrderId,
-    orderState,
-    orderDetails,
-    posChecklist: [
-      "Open Square POS on iPad → tap ☰ → Orders — the test order should have appeared there briefly",
-      "Settings → Checkout → enable 'Open Tickets' if not already on",
-      "Make sure your iPad POS is signed into the same location: " + locationName,
-      "Pull down to refresh the orders list after creating a voice order",
-    ],
-  });
 });
 
 // ── Voice-minute metering ─────────────────────────────────────────────────────

@@ -45,6 +45,7 @@ export const organizationsTable = pgTable("organizations", {
 
 export type Organization = typeof organizationsTable.$inferSelect;
 
+/** @deprecated Not used for team sharing yet. Single-user orgs only. */
 export const organizationMembershipsTable = pgTable("organization_memberships", {
   id: uuid("id").defaultRandom().primaryKey(),
   organizationId: uuid("organization_id").notNull().references(() => organizationsTable.id, { onDelete: "cascade" }),
@@ -67,9 +68,13 @@ export const venuesTable = pgTable("venues", {
   userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
   organizationId: uuid("organization_id").references(() => organizationsTable.id, { onDelete: "set null" }),
   name: text("name").notNull(),
+  /** @deprecated Use service_connections table for new code. */
   squareAccessToken: text("square_access_token"),
+  /** @deprecated Use service_connections table for new code. */
   squareMerchantId: text("square_merchant_id"),
+  /** @deprecated Use service_connections table for new code. */
   squareLocationId: text("square_location_id"),
+  /** @deprecated Use service_connections table for new code. */
   squareLocationName: text("square_location_name"),
   connectedAt: timestamp("connected_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -120,7 +125,7 @@ export const agentProfilesTable = pgTable("agent_profiles", {
   wakePhrase: text("wake_phrase").notNull(),
   voicePipelineProvider: text("voice_pipeline_provider").notNull(),
   voicePipelineConfig: jsonb("voice_pipeline_config").notNull().default({}),
-  noiseMode: text("noise_mode").notNull().default("restaurant"),
+  noiseMode: text("noise_mode").notNull().default("standard"),
   allowedTools: jsonb("allowed_tools").notNull().default([]), // string[]
   confirmationPolicy: jsonb("confirmation_policy").notNull().default({}),
   personality: text("personality").notNull().default(""),
@@ -186,6 +191,7 @@ export type ExchangeCode = typeof exchangeCodesTable.$inferSelect;
 
 // ── Voice Sessions ────────────────────────────────────────────────────────────
 
+/** @deprecated In-memory session store is authoritative. DB write-through retained for future analytics only. */
 export const voiceSessionsTable = pgTable("voice_sessions", {
   id: text("id").primaryKey(),
   userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
@@ -230,6 +236,7 @@ export const toolCallsTable = pgTable("tool_calls", {
   index("tool_calls_agent_idx").on(table.agentProfileId),
   index("tool_calls_org_idx").on(table.organizationId),
   index("tool_calls_status_idx").on(table.status),
+  index("tool_calls_user_created_idx").on(table.userId, table.createdAt),
 ]);
 
 // ── Usage Events ──────────────────────────────────────────────────────────────
@@ -246,6 +253,7 @@ export const usageEventsTable = pgTable("usage_events", {
 }, (table) => [
   index("usage_events_org_idx").on(table.organizationId),
   index("usage_events_kind_idx").on(table.kind),
+  index("usage_events_user_kind_idx").on(table.userId, table.kind, table.occurredAt),
 ]);
 
 

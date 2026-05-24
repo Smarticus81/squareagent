@@ -65,12 +65,9 @@ export const DEFAULT_CONFIRMATION_POLICY: ConfirmationPolicy = {
     "create_email_draft",
   ],
   thresholdByNoiseMode: {
-    quiet_room: "high",
-    restaurant: "medium",
-    bar: "medium",
-    nightclub: "low",
-    event_venue: "medium",
-    manual_push_to_talk: "low",
+    standard: "medium",
+    loud: "medium",
+    push_to_talk: "low",
   },
 };
 

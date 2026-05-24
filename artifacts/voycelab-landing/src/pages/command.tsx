@@ -7,7 +7,6 @@ import { VoiceRail } from "@/components/voice-rail";
 import {
   ArrowRight,
   ArrowUpRight,
-  Database,
   ExternalLink,
   Loader2,
   Mic,
@@ -120,7 +119,7 @@ export default function Command() {
         kind: "upgrade" as const,
         eyebrow: "Trial ended",
         title: "Pick a plan to keep using your assistant.",
-        body: "Your 14-day trial has ended. Upgrade to keep Bev on the floor.",
+        body: "Your 14-day trial has ended. Upgrade to Pro to keep your assistant running.",
         ctaLabel: "Choose a plan",
         ctaAction: () => setLocation("/pricing"),
       };
@@ -129,8 +128,8 @@ export default function Command() {
       return {
         kind: "open" as const,
         eyebrow: planActive ? "Plan active" : trialActive ? "Trial active" : "Ready",
-        title: `${generalProfile.displayName} is ready.`,
-        body: "General assistant · Web, email, and knowledge tools",
+        title: `${generalProfile.displayName} is ready — connect Square to unlock POS.`,
+        body: "Voice assistant active · Connect Square for orders, inventory, and reporting",
         ctaLabel: `Open ${generalProfile.displayName}`,
         ctaAction: () => launchAssistant(undefined, generalProfile.id),
         secondaryLabel: "Connect Square",
@@ -141,8 +140,8 @@ export default function Command() {
       return {
         kind: "connect" as const,
         eyebrow: venuesLoading ? "Loading..." : "Step 1 of 2",
-        title: "Choose how you want to start.",
-        body: "Create a general voice assistant now, or connect Square first if you want live POS actions today.",
+        title: "Start with voice, add POS when ready.",
+        body: "Your assistant works right away for email, questions, and knowledge. Connect Square to unlock ordering, inventory, and reports.",
         ctaLabel: "Create general assistant",
         ctaAction: () => setLocation("/assistants/new?kind=general"),
         secondaryLabel: "Connect Square",
@@ -235,8 +234,8 @@ export default function Command() {
 
           {primary.kind === "connect" && (
             <div className="relative mt-10 pt-7 border-t border-black/6 grid sm:grid-cols-2 gap-6">
-              <Step n="1" active label="Create an assistant" body="Start with a voice assistant for questions, notes, and connected business data." />
-              <Step n="2" label="Connect Square when ready" body="Add POS actions later from connected services." />
+              <Step n="1" active label="Create your assistant" body="Works right away for email, questions, and knowledge." />
+              <Step n="2" label="Connect Square when ready" body="Unlock ordering, inventory, and reports from Integrations." />
             </div>
           )}
         </article>
@@ -280,17 +279,9 @@ export default function Command() {
                 ? `${primaryVenue?.squareLocationName ?? "Square"} · Synced`
                 : "No services connected"
             }
-            hint="Connect Square, disconnect, or add a location."
+            hint="Square, email, knowledge base, and database."
             href="/services"
             cta={isConnected ? "Manage" : "Connect"}
-          />
-          <RouterRow
-            icon={<Database className="w-3.5 h-3.5" />}
-            label="Data sources"
-            detail="Knowledge base, database, and email"
-            hint="Power your General Business Assistant."
-            href="/data-sources"
-            cta="Open"
           />
           <RouterRow
             icon={<Cog className="w-3.5 h-3.5" />}

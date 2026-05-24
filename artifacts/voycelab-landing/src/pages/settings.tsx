@@ -425,10 +425,13 @@ function capitalize(s: string) {
 }
 
 const PLAN_MINUTES: Record<string, number> = {
-  trial: 100,
-  starter: 250,
-  professional: 1000,
-  premium: 4000,
+  trial: 60,
+  pro: 500,
+  business: 2000,
+  // Legacy plan names — backward compat for existing DB rows.
+  starter: 500,
+  professional: 500,
+  premium: 2000,
 };
 
 function UsageCard({ token, plan }: { token: string | null; plan?: string }) {

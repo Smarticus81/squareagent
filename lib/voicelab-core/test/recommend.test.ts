@@ -3,7 +3,7 @@ import { recommendVoicePipeline } from "../src/voice-pipeline/recommend";
 
 const baseInput = {
   deviceType: "desktop_browser" as const,
-  environment: "restaurant" as const,
+  environment: "standard" as const,
   connectedServiceProvider: "square" as const,
   requiresToolCalling: true,
   requiresBestVoiceQuality: false,
@@ -25,45 +25,40 @@ describe("recommendVoicePipeline", () => {
     expect(result.warnings.length).toBeGreaterThan(0);
   });
 
-  it("recommends Flux+Cartesia when in a noisy bar with credentials", () => {
+  it("recommends Gemini 3.1 Flash Live in a loud venue with Gemini credentials", () => {
     const result = recommendVoicePipeline({
       ...baseInput,
-      environment: "bar",
-      availableCredentials: { DEEPGRAM_API_KEY: true, CARTESIA_API_KEY: true },
+      environment: "loud",
+      availableCredentials: { GOOGLE_GEMINI_API_KEY: true },
     });
-    expect(result.recommendedProvider).toBe("deepgram_flux_cartesia");
+    expect(result.recommendedProvider).toBe("google_gemini_3_1_flash_live");
   });
 
-  it("recommends nightclub-appropriate pipeline with very-strict turn detection", () => {
+  it("recommends noise-appropriate pipeline for push_to_talk", () => {
     const result = recommendVoicePipeline({
       ...baseInput,
-      environment: "nightclub",
-      availableCredentials: { DEEPGRAM_API_KEY: true, CARTESIA_API_KEY: true },
+      environment: "push_to_talk",
+      availableCredentials: { GOOGLE_GEMINI_API_KEY: true },
     });
-    expect(result.recommendedProvider).toBe("deepgram_flux_cartesia");
+    expect(result.recommendedProvider).toBe("google_gemini_3_1_flash_live");
   });
 
-  it("recommends LiveKit when enterprise observability is requested and creds are present", () => {
+  it("recommends OpenAI server WS when enterprise observability is requested", () => {
     const result = recommendVoicePipeline({
       ...baseInput,
       requiresEnterpriseObservability: true,
-      availableCredentials: {
-        LIVEKIT_URL: true,
-        LIVEKIT_API_KEY: true,
-        LIVEKIT_API_SECRET: true,
-        OPENAI_API_KEY: true,
-      },
+      availableCredentials: { OPENAI_API_KEY: true },
     });
-    expect(result.recommendedProvider).toBe("livekit_agents");
+    expect(result.recommendedProvider).toBe("openai_realtime_server_ws");
   });
 
-  it("recommends ElevenLabs when best voice quality is requested", () => {
+  it("recommends Gemini 2.5 when best voice quality is requested with Gemini credentials", () => {
     const result = recommendVoicePipeline({
       ...baseInput,
       requiresBestVoiceQuality: true,
-      availableCredentials: { ELEVENLABS_API_KEY: true, ELEVENLABS_AGENT_ID: true },
+      availableCredentials: { GOOGLE_GEMINI_API_KEY: true },
     });
-    expect(result.recommendedProvider).toBe("elevenlabs_agents");
+    expect(result.recommendedProvider).toBe("google_gemini_2_5_flash_native_audio");
   });
 
   it("recommends server WS for iOS native", () => {

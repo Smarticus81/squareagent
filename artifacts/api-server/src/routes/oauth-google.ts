@@ -116,7 +116,7 @@ router.get("/callback", async (req: Request, res: Response): Promise<void> => {
   function redirectWithResult(result: { ok: boolean; email?: string; error?: string }) {
     const params = new URLSearchParams();
     params.set("gmail_oauth_result", JSON.stringify({ type: "gmail-oauth-result", ...result }));
-    res.redirect(`${frontendOrigin}/data-sources?${params.toString()}`);
+    res.redirect(`${frontendOrigin}/services?${params.toString()}`);
   }
 
   if (oauthError) {

@@ -16,6 +16,7 @@ import ConnectedServices from "@/pages/connected-services";
 import Settings from "@/pages/settings";
 import DataSources from "@/pages/data-sources";
 import Pricing from "@/pages/pricing";
+import Onboarding from "@/pages/onboarding";
 import NotFound from "@/pages/not-found";
 
 function NavigateReplace({ to }: { to: string }) {
@@ -61,6 +62,7 @@ function Router() {
         <Route path="/plans">
           <NavigateReplace to="/pricing" />
         </Route>
+        <Route path="/onboarding" component={Onboarding} />
         <Route path="/command" component={Command} />
         <Route path="/assistants" component={Assistants} />
         <Route path="/assistants/new" component={CreateAssistant} />

@@ -161,7 +161,7 @@ export const auditMiddleware: ToolMiddleware = async (toolName, args, ctx, next)
  * REQUIRES_CONFIRMATION result so the client can prompt the user.
  */
 export const confirmationMiddleware: ToolMiddleware = async (toolName, args, ctx, next) => {
-  const noiseMode = ctx.noiseMode ?? "restaurant";
+  const noiseMode = ctx.noiseMode ?? "standard";
   const confirmed = ctx.confirmed ?? false;
 
   const riskLevel = getToolRisk(toolName);
@@ -187,7 +187,6 @@ export const confirmationMiddleware: ToolMiddleware = async (toolName, args, ctx
 
 /** Standard middleware stack applied to all tool executors. */
 export const DEFAULT_MIDDLEWARES: ToolMiddleware[] = [
-  confirmationMiddleware,
   errorMiddleware,
   timingMiddleware,
   loggingMiddleware,
