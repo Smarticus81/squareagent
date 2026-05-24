@@ -14,7 +14,7 @@ export default function Signup() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    signup.mutate({ name, email, password }, { onSuccess: () => setLocation("/command") });
+    signup.mutate({ name, email, password }, { onSuccess: () => setLocation("/onboarding") });
   };
 
   return (

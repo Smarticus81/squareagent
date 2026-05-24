@@ -48,7 +48,7 @@ export default function CreateAssistant() {
   });
   const [venueId, setVenueId] = useState<number | null>(null);
   const [voice, setVoice] = useState("verse");
-  const [noiseMode, setNoiseMode] = useState("restaurant");
+  const [noiseMode, setNoiseMode] = useState("standard");
   const [voicePipelineProvider] = useState("openai_realtime_webrtc");
   const [wakePhrase, setWakePhrase] = useState("Hey Voyce");
   const [personality, setPersonality] = useState("");
@@ -75,7 +75,7 @@ export default function CreateAssistant() {
         setName(profile.displayName);
         setVenueId(profile.venueId);
         setWakePhrase(profile.wakePhrase || "Hey Voyce");
-        setNoiseMode(profile.noiseMode || "restaurant");
+        setNoiseMode(profile.noiseMode || "standard");
         setPersonality(profile.personality || "");
         const cfg = profile.voicePipelineConfig as { voice?: string } | undefined;
         if (cfg?.voice) setVoice(cfg.voice);
@@ -289,15 +289,15 @@ export default function CreateAssistant() {
                 borderColor: "rgba(99,102,241,0.12)",
               }}
             >
-              This assistant won't connect to Square. It can use your knowledge base, database, and email.{" "}
+              Your assistant starts without POS access. Connect Square anytime from{" "}
               <Link
                 href="/services"
                 className="underline"
                 style={{ color: "var(--color-vl-accent)" }}
               >
-                Connect Square later
+                Integrations
               </Link>{" "}
-              from Integrations.
+              to unlock ordering, inventory, and reporting.
             </div>
           )}
 
@@ -335,12 +335,9 @@ export default function CreateAssistant() {
                     onChange={(e) => setNoiseMode(e.target.value)}
                     className="vl-input appearance-none pr-10"
                   >
-                    <option value="quiet_room">Quiet room</option>
-                    <option value="restaurant">Restaurant</option>
-                    <option value="bar">Bar</option>
-                    <option value="nightclub">Nightclub</option>
-                    <option value="event_venue">Event venue</option>
-                    <option value="manual_push_to_talk">Push to talk</option>
+                    <option value="standard">Standard</option>
+                    <option value="loud">Loud venue</option>
+                    <option value="push_to_talk">Push to talk</option>
                   </select>
                   <ChevronDown
                     className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4"

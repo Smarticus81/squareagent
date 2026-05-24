@@ -44,7 +44,7 @@ export default function Assistants() {
     venueId: profile.venueId,
     name: profile.displayName,
     venue: profile.venueId ? venue?.squareLocationName ?? venue?.name ?? "Unnamed venue" : "General assistant",
-    service: profile.venueId ? "Square" : "Not connected yet",
+    service: profile.venueId ? "Square" : "Square not connected",
     voice: pipelineLabel(profile.voicePipelineProvider),
     room: roomLabel(profile.noiseMode),
     wakePhrase: profile.wakePhrase,
@@ -271,9 +271,9 @@ function useDeleteAssistant() {
 
 function pipelineLabel(provider: string): string {
   if (provider.includes("gemini")) return "Gemini Live";
-  if (provider.includes("hume")) return "Hume EVI";
-  if (provider.includes("deepgram")) return "Deepgram";
-  if (provider.includes("elevenlabs")) return "ElevenLabs";
+  if (provider.includes("browser_speech")) return "Browser Speech";
+  if (provider.includes("push_to_talk")) return "Push-to-talk";
+  if (provider.includes("text_only")) return "Text only";
   return "OpenAI Realtime";
 }
 

@@ -12,8 +12,6 @@ export const VOICES = [
 ] as const;
 
 export const SPEEDS = [
-  { id: 0.8, label: "Slow" },
-  { id: 0.9, label: "Normal" },
   { id: 1.0, label: "Fast" },
   { id: 1.15, label: "Fastest" },
 ] as const;
@@ -22,7 +20,7 @@ export type VoiceId = (typeof VOICES)[number]["id"];
 
 const SUPPORTED = new Set(VOICES.map((v) => v.id));
 const DEFAULT_VOICE: VoiceId = "ash";
-const DEFAULT_SPEED = 0.9;
+const DEFAULT_SPEED = 1.0;
 
 export interface VoicePrefsStorage {
   getItem(key: string): string | null;

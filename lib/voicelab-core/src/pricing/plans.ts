@@ -18,7 +18,18 @@ import type { VoicePipelineProvider } from "../voice-pipeline/types";
  * inclusion of plan minutes get used in a typical month.
  */
 
-export type PlanId = "trial" | "starter" | "professional" | "premium" | "enterprise";
+export type PlanId = "trial" | "pro" | "business";
+
+/** Legacy plan ids that may still exist in the database. */
+export type LegacyPlanId = "starter" | "professional" | "premium" | "enterprise";
+
+/** Map legacy plan names to the new plan they should resolve to. */
+export const LEGACY_PLAN_MAP: Record<string, PlanId> = {
+  starter: "pro",
+  professional: "pro",
+  premium: "business",
+  enterprise: "business",
+};
 
 export type SkillTier = "core" | "standard" | "premium";
 
@@ -72,31 +83,18 @@ const PIPELINES_FALLBACK: VoicePipelineProvider[] = [
   "text_only_fallback",
 ];
 
-const PIPELINES_STARTER: VoicePipelineProvider[] = [
+const PIPELINES_TRIAL: VoicePipelineProvider[] = [
   "openai_realtime_webrtc",
-  "openai_realtime_server_ws",
   ...PIPELINES_FALLBACK,
 ];
 
-const PIPELINES_PROFESSIONAL: VoicePipelineProvider[] = [
-  ...PIPELINES_STARTER,
+const PIPELINES_PAID: VoicePipelineProvider[] = [
+  "openai_realtime_webrtc",
+  "openai_realtime_server_ws",
   "google_gemini_3_1_flash_live",
   "google_gemini_2_5_flash_native_audio",
   "google_gemini_live_native_audio",
-];
-
-const PIPELINES_PREMIUM: VoicePipelineProvider[] = [
-  ...PIPELINES_PROFESSIONAL,
-  "elevenlabs_agents",
-  "deepgram_voice_agent_api",
-  "livekit_agents",
-  "pipecat",
-  "deepgram_flux_cartesia",
-  "deepgram_flux_aura",
-  "cartesia_ink_sonic",
-  "assemblyai_openai_cartesia",
-  "custom_modular_pipeline",
-  "hume_evi_3",
+  ...PIPELINES_FALLBACK,
 ];
 
 export const PLANS: PlanDefinition[] = [
@@ -108,127 +106,94 @@ export const PLANS: PlanDefinition[] = [
     yearlyPriceUsdPerMonth: 0,
     trialDays: 14,
     maxVenues: 1,
-    maxAssistants: 3,
-    includedVoiceMinutes: 100,
+    maxAssistants: 1,
+    includedVoiceMinutes: 60,
     overagePerMinuteUsd: 0,
-    skillTiers: ["core", "standard", "premium"],
-    allowedPipelines: ["openai_realtime_webrtc" as VoicePipelineProvider, ...PIPELINES_FALLBACK],
+    skillTiers: ["core"],
+    allowedPipelines: PIPELINES_TRIAL,
     cta: "Start free trial",
     bullets: [
-      { text: "OpenAI Realtime voice for 14 days" },
-      { text: "100 voice minutes" },
+      { text: "1 venue, 1 assistant" },
+      { text: "60 voice minutes for 14 days" },
+      { text: "POS, orders, and reporting" },
       { text: "Build, test, and demo with your team" },
     ],
   },
   {
-    id: "starter",
-    name: "Starter",
-    tagline: "Single bar, simple ops, real voice ordering.",
-    monthlyPriceUsd: 79,
-    yearlyPriceUsdPerMonth: 65,
-    maxVenues: 1,
-    maxAssistants: 2,
-    includedVoiceMinutes: 250,
-    overagePerMinuteUsd: 0.20,
-    skillTiers: ["core"],
-    allowedPipelines: PIPELINES_STARTER,
-    cta: "Pick Starter",
-    stripeMonthlyPriceEnvVar: "STRIPE_PRICE_STARTER_MONTHLY",
-    stripeYearlyPriceEnvVar: "STRIPE_PRICE_STARTER_YEARLY",
-    bullets: [
-      { text: "1 venue, 2 voice assistants" },
-      { text: "250 voice minutes / month included" },
-      { text: "OpenAI Realtime (WebRTC + WebSocket)" },
-      { text: "POS, orders, reporting" },
-      { text: "Overage billed at $0.20/min, capped at 1.5x your plan" },
-      { text: "Email support" },
-    ],
-  },
-  {
-    id: "professional",
-    name: "Professional",
-    tagline: "Multi-venue groups that need inventory + Gemini-class voice.",
-    monthlyPriceUsd: 199,
-    yearlyPriceUsdPerMonth: 165,
+    id: "pro",
+    name: "Pro",
+    tagline: "Multi-venue teams that need every skill and Gemini-class voice.",
+    monthlyPriceUsd: 149,
+    yearlyPriceUsdPerMonth: 125,
     highlighted: true,
     ribbon: "Most popular",
     maxVenues: 3,
     maxAssistants: 10,
-    includedVoiceMinutes: 1000,
-    overagePerMinuteUsd: 0.17,
-    skillTiers: ["core", "standard"],
-    allowedPipelines: PIPELINES_PROFESSIONAL,
-    cta: "Pick Professional",
-    stripeMonthlyPriceEnvVar: "STRIPE_PRICE_PROFESSIONAL_MONTHLY",
-    stripeYearlyPriceEnvVar: "STRIPE_PRICE_PROFESSIONAL_YEARLY",
+    includedVoiceMinutes: 500,
+    overagePerMinuteUsd: 0.18,
+    skillTiers: ["core", "standard", "premium"],
+    allowedPipelines: PIPELINES_PAID,
+    cta: "Pick Pro",
+    stripeMonthlyPriceEnvVar: "STRIPE_PRICE_PRO_MONTHLY",
+    stripeYearlyPriceEnvVar: "STRIPE_PRICE_PRO_YEARLY",
     bullets: [
       { text: "Up to 3 venues, 10 assistants" },
-      { text: "1,000 voice minutes / month included" },
+      { text: "500 voice minutes / month included" },
       {
         text: "OpenAI Realtime + Gemini 3.1 Flash Live + Gemini 2.5 Native Audio",
         emphasis: true,
       },
-      { text: "Inventory, catalog management, customers & payments" },
-      { text: "Overage billed at $0.17/min, capped at 1.5x your plan" },
+      { text: "Every skill: POS, inventory, catalog, customers, payments, team & labor" },
+      { text: "Overage billed at $0.18/min, capped at 1.5x your plan" },
       { text: "Priority email + chat support" },
     ],
   },
   {
-    id: "premium",
-    name: "Premium",
-    tagline: "Hospitality groups and event venues. Every voice engine, every skill.",
-    monthlyPriceUsd: 499,
-    yearlyPriceUsdPerMonth: 415,
+    id: "business",
+    name: "Business",
+    tagline: "Hospitality groups and event venues. Unlimited scale.",
+    monthlyPriceUsd: 399,
+    yearlyPriceUsdPerMonth: 335,
     maxVenues: -1,
     maxAssistants: -1,
-    includedVoiceMinutes: 4000,
-    overagePerMinuteUsd: 0.14,
+    includedVoiceMinutes: 2000,
+    overagePerMinuteUsd: 0.12,
     skillTiers: ["core", "standard", "premium"],
-    allowedPipelines: PIPELINES_PREMIUM,
-    cta: "Pick Premium",
-    stripeMonthlyPriceEnvVar: "STRIPE_PRICE_PREMIUM_MONTHLY",
-    stripeYearlyPriceEnvVar: "STRIPE_PRICE_PREMIUM_YEARLY",
+    allowedPipelines: PIPELINES_PAID,
+    cta: "Pick Business",
+    stripeMonthlyPriceEnvVar: "STRIPE_PRICE_BUSINESS_MONTHLY",
+    stripeYearlyPriceEnvVar: "STRIPE_PRICE_BUSINESS_YEARLY",
     bullets: [
       { text: "Unlimited venues and assistants" },
-      { text: "4,000 voice minutes / month included" },
-      { text: "Every voice engine: ElevenLabs, Deepgram, LiveKit, Hume, modular cascaded", emphasis: true },
+      { text: "2,000 voice minutes / month included" },
+      { text: "Every skill and every voice engine", emphasis: true },
       { text: "Team & labor: shifts, clock-in, who's on the floor right now" },
-      { text: "Overage billed at $0.14/min, capped at 1.5x your plan" },
+      { text: "Overage billed at $0.12/min, capped at 1.5x your plan" },
       { text: "24/7 chat + dedicated customer success" },
-    ],
-  },
-  {
-    id: "enterprise",
-    name: "Enterprise",
-    tagline: "Custom relay, audit trails, SSO, on-prem. Talk to us.",
-    monthlyPriceUsd: 0,
-    yearlyPriceUsdPerMonth: 0,
-    maxVenues: -1,
-    maxAssistants: -1,
-    includedVoiceMinutes: -1,
-    overagePerMinuteUsd: 0,
-    skillTiers: ["core", "standard", "premium"],
-    allowedPipelines: PIPELINES_PREMIUM,
-    cta: "Contact sales",
-    bullets: [
-      { text: "Custom voice minutes + dedicated relay region" },
-      { text: "SOC2-aligned audit logs to your S3 bucket" },
-      { text: "SSO, SCIM, IP allowlist" },
-      { text: "On-prem or VPC-isolated deployment" },
-      { text: "SLA + named CS lead" },
     ],
   },
 ];
 
-export function getPlan(id: string): PlanDefinition | undefined {
-  return PLANS.find((p) => p.id === id);
+/** Resolve a plan id, mapping legacy names to their new equivalents. */
+export function resolvePlanId(id: string | null | undefined): PlanId {
+  if (!id) return "trial";
+  const direct = PLANS.find((p) => p.id === id);
+  if (direct) return direct.id;
+  const mapped = LEGACY_PLAN_MAP[id];
+  if (mapped) return mapped;
+  return "trial";
 }
 
-/** Returns the resolved skill tiers for a plan. Falls back to premium tiers for unknown ids. */
+export function getPlan(id: string): PlanDefinition | undefined {
+  const resolved = resolvePlanId(id);
+  return PLANS.find((p) => p.id === resolved);
+}
+
+/** Returns the resolved skill tiers for a plan. Falls back to business tiers for unknown ids. */
 export function getPlanSkillTiers(planId: string | null | undefined): SkillTier[] {
   if (!planId) return ["core", "standard", "premium"];
-  const direct = PLANS.find((p) => p.id === planId);
-  if (direct) return direct.skillTiers;
+  const plan = getPlan(planId);
+  if (plan) return plan.skillTiers;
   return ["core", "standard", "premium"];
 }
 
@@ -239,10 +204,10 @@ export function getPlanSkillTiers(planId: string | null | undefined): SkillTier[
 export function getPlanAllowedPipelines(
   planId: string | null | undefined,
 ): VoicePipelineProvider[] {
-  if (!planId) return PIPELINES_PREMIUM;
-  const direct = PLANS.find((p) => p.id === planId);
-  if (direct) return direct.allowedPipelines;
-  return PIPELINES_PREMIUM;
+  if (!planId) return PIPELINES_PAID;
+  const plan = getPlan(planId);
+  if (plan) return plan.allowedPipelines;
+  return PIPELINES_PAID;
 }
 
 export function planAllowsPipeline(

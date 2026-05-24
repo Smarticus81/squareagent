@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, type FormEvent } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import {
@@ -12,17 +12,115 @@ import {
   ArrowLeft,
   ArrowRight,
   CheckCircle2,
+  ChevronDown,
   Database,
   ExternalLink,
   FileText,
   Loader2,
+  Mail,
   MapPin,
   Plus,
   PlugZap,
   Store,
   Trash2,
+  Upload,
   X,
 } from "lucide-react";
+
+// ── Types from data-sources ──────────────────────────────────────────────────
+
+type Doc = {
+  id: string;
+  title: string;
+  sourceType: string;
+  sourceUri: string | null;
+  byteCount: number;
+  chunkCount: number;
+  createdAt: string;
+};
+
+type DbConn = {
+  id: string;
+  label: string;
+  kind: string;
+  schemaHint: string | null;
+  createdAt: string;
+};
+
+type EmailConfig = {
+  id: string;
+  provider: string;
+  fromAddress: string;
+  fromName: string | null;
+  createdAt: string;
+} | null;
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function fmtBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function getHeaders(extra: Record<string, string> = {}) {
+  const token = localStorage.getItem("voycelab_token");
+  return {
+    "Content-Type": "application/json",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...extra,
+  };
+}
+
+function getAuthHeader(): Record<string, string> {
+  const token = localStorage.getItem("voycelab_token");
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+// ── Section wrapper (collapsible <details>) ──────────────────────────────────
+
+function IntegrationSection({
+  icon,
+  iconBg,
+  iconColor,
+  title,
+  subtitle,
+  defaultOpen,
+  children,
+}: {
+  icon: React.ReactNode;
+  iconBg: string;
+  iconColor: string;
+  title: string;
+  subtitle: string;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <details open={defaultOpen} className="group mb-8">
+      <summary className="mb-4 flex cursor-pointer items-center gap-3 list-none [&::-webkit-details-marker]:hidden">
+        <div
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+          style={{
+            background: iconBg,
+            border: "1px solid rgba(10,10,11,0.08)",
+            color: iconColor,
+          }}
+        >
+          {icon}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-[15px] font-semibold" style={{ color: "var(--color-vl-ink)" }}>{title}</p>
+          <p className="text-[12px]" style={{ color: "rgba(10,10,11,0.52)" }}>{subtitle}</p>
+        </div>
+        <ChevronDown className="h-4 w-4 shrink-0 transition-transform group-open:rotate-180" style={{ color: "rgba(10,10,11,0.35)" }} />
+      </summary>
+      {children}
+    </details>
+  );
+}
+
+// ── Main page ────────────────────────────────────────────────────────────────
 
 export default function ConnectedServices() {
   const [, setLocation] = useLocation();
@@ -174,27 +272,16 @@ export default function ConnectedServices() {
           </div>
         )}
 
-        {/* ── Square POS ──────────────────────────────────────── */}
-        <section className="mb-8">
-          <div className="mb-4 flex items-end justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
-                style={{
-                  background: "linear-gradient(135deg, #FFFFFF, var(--color-vl-coral-tint))",
-                  border: "1px solid rgba(10,10,11,0.08)",
-                  color: "var(--color-vl-coral-deep)",
-                }}
-              >
-                <Store className="h-4.5 w-4.5" />
-              </div>
-              <div>
-                <p className="text-[15px] font-semibold" style={{ color: "var(--color-vl-ink)" }}>Square POS</p>
-                <p className="text-[12px]" style={{ color: "rgba(10,10,11,0.52)" }}>
-                  Menu, orders, inventory, reporting, terminals
-                </p>
-              </div>
-            </div>
+        {/* ── 1. Square POS ──────────────────────────────────────── */}
+        <IntegrationSection
+          icon={<Store className="h-4.5 w-4.5" />}
+          iconBg="linear-gradient(135deg, #FFFFFF, var(--color-vl-coral-tint))"
+          iconColor="var(--color-vl-coral-deep)"
+          title="Square POS"
+          subtitle="Menu, orders, inventory, reporting, terminals"
+          defaultOpen
+        >
+          <div className="flex justify-end mb-3">
             {hasVenues && (
               <button
                 onClick={handleConnectSquare}
@@ -278,53 +365,42 @@ export default function ConnectedServices() {
               </button>
             </div>
           )}
-        </section>
+        </IntegrationSection>
 
-        {/* ── Data & Knowledge ──────────────────────────────────── */}
-        <section className="mb-8">
-          <div className="mb-4 flex items-center gap-3">
-            <div
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
-              style={{
-                background: "linear-gradient(135deg, #FFFFFF, rgba(199,210,254,0.4))",
-                border: "1px solid rgba(10,10,11,0.08)",
-                color: "var(--color-vl-accent)",
-              }}
-            >
-              <Database className="h-4.5 w-4.5" />
-            </div>
-            <div>
-              <p className="text-[15px] font-semibold" style={{ color: "var(--color-vl-ink)" }}>Data sources</p>
-              <p className="text-[12px]" style={{ color: "rgba(10,10,11,0.52)" }}>
-                Knowledge base, database, and email
-              </p>
-            </div>
-          </div>
+        {/* ── 2. Knowledge Base ───────────────────────────────────── */}
+        <IntegrationSection
+          icon={<FileText className="h-4.5 w-4.5" />}
+          iconBg="linear-gradient(135deg, #FFFFFF, rgba(199,210,254,0.4))"
+          iconColor="var(--color-vl-accent)"
+          title="Knowledge Base"
+          subtitle="Upload documents the assistant can search and quote from"
+        >
+          <KnowledgeSection />
+        </IntegrationSection>
 
-          <Link
-            href="/data-sources"
-            className="group flex items-center justify-between rounded-2xl border bg-white p-5 md:p-6 transition-all hover:-translate-y-0.5"
-            style={{ borderColor: "rgba(10,10,11,0.08)", boxShadow: "0 1px 2px rgba(10,10,11,0.04), 0 8px 24px -12px rgba(10,10,11,0.08)" }}
-          >
-            <div className="flex items-start gap-4">
-              <FileText className="h-5 w-5 mt-0.5 shrink-0" style={{ color: "var(--color-vl-accent)" }} />
-              <div>
-                <p className="text-[14px] font-semibold" style={{ color: "var(--color-vl-ink)" }}>
-                  Upload documents, connect a database, or configure email
-                </p>
-                <p className="mt-1 text-[12.5px] leading-relaxed" style={{ color: "rgba(10,10,11,0.55)" }}>
-                  Your assistant can search your knowledge base, run read-only queries, and send emails you approve.
-                </p>
-              </div>
-            </div>
-            <ArrowRight
-              className="w-4 h-4 shrink-0 ml-4 transition-transform group-hover:translate-x-0.5"
-              style={{ color: "rgba(10,10,11,0.35)" }}
-            />
-          </Link>
-        </section>
+        {/* ── 3. Email ────────────────────────────────────────────── */}
+        <IntegrationSection
+          icon={<Mail className="h-4.5 w-4.5" />}
+          iconBg="linear-gradient(135deg, #FFFFFF, rgba(253,224,71,0.2))"
+          iconColor="var(--color-vl-accent)"
+          title="Email"
+          subtitle="Gmail OAuth or Resend API for outbound mail"
+        >
+          <EmailSection />
+        </IntegrationSection>
 
-        {/* ── Coming soon ────────────────────────────────────── */}
+        {/* ── 4. Database ─────────────────────────────────────────── */}
+        <IntegrationSection
+          icon={<Database className="h-4.5 w-4.5" />}
+          iconBg="linear-gradient(135deg, #FFFFFF, rgba(167,243,208,0.3))"
+          iconColor="var(--color-vl-accent)"
+          title="Database"
+          subtitle="Read-only Postgres connection for the query tool"
+        >
+          <DatabaseSection />
+        </IntegrationSection>
+
+        {/* ── 5. Coming soon ──────────────────────────────────────── */}
         <section>
           <div className="mb-4">
             <p className="text-[13px] font-semibold" style={{ color: "var(--color-vl-ink-muted)" }}>
@@ -435,6 +511,575 @@ export default function ConnectedServices() {
     </div>
   );
 }
+
+// ── Knowledge Base section ───────────────────────────────────────────────────
+
+function KnowledgeSection() {
+  const [docs, setDocs] = useState<Doc[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
+  const [title, setTitle] = useState("");
+  const [text, setText] = useState("");
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/v1/knowledge/documents", { headers: getAuthHeader() });
+      const data = await res.json();
+      setDocs(data.documents ?? []);
+    } catch {
+      /* ignore */
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  const submitText = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!title.trim() || !text.trim()) return;
+    setBusy(true);
+    setMsg(null);
+    try {
+      const res = await fetch("/api/v1/knowledge/documents", {
+        method: "POST",
+        headers: getHeaders(),
+        body: JSON.stringify({ title: title.trim(), text }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Upload failed");
+      setMsg({ tone: "ok", text: `Indexed "${data.title}" (${data.chunkCount} chunks).` });
+      setTitle("");
+      setText("");
+      await load();
+    } catch (err) {
+      setMsg({ tone: "error", text: err instanceof Error ? err.message : "Upload failed" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const submitFile = async (file: File) => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("title", file.name);
+      const res = await fetch("/api/v1/knowledge/documents/upload", {
+        method: "POST",
+        headers: getAuthHeader(),
+        body: fd,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Upload failed");
+      setMsg({ tone: "ok", text: `Indexed "${data.title}" (${data.chunkCount} chunks).` });
+      await load();
+    } catch (err) {
+      setMsg({ tone: "error", text: err instanceof Error ? err.message : "Upload failed" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async (id: string) => {
+    if (!confirm("Delete this document and all its chunks?")) return;
+    await fetch(`/api/v1/knowledge/documents/${id}`, {
+      method: "DELETE",
+      headers: getAuthHeader(),
+    });
+    await load();
+  };
+
+  return (
+    <div
+      className="rounded-2xl border bg-white p-6"
+      style={{ borderColor: "rgba(10,10,11,0.08)", boxShadow: "0 1px 2px rgba(10,10,11,0.04), 0 8px 24px -12px rgba(10,10,11,0.08)" }}
+    >
+      <p className="text-[14px] mb-6" style={{ color: "rgba(10,10,11,0.62)" }}>
+        Upload PDFs, Word docs, or paste text. The assistant will use <code className="rounded px-1" style={{ color: "var(--color-vl-ink)", background: "rgba(10,10,11,0.06)" }}>search_knowledge</code> to
+        quote from these when relevant.
+      </p>
+
+      <div className="grid md:grid-cols-2 gap-4 mb-6">
+        <form onSubmit={submitText} className="space-y-3">
+          <input
+            type="text"
+            placeholder="Title"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            className="w-full bg-white border border-black/12 rounded-lg px-3 py-2 text-sm text-(--color-vl-ink) placeholder:text-black/35"
+          />
+          <textarea
+            placeholder="Paste text here..."
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            rows={6}
+            className="w-full bg-white border border-black/12 rounded-lg px-3 py-2 text-sm text-(--color-vl-ink) placeholder:text-black/35 resize-y"
+          />
+          <button
+            type="submit"
+            disabled={busy || !title.trim() || !text.trim()}
+            className="vl-btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm font-medium disabled:opacity-50"
+          >
+            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Add text
+          </button>
+        </form>
+
+        <label className="flex flex-col items-center justify-center border-2 border-dashed border-black/12 rounded-lg p-6 cursor-pointer hover:border-black/25 bg-(--color-vl-cream)/50">
+          <Upload className="w-6 h-6 mb-2" style={{ color: "var(--color-vl-accent)" }} />
+          <div className="text-sm" style={{ color: "var(--color-vl-ink)" }}>Upload a file</div>
+          <div className="text-xs mt-1" style={{ color: "rgba(10,10,11,0.52)" }}>PDF, DOCX, TXT, MD, HTML - up to 10 MB</div>
+          <input
+            type="file"
+            accept=".pdf,.docx,.txt,.md,.markdown,.html,.htm,.csv,.json,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/html,text/markdown"
+            disabled={busy}
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) submitFile(f);
+              e.target.value = "";
+            }}
+          />
+        </label>
+      </div>
+
+      {msg && (
+        <div
+          className={`text-sm mb-4 ${msg.tone === "ok" ? "text-emerald-400" : "text-rose-400"}`}
+          role={msg.tone === "error" ? "alert" : undefined}
+        >
+          {msg.text}
+        </div>
+      )}
+
+      {loading ? (
+        <div className="text-sm" style={{ color: "rgba(10,10,11,0.52)" }}>Loading...</div>
+      ) : docs.length === 0 ? (
+        <div className="text-sm" style={{ color: "rgba(10,10,11,0.52)" }}>No documents yet.</div>
+      ) : (
+        <ul className="divide-y divide-black/6">
+          {docs.map((d) => (
+            <li key={d.id} className="flex items-center justify-between py-3">
+              <div>
+                <div className="text-sm" style={{ color: "var(--color-vl-ink)" }}>{d.title}</div>
+                <div className="text-xs" style={{ color: "rgba(10,10,11,0.52)" }}>
+                  {d.chunkCount} chunks · {fmtBytes(d.byteCount)} · {new Date(d.createdAt).toLocaleString()}
+                </div>
+              </div>
+              <button
+                onClick={() => remove(d.id)}
+                className="p-2 rounded-md text-black/45 hover:text-rose-600 hover:bg-black/4"
+                aria-label="Delete document"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+// ── Email section ────────────────────────────────────────────────────────────
+
+function EmailSection() {
+  const [config, setConfig] = useState<EmailConfig>(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
+  const [provider, setProvider] = useState<"resend" | "gmail_oauth">("gmail_oauth");
+  const [apiKey, setApiKey] = useState("");
+  const [fromAddress, setFromAddress] = useState("");
+  const [fromName, setFromName] = useState("");
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/v1/knowledge/email", { headers: getAuthHeader() });
+      const data = await res.json();
+      setConfig(data.email ?? null);
+      if (data.email) {
+        setFromAddress(data.email.fromAddress ?? "");
+        setFromName(data.email.fromName ?? "");
+        if (data.email.provider === "gmail_oauth" || data.email.provider === "resend") {
+          setProvider(data.email.provider);
+        }
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+  useEffect(() => {
+    load();
+  }, []);
+
+  const saveResend = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!fromAddress.trim()) return;
+    setBusy(true);
+    setMsg(null);
+    try {
+      const res = await fetch("/api/v1/knowledge/email", {
+        method: "PUT",
+        headers: getHeaders(),
+        body: JSON.stringify({
+          provider: "resend",
+          apiKey: apiKey.trim() || undefined,
+          fromAddress: fromAddress.trim(),
+          fromName: fromName.trim() || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Save failed");
+      setMsg({ tone: "ok", text: "Email config saved." });
+      setApiKey("");
+      await load();
+    } catch (err) {
+      setMsg({ tone: "error", text: err instanceof Error ? err.message : "Save failed" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const raw = params.get("gmail_oauth_result");
+    if (!raw) return;
+
+    const url = new URL(window.location.href);
+    url.searchParams.delete("gmail_oauth_result");
+    window.history.replaceState({}, "", url.pathname + url.search);
+
+    try {
+      const payload = JSON.parse(raw);
+      if (payload.ok) {
+        setMsg({ tone: "ok", text: `Gmail connected as ${payload.email ?? "your account"}.` });
+        setProvider("gmail_oauth");
+        load();
+      } else {
+        setMsg({ tone: "error", text: payload.error || "Gmail authorization failed." });
+      }
+    } catch {
+      setMsg({ tone: "error", text: "Could not parse Gmail OAuth result." });
+    }
+  }, []);
+
+  const connectGmail = async () => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const params = new URLSearchParams();
+      if (fromName.trim()) params.set("fromName", fromName.trim());
+      const res = await fetch(`/api/oauth/google/start?${params}`, { headers: getAuthHeader() });
+      const data = await res.json();
+      if (!res.ok || !data.url) throw new Error(data.error || "Failed to start Gmail OAuth");
+
+      window.location.href = data.url;
+    } catch (err) {
+      setMsg({ tone: "error", text: err instanceof Error ? err.message : "Connection failed" });
+      setBusy(false);
+    }
+  };
+
+  const remove = async () => {
+    if (!confirm("Disconnect email?")) return;
+    await fetch("/api/v1/knowledge/email", { method: "DELETE", headers: getAuthHeader() });
+    setConfig(null);
+    setApiKey("");
+    setFromAddress("");
+    setFromName("");
+  };
+
+  const isGmailConnected = config?.provider === "gmail_oauth";
+  const isResendConnected = config?.provider === "resend";
+
+  return (
+    <div
+      className="rounded-2xl border bg-white p-6"
+      style={{ borderColor: "rgba(10,10,11,0.08)", boxShadow: "0 1px 2px rgba(10,10,11,0.04), 0 8px 24px -12px rgba(10,10,11,0.08)" }}
+    >
+      <p className="text-[14px] mb-4" style={{ color: "rgba(10,10,11,0.62)" }}>
+        Choose how outbound mail is sent. The <code className="rounded px-1" style={{ color: "var(--color-vl-ink)", background: "rgba(10,10,11,0.06)" }}>send_email</code> tool delivers from this address — the assistant always reads the recipient and subject back to you before sending.
+      </p>
+
+      {loading ? (
+        <div className="text-sm" style={{ color: "rgba(10,10,11,0.52)" }}>Loading...</div>
+      ) : (
+        <>
+          <div className="flex gap-2 mb-4" role="tablist" aria-label="Email provider">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={provider === "gmail_oauth"}
+              onClick={() => setProvider("gmail_oauth")}
+              className={`px-3 py-1.5 text-sm rounded-full border transition ${provider === "gmail_oauth" ? "bg-(--color-vl-ink) text-white border-transparent" : "border-black/12 text-(--color-vl-ink)"}`}
+            >
+              Gmail
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={provider === "resend"}
+              onClick={() => setProvider("resend")}
+              className={`px-3 py-1.5 text-sm rounded-full border transition ${provider === "resend" ? "bg-(--color-vl-ink) text-white border-transparent" : "border-black/12 text-(--color-vl-ink)"}`}
+            >
+              Resend
+            </button>
+          </div>
+
+          {provider === "gmail_oauth" ? (
+            <div className="space-y-3">
+              <p className="text-[13px]" style={{ color: "rgba(10,10,11,0.55)" }}>
+                Sign in with Google to grant VoyceLab the <code className="rounded px-1" style={{ background: "rgba(10,10,11,0.06)" }}>gmail.send</code> scope. Mail is sent from your Gmail address — no app password, no SMTP setup. Daily limit = 500 emails. You can revoke access any time at <a href="https://myaccount.google.com/permissions" target="_blank" rel="noreferrer" className="underline" style={{ color: "var(--color-vl-accent)" }}>your Google Account</a>.
+              </p>
+
+              {isGmailConnected ? (
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm flex items-center justify-between">
+                  <span style={{ color: "var(--color-vl-ink)" }}>Connected as <strong>{config?.fromAddress}</strong></span>
+                </div>
+              ) : null}
+
+              <input
+                type="text"
+                placeholder="From name (optional, e.g. Acme Bar)"
+                value={fromName}
+                onChange={(e) => setFromName(e.target.value)}
+                className="w-full bg-white border border-black/12 rounded-lg px-3 py-2 text-sm text-(--color-vl-ink) placeholder:text-black/35"
+              />
+
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={connectGmail}
+                  disabled={busy}
+                  className="vl-btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm font-medium disabled:opacity-50"
+                >
+                  {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                  {isGmailConnected ? "Reconnect Gmail" : "Connect Gmail"}
+                </button>
+                {config && (
+                  <button
+                    type="button"
+                    onClick={remove}
+                    className="vl-btn-outline inline-flex items-center gap-2 px-4 py-2 text-sm"
+                  >
+                    <Trash2 className="w-4 h-4" /> Disconnect
+                  </button>
+                )}
+              </div>
+            </div>
+          ) : (
+            <form onSubmit={saveResend} className="space-y-3">
+              <p className="text-[13px]" style={{ color: "rgba(10,10,11,0.55)" }}>
+                Plug in a <a href="https://resend.com" target="_blank" rel="noreferrer" className="underline" style={{ color: "var(--color-vl-accent)" }}>Resend</a> API key. Best for sending from a verified custom domain.
+              </p>
+              <div className="grid md:grid-cols-2 gap-3">
+                <input
+                  type="email"
+                  placeholder="From address (e.g. ops@yourdomain.com)"
+                  value={fromAddress}
+                  onChange={(e) => setFromAddress(e.target.value)}
+                  className="bg-white border border-black/12 rounded-lg px-3 py-2 text-sm text-(--color-vl-ink) placeholder:text-black/35"
+                  required
+                />
+                <input
+                  type="text"
+                  placeholder="From name (optional)"
+                  value={fromName}
+                  onChange={(e) => setFromName(e.target.value)}
+                  className="bg-white border border-black/12 rounded-lg px-3 py-2 text-sm text-(--color-vl-ink) placeholder:text-black/35"
+                />
+              </div>
+              <input
+                type="password"
+                placeholder={isResendConnected ? "Resend API key (leave blank to keep current)" : "Resend API key (re_...)"}
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                className="w-full bg-white border border-black/12 rounded-lg px-3 py-2 text-sm font-mono text-(--color-vl-ink) placeholder:text-black/35"
+                autoComplete="new-password"
+              />
+              <div className="flex gap-3">
+                <button
+                  type="submit"
+                  disabled={busy || !fromAddress.trim() || (!isResendConnected && !apiKey.trim())}
+                  className="vl-btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm font-medium disabled:opacity-50"
+                >
+                  {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                  {isResendConnected ? "Update" : "Save"}
+                </button>
+                {config && (
+                  <button
+                    type="button"
+                    onClick={remove}
+                    className="vl-btn-outline inline-flex items-center gap-2 px-4 py-2 text-sm"
+                  >
+                    <Trash2 className="w-4 h-4" /> Disconnect
+                  </button>
+                )}
+              </div>
+            </form>
+          )}
+        </>
+      )}
+
+      {msg && (
+        <div className={`text-sm mt-4 ${msg.tone === "ok" ? "text-emerald-600" : "text-rose-600"}`}>{msg.text}</div>
+      )}
+    </div>
+  );
+}
+
+// ── Database section ─────────────────────────────────────────────────────────
+
+function DatabaseSection() {
+  const [conns, setConns] = useState<DbConn[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
+  const [label, setLabel] = useState("default");
+  const [connectionString, setConnectionString] = useState("");
+  const [schemaHint, setSchemaHint] = useState("");
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/v1/knowledge/database-connections", { headers: getAuthHeader() });
+      const data = await res.json();
+      setConns(data.connections ?? []);
+    } finally {
+      setLoading(false);
+    }
+  };
+  useEffect(() => {
+    load();
+  }, []);
+
+  const save = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!connectionString.trim()) return;
+    setBusy(true);
+    setMsg(null);
+    try {
+      const res = await fetch("/api/v1/knowledge/database-connections", {
+        method: "POST",
+        headers: getHeaders(),
+        body: JSON.stringify({
+          label: label.trim() || "default",
+          connectionString: connectionString.trim(),
+          schemaHint: schemaHint.trim() || null,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Save failed");
+      setMsg({ tone: "ok", text: "Connection saved." });
+      setConnectionString("");
+      await load();
+    } catch (err) {
+      setMsg({ tone: "error", text: err instanceof Error ? err.message : "Save failed" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async (id: string) => {
+    if (!confirm("Remove this database connection?")) return;
+    await fetch(`/api/v1/knowledge/database-connections/${id}`, {
+      method: "DELETE",
+      headers: getAuthHeader(),
+    });
+    await load();
+  };
+
+  return (
+    <div
+      className="rounded-2xl border bg-white p-6"
+      style={{ borderColor: "rgba(10,10,11,0.08)", boxShadow: "0 1px 2px rgba(10,10,11,0.04), 0 8px 24px -12px rgba(10,10,11,0.08)" }}
+    >
+      <p className="text-[14px] mb-2" style={{ color: "rgba(10,10,11,0.62)" }}>
+        Read-only Postgres. The assistant gets a <code className="rounded px-1" style={{ color: "var(--color-vl-ink)", background: "rgba(10,10,11,0.06)" }}>query_database</code> tool that runs SELECT
+        statements (capped at 100 rows, 8 second timeout). The connection string is encrypted at rest.
+      </p>
+      <p className="text-xs mb-6" style={{ color: "#8A6318" }}>
+        <strong>Recommended:</strong> create a dedicated read-only role on your database and use its credentials here.
+        Example: <code style={{ color: "#76520B" }}>CREATE ROLE voycelab_ro LOGIN PASSWORD '...'; GRANT CONNECT ON DATABASE
+        mydb TO voycelab_ro; GRANT USAGE ON SCHEMA public TO voycelab_ro; GRANT SELECT ON ALL TABLES IN SCHEMA public TO
+        voycelab_ro;</code>
+      </p>
+
+      <form onSubmit={save} className="space-y-3 mb-6">
+        <div className="grid md:grid-cols-3 gap-3">
+          <input
+            type="text"
+            placeholder="Label (e.g. analytics)"
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            className="bg-white border border-black/12 rounded-lg px-3 py-2 text-sm text-(--color-vl-ink) placeholder:text-black/35"
+          />
+          <input
+            type="text"
+            placeholder="postgres://user:pass@host:5432/db"
+            value={connectionString}
+            onChange={(e) => setConnectionString(e.target.value)}
+            className="md:col-span-2 bg-white border border-black/12 rounded-lg px-3 py-2 text-sm font-mono text-(--color-vl-ink) placeholder:text-black/35"
+          />
+        </div>
+        <textarea
+          placeholder="Optional schema hint shown to the assistant (table names, columns, joins)..."
+          value={schemaHint}
+          onChange={(e) => setSchemaHint(e.target.value)}
+          rows={3}
+          className="w-full bg-white border border-black/12 rounded-lg px-3 py-2 text-sm text-(--color-vl-ink) placeholder:text-black/35 resize-y"
+        />
+        <button
+          type="submit"
+          disabled={busy || !connectionString.trim()}
+          className="vl-btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm font-medium disabled:opacity-50"
+        >
+          {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Save connection
+        </button>
+      </form>
+
+      {msg && (
+        <div className={`text-sm mb-4 ${msg.tone === "ok" ? "text-emerald-400" : "text-rose-400"}`}>{msg.text}</div>
+      )}
+
+      {loading ? (
+        <div className="text-sm" style={{ color: "rgba(10,10,11,0.52)" }}>Loading...</div>
+      ) : conns.length === 0 ? (
+        <div className="text-sm" style={{ color: "rgba(10,10,11,0.52)" }}>No connections configured.</div>
+      ) : (
+        <ul className="divide-y divide-black/6">
+          {conns.map((c) => (
+            <li key={c.id} className="flex items-center justify-between py-3">
+              <div>
+                <div className="text-sm font-mono" style={{ color: "var(--color-vl-ink)" }}>{c.label}</div>
+                <div className="text-xs" style={{ color: "rgba(10,10,11,0.52)" }}>
+                  {c.kind}
+                  {c.schemaHint ? ` · ${c.schemaHint.slice(0, 80)}${c.schemaHint.length > 80 ? "..." : ""}` : ""}
+                </div>
+              </div>
+              <button
+                onClick={() => remove(c.id)}
+                className="p-2 rounded-md text-black/45 hover:text-rose-600 hover:bg-black/4"
+                aria-label="Delete connection"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+// ── Coming soon data ─────────────────────────────────────────────────────────
 
 const UPCOMING_INTEGRATIONS = [
   { id: "toast", name: "Toast", description: "Restaurant POS, kitchen display, tabs." },

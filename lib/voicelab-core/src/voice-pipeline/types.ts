@@ -12,9 +12,6 @@
 
 export type VoicePipelineCategory =
   | "native_realtime_speech_to_speech"
-  | "managed_voice_agent_api"
-  | "realtime_orchestration_framework"
-  | "modular_cascaded_pipeline"
   | "browser_or_manual_fallback";
 
 export type VoicePipelineProvider =
@@ -24,22 +21,6 @@ export type VoicePipelineProvider =
   | "google_gemini_3_1_flash_live"
   | "google_gemini_2_5_flash_native_audio"
   | "google_gemini_live_native_audio"
-  | "hume_evi_3"
-
-  // Managed voice-agent APIs
-  | "elevenlabs_agents"
-  | "deepgram_voice_agent_api"
-
-  // Realtime orchestration frameworks
-  | "livekit_agents"
-  | "pipecat"
-
-  // Modular cascaded best-in-class components
-  | "deepgram_flux_cartesia"
-  | "deepgram_flux_aura"
-  | "cartesia_ink_sonic"
-  | "assemblyai_openai_cartesia"
-  | "custom_modular_pipeline"
 
   // Fallbacks
   | "browser_speech_api_fallback"
@@ -50,8 +31,7 @@ export type VoicePipelineUseCase =
   | "lowest_latency_browser"
   | "lowest_latency_mobile"
   | "noisy_bar"
-  | "nightclub"
-  | "event_venue"
+  | "loud_venue"
   | "best_voice_quality"
   | "best_turn_taking"
   | "best_tool_control"

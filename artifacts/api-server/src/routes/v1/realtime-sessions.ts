@@ -1,3 +1,5 @@
+/** @deprecated Use POST /api/realtime/session instead. Kept for relay-based pipeline clients. */
+
 import { Router, type Request, type Response } from "express";
 import { v1 } from "@workspace/api-zod";
 import { db, agentProfilesTable, serviceConnectionsTable } from "@workspace/db";

@@ -1,9 +1,13 @@
 /**
  * One-shot migration: remaps legacy plan ids to current VoyceLab plans.
  *
- *   pos_only       -> starter
- *   inventory_only -> professional
- *   complete       -> premium
+ *   pos_only       -> pro
+ *   inventory_only -> pro
+ *   complete       -> business
+ *   starter        -> pro
+ *   professional   -> pro
+ *   premium        -> business
+ *   enterprise     -> business
  *
  * Usage (from repo root):
  *   pnpm tsx artifacts/api-server/scripts/migrate-legacy-plans.ts
@@ -15,9 +19,13 @@ import pg from "pg";
 const APPLY = process.argv.includes("--apply");
 
 const MAPPING: Record<string, string> = {
-  pos_only: "starter",
-  inventory_only: "professional",
-  complete: "premium",
+  pos_only: "pro",
+  inventory_only: "pro",
+  complete: "business",
+  starter: "pro",
+  professional: "pro",
+  premium: "business",
+  enterprise: "business",
 };
 
 async function main() {

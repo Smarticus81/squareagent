@@ -4,13 +4,14 @@
  * thresholds, and barge-in behavior.
  */
 
+// Collapsed from 6 modes to 3 (2026-05-22):
+//   quiet_room + restaurant → standard
+//   bar + event_venue → loud
+//   nightclub + manual_push_to_talk → push_to_talk
 export type NoiseMode =
-  | "quiet_room"
-  | "restaurant"
-  | "bar"
-  | "nightclub"
-  | "event_venue"
-  | "manual_push_to_talk";
+  | "standard"
+  | "loud"
+  | "push_to_talk";
 
 export interface NoiseModeBehavior {
   mode: NoiseMode;

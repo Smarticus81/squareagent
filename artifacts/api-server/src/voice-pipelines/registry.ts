@@ -2,7 +2,6 @@ import type {
   VoicePipelineAdapter,
   VoicePipelineEnvContext,
   VoicePipelineProvider,
-  VoicePipelineAvailability,
 } from "@workspace/voicelab-core/voice-pipeline";
 import {
   VOICE_PIPELINE_PROVIDERS,
@@ -13,63 +12,18 @@ import {
 import { OpenAiRealtimeWebRtcAdapter } from "./openai/realtime-webrtc";
 import { OpenAiRealtimeServerWsAdapter } from "./openai/realtime-server-ws";
 import { GoogleGeminiLiveAdapter, GEMINI_LIVE_ADAPTER_SPECS } from "./google/gemini-live";
-import { ElevenLabsAgentsAdapter } from "./elevenlabs/agents";
-import { HumeEvi3Adapter } from "./hume/evi-3";
-import { DeepgramVoiceAgentAdapter } from "./deepgram/voice-agent-api";
-import { LiveKitAgentsAdapter } from "./livekit/agents";
-import { PipecatGatewayAdapter } from "./pipecat/gateway";
-import { ModularCascadedAdapter, MODULAR_ADAPTER_SPECS } from "./modular/cascaded";
 import { BrowserSpeechApiAdapter } from "./fallback/browser-speech-api";
 import { PushToTalkTextAdapter, TextOnlyAdapter } from "./fallback/push-to-talk";
-
-const REQUEST_ONLY_PROVIDERS = new Set<VoicePipelineProvider>([
-  "livekit_agents",
-  "pipecat",
-  "deepgram_flux_cartesia",
-  "deepgram_flux_aura",
-  "cartesia_ink_sonic",
-  "assemblyai_openai_cartesia",
-  "hume_evi_3",
-]);
-
-function wrapRequestOnly(adapter: VoicePipelineAdapter): VoicePipelineAdapter {
-  return {
-    ...adapter,
-    async availability(_ctx: VoicePipelineEnvContext): Promise<VoicePipelineAvailability> {
-      return {
-        status: "request_access",
-        reason: "Contact sales for enterprise provisioning",
-      };
-    },
-    async createSession(): Promise<never> {
-      const err: any = new Error(
-        `Pipeline "${adapter.provider}" is request-only. Contact sales for enterprise provisioning.`,
-      );
-      err.code = "pipeline_not_provisioned";
-      throw err;
-    },
-  };
-}
 
 const adapters = new Map<VoicePipelineProvider, VoicePipelineAdapter>();
 
 function register(adapter: VoicePipelineAdapter): void {
-  if (REQUEST_ONLY_PROVIDERS.has(adapter.provider)) {
-    adapters.set(adapter.provider, wrapRequestOnly(adapter));
-  } else {
-    adapters.set(adapter.provider, adapter);
-  }
+  adapters.set(adapter.provider, adapter);
 }
 
 register(new OpenAiRealtimeWebRtcAdapter());
 register(new OpenAiRealtimeServerWsAdapter());
 for (const spec of GEMINI_LIVE_ADAPTER_SPECS) register(new GoogleGeminiLiveAdapter(spec));
-register(new HumeEvi3Adapter());
-register(new ElevenLabsAgentsAdapter());
-register(new DeepgramVoiceAgentAdapter());
-register(new LiveKitAgentsAdapter());
-register(new PipecatGatewayAdapter());
-for (const spec of MODULAR_ADAPTER_SPECS) register(new ModularCascadedAdapter(spec));
 register(new BrowserSpeechApiAdapter());
 register(new PushToTalkTextAdapter());
 register(new TextOnlyAdapter());

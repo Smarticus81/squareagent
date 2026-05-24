@@ -69,21 +69,26 @@ const PUBLIC_BASE_URL =
  * existing subscriptions keep resolving while the new pricing rolls out.
  */
 const PLAN_PRICE_MAP: Record<string, string> = {
-  // New pricing tiers (monthly + yearly).
-  [process.env.STRIPE_PRICE_STARTER_MONTHLY ?? "price_starter_monthly"]: "starter",
-  [process.env.STRIPE_PRICE_STARTER_YEARLY ?? "price_starter_yearly"]: "starter",
-  [process.env.STRIPE_PRICE_PROFESSIONAL_MONTHLY ?? "price_professional_monthly"]: "professional",
-  [process.env.STRIPE_PRICE_PROFESSIONAL_YEARLY ?? "price_professional_yearly"]: "professional",
-  [process.env.STRIPE_PRICE_PREMIUM_MONTHLY ?? "price_premium_monthly"]: "premium",
-  [process.env.STRIPE_PRICE_PREMIUM_YEARLY ?? "price_premium_yearly"]: "premium",
+  // Current pricing tiers (monthly + yearly).
+  [process.env.STRIPE_PRICE_PRO_MONTHLY ?? "price_pro_monthly"]: "pro",
+  [process.env.STRIPE_PRICE_PRO_YEARLY ?? "price_pro_yearly"]: "pro",
+  [process.env.STRIPE_PRICE_BUSINESS_MONTHLY ?? "price_business_monthly"]: "business",
+  [process.env.STRIPE_PRICE_BUSINESS_YEARLY ?? "price_business_yearly"]: "business",
+  // Legacy price IDs — map old tiers to new equivalents.
+  [process.env.STRIPE_PRICE_STARTER_MONTHLY ?? "price_starter_monthly"]: "pro",
+  [process.env.STRIPE_PRICE_STARTER_YEARLY ?? "price_starter_yearly"]: "pro",
+  [process.env.STRIPE_PRICE_PROFESSIONAL_MONTHLY ?? "price_professional_monthly"]: "pro",
+  [process.env.STRIPE_PRICE_PROFESSIONAL_YEARLY ?? "price_professional_yearly"]: "pro",
+  [process.env.STRIPE_PRICE_PREMIUM_MONTHLY ?? "price_premium_monthly"]: "business",
+  [process.env.STRIPE_PRICE_PREMIUM_YEARLY ?? "price_premium_yearly"]: "business",
   // Legacy aliases.
-  [process.env.STRIPE_PRICE_POS_ONLY ?? "price_pos_only"]: "pos_only",
-  [process.env.STRIPE_PRICE_INVENTORY_ONLY ?? "price_inventory_only"]: "inventory_only",
-  [process.env.STRIPE_PRICE_COMPLETE ?? "price_complete"]: "complete",
+  [process.env.STRIPE_PRICE_POS_ONLY ?? "price_pos_only"]: "pro",
+  [process.env.STRIPE_PRICE_INVENTORY_ONLY ?? "price_inventory_only"]: "pro",
+  [process.env.STRIPE_PRICE_COMPLETE ?? "price_complete"]: "business",
 };
 
 function planFromPriceId(priceId: string): string {
-  return PLAN_PRICE_MAP[priceId] ?? "professional";
+  return PLAN_PRICE_MAP[priceId] ?? "pro";
 }
 
 async function upsertSubscriptionForUser(
@@ -218,7 +223,7 @@ router.post("/webhook", async (req: Request, res: Response): Promise<void> => {
         await upsertSubscriptionForUser(userId, {
           stripeCustomerId: customerId ?? null,
           stripeSubscriptionId: subscriptionId ?? null,
-          plan: priceId ? planFromPriceId(priceId) : String(session.metadata?.plan ?? "professional"),
+          plan: priceId ? planFromPriceId(priceId) : String(session.metadata?.plan ?? "pro"),
           status: "active",
         });
         break;

@@ -87,51 +87,27 @@ export const voyceCopy = {
 
 export const roomSettings = [
   {
-    value: "quiet_room",
-    label: "Quiet room",
-    description: "Office, tasting room, private space.",
-    listens: "More sensitive",
-    asks: "Asks before sensitive actions",
-    intensity: 0.25,
-  },
-  {
-    value: "restaurant",
-    label: "Restaurant",
-    description: "Moderate background noise.",
+    value: "standard",
+    label: "Standard",
+    description: "Moderate background noise. Wake word and natural speech.",
     listens: "Balanced",
     asks: "Asks before sensitive actions",
-    intensity: 0.45,
+    intensity: 0.4,
   },
   {
-    value: "bar",
-    label: "Bar",
-    description: "Loud crowd, fast service.",
+    value: "loud",
+    label: "Loud venue",
+    description: "Loud crowd, fast service. Push-to-talk prominent.",
     listens: "More controlled",
     asks: "Asks more often",
     intensity: 0.7,
   },
   {
-    value: "nightclub",
-    label: "Nightclub",
-    description: "Very loud — push-to-talk recommended.",
-    listens: "Push-to-talk recommended",
-    asks: "Asks before every sensitive action",
-    intensity: 0.9,
-  },
-  {
-    value: "event_venue",
-    label: "Event space",
-    description: "Variable noise — adapts to event setup.",
-    listens: "Adaptive",
-    asks: "Asks before sensitive actions",
-    intensity: 0.6,
-  },
-  {
-    value: "manual_push_to_talk",
-    label: "Push-to-talk only",
+    value: "push_to_talk",
+    label: "Push to talk",
     description: "Hold to speak. No background listening.",
     listens: "Manual only",
-    asks: "Asks before sensitive actions",
+    asks: "Minimal confirmations",
     intensity: 0.35,
   },
 ] as const;
@@ -147,9 +123,6 @@ export type RoomSettingValue = typeof roomSettings[number]["value"];
 export interface VoicePipelineCategoryDisplay {
   id:
     | "native_realtime_speech_to_speech"
-    | "managed_voice_agent_api"
-    | "realtime_orchestration_framework"
-    | "modular_cascaded_pipeline"
     | "browser_or_manual_fallback";
   label: string;
   blurb: string;
@@ -165,28 +138,10 @@ export const voicePipelineCategories: VoicePipelineCategoryDisplay[] = [
     order: 1,
   },
   {
-    id: "managed_voice_agent_api",
-    label: "Managed voice agent",
-    blurb: "Fully hosted voice agent platforms with custom voices and SDKs.",
-    order: 2,
-  },
-  {
-    id: "realtime_orchestration_framework",
-    label: "Self-hosted orchestration",
-    blurb: "Production media infrastructure with full audit, telephony future, and enterprise control.",
-    order: 3,
-  },
-  {
-    id: "modular_cascaded_pipeline",
-    label: "Modular STT + LLM + TTS",
-    blurb: "Pick best-in-class components for each stage. Tunable for very noisy or specialty rooms.",
-    order: 4,
-  },
-  {
     id: "browser_or_manual_fallback",
     label: "Manual & fallback",
     blurb: "Always-on fallbacks. Push-to-talk when networks misbehave or the room is too loud for any AI.",
-    order: 5,
+    order: 2,
   },
 ];
 

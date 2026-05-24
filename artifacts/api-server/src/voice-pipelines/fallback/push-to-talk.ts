@@ -17,7 +17,7 @@ export class PushToTalkTextAdapter implements VoicePipelineAdapter {
   readonly category = "browser_or_manual_fallback" as const;
   readonly displayName = "Push-to-talk text";
   readonly recommendedFor: VoicePipelineAdapter["recommendedFor"] = [
-    "nightclub",
+    "loud_venue",
     "offline_or_degraded",
   ];
 

@@ -80,16 +80,6 @@ export const VoicePipelineProvider = z.enum([
   "google_gemini_3_1_flash_live",
   "google_gemini_2_5_flash_native_audio",
   "google_gemini_live_native_audio",
-  "hume_evi_3",
-  "elevenlabs_agents",
-  "deepgram_voice_agent_api",
-  "livekit_agents",
-  "pipecat",
-  "deepgram_flux_cartesia",
-  "deepgram_flux_aura",
-  "cartesia_ink_sonic",
-  "assemblyai_openai_cartesia",
-  "custom_modular_pipeline",
   "browser_speech_api_fallback",
   "push_to_talk_text_fallback",
   "text_only_fallback",
@@ -97,9 +87,6 @@ export const VoicePipelineProvider = z.enum([
 
 export const VoicePipelineCategory = z.enum([
   "native_realtime_speech_to_speech",
-  "managed_voice_agent_api",
-  "realtime_orchestration_framework",
-  "modular_cascaded_pipeline",
   "browser_or_manual_fallback",
 ]);
 
@@ -125,12 +112,9 @@ export const ListVoicePipelinesResponse = z.object({
 });
 
 export const NoiseMode = z.enum([
-  "quiet_room",
-  "restaurant",
-  "bar",
-  "nightclub",
-  "event_venue",
-  "manual_push_to_talk",
+  "standard",
+  "loud",
+  "push_to_talk",
 ]);
 
 export const RecommendVoicePipelineRequest = z.object({
@@ -178,7 +162,7 @@ export const CreateAgentProfileRequest = z.object({
   wakePhrase: z.string().min(1).max(60).optional(),
   voicePipelineProvider: VoicePipelineProvider,
   voicePipelineConfig: z.record(z.unknown()).default({}),
-  noiseMode: NoiseMode.default("restaurant"),
+  noiseMode: NoiseMode.default("standard"),
   allowedTools: z.array(z.string()).default([]),
   confirmationPolicy: z.record(z.unknown()).default({}),
   personality: z.string().default(""),

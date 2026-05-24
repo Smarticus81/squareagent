@@ -39,9 +39,12 @@ export interface SkillDefinition {
  * `getPlanAllowedPipelines` from the pricing module.
  */
 export const PLAN_TIERS: Record<string, SkillTier[]> = {
-  trial:          ["core", "standard", "premium"],
-  starter:        ["core"],
-  professional:   ["core", "standard"],
+  trial:          ["core"],
+  pro:            ["core", "standard", "premium"],
+  business:       ["core", "standard", "premium"],
+  // Legacy plan names — kept for backward compatibility with existing DB rows.
+  starter:        ["core", "standard", "premium"],
+  professional:   ["core", "standard", "premium"],
   premium:        ["core", "standard", "premium"],
   enterprise:     ["core", "standard", "premium"],
 };

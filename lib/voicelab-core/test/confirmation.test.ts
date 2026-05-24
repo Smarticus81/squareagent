@@ -7,27 +7,27 @@ import {
 
 describe("confirmation policy", () => {
   it("always confirms submit_order regardless of mode", () => {
-    expect(requiresConfirmation("submit_order", "destructive", "quiet_room")).toBe(true);
-    expect(requiresConfirmation("submit_order", "destructive", "manual_push_to_talk")).toBe(true);
+    expect(requiresConfirmation("submit_order", "destructive", "standard")).toBe(true);
+    expect(requiresConfirmation("submit_order", "destructive", "push_to_talk")).toBe(true);
   });
 
   it("never confirms read-only tools regardless of mode", () => {
-    expect(requiresConfirmation("search_menu", "low", "nightclub")).toBe(false);
-    expect(requiresConfirmation("get_order", "low", "bar")).toBe(false);
+    expect(requiresConfirmation("search_menu", "low", "push_to_talk")).toBe(false);
+    expect(requiresConfirmation("get_order", "low", "loud")).toBe(false);
   });
 
-  it("requires confirmation in nightclub mode at low risk", () => {
-    expect(requiresConfirmation("add_item", "low", "nightclub")).toBe(true);
+  it("requires confirmation in push_to_talk mode at low risk", () => {
+    expect(requiresConfirmation("add_item", "low", "push_to_talk")).toBe(true);
   });
 
-  it("does not require confirmation for medium risk in quiet room", () => {
-    // quiet_room threshold = high → medium does NOT require
-    expect(requiresConfirmation("update_customer", "medium", "quiet_room")).toBe(false);
+  it("does not require confirmation for low risk in standard mode", () => {
+    // standard threshold = medium → low does NOT require
+    expect(requiresConfirmation("add_item", "low", "standard")).toBe(false);
   });
 
-  it("requires confirmation for high risk in restaurant mode", () => {
-    // restaurant threshold = medium → high DOES require
-    expect(requiresConfirmation("create_item", "high", "restaurant")).toBe(true);
+  it("requires confirmation for high risk in standard mode", () => {
+    // standard threshold = medium → high DOES require
+    expect(requiresConfirmation("create_item", "high", "standard")).toBe(true);
   });
 
   it("classifies destructive tools by name", () => {

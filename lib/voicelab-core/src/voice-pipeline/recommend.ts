@@ -17,7 +17,7 @@ export interface VoicePipelineRecommendationInput {
   requiresBestVoiceQuality: boolean;
   requiresLowestLatency: boolean;
   requiresEnterpriseObservability: boolean;
-  /** Map of credential env var → presence. */
+  /** Map of credential env var -> presence. */
   availableCredentials: Record<string, boolean>;
 }
 
@@ -51,7 +51,7 @@ function firstAvailable(
  * Pure recommendation engine. Maps device + environment + intent to a
  * concrete pipeline provider, falling back through the spec's defaults.
  *
- * Always returns *something* — at minimum, push_to_talk_text_fallback,
+ * Always returns *something* -- at minimum, push_to_talk_text_fallback,
  * which has no credentials.
  */
 export function recommendVoicePipeline(
@@ -66,55 +66,48 @@ export function recommendVoicePipeline(
 
   // 1. Noisy environments take priority. Gemini 3.1 Flash Live ships with
   //    the strongest background-noise rejection in this class, so prefer it
-  //    when its credentials are present, then fall back to modular STT+TTS.
-  if (environment === "nightclub" || environment === "bar") {
+  //    when its credentials are present.
+  if (environment === "loud" || environment === "push_to_talk") {
     candidates = [
       "google_gemini_3_1_flash_live",
-      "deepgram_flux_cartesia",
-      "livekit_agents",
       "openai_realtime_webrtc",
       "push_to_talk_text_fallback",
     ];
-    baseReason = `noise mode=${environment}: prefer native-audio model with best-in-class noise rejection or modular pipeline with strong turn detection`;
+    baseReason = `noise mode=${environment}: prefer native-audio model with best-in-class noise rejection`;
   }
   // 2. Enterprise observability.
   else if (input.requiresEnterpriseObservability) {
     candidates = [
-      "livekit_agents",
       "openai_realtime_server_ws",
-      "pipecat",
+      "openai_realtime_webrtc",
       "push_to_talk_text_fallback",
     ];
-    baseReason = "enterprise observability requested: prefer orchestration framework";
+    baseReason = "enterprise observability requested: prefer server-controlled relay";
   }
   // 3. Best voice quality.
   else if (input.requiresBestVoiceQuality) {
     candidates = [
-      "elevenlabs_agents",
-      "hume_evi_3",
-      "cartesia_ink_sonic",
+      "google_gemini_2_5_flash_native_audio",
       "openai_realtime_webrtc",
       "push_to_talk_text_fallback",
     ];
-    baseReason = "best voice quality requested: prefer expressive managed agent or premium TTS";
+    baseReason = "best voice quality requested: prefer native audio models";
   }
   // 4. Mobile native.
   else if (deviceType === "ios_native" || deviceType === "android_native") {
     candidates = [
       "openai_realtime_server_ws",
-      "elevenlabs_agents",
-      "livekit_agents",
+      "openai_realtime_webrtc",
       "push_to_talk_text_fallback",
     ];
-    baseReason = `mobile native (${deviceType}): prefer server-controlled relay or managed agent`;
+    baseReason = `mobile native (${deviceType}): prefer server-controlled relay`;
   }
-  // 5. Default — browser/PWA low-latency.
+  // 5. Default -- browser/PWA low-latency.
   else {
     candidates = [
       "openai_realtime_webrtc",
       "google_gemini_3_1_flash_live",
       "google_gemini_2_5_flash_native_audio",
-      "deepgram_voice_agent_api",
       "push_to_talk_text_fallback",
     ];
     baseReason = `browser/PWA low-latency default for device=${deviceType}`;

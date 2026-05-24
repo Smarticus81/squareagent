@@ -58,7 +58,7 @@ export function buildAdminSubscription(userId: number): {
     userId,
     stripeCustomerId: null,
     stripeSubscriptionId: null,
-    plan: "premium",
+    plan: "business",
     status: "active",
     trialEndsAt: null,
     currentPeriodEnd: FAR_FUTURE,
@@ -82,7 +82,7 @@ async function ensureAdminSubscription(userId: number): Promise<void> {
     if (!existing) {
       await db.insert(subscriptionsTable).values({
         userId,
-        plan: "premium",
+        plan: "business",
         status: "active",
         trialEndsAt: null,
         currentPeriodEnd: FAR_FUTURE,
@@ -90,7 +90,7 @@ async function ensureAdminSubscription(userId: number): Promise<void> {
       return;
     }
     const needsUpdate =
-      existing.plan !== "premium" ||
+      existing.plan !== "business" ||
       existing.status !== "active" ||
       existing.trialEndsAt !== null ||
       !existing.currentPeriodEnd ||
@@ -99,7 +99,7 @@ async function ensureAdminSubscription(userId: number): Promise<void> {
       await db
         .update(subscriptionsTable)
         .set({
-          plan: "premium",
+          plan: "business",
           status: "active",
           trialEndsAt: null,
           currentPeriodEnd: FAR_FUTURE,
@@ -253,7 +253,7 @@ router.post("/signup", async (req: Request, res: Response): Promise<void> => {
     const trialEndsAt = isAdmin ? null : new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
     await db.insert(subscriptionsTable).values({
       userId: user.id,
-      plan: isAdmin ? "premium" : "trial",
+      plan: isAdmin ? "business" : "trial",
       status: isAdmin ? "active" : "trialing",
       trialEndsAt,
       currentPeriodEnd: isAdmin ? FAR_FUTURE : null,
