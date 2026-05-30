@@ -236,12 +236,18 @@ function buildDemoRealtimeSessionConfig(voice: string, speed: number) {
 function buildTurnDetection(noiseMode: NoiseMode): Record<string, unknown> | null {
   switch (noiseMode) {
     case "standard":
+      // interrupt_response is intentionally false: the agent's own audio
+      // bleeding into the mic (speaker / Bluetooth earpiece) was being
+      // detected as user speech and truncating the response after a word or
+      // two. The client half-duplex-gates the mic during playback instead,
+      // and offers deliberate tap-to-interrupt for barge-in. See
+      // VoiceAgentContext "mic gating".
       return {
         type: "semantic_vad",
         eagerness: "low",
         silence_duration_ms: 600,
         create_response: true,
-        interrupt_response: true,
+        interrupt_response: false,
       };
     case "loud":
       return {
