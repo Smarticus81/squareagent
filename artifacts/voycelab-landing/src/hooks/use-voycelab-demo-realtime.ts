@@ -105,6 +105,13 @@ export function useVoycelabDemoRealtime() {
   const fallbackAudioCtxRef = useRef<AudioContext | null>(null);
   const isRunning = useRef(false);
   const agentStateRef = useRef<DemoAgentState>("idle");
+  // Half-duplex mic gating: on speaker / Bluetooth the agent's own voice leaks
+  // into the mic and trips the server VAD, cutting the reply off after a word
+  // or two. We disable the mic track during playback so it can't reach the VAD.
+  // Acoustic (full-duplex) barge-in is opt-in via the server's voicelab.bargeIn.
+  const micTrackRef = useRef<MediaStreamTrack | null>(null);
+  const fullDuplexRef = useRef(false);
+  const micReopenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const addMessage = useCallback((role: "user" | "agent", content: string) => {
     const trimmed = content.trim();
@@ -112,9 +119,48 @@ export function useVoycelabDemoRealtime() {
     setConversation((prev) => [...prev, { id: genId(), role, content: trimmed, timestamp: new Date() }]);
   }, []);
 
+  // ── Half-duplex mic gating helpers ──────────────────────────────────────────
+  const setMicEnabled = useCallback((enabled: boolean) => {
+    const track = micTrackRef.current;
+    if (track && track.enabled !== enabled) track.enabled = enabled;
+  }, []);
+
+  const cancelMicReopen = useCallback(() => {
+    if (micReopenTimerRef.current !== null) {
+      clearTimeout(micReopenTimerRef.current);
+      micReopenTimerRef.current = null;
+    }
+  }, []);
+
+  /** Mute the mic for the duration of agent playback (half-duplex only). */
+  const gateMicForPlayback = useCallback(() => {
+    if (fullDuplexRef.current) return;
+    cancelMicReopen();
+    setMicEnabled(false);
+  }, [cancelMicReopen, setMicEnabled]);
+
+  /** Re-open the mic after playback, with a short acoustic-decay tail. */
+  const reopenMic = useCallback(() => {
+    if (fullDuplexRef.current) return;
+    cancelMicReopen();
+    micReopenTimerRef.current = setTimeout(() => {
+      setMicEnabled(true);
+      micReopenTimerRef.current = null;
+    }, 250);
+  }, [cancelMicReopen, setMicEnabled]);
+
+  /** Re-open the mic immediately (deliberate interrupt / error recovery). */
+  const reopenMicNow = useCallback(() => {
+    if (fullDuplexRef.current) return;
+    cancelMicReopen();
+    setMicEnabled(true);
+  }, [cancelMicReopen, setMicEnabled]);
+
   const disconnect = useCallback(async () => {
     isRunning.current = false;
     agentStateRef.current = "idle";
+    cancelMicReopen();
+    micTrackRef.current = null;
 
     pcRef.current?.getSenders().forEach((sender) => {
       sender.track?.stop();
@@ -146,7 +192,7 @@ export function useVoycelabDemoRealtime() {
     setAgentState("idle");
     setPartialTranscript("");
     setError(null);
-  }, []);
+  }, [cancelMicReopen]);
 
   const handleDcEvent = useCallback(
     (raw: string) => {
@@ -168,8 +214,12 @@ export function useVoycelabDemoRealtime() {
           break;
 
         case "input_audio_buffer.speech_started":
-          if (agentStateRef.current === "speaking") {
+          // Only acoustic barge-in (full-duplex) cancels the agent here. In
+          // half-duplex the mic is gated during playback, so a speech_started
+          // while "speaking" can only be residual echo — ignore it.
+          if (fullDuplexRef.current && agentStateRef.current === "speaking") {
             dcRef.current?.send(JSON.stringify({ type: "response.cancel" }));
+            reopenMicNow();
           }
           setAs("listening");
           break;
@@ -197,16 +247,23 @@ export function useVoycelabDemoRealtime() {
         }
 
         case "response.audio.delta":
+          // Gate the mic on the first agent audio frame so its voice can't echo
+          // back into the VAD (no-op in full-duplex).
+          gateMicForPlayback();
           setAs("speaking");
           break;
 
         case "response.done":
-          if (isRunning.current) setAs("listening");
+          if (isRunning.current) {
+            reopenMic();
+            setAs("listening");
+          }
           break;
 
         case "error": {
           const err = (event.error as Record<string, unknown>)?.message ?? event.message ?? "Realtime error";
           console.error("[DemoRealtime]", err);
+          reopenMicNow();
           setError(String(err));
           setAs("error");
           break;
@@ -216,7 +273,7 @@ export function useVoycelabDemoRealtime() {
           break;
       }
     },
-    [addMessage],
+    [addMessage, gateMicForPlayback, reopenMic, reopenMicNow],
   );
 
   const connect = useCallback(async (existingStream?: MediaStream) => {
@@ -256,9 +313,12 @@ export function useVoycelabDemoRealtime() {
       const sessionData = (await tokenRes.json()) as {
         id?: string;
         client_secret?: { value?: string };
+        voicelab?: { bargeIn?: boolean };
       };
       const ephemeralKey = sessionData.client_secret?.value;
       if (!ephemeralKey) throw new Error("Voice session did not return an ephemeral key");
+      // Server decides duplex behavior. Default = half-duplex (gate the mic).
+      fullDuplexRef.current = Boolean(sessionData.voicelab?.bargeIn);
 
       const pc = new RTCPeerConnection();
       pcRef.current = pc;
@@ -292,6 +352,7 @@ export function useVoycelabDemoRealtime() {
             autoGainControl: true,
           },
         }));
+      micTrackRef.current = stream.getAudioTracks()[0] ?? null;
       stream.getTracks().forEach((track) => pc.addTrack(track, stream));
 
       const dc = pc.createDataChannel("oai-events");
@@ -349,6 +410,8 @@ export function useVoycelabDemoRealtime() {
       setError(msg);
       setAgentState("error");
       setAssistantStream(null);
+      cancelMicReopen();
+      micTrackRef.current = null;
       pcRef.current?.close();
       pcRef.current = null;
       dcRef.current = null;
@@ -369,14 +432,16 @@ export function useVoycelabDemoRealtime() {
       }
       fallbackAudioCtxRef.current = null;
     }
-  }, [handleDcEvent]);
+  }, [handleDcEvent, cancelMicReopen]);
 
   const interrupt = useCallback(() => {
     const dc = dcRef.current;
     if (dc?.readyState === "open") {
       dc.send(JSON.stringify({ type: "response.cancel" }));
     }
-  }, []);
+    // Deliberate barge-in: re-open the mic immediately.
+    reopenMicNow();
+  }, [reopenMicNow]);
 
   const clearConversation = useCallback(() => {
     setConversation([]);
