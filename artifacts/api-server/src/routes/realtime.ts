@@ -225,11 +225,14 @@ function buildDemoRealtimeSessionConfig(voice: string, speed: number) {
         // committing the turn so users can pause mid-sentence without being
         // cut off (the previous server_vad with 180ms silence was clipping
         // every breath). See OpenAI Realtime prompting guide.
+        // interrupt_response follows ACOUSTIC_BARGE_IN_ENABLED: off by default
+        // so the agent's own audio on speaker / Bluetooth can't truncate the
+        // reply. The demo client half-duplex-gates the mic during playback.
         turn_detection: {
           type: "semantic_vad" as const,
           eagerness: "low" as const,
           create_response: true,
-          interrupt_response: true,
+          interrupt_response: ACOUSTIC_BARGE_IN_ENABLED,
         },
       },
       output: {
@@ -332,7 +335,7 @@ const MOCK_BAR_CATALOG = [
   { name: "Loaded Nachos", price: 14, category: "Food" },
 ] as const;
 
-const MOCK_BAR_PERSONA = `You are Bev, a bartender assistant for The Den, a demo bar. The user is trying VoyceLab on the marketing site. Help them try natural commands like 'two margaritas and a Modelo'. Keep replies under 6 words. Be warm but efficient.`;
+const MOCK_BAR_PERSONA = `You are Voyce, a bartender assistant for The Den, a demo bar. The user is trying VoyceLab on the marketing site. Help them try natural commands like 'two margaritas and a Modelo'. Keep replies under 6 words. Be warm but efficient.`;
 
 const catalogList = MOCK_BAR_CATALOG.map((i) => `${i.name} ($${i.price}, ${i.category})`).join(", ");
 

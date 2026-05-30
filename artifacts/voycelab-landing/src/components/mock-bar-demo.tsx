@@ -173,7 +173,7 @@ export function MockBarDemo() {
     <section id="demo" className="mx-auto max-w-5xl px-5 py-16">
       <p className="vl-eyebrow mb-2 text-center">Live product demo</p>
       <h2 className="vl-display text-center text-3xl md:text-4xl mb-10">
-        Talk to Bev. Watch the ticket update.
+        Talk to Voyce. Watch the ticket update.
       </h2>
 
       <div className="grid md:grid-cols-2 gap-8 items-start">
@@ -188,10 +188,10 @@ export function MockBarDemo() {
             externalError={error}
           />
           <p className="text-sm" style={{ color: "var(--color-vl-ink-muted)" }}>
-            {agentState === "idle" ? "Click the orb to talk to Bev" :
+            {agentState === "idle" ? "Click the orb to talk to Voyce" :
              agentState === "connecting" ? "Connecting..." :
              agentState === "listening" ? "Listening... try \"two margaritas and a Modelo\"" :
-             agentState === "speaking" ? "Bev is responding..." : ""}
+             agentState === "speaking" ? "Voyce is responding..." : ""}
           </p>
         </div>
 
