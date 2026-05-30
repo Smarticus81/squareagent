@@ -50,6 +50,14 @@ const OPENAI_REALTIME_MODEL = process.env.OPENAI_REALTIME_MODEL ?? "gpt-realtime
 const OPENAI_REALTIME_REASONING_EFFORT =
   (process.env.OPENAI_REALTIME_REASONING_EFFORT as "minimal" | "low" | "medium" | "high" | undefined) ?? "low";
 
+// Master switch for acoustic (full-duplex) barge-in. Off by default because
+// browser echo cancellation does not reliably suppress the agent's own voice
+// on external speakers / Bluetooth, which made the agent interrupt itself
+// after a word or two. When false, the server never auto-cancels on detected
+// speech and the client runs half-duplex (mic gated during playback) with
+// tap-to-interrupt. Set ACOUSTIC_BARGE_IN=1 to opt back in.
+const ACOUSTIC_BARGE_IN_ENABLED = process.env.ACOUSTIC_BARGE_IN === "1";
+
 function formatLimit(value: number, label: string): string {
   if (value === -1) return `unlimited ${label}`;
   return `${value.toLocaleString()} ${label}`;
@@ -236,18 +244,17 @@ function buildDemoRealtimeSessionConfig(voice: string, speed: number) {
 function buildTurnDetection(noiseMode: NoiseMode): Record<string, unknown> | null {
   switch (noiseMode) {
     case "standard":
-      // interrupt_response is intentionally false: the agent's own audio
-      // bleeding into the mic (speaker / Bluetooth earpiece) was being
-      // detected as user speech and truncating the response after a word or
-      // two. The client half-duplex-gates the mic during playback instead,
-      // and offers deliberate tap-to-interrupt for barge-in. See
-      // VoiceAgentContext "mic gating".
+      // interrupt_response is gated by ACOUSTIC_BARGE_IN_ENABLED. With it off
+      // (default), the agent's own audio bleeding into the mic on speaker /
+      // Bluetooth no longer truncates the response — the client half-duplex
+      // gates the mic during playback and offers tap-to-interrupt instead.
+      // See VoiceAgentContext "mic gating".
       return {
         type: "semantic_vad",
         eagerness: "low",
         silence_duration_ms: 600,
         create_response: true,
-        interrupt_response: false,
+        interrupt_response: ACOUSTIC_BARGE_IN_ENABLED,
       };
     case "loud":
       return {
@@ -256,7 +263,7 @@ function buildTurnDetection(noiseMode: NoiseMode): Record<string, unknown> | nul
         prefix_padding_ms: 400,
         silence_duration_ms: 800,
         create_response: true,
-        interrupt_response: false,
+        interrupt_response: ACOUSTIC_BARGE_IN_ENABLED,
       };
     case "push_to_talk":
       return null;
@@ -765,11 +772,21 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
     }
 
     const data = (await response.json()) as any;
+    // Tell the client how to drive the mic. Acoustic (full-duplex) barge-in is
+    // opt-in per noise mode AND gated by ACOUSTIC_BARGE_IN_ENABLED; the safe
+    // default is half-duplex mic gating during playback with tap-to-interrupt.
+    const behavior = getNoiseModeBehavior(noiseMode);
+    const acousticBargeIn = ACOUSTIC_BARGE_IN_ENABLED && behavior.bargeInEnabled;
     res.json({
       id: data.session?.id ?? "",
       client_secret: { value: data.value, expires_at: data.expires_at },
       instructions: sessionConfig.instructions,
       assistantKind,
+      voicelab: {
+        noiseMode,
+        bargeIn: acousticBargeIn,
+        pushToTalk: behavior.pushToTalkRequired,
+      },
     });
   } catch (e: any) {
     console.error("[Realtime] Session error:", e.message);

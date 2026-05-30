@@ -64,6 +64,10 @@ interface VoiceAgentContextType {
 let _msgId = 0;
 const genId = () => `msg-${Date.now()}-${++_msgId}`;
 
+// A short tail lets the speaker's acoustic decay die out before the mic
+// re-opens, so the agent's final syllable can't re-trigger the VAD.
+const MIC_REOPEN_TAIL_MS = 250;
+
 // ── Context ───────────────────────────────────────────────────────────────────
 
 const VoiceAgentContext = createContext<VoiceAgentContextType | null>(null);
@@ -134,7 +138,6 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
   // gate the local mic track while the agent speaks so its audio can never reach
   // the VAD. Deliberate barge-in still works via interrupt() (tap); true
   // acoustic barge-in is opt-in per session via fullDuplexRef (server flag).
-  const MIC_REOPEN_TAIL_MS = 250;
 
   const setMicEnabled = useCallback((enabled: boolean) => {
     const track = micTrackRef.current;
@@ -142,8 +145,9 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const cancelMicReopen = useCallback(() => {
-    if (micReopenTimerRef.current) {
-      clearTimeout(micReopenTimerRef.current);
+    const timer = micReopenTimerRef.current;
+    if (timer !== null) {
+      clearTimeout(timer);
       micReopenTimerRef.current = null;
     }
   }, []);
@@ -155,19 +159,22 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
     setMicEnabled(false);
   }, [cancelMicReopen, setMicEnabled]);
 
-  /** Re-open the mic once the agent finishes (or is interrupted). */
-  const reopenMicAfterPlayback = useCallback((immediate = false) => {
+  /** Re-open the mic after agent playback finishes, with a short decay tail. */
+  const reopenMic = useCallback(() => {
     if (fullDuplexRef.current) return;
     cancelMicReopen();
-    if (immediate) { setMicEnabled(true); return; }
-    // A short tail lets the speaker's acoustic decay die out before the mic
-    // re-opens, so the agent's final syllable can't re-trigger the VAD.
     micReopenTimerRef.current = setTimeout(() => {
       setMicEnabled(true);
       micReopenTimerRef.current = null;
     }, MIC_REOPEN_TAIL_MS);
   }, [cancelMicReopen, setMicEnabled]);
 
+  /** Re-open the mic immediately (deliberate interrupt / error recovery). */
+  const reopenMicNow = useCallback(() => {
+    if (fullDuplexRef.current) return;
+    cancelMicReopen();
+    setMicEnabled(true);
+  }, [cancelMicReopen, setMicEnabled]);
 
   // ── Send context update to OpenAI via data channel ──────────────────────────
   // Server is authoritative for persona/instructions. Client only pushes
@@ -302,7 +309,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
         // "speaking" can only be residual echo — ignore it rather than self-cut.
         if (fullDuplexRef.current && agentStateRef.current === "speaking") {
           dcRef.current?.send(JSON.stringify({ type: "response.cancel" }));
-          reopenMicAfterPlayback(true);
+          reopenMicNow();
         }
         setAs("listening");
         break;
@@ -339,7 +346,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
 
       case "response.done":
         if (isRunning.current) {
-          reopenMicAfterPlayback();
+          reopenMic();
           setAs("listening");
         }
         break;
@@ -358,13 +365,13 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
         const err = (event.error as Record<string, unknown>)?.message ?? event.message ?? "Realtime error";
         console.error("[WebRTC]", err);
         // Don't leave the user muted if playback errored out mid-response.
-        reopenMicAfterPlayback(true);
+        reopenMicNow();
         setError(String(err));
         setAgentState("error");
         break;
       }
     }
-  }, [addMessage, sendContextUpdate, executeToolViaServer, gateMicForPlayback, reopenMicAfterPlayback]);
+  }, [addMessage, sendContextUpdate, executeToolViaServer, gateMicForPlayback, reopenMic, reopenMicNow]);
 
   // ── Connect via WebRTC ─────────────────────────────────────────────────────
 
@@ -592,8 +599,8 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
       dc.send(JSON.stringify({ type: "response.cancel" }));
     }
     // Deliberate barge-in: re-open the mic right away so the user can speak.
-    reopenMicAfterPlayback(true);
-  }, [reopenMicAfterPlayback]);
+    reopenMicNow();
+  }, [reopenMicNow]);
 
   const clearConversation = useCallback(() => {
     setConversation([]);
