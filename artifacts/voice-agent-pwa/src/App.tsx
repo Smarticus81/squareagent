@@ -163,7 +163,7 @@ export default function App() {
   useEffect(() => {
     const venueId = sqVenueId || "";
     const authToken = sqAuthToken || "";
-    if (authToken) setAuthParams(venueId, authToken, agentProfileId ?? undefined);
+    setAuthParams(venueId, authToken, agentProfileId ?? undefined);
   }, [sqVenueId, sqAuthToken, agentProfileId, setAuthParams]);
 
   // Push current order to voice agent

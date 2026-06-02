@@ -64,6 +64,16 @@ interface VoiceAgentContextType {
 let _msgId = 0;
 const genId = () => `msg-${Date.now()}-${++_msgId}`;
 
+function clearStoredLaunchSession() {
+  localStorage.removeItem("voycelab_token");
+  localStorage.removeItem("voycelab_venue_id");
+  localStorage.removeItem("voycelab_wake_phrase");
+  localStorage.removeItem("voycelab_agent_profile");
+  localStorage.removeItem("voycelab_agent_profile_id");
+  localStorage.removeItem("square_access_token");
+  localStorage.removeItem("square_location_id");
+}
+
 // A short tail lets the speaker's acoustic decay die out before the mic
 // re-opens, so the agent's final syllable can't re-trigger the VAD.
 const MIC_REOPEN_TAIL_MS = 250;
@@ -412,6 +422,13 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
 
       if (!tokenRes.ok) {
         const err = await tokenRes.json().catch(() => ({ error: "Failed to get session token" }));
+        if (tokenRes.status === 401) {
+          clearStoredLaunchSession();
+          authTokenRef.current = "";
+          venueIdRef.current = "";
+          agentProfileIdRef.current = "";
+          throw new Error("Session expired. Sign in or relaunch from the dashboard.");
+        }
         throw new Error(err.detail || err.error || "Failed to get session token");
       }
 

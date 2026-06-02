@@ -255,7 +255,6 @@ function buildTurnDetection(noiseMode: NoiseMode): Record<string, unknown> | nul
       return {
         type: "semantic_vad",
         eagerness: "low",
-        silence_duration_ms: 600,
         create_response: true,
         interrupt_response: ACOUSTIC_BARGE_IN_ENABLED,
       };

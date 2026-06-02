@@ -71,6 +71,11 @@ const SquareContext = createContext<SquareContextType | null>(null);
 
 const TOKEN_KEY = "square_access_token";
 const LOC_KEY = "square_location_id";
+const AUTH_TOKEN_KEY = "voycelab_token";
+const VENUE_ID_KEY = "voycelab_venue_id";
+const WAKE_PHRASE_KEY = "voycelab_wake_phrase";
+const AGENT_PROFILE_KEY = "voycelab_agent_profile";
+const AGENT_PROFILE_ID_KEY = "voycelab_agent_profile_id";
 
 function getWebLaunchParams(): { venueId?: string; authToken: string; agentProfileId?: string } | null {
   const params = new URLSearchParams(window.location.search);
@@ -110,12 +115,12 @@ export function SquareProvider({ children }: { children: ReactNode }) {
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [credentialsReady, setCredentialsReady] = useState(false);
-  const [venueId, setVenueId] = useState<string | null>(localStorage.getItem("voycelab_venue_id"));
-  const [authToken, setAuthToken] = useState<string | null>(localStorage.getItem("voycelab_token"));
+  const [venueId, setVenueId] = useState<string | null>(localStorage.getItem(VENUE_ID_KEY));
+  const [authToken, setAuthToken] = useState<string | null>(localStorage.getItem(AUTH_TOKEN_KEY));
   const [userInfo, setUserInfo] = useState<{ id: number; email: string; name: string } | null>(null);
   const [venues, setVenues] = useState<{ id: number; name: string; squareLocationName?: string }[]>([]);
   const [agentProfile, setAgentProfile] = useState<AgentProfileLaunchInfo | null>(null);
-  const [agentProfileId, setAgentProfileId] = useState<string | null>(localStorage.getItem("voycelab_agent_profile_id"));
+  const [agentProfileId, setAgentProfileId] = useState<string | null>(localStorage.getItem(AGENT_PROFILE_ID_KEY));
   const [wakePhrase, setWakePhrase] = useState("Hey Bar");
 
   function applyAgentLaunchInfo(data: any) {
@@ -130,11 +135,28 @@ export function SquareProvider({ children }: { children: ReactNode }) {
     setAgentProfile(profile ?? null);
     setAgentProfileId(profile?.id ?? null);
     setWakePhrase(nextWakePhrase);
-    localStorage.setItem("voycelab_wake_phrase", nextWakePhrase);
-    if (profile?.id) localStorage.setItem("voycelab_agent_profile_id", profile.id);
-    else localStorage.removeItem("voycelab_agent_profile_id");
-    if (profile) localStorage.setItem("voycelab_agent_profile", JSON.stringify(profile));
-    else localStorage.removeItem("voycelab_agent_profile");
+    localStorage.setItem(WAKE_PHRASE_KEY, nextWakePhrase);
+    if (profile?.id) localStorage.setItem(AGENT_PROFILE_ID_KEY, profile.id);
+    else localStorage.removeItem(AGENT_PROFILE_ID_KEY);
+    if (profile) localStorage.setItem(AGENT_PROFILE_KEY, JSON.stringify(profile));
+    else localStorage.removeItem(AGENT_PROFILE_KEY);
+  }
+
+  function clearStoredLaunchSession(message?: string) {
+    localStorage.removeItem(AUTH_TOKEN_KEY);
+    localStorage.removeItem(VENUE_ID_KEY);
+    localStorage.removeItem(WAKE_PHRASE_KEY);
+    localStorage.removeItem(AGENT_PROFILE_KEY);
+    localStorage.removeItem(AGENT_PROFILE_ID_KEY);
+    clearCredentials();
+    setVenueId(null);
+    setAuthToken(null);
+    setUserInfo(null);
+    setVenues([]);
+    setAgentProfile(null);
+    setAgentProfileId(null);
+    setWakePhrase("Hey Bar");
+    if (message) setConnectionError(message);
   }
 
   // Load credentials once on mount:
@@ -175,11 +197,11 @@ export function SquareProvider({ children }: { children: ReactNode }) {
             setAgentProfile(profile);
             setAgentProfileId(profile.id);
             setWakePhrase(profile.wakePhrase || "Hey Bar");
-            localStorage.setItem("voycelab_token", launch.authToken);
-            localStorage.setItem("voycelab_agent_profile_id", profile.id);
-            localStorage.setItem("voycelab_agent_profile", JSON.stringify(profile));
-            localStorage.setItem("voycelab_wake_phrase", profile.wakePhrase || "Hey Bar");
-            localStorage.removeItem("voycelab_venue_id");
+            localStorage.setItem(AUTH_TOKEN_KEY, launch.authToken);
+            localStorage.setItem(AGENT_PROFILE_ID_KEY, profile.id);
+            localStorage.setItem(AGENT_PROFILE_KEY, JSON.stringify(profile));
+            localStorage.setItem(WAKE_PHRASE_KEY, profile.wakePhrase || "Hey Bar");
+            localStorage.removeItem(VENUE_ID_KEY);
             setVenueId(null);
             setCredentialsReady(true);
             return;
@@ -205,9 +227,9 @@ export function SquareProvider({ children }: { children: ReactNode }) {
               localStorage.setItem(TOKEN_KEY, data.accessToken);
               localStorage.setItem(LOC_KEY, data.locationId);
               // Store auth params for voice agent session auth
-              localStorage.setItem("voycelab_venue_id", launch.venueId);
-              localStorage.setItem("voycelab_token", launch.authToken);
-              if (launch.agentProfileId) localStorage.setItem("voycelab_agent_profile_id", launch.agentProfileId);
+              localStorage.setItem(VENUE_ID_KEY, launch.venueId);
+              localStorage.setItem(AUTH_TOKEN_KEY, launch.authToken);
+              if (launch.agentProfileId) localStorage.setItem(AGENT_PROFILE_ID_KEY, launch.agentProfileId);
               applyAgentLaunchInfo(data);
               setVenueId(launch.venueId);
               setAuthToken(launch.authToken);
@@ -225,16 +247,16 @@ export function SquareProvider({ children }: { children: ReactNode }) {
         const locId = localStorage.getItem(LOC_KEY);
         if (token) setAccessToken(token);
         if (locId) setLocationId(locId);
-        const storedWakePhrase = localStorage.getItem("voycelab_wake_phrase");
-        const storedAgentProfileId = localStorage.getItem("voycelab_agent_profile_id");
+        const storedWakePhrase = localStorage.getItem(WAKE_PHRASE_KEY);
+        const storedAgentProfileId = localStorage.getItem(AGENT_PROFILE_ID_KEY);
         if (storedWakePhrase) setWakePhrase(storedWakePhrase);
         if (storedAgentProfileId) setAgentProfileId(storedAgentProfileId);
-        const storedProfile = localStorage.getItem("voycelab_agent_profile");
+        const storedProfile = localStorage.getItem(AGENT_PROFILE_KEY);
         if (storedProfile) {
           try {
             setAgentProfile(JSON.parse(storedProfile));
           } catch {
-            localStorage.removeItem("voycelab_agent_profile");
+            localStorage.removeItem(AGENT_PROFILE_KEY);
           }
         }
         setCredentialsReady(true);
@@ -245,7 +267,7 @@ export function SquareProvider({ children }: { children: ReactNode }) {
 
   // On mount, restore user session if we have a stored auth token
   useEffect(() => {
-    const tok = localStorage.getItem("voycelab_token");
+    const tok = localStorage.getItem(AUTH_TOKEN_KEY);
     if (!tok) return;
     (async () => {
       try {
@@ -257,6 +279,8 @@ export function SquareProvider({ children }: { children: ReactNode }) {
           setAuthToken(tok);
           setUserInfo(data.user);
           await loadVenues(tok);
+        } else if (res.status === 401) {
+          clearStoredLaunchSession("Session expired. Sign in or relaunch from the dashboard.");
         }
       } catch {}
     })();
@@ -294,7 +318,7 @@ export function SquareProvider({ children }: { children: ReactNode }) {
       const data = await res.json();
       if (!res.ok) return data.error || "Login failed";
 
-      localStorage.setItem("voycelab_token", data.token);
+      localStorage.setItem(AUTH_TOKEN_KEY, data.token);
       setAuthToken(data.token);
       setUserInfo(data.user);
       await loadVenues(data.token);
@@ -314,7 +338,7 @@ export function SquareProvider({ children }: { children: ReactNode }) {
       const data = await res.json();
       if (!res.ok) return data.error || "Signup failed";
 
-      localStorage.setItem("voycelab_token", data.token);
+      localStorage.setItem(AUTH_TOKEN_KEY, data.token);
       setAuthToken(data.token);
       setUserInfo(data.user);
       setVenues([]);
@@ -325,7 +349,7 @@ export function SquareProvider({ children }: { children: ReactNode }) {
   }
 
   async function logout(): Promise<void> {
-    const tok = authToken || localStorage.getItem("voycelab_token");
+    const tok = authToken || localStorage.getItem(AUTH_TOKEN_KEY);
     if (tok) {
       try {
         await fetch(`${getBaseUrl()}api/auth/logout`, {
@@ -335,11 +359,11 @@ export function SquareProvider({ children }: { children: ReactNode }) {
       } catch {}
     }
     clearCredentials();
-    localStorage.removeItem("voycelab_token");
-    localStorage.removeItem("voycelab_venue_id");
-    localStorage.removeItem("voycelab_wake_phrase");
-    localStorage.removeItem("voycelab_agent_profile");
-      localStorage.removeItem("voycelab_agent_profile_id");
+    localStorage.removeItem(AUTH_TOKEN_KEY);
+    localStorage.removeItem(VENUE_ID_KEY);
+    localStorage.removeItem(WAKE_PHRASE_KEY);
+    localStorage.removeItem(AGENT_PROFILE_KEY);
+    localStorage.removeItem(AGENT_PROFILE_ID_KEY);
     setAuthToken(null);
     setUserInfo(null);
     setVenues([]);
@@ -349,11 +373,11 @@ export function SquareProvider({ children }: { children: ReactNode }) {
   }
 
   async function selectVenue(vid: number): Promise<string | null> {
-    const tok = authToken || localStorage.getItem("voycelab_token");
+    const tok = authToken || localStorage.getItem(AUTH_TOKEN_KEY);
     if (!tok) return "Not logged in";
 
     try {
-      const storedAgentProfileId = localStorage.getItem("voycelab_agent_profile_id");
+      const storedAgentProfileId = localStorage.getItem(AGENT_PROFILE_ID_KEY);
       const profileQuery = storedAgentProfileId
         ? `?agentProfileId=${encodeURIComponent(storedAgentProfileId)}`
         : "";
@@ -372,7 +396,7 @@ export function SquareProvider({ children }: { children: ReactNode }) {
         applyAgentLaunchInfo(data);
         localStorage.setItem(TOKEN_KEY, data.accessToken);
         localStorage.setItem(LOC_KEY, data.locationId);
-        localStorage.setItem("voycelab_venue_id", String(vid));
+        localStorage.setItem(VENUE_ID_KEY, String(vid));
         setConnectionError(null);
         return null;
       }
@@ -412,8 +436,8 @@ export function SquareProvider({ children }: { children: ReactNode }) {
 
   /** Re-fetch Square credentials from the server using stored venueId + authToken. */
   async function refreshCredentials(): Promise<boolean> {
-    const vid = venueId || localStorage.getItem("voycelab_venue_id");
-    const tok = authToken || localStorage.getItem("voycelab_token");
+    const vid = venueId || localStorage.getItem(VENUE_ID_KEY);
+    const tok = authToken || localStorage.getItem(AUTH_TOKEN_KEY);
     if (!vid || !tok) {
       setConnectionError("No saved session. Open the dashboard to reconnect Square.");
       return false;
@@ -428,7 +452,7 @@ export function SquareProvider({ children }: { children: ReactNode }) {
       });
 
       if (res.status === 401) {
-        setConnectionError("Session expired. Open the dashboard and relaunch the agent.");
+        clearStoredLaunchSession("Session expired. Sign in or relaunch from the dashboard.");
         return false;
       }
 
@@ -483,7 +507,7 @@ export function SquareProvider({ children }: { children: ReactNode }) {
             // Retry with new credentials
             return loadCatalog();
           }
-          throw new Error("Square connection expired. Tap reconnect to fix.");
+          throw new Error("Session expired. Sign in or relaunch from the dashboard.");
         }
         const errData = await res.json().catch(() => ({}));
         throw new Error((errData as any).error || `Catalog load failed (${res.status})`);

@@ -7,13 +7,36 @@ const router: IRouter = Router();
 const SQUARE_BASE = "https://connect.squareup.com/v2";
 const SQUARE_OAUTH_BASE = "https://connect.squareup.com/oauth2";
 
-function getRedirectUri(): string {
+function getLocalBrowserOrigin(req: Request): string | null {
+  const rawOrigin = req.get("origin");
+  const rawReferer = req.get("referer");
+  const candidate = rawOrigin || rawReferer;
+  if (!candidate) return null;
+
+  try {
+    const url = new URL(candidate);
+    const isLocalhost = url.hostname === "localhost" || url.hostname === "127.0.0.1";
+    return isLocalhost ? url.origin : null;
+  } catch {
+    return null;
+  }
+}
+
+function getRedirectUri(req?: Request): string {
+  const explicitRedirectUri = process.env.SQUARE_REDIRECT_URI;
+  if (explicitRedirectUri) return explicitRedirectUri;
+
   const explicitOrigin = process.env.PUBLIC_BASE_URL
     ?? process.env.PUBLIC_API_URL
     ?? process.env.APP_URL;
 
   if (explicitOrigin) {
     return `${explicitOrigin.replace(/\/$/, "")}/api/square/oauth/callback`;
+  }
+
+  const localBrowserOrigin = req ? getLocalBrowserOrigin(req) : null;
+  if (localBrowserOrigin) {
+    return `${localBrowserOrigin}/api/square/oauth/callback`;
   }
 
   const railwayDomain = process.env.RAILWAY_PUBLIC_DOMAIN;
@@ -36,7 +59,7 @@ function squareHeaders(token: string) {
 
 // ── In-memory state stores (TTL: 10 min) ─────────────────────────────────────
 
-interface PendingState { timestamp: number; mode?: "redirect"; returnUrl?: string }
+interface PendingState { timestamp: number; redirectUri: string; mode?: "redirect"; returnUrl?: string }
 interface PendingToken { token: string; merchantId: string; timestamp: number }
 
 const pendingStates = new Map<string, PendingState>();
@@ -71,14 +94,14 @@ router.get("/oauth/authorize", (req: Request, res: Response): void => {
   }
 
   const state = crypto.randomUUID();
-  const pendingState: PendingState = { timestamp: Date.now() };
+  const redirectUri = getRedirectUri(req);
+  const pendingState: PendingState = { timestamp: Date.now(), redirectUri };
   if (mode === "redirect" && returnUrl) {
     pendingState.mode = "redirect";
     pendingState.returnUrl = returnUrl;
   }
   pendingStates.set(state, pendingState);
 
-  const redirectUri = getRedirectUri();
   const params = new URLSearchParams({
     client_id: appId,
     response_type: "code",
@@ -135,7 +158,7 @@ router.get("/oauth/callback", async (req: Request, res: Response): Promise<void>
 
   const appId = process.env.SQUARE_APPLICATION_ID;
   const appSecret = process.env.SQUARE_APPLICATION_SECRET;
-  const redirectUri = getRedirectUri();
+  const redirectUri = pendingOAuthState.redirectUri || getRedirectUri(req);
 
   try {
     const tokenRes = await fetch(`${SQUARE_OAUTH_BASE}/token`, {
