@@ -17,6 +17,7 @@ import {
 import { DEFAULT_CONFIRMATION_POLICY } from "@workspace/voicelab-core/confirmation";
 import { planAllowsPipeline } from "@workspace/voicelab-core/pricing";
 import type { VoicePipelineProvider } from "@workspace/voicelab-core/voice-pipeline";
+import { invalidateAgentProfile } from "../../lib/agent-profile-cache";
 
 const router = Router();
 router.use(v1RequireAuth as never, requireDb);
@@ -226,6 +227,7 @@ router.patch("/:id", async (req: Request, res: Response) => {
     .set(updates)
     .where(eq(agentProfilesTable.id, String(req.params.id)))
     .returning();
+  invalidateAgentProfile(String(req.params.id));
   res.json(rowToResponse(row as AgentProfileRow));
 });
 
@@ -245,6 +247,7 @@ router.delete("/:id", async (req: Request, res: Response) => {
     return;
   }
   await db.delete(agentProfilesTable).where(eq(agentProfilesTable.id, String(req.params.id)));
+  invalidateAgentProfile(String(req.params.id));
   res.status(204).end();
 });
 

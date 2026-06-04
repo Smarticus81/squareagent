@@ -14,7 +14,7 @@
 
 import { Router } from "express";
 import { requireAuth, requirePlan } from "./auth";
-import { db, agentProfilesTable, serviceConnectionsTable, usageEventsTable, emailCredentialsTable } from "@workspace/db";
+import { db, serviceConnectionsTable, usageEventsTable, emailCredentialsTable } from "@workspace/db";
 import {
   PLANS,
   listConnectedServiceProviders,
@@ -28,6 +28,7 @@ import {
 } from "../lib/square-helpers";
 import { SquareClient } from "../lib/square-client";
 import { getCachedCredentials } from "../lib/credential-cache";
+import { getCachedAgentProfile } from "../lib/agent-profile-cache";
 import { executeToolCall } from "../tools";
 import {
   getSkillsForSession,
@@ -674,18 +675,7 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
   let profilePersonality = "";
 
   if (agentProfileId) {
-    const [profile] = await db
-      .select({
-        voicePipelineProvider: agentProfilesTable.voicePipelineProvider,
-        voicePipelineConfig: agentProfilesTable.voicePipelineConfig,
-        connectedServiceId: agentProfilesTable.connectedServiceId,
-        noiseMode: agentProfilesTable.noiseMode,
-        displayName: agentProfilesTable.displayName,
-        personality: agentProfilesTable.personality,
-      })
-      .from(agentProfilesTable)
-      .where(eq(agentProfilesTable.id, String(agentProfileId)))
-      .limit(1);
+    const profile = await getCachedAgentProfile(String(agentProfileId));
     if (profile) {
       provider = profile.voicePipelineProvider;
       providerConfig = (profile.voicePipelineConfig as Record<string, unknown>) ?? {};
@@ -835,11 +825,7 @@ router.post("/tools", requireAuth as any, requirePlan() as any, async (req: any,
 
   let noiseMode: import("@workspace/voicelab-core/noise").NoiseMode = "standard";
   if (agentProfileId) {
-    const [profile] = await db
-      .select({ noiseMode: agentProfilesTable.noiseMode })
-      .from(agentProfilesTable)
-      .where(eq(agentProfilesTable.id, String(agentProfileId)))
-      .limit(1);
+    const profile = await getCachedAgentProfile(String(agentProfileId));
     if (profile?.noiseMode) {
       noiseMode = profile.noiseMode as typeof noiseMode;
     }
