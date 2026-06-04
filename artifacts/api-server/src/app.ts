@@ -61,12 +61,25 @@ app.use("/api/auth/signup", rateLimit({
   message: { error: "Too many signup attempts. Please try again later." },
 }));
 
-app.use(["/api/realtime", "/api/realtime/gemini"], rateLimit({
+// Session minting is the real abuse vector (it calls OpenAI), so keep a tight
+// cap there. Tool calls + heartbeats during an active voice conversation are
+// far more frequent and authenticated — a single busy ordering session can
+// legitimately fire dozens per minute, so the old shared 30/min cap throttled
+// real sessions and made the assistant appear to freeze. Split the buckets.
+app.use(["/api/realtime/session"], rateLimit({
   windowMs: 60 * 1000,
-  max: 30,
+  max: Number(process.env.REALTIME_SESSION_RATE_MAX ?? 20),
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Rate limit exceeded. Please wait before starting a new session." },
+}));
+
+app.use(["/api/realtime", "/api/realtime/gemini"], rateLimit({
+  windowMs: 60 * 1000,
+  max: Number(process.env.REALTIME_RATE_MAX ?? 240),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Rate limit exceeded. Please slow down." },
 }));
 
 app.use("/api", router);

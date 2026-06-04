@@ -68,26 +68,32 @@ export function buildAdminSubscription(userId: number): {
   };
 }
 
+type SubscriptionRow = typeof subscriptionsTable.$inferSelect;
+
 /**
  * Make sure an admin user has a subscription row that reflects platform
- * admin status. Idempotent and safe to call on every authenticated request.
+ * admin status. Idempotent. Returns the effective subscription row so callers
+ * don't need a second query to read it back.
  */
-async function ensureAdminSubscription(userId: number): Promise<void> {
-  if (!db) return;
+async function ensureAdminSubscription(userId: number): Promise<SubscriptionRow | null> {
+  if (!db) return null;
   try {
     const [existing] = await db
       .select()
       .from(subscriptionsTable)
       .where(eq(subscriptionsTable.userId, userId));
     if (!existing) {
-      await db.insert(subscriptionsTable).values({
-        userId,
-        plan: "business",
-        status: "active",
-        trialEndsAt: null,
-        currentPeriodEnd: FAR_FUTURE,
-      });
-      return;
+      const [inserted] = await db
+        .insert(subscriptionsTable)
+        .values({
+          userId,
+          plan: "business",
+          status: "active",
+          trialEndsAt: null,
+          currentPeriodEnd: FAR_FUTURE,
+        })
+        .returning();
+      return (inserted as SubscriptionRow) ?? (buildAdminSubscription(userId) as SubscriptionRow);
     }
     const needsUpdate =
       existing.plan !== "business" ||
@@ -96,7 +102,7 @@ async function ensureAdminSubscription(userId: number): Promise<void> {
       !existing.currentPeriodEnd ||
       existing.currentPeriodEnd.getTime() < FAR_FUTURE.getTime();
     if (needsUpdate) {
-      await db
+      const [updated] = await db
         .update(subscriptionsTable)
         .set({
           plan: "business",
@@ -105,12 +111,50 @@ async function ensureAdminSubscription(userId: number): Promise<void> {
           currentPeriodEnd: FAR_FUTURE,
           updatedAt: new Date(),
         })
-        .where(eq(subscriptionsTable.userId, userId));
+        .where(eq(subscriptionsTable.userId, userId))
+        .returning();
+      return (updated as SubscriptionRow) ?? (existing as SubscriptionRow);
     }
+    return existing as SubscriptionRow;
   } catch (e) {
     console.error("[Auth] ensureAdminSubscription failed:", e instanceof Error ? e.message : e);
+    return buildAdminSubscription(userId) as SubscriptionRow;
   }
 }
+
+// ── Auth context cache ────────────────────────────────────────────────────────
+// The voice flow fires a tool call (POST /api/realtime/tools) on every spoken
+// command, plus a heartbeat every 60s. Without caching, requireAuth ran 4–6
+// sequential DB round trips on EVERY one of those requests, adding 100ms+ of
+// latency before any actual work. We cache the resolved auth context per session
+// for a short TTL so repeated requests in a live conversation skip the DB
+// entirely. JWT verification still happens every request, so revoked/expired
+// tokens are never served from cache.
+
+interface CachedAuth {
+  user: typeof usersTable.$inferSelect;
+  subscription: SubscriptionRow | null;
+  organization: { id: string; role: string } | null;
+  isAdmin: boolean;
+  sessionExpiresAt: Date;
+  expiresAt: number; // cache-entry expiry (epoch ms)
+}
+
+const AUTH_CACHE_TTL_MS = Number(process.env.AUTH_CACHE_TTL_MS ?? 30_000);
+const authCache = new Map<string, CachedAuth>();
+
+/** Drop a cached auth context (call on logout or when entitlements change). */
+export function invalidateAuthCache(sessionId: string): void {
+  authCache.delete(sessionId);
+}
+
+// Bound memory: sweep expired entries periodically.
+setInterval(() => {
+  const now = Date.now();
+  for (const [sid, entry] of authCache) {
+    if (entry.expiresAt <= now) authCache.delete(sid);
+  }
+}, 60_000);
 
 /** Fail hard if running in production with the default secret */
 export function assertJwtSecret(): void {
@@ -155,40 +199,70 @@ export async function requireAuth(req: Request, res: Response, next: Function): 
   const payload = verifyToken(token);
   if (!payload) { res.status(401).json({ error: "Invalid or expired token" }); return; }
 
+  // Fast path: serve a still-valid cached auth context without touching the DB.
+  const cached = authCache.get(payload.sid);
+  if (cached && cached.expiresAt > Date.now() && cached.sessionExpiresAt > new Date()) {
+    (req as any).user = cached.user;
+    (req as any).subscription = cached.subscription;
+    (req as any).organization = cached.organization;
+    (req as any).isAdmin = cached.isAdmin;
+    next();
+    return;
+  }
+
   try {
-    const [session] = await db.select().from(sessionsTable).where(eq(sessionsTable.id, payload.sid));
+    // session and user are independent (both derive from the verified token),
+    // so fetch them concurrently rather than serially.
+    const [[session], [user]] = await Promise.all([
+      db.select().from(sessionsTable).where(eq(sessionsTable.id, payload.sid)),
+      db.select().from(usersTable).where(eq(usersTable.id, payload.sub)),
+    ]);
+
     if (!session || session.expiresAt < new Date()) {
+      authCache.delete(payload.sid);
       res.status(401).json({ error: "Session expired" }); return;
     }
-
-    const [user] = await db.select().from(usersTable).where(eq(usersTable.id, payload.sub));
     if (!user) { res.status(401).json({ error: "User not found" }); return; }
 
     const isAdmin = isAdminEmail(user.email);
-    if (isAdmin) {
-      // Idempotently mirror the admin entitlements into the DB so that
-      // any downstream code reading subscriptions directly (PWA, Expo
-      // app, Stripe sync) sees the same source of truth.
-      await ensureAdminSubscription(user.id);
-    }
 
-    let [subscription] = await db.select().from(subscriptionsTable).where(eq(subscriptionsTable.userId, user.id));
-    if (!subscription && isAdmin) subscription = buildAdminSubscription(user.id) as never;
+    // Subscription and organization membership both depend only on user.id —
+    // resolve them concurrently. For admins, ensureAdminSubscription both
+    // mirrors entitlements into the DB and returns the row, removing the
+    // previously redundant follow-up subscription query.
+    const subscriptionPromise: Promise<SubscriptionRow | null> = isAdmin
+      ? ensureAdminSubscription(user.id)
+      : db
+          .select()
+          .from(subscriptionsTable)
+          .where(eq(subscriptionsTable.userId, user.id))
+          .then((rows: SubscriptionRow[]) => rows[0] ?? null);
 
-    // Attach organization membership if one exists
-    let organization: { id: string; role: string } | null = null;
-    try {
-      const [membership] = await db
-        .select()
-        .from(organizationMembershipsTable)
-        .where(eq(organizationMembershipsTable.userId, user.id))
-        .limit(1);
-      if (membership) {
-        organization = { id: membership.organizationId, role: membership.role };
-      }
-    } catch {
+    const organizationPromise = db
+      .select()
+      .from(organizationMembershipsTable)
+      .where(eq(organizationMembershipsTable.userId, user.id))
+      .limit(1)
+      .then((rows: (typeof organizationMembershipsTable.$inferSelect)[]) =>
+        rows[0] ? { id: rows[0].organizationId, role: rows[0].role } : null,
+      )
       // organization_memberships table may not exist yet; continue without it
-    }
+      .catch(() => null);
+
+    let [subscription, organization] = await Promise.all([
+      subscriptionPromise,
+      organizationPromise,
+    ]);
+    if (!subscription && isAdmin) subscription = buildAdminSubscription(user.id) as SubscriptionRow;
+
+    authCache.set(payload.sid, {
+      user,
+      subscription: subscription ?? null,
+      organization,
+      isAdmin,
+      sessionExpiresAt: session.expiresAt,
+      expiresAt: Date.now() + AUTH_CACHE_TTL_MS,
+    });
 
     (req as any).user = user;
     (req as any).subscription = subscription ?? null;
@@ -370,6 +444,7 @@ router.post("/logout", requireAuth as any, async (req: Request, res: Response): 
 
   try {
     await db.delete(sessionsTable).where(eq(sessionsTable.id, payload.sid));
+    invalidateAuthCache(payload.sid);
     res.json({ ok: true });
   } catch (e: any) {
     console.error("[Auth] Logout error:", e.message);
