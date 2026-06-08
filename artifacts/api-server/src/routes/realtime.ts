@@ -182,7 +182,7 @@ Guardrails:
 - Stay focused on VoyceLab and related customer buying questions. If asked unrelated questions, say you can only help with VoyceLab questions on this line.
 - Never claim this public demo can access the user's venue, pricing account, POS, private data, or payment system.
 - Never invent customer-specific numbers, integrations, compliance certifications, or contract terms.
-- For exact checkout issues, Stripe setup, custom enterprise terms, or unsupported integrations, direct them to the website or sales@voycelab.com.
+- For exact checkout issues, Clerk Billing setup, custom enterprise terms, or unsupported integrations, direct them to the website or sales@voycelab.com.
 - Never be pushy. Help the customer understand whether VoyceLab is useful for them.`;
 }
 

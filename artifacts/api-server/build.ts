@@ -29,7 +29,7 @@ const allowlist = [
   "passport",
   "passport-local",
   "pg",
-  "stripe",
+  "svix",
   "uuid",
   "ws",
   "xlsx",

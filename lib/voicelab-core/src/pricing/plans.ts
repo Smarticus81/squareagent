@@ -2,7 +2,7 @@ import type { VoicePipelineProvider } from "../voice-pipeline/types";
 
 /**
  * VoyceLab pricing — single source of truth used by:
- *   - Stripe checkout (price-id lookup)
+ *   - Clerk Billing checkout (plan-id lookup)
  *   - Wizard / pricing page (display)
  *   - API gating (which voice pipelines a plan can pick at agent creation)
  *   - Subscription tier-> skill mapping (in api-server/src/skills/types.ts)
@@ -72,9 +72,8 @@ export interface PlanDefinition {
   ribbon?: string;
   /** CTA shown on the card. */
   cta: string;
-  /** Stripe price-id env var name (server reads `process.env[stripeEnvVar]`). */
-  stripeMonthlyPriceEnvVar?: string;
-  stripeYearlyPriceEnvVar?: string;
+  /** Clerk Billing plan-id env var name (server reads `process.env[clerkPlanEnvVar]`). */
+  clerkPlanEnvVar?: string;
 }
 
 const PIPELINES_FALLBACK: VoicePipelineProvider[] = [
@@ -134,8 +133,7 @@ export const PLANS: PlanDefinition[] = [
     skillTiers: ["core", "standard", "premium"],
     allowedPipelines: PIPELINES_PAID,
     cta: "Pick Pro",
-    stripeMonthlyPriceEnvVar: "STRIPE_PRICE_PRO_MONTHLY",
-    stripeYearlyPriceEnvVar: "STRIPE_PRICE_PRO_YEARLY",
+    clerkPlanEnvVar: "CLERK_PLAN_PRO_ID",
     bullets: [
       { text: "Up to 3 venues, 10 assistants" },
       { text: "500 voice minutes / month included" },
@@ -161,8 +159,7 @@ export const PLANS: PlanDefinition[] = [
     skillTiers: ["core", "standard", "premium"],
     allowedPipelines: PIPELINES_PAID,
     cta: "Pick Business",
-    stripeMonthlyPriceEnvVar: "STRIPE_PRICE_BUSINESS_MONTHLY",
-    stripeYearlyPriceEnvVar: "STRIPE_PRICE_BUSINESS_YEARLY",
+    clerkPlanEnvVar: "CLERK_PLAN_BUSINESS_ID",
     bullets: [
       { text: "Unlimited venues and assistants" },
       { text: "2,000 voice minutes / month included" },

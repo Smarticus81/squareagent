@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
+import { PricingTable, SignInButton, SignedIn, SignedOut } from "@clerk/clerk-react";
 import { ArrowRight, Check, Loader2, Sparkles } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -25,9 +26,11 @@ interface PlanResponse {
   skillTiers: string[];
   allowedPipelines: string[];
   bullets: PlanBullet[];
-  stripeMonthlyPriceId: string | null;
-  stripeYearlyPriceId: string | null;
-  stripeReady: boolean;
+  billingProvider: "clerk";
+  clerkPlanId: string | null;
+  clerkCheckoutMonthlyUrl: string | null;
+  clerkCheckoutYearlyUrl: string | null;
+  clerkReady: boolean;
 }
 
 type Cadence = "monthly" | "yearly";
@@ -35,6 +38,8 @@ type Cadence = "monthly" | "yearly";
 export default function Pricing() {
   const [, navigate] = useLocation();
   const { data: auth } = useAuth();
+  const clerkPublishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string | undefined;
+  const clerkBillingEnabled = Boolean(clerkPublishableKey);
   const [plans, setPlans] = useState<PlanResponse[]>([]);
   const [cadence, setCadence] = useState<Cadence>("monthly");
   const [loading, setLoading] = useState(true);
@@ -62,12 +67,18 @@ export default function Pricing() {
       navigate("/signup");
       return;
     }
-    const priceId = cadence === "yearly" ? plan.stripeYearlyPriceId : plan.stripeMonthlyPriceId;
-    if (!priceId) {
+    if (clerkBillingEnabled) {
+      const checkout = document.getElementById("clerk-checkout");
+      checkout?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+
+    const checkoutUrl = cadence === "yearly" ? plan.clerkCheckoutYearlyUrl : plan.clerkCheckoutMonthlyUrl;
+    if (!checkoutUrl) {
       setError(
-        `Stripe price IDs are not configured yet for "${plan.name}". Set ${
-          cadence === "yearly" ? "STRIPE_PRICE_*_YEARLY" : "STRIPE_PRICE_*_MONTHLY"
-        } in the server environment to enable checkout.`,
+        `Clerk Billing is not configured yet for "${plan.name}". Set VITE_CLERK_PUBLISHABLE_KEY for the embedded checkout, or configure ${
+          cadence === "yearly" ? "CLERK_CHECKOUT_*_YEARLY_URL" : "CLERK_CHECKOUT_*_MONTHLY_URL"
+        } on the server.`,
       );
       return;
     }
@@ -81,7 +92,7 @@ export default function Pricing() {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ priceId }),
+        body: JSON.stringify({ planId: plan.id, cadence }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
@@ -119,6 +130,35 @@ export default function Pricing() {
           <div className="mt-6 vl-panel p-4 text-[13px]" style={{ color: "var(--color-vl-danger)" }}>
             {error}
           </div>
+        )}
+
+        {clerkBillingEnabled && (
+          <section id="clerk-checkout" className="mt-10 vl-panel p-5 md:p-7">
+            <div className="mb-5 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+              <div>
+                <p className="vl-eyebrow">Secure checkout</p>
+                <h2 className="vl-display mt-2 text-[28px] md:text-[34px]" style={{ color: "var(--color-vl-ink)" }}>
+                  Subscribe with Clerk Billing.
+                </h2>
+                <p className="mt-2 max-w-2xl text-[13px] leading-relaxed" style={{ color: "var(--color-vl-ink-muted)" }}>
+                  Clerk manages checkout, payment methods, invoices, and plan changes. Use the same email as your VoyceLab account so your plan syncs automatically.
+                </p>
+              </div>
+              <SignedOut>
+                <SignInButton mode="modal">
+                  <button className="vl-btn-primary text-[13px]">Sign in for checkout</button>
+                </SignInButton>
+              </SignedOut>
+            </div>
+            <SignedIn>
+              <PricingTable for="organization" />
+            </SignedIn>
+            <SignedOut>
+              <div className="rounded-2xl border border-black/10 bg-white/55 p-6 text-[13px]" style={{ color: "var(--color-vl-ink-muted)" }}>
+                Sign in with Clerk to view live subscription checkout.
+              </div>
+            </SignedOut>
+          </section>
         )}
 
         {/* Plan grid */}

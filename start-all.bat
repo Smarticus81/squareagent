@@ -33,6 +33,10 @@ if not exist "!ROOT!.env" (
   )
 )
 
+echo Checking development ports and clearing stale Node listeners...
+powershell -NoProfile -Command "$ports = @(8080, 8081, 5173, 5174, 5175); foreach ($p in $ports) { $conns = Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction SilentlyContinue; if (-not $conns) { Write-Host ('Port ' + $p + ' is free'); continue }; $handled = $false; $owners = $conns | Select-Object -ExpandProperty OwningProcess -Unique; foreach ($owner in $owners) { $proc = Get-Process -Id $owner -ErrorAction SilentlyContinue; if ($proc -and $proc.ProcessName -eq 'node') { Stop-Process -Id $owner -Force -ErrorAction SilentlyContinue; Write-Host ('Stopped node PID ' + $owner + ' on port ' + $p); $handled = $true } else { $name = if ($proc) { $proc.ProcessName } else { 'unknown' }; Write-Host ('Port ' + $p + ' is used by non-node process ' + $name + ' (PID ' + $owner + ')') } }; if ($handled) { Write-Host ('Port ' + $p + ' is ready') } }"
+echo.
+
 echo Starting API server on http://localhost:8080
 start "Square Voice API" /D "!API_DIR!" cmd /k "call pnpm run dev:local"
 

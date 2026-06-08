@@ -7,16 +7,31 @@ const router: IRouter = Router();
 const SQUARE_BASE = "https://connect.squareup.com/v2";
 const SQUARE_OAUTH_BASE = "https://connect.squareup.com/oauth2";
 
-function getLocalBrowserOrigin(req: Request): string | null {
+function getRequestOrigin(req: Request): string | null {
+  // Prefer forwarded headers for deployments behind reverse proxies/load balancers.
+  const forwardedHost = req.get("x-forwarded-host");
+  const forwardedProto = req.get("x-forwarded-proto");
+  if (forwardedHost) {
+    const proto = forwardedProto?.split(",")[0]?.trim() || "https";
+    return `${proto}://${forwardedHost.split(",")[0]?.trim()}`;
+  }
+
+  const host = req.get("host");
+  if (!host) return null;
+
+  const isLocal = host.includes("localhost") || host.includes("127.0.0.1");
+  const proto = isLocal ? "http" : "https";
+  return `${proto}://${host}`;
+}
+
+function getBrowserOrigin(req: Request): string | null {
   const rawOrigin = req.get("origin");
   const rawReferer = req.get("referer");
   const candidate = rawOrigin || rawReferer;
   if (!candidate) return null;
 
   try {
-    const url = new URL(candidate);
-    const isLocalhost = url.hostname === "localhost" || url.hostname === "127.0.0.1";
-    return isLocalhost ? url.origin : null;
+    return new URL(candidate).origin;
   } catch {
     return null;
   }
@@ -34,9 +49,9 @@ function getRedirectUri(req?: Request): string {
     return `${explicitOrigin.replace(/\/$/, "")}/api/square/oauth/callback`;
   }
 
-  const localBrowserOrigin = req ? getLocalBrowserOrigin(req) : null;
-  if (localBrowserOrigin) {
-    return `${localBrowserOrigin}/api/square/oauth/callback`;
+  const requestOrigin = req ? getRequestOrigin(req) : null;
+  if (requestOrigin) {
+    return `${requestOrigin}/api/square/oauth/callback`;
   }
 
   const railwayDomain = process.env.RAILWAY_PUBLIC_DOMAIN;
@@ -59,7 +74,13 @@ function squareHeaders(token: string) {
 
 // ── In-memory state stores (TTL: 10 min) ─────────────────────────────────────
 
-interface PendingState { timestamp: number; redirectUri: string; mode?: "redirect"; returnUrl?: string }
+interface PendingState {
+  timestamp: number;
+  redirectUri: string;
+  mode?: "redirect";
+  returnUrl?: string;
+  returnOrigin?: string;
+}
 interface PendingToken { token: string; merchantId: string; timestamp: number }
 
 const pendingStates = new Map<string, PendingState>();
@@ -99,6 +120,7 @@ router.get("/oauth/authorize", (req: Request, res: Response): void => {
   if (mode === "redirect" && returnUrl) {
     pendingState.mode = "redirect";
     pendingState.returnUrl = returnUrl;
+    pendingState.returnOrigin = getBrowserOrigin(req) || undefined;
   }
   pendingStates.set(state, pendingState);
 
@@ -135,11 +157,14 @@ router.get("/oauth/callback", async (req: Request, res: Response): Promise<void>
   const pendingOAuthState = state ? pendingStates.get(state) : undefined;
   const isRedirectMode = pendingOAuthState?.mode === "redirect";
   const returnUrl = pendingOAuthState?.returnUrl ?? "/";
+  const returnTarget = pendingOAuthState?.returnOrigin
+    ? `${pendingOAuthState.returnOrigin}${returnUrl}`
+    : returnUrl;
 
   if (error) {
     if (isRedirectMode) {
       pendingStates.delete(state);
-      res.redirect(`${returnUrl}${returnUrl.includes("?") ? "&" : "?"}oauth_error=${encodeURIComponent(error)}`);
+      res.redirect(`${returnTarget}${returnTarget.includes("?") ? "&" : "?"}oauth_error=${encodeURIComponent(error)}`);
     } else {
       res.send(popupHtml(null, `Square authorization failed: ${error}`));
     }
@@ -148,7 +173,7 @@ router.get("/oauth/callback", async (req: Request, res: Response): Promise<void>
 
   if (!state || !pendingOAuthState) {
     if (isRedirectMode) {
-      res.redirect(`${returnUrl}${returnUrl.includes("?") ? "&" : "?"}oauth_error=${encodeURIComponent("Invalid or expired OAuth state")}`);
+      res.redirect(`${returnTarget}${returnTarget.includes("?") ? "&" : "?"}oauth_error=${encodeURIComponent("Invalid or expired OAuth state")}`);
     } else {
       res.send(popupHtml(null, "Invalid or expired OAuth state. Please try again."));
     }
@@ -190,13 +215,13 @@ router.get("/oauth/callback", async (req: Request, res: Response): Promise<void>
 
     if (isRedirectMode) {
       // Redirect back to the app with claim key in URL
-      res.redirect(`${returnUrl}${returnUrl.includes("?") ? "&" : "?"}oauth_ts=${encodeURIComponent(ts)}`);
+      res.redirect(`${returnTarget}${returnTarget.includes("?") ? "&" : "?"}oauth_ts=${encodeURIComponent(ts)}`);
     } else {
       res.send(popupHtml(ts, null));
     }
   } catch (e: any) {
     if (isRedirectMode) {
-      res.redirect(`${returnUrl}${returnUrl.includes("?") ? "&" : "?"}oauth_error=${encodeURIComponent(e.message || "Unexpected error")}`);
+      res.redirect(`${returnTarget}${returnTarget.includes("?") ? "&" : "?"}oauth_error=${encodeURIComponent(e.message || "Unexpected error")}`);
     } else {
       res.send(popupHtml(null, e.message || "Unexpected error during token exchange"));
     }

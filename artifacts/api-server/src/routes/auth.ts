@@ -12,6 +12,7 @@ import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import { db, usersTable, sessionsTable, subscriptionsTable, exchangeCodesTable, organizationMembershipsTable } from "@workspace/db";
 import { eq, lt } from "drizzle-orm";
+import { checkClerkOrgPlan } from "../lib/clerk-billing";
 
 const router = Router();
 
@@ -43,8 +44,7 @@ export function isAdminEmail(email: string | null | undefined): boolean {
 export function buildAdminSubscription(userId: number): {
   id: number;
   userId: number;
-  stripeCustomerId: string | null;
-  stripeSubscriptionId: string | null;
+  clerkSubscriptionId: string | null;
   plan: string;
   status: string;
   trialEndsAt: Date | null;
@@ -56,8 +56,7 @@ export function buildAdminSubscription(userId: number): {
   return {
     id: -1,
     userId,
-    stripeCustomerId: null,
-    stripeSubscriptionId: null,
+    clerkSubscriptionId: null,
     plan: "business",
     status: "active",
     trialEndsAt: null,
@@ -281,11 +280,40 @@ export function requirePlan() {
     if ((req as any).isAdmin) { next(); return; }
 
     const sub = (req as any).subscription;
-    if (!sub) { res.status(403).json({ error: "No active subscription" }); return; }
+
+    // Clerk B2B fallback: if no local subscription, check Clerk org claims
+    if (!sub) {
+      const clerkPlan = checkClerkOrgPlan(req);
+      if (clerkPlan?.active) {
+        // Attach a synthetic subscription so downstream code sees a plan
+        (req as any).subscription = {
+          id: -1,
+          userId: (req as any).user?.id ?? 0,
+          plan: clerkPlan.plan,
+          status: "active",
+          clerkSubscriptionId: null,
+          trialEndsAt: null,
+          currentPeriodEnd: null,
+          cancelAt: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+        next();
+        return;
+      }
+      res.status(403).json({ error: "No active subscription" }); return;
+    }
 
     // Check trial expiry
     if (sub.status === "trialing") {
       if (sub.trialEndsAt && new Date(sub.trialEndsAt) < new Date()) {
+        // Before rejecting, check if Clerk org has an active plan
+        const clerkPlan = checkClerkOrgPlan(req);
+        if (clerkPlan?.active) {
+          (req as any).subscription = { ...sub, plan: clerkPlan.plan, status: "active" };
+          next();
+          return;
+        }
         res.status(403).json({ error: "Trial expired. Please subscribe to continue." }); return;
       }
       next(); return;
@@ -293,6 +321,13 @@ export function requirePlan() {
 
     // Active paid subscriptions — any plan gets the unified agent
     if (sub.status !== "active") {
+      // Check Clerk as fallback for payment issues resolved there
+      const clerkPlan = checkClerkOrgPlan(req);
+      if (clerkPlan?.active) {
+        (req as any).subscription = { ...sub, plan: clerkPlan.plan, status: "active" };
+        next();
+        return;
+      }
       res.status(403).json({ error: "Subscription inactive. Please update your payment." }); return;
     }
 

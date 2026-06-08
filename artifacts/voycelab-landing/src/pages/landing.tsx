@@ -443,7 +443,7 @@ function IntegrationsStrip() {
     { name: "Xero", color: "#13B5EA" },
     { name: "Resy", color: "#0A0A0B" },
     { name: "OpenTable", color: "#DA3743" },
-    { name: "Stripe", color: "#635BFF" },
+    { name: "Clerk Billing", color: "#635BFF" },
   ];
 
   return (

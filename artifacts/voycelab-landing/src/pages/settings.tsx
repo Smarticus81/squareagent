@@ -1,7 +1,8 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
-import { ArrowLeft, ArrowRight, ArrowUpRight, BarChart3, CheckCircle2, CreditCard, Loader2, Lock, UserRound } from "lucide-react";
+import { SignedIn, SignedOut, SignInButton, OrganizationSwitcher } from "@clerk/clerk-react";
+import { ArrowLeft, ArrowRight, ArrowUpRight, BarChart3, Building2, CheckCircle2, CreditCard, Loader2, Lock, UserRound } from "lucide-react";
 
 /**
  * Settings — account only.
@@ -13,6 +14,7 @@ import { ArrowLeft, ArrowRight, ArrowUpRight, BarChart3, CheckCircle2, CreditCar
 export default function Settings() {
   const [, setLocation] = useLocation();
   const { data: auth, isLoading, refetch } = useAuth();
+  const clerkBillingEnabled = Boolean(import.meta.env.VITE_CLERK_PUBLISHABLE_KEY);
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -105,21 +107,8 @@ export default function Settings() {
   const handleManageBilling = async () => {
     setBillingMsg(null);
     const status = auth?.subscription?.status;
-    const stripeCustomerId = auth?.subscription?.stripeCustomerId ?? null;
 
     if (status !== "active") {
-      setLocation("/pricing");
-      return;
-    }
-
-    if (!stripeCustomerId) {
-      if (auth?.isAdmin) {
-        setBillingMsg({
-          tone: "error",
-          text: "Stripe customer portal needs a subscribed customer. Admin accounts often have no Stripe customer — open Plans to test checkout, or use a non-admin account.",
-        });
-        return;
-      }
       setLocation("/pricing");
       return;
     }
@@ -141,7 +130,7 @@ export default function Settings() {
           typeof data.error === "string" && data.error.trim()
             ? data.error.trim()
             : res.status === 503
-              ? "Billing is not configured on this server (Stripe keys missing)."
+              ? "Clerk Billing is not configured on this server."
               : "Could not open billing.";
         throw new Error(msg);
       }
@@ -258,7 +247,7 @@ export default function Settings() {
           </Section>
 
           {/* Billing — the one place where intent to upgrade lives */}
-          <Section icon={<CreditCard className="h-5 w-5" />} title="Billing" description="Your plan and trial.">
+          <Section icon={<CreditCard className="h-5 w-5" />} title="Billing" description="Your organization's plan and trial.">
             <div className="flex items-start justify-between gap-6 flex-wrap">
               <div>
                 <p className="text-[15px] font-medium" style={{ color: "var(--color-vl-ink)" }}>
@@ -272,11 +261,11 @@ export default function Settings() {
                 </p>
                 <p className="text-[12.5px] mt-1" style={{ color: "var(--color-vl-ink-muted)" }}>
                   {planActive
-                    ? "Your plan renews automatically."
+                    ? "Your organization's plan renews automatically via Clerk Billing."
                     : trialActive && trialEndsAt
                     ? `${daysLeft} days left · Ends ${trialEndsAt.toLocaleDateString()}`
                     : trialExpired
-                    ? "Upgrade to keep using your assistant."
+                    ? "Upgrade your organization to keep using your assistant."
                     : "Pick a plan to get started."}
                 </p>
               </div>
@@ -299,6 +288,34 @@ export default function Settings() {
               </div>
             </div>
           </Section>
+
+          {/* Organization — Clerk org switcher for B2B billing */}
+          {clerkBillingEnabled && (
+            <Section icon={<Building2 className="h-5 w-5" />} title="Organization" description="Billing is managed at the organization level.">
+              <SignedIn>
+                <div className="flex items-center gap-4">
+                  <OrganizationSwitcher hidePersonal />
+                  <Link
+                    href="/billing"
+                    className="vl-btn-ghost inline-flex items-center gap-2 text-[13px]"
+                  >
+                    Manage organization billing
+                    <ArrowUpRight className="w-3.5 h-3.5" />
+                  </Link>
+                </div>
+              </SignedIn>
+              <SignedOut>
+                <div className="flex items-center gap-3">
+                  <p className="text-[13px]" style={{ color: "var(--color-vl-ink-muted)" }}>
+                    Sign in with Clerk to manage your organization's billing.
+                  </p>
+                  <SignInButton mode="modal">
+                    <button className="vl-btn-ghost text-[13px]">Sign in</button>
+                  </SignInButton>
+                </div>
+              </SignedOut>
+            </Section>
+          )}
         </div>
 
         {/* Post-settings nudge back to the work */}

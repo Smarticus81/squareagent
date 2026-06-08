@@ -7,6 +7,7 @@ import pinoHttp from "pino-http";
 import rateLimit from "express-rate-limit";
 import { logger } from "./lib/logger";
 import router from "./routes";
+import { clerkBillingMiddleware } from "./lib/clerk-billing";
 
 const app: Express = express();
 const workspaceRoot = process.cwd();
@@ -36,13 +37,16 @@ app.use(
   ),
 );
 
-// ── Stripe webhook needs raw body — must be before json middleware
+// ── Clerk Billing webhook needs raw body — must be before json middleware
 app.use("/api/subscriptions/webhook",
   express.raw({ type: "application/json" }),
 );
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// ── Clerk Billing middleware — silently attaches Clerk auth for billing checks
+app.use(clerkBillingMiddleware());
 
 // ── Rate limiters
 app.use("/api/auth/login", rateLimit({

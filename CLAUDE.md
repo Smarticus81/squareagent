@@ -68,7 +68,7 @@ cd artifacts/api-server && npx tsx scripts/enable-pgvector.ts
 
 **Single-server deployment**: The API server serves the landing app at `/`, the PWA at `/agent/`, API routes at `/api/*`, and a WebSocket relay for server-relayed voice providers. All deployed as one Railway service.
 
-**Auth**: JWT-based. `requireAuth` and `requirePlan` middleware gate API routes. `req.organization` is attached alongside `req.user`. Stripe integration manages subscriptions (plan/trial gating).
+**Auth**: JWT-based. `requireAuth` and `requirePlan` middleware gate API routes. `req.organization` is attached alongside `req.user`. Clerk Billing (B2B, organization-level) manages subscriptions (plan/trial gating).
 
 **Square integration**: OAuth flow at `/api/square/oauth/*` stores encrypted tokens per-venue. Credentials are AES-256-GCM encrypted via `secrets.ts`. The credential cache decrypts on read.
 
@@ -186,4 +186,4 @@ The marketing site (`voycelab-landing`) uses a warm, hospitality-focused light t
 
 Required: `DATABASE_URL`, `JWT_SECRET`, `OPENAI_API_KEY`, `SQUARE_APPLICATION_ID`, `SQUARE_APPLICATION_SECRET`, `PUBLIC_BASE_URL`, `PORT`, `ENCRYPTION_KEY` (32-byte hex for AES-256-GCM)
 
-Optional: `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `SESSION_SECRET`, `LOG_LEVEL`
+Optional: `VITE_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, `CLERK_WEBHOOK_SECRET`, `CLERK_PLAN_PRO_ID`, `CLERK_PLAN_BUSINESS_ID`, `SESSION_SECRET`, `LOG_LEVEL`

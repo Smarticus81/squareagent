@@ -1,31 +1,69 @@
 /**
- * Stripe Subscription Routes
+ * Clerk Billing subscription routes.
  *
- * POST /api/subscriptions/checkout  — Create a Stripe Checkout Session
- * POST /api/subscriptions/portal    — Create a Stripe Customer Portal session
- * POST /api/subscriptions/webhook   — Handle Stripe webhook events
+ * Clerk owns checkout, payment methods, and subscription management. The API
+ * keeps the existing local subscriptions table in sync from Clerk webhooks so
+ * the rest of VoyceLab can continue to use req.subscription for plan gating.
  */
 
 import { Router, Request, Response } from "express";
-import Stripe from "stripe";
-import { db, subscriptionsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { Webhook } from "svix";
+import { db, subscriptionsTable, usersTable, organizationsTable, organizationMembershipsTable } from "@workspace/db";
+import { eq, and } from "drizzle-orm";
 import { requireAuth } from "./auth";
-import { PLANS } from "@workspace/voicelab-core/pricing";
+import { PLANS, type PlanId } from "@workspace/voicelab-core/pricing";
 
 const router = Router();
+
+type Cadence = "monthly" | "yearly";
+type ClerkWebhookEvent = {
+  id?: string;
+  type?: string;
+  data?: Record<string, any>;
+};
+
+const PUBLIC_BASE_URL =
+  process.env.PUBLIC_BASE_URL ??
+  (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : "http://localhost:5173");
+
+const CLERK_SECRET_KEY = process.env.CLERK_SECRET_KEY ?? "";
+const CLERK_WEBHOOK_SECRET = process.env.CLERK_WEBHOOK_SECRET ?? "";
+const CLERK_BILLING_PORTAL_URL = process.env.CLERK_BILLING_PORTAL_URL ?? `${PUBLIC_BASE_URL}/billing`;
+
+const CLERK_PLAN_ENV: Record<Exclude<PlanId, "trial">, string> = {
+  pro: "CLERK_PLAN_PRO_ID",
+  business: "CLERK_PLAN_BUSINESS_ID",
+};
+
+const CLERK_CHECKOUT_URL_ENV: Record<Exclude<PlanId, "trial">, Record<Cadence, string>> = {
+  pro: {
+    monthly: "CLERK_CHECKOUT_PRO_MONTHLY_URL",
+    yearly: "CLERK_CHECKOUT_PRO_YEARLY_URL",
+  },
+  business: {
+    monthly: "CLERK_CHECKOUT_BUSINESS_MONTHLY_URL",
+    yearly: "CLERK_CHECKOUT_BUSINESS_YEARLY_URL",
+  },
+};
+
+const CLERK_PLAN_SLUG_MAP: Record<string, PlanId> = {
+  trial: "trial",
+  free: "trial",
+  pro: "pro",
+  professional: "pro",
+  business: "business",
+  premium: "business",
+};
 
 // ── GET /plans — public, used by /pricing page and signup flows ───────────────
 
 router.get("/plans", (_req: Request, res: Response) => {
   res.json({
     plans: PLANS.map((p) => {
-      const stripeMonthly = p.stripeMonthlyPriceEnvVar
-        ? process.env[p.stripeMonthlyPriceEnvVar] ?? null
-        : null;
-      const stripeYearly = p.stripeYearlyPriceEnvVar
-        ? process.env[p.stripeYearlyPriceEnvVar] ?? null
-        : null;
+      const planKey = p.id === "trial" ? null : (p.id as Exclude<PlanId, "trial">);
+      const clerkPlanId = planKey ? process.env[CLERK_PLAN_ENV[planKey]] ?? null : null;
+      const clerkCheckoutMonthlyUrl = planKey ? process.env[CLERK_CHECKOUT_URL_ENV[planKey].monthly] ?? null : null;
+      const clerkCheckoutYearlyUrl = planKey ? process.env[CLERK_CHECKOUT_URL_ENV[planKey].yearly] ?? null : null;
       return {
         id: p.id,
         name: p.name,
@@ -43,53 +81,15 @@ router.get("/plans", (_req: Request, res: Response) => {
         skillTiers: p.skillTiers,
         allowedPipelines: p.allowedPipelines,
         bullets: p.bullets,
-        stripeMonthlyPriceId: stripeMonthly,
-        stripeYearlyPriceId: stripeYearly,
-        stripeReady: !!(stripeMonthly || stripeYearly),
+        billingProvider: "clerk",
+        clerkPlanId,
+        clerkCheckoutMonthlyUrl,
+        clerkCheckoutYearlyUrl,
+        clerkReady: !!(clerkPlanId || clerkCheckoutMonthlyUrl || clerkCheckoutYearlyUrl),
       };
     }),
   });
 });
-
-const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY ?? "";
-const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET ?? "";
-
-const stripe = STRIPE_SECRET_KEY
-  ? new Stripe(STRIPE_SECRET_KEY)
-  : null;
-
-const PUBLIC_BASE_URL =
-  process.env.PUBLIC_BASE_URL ??
-  (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : "http://localhost:3000");
-
-/**
- * Map price IDs from env to plan names. Both legacy plan ids
- * (pos_only / inventory_only / complete) and the new pricing tier ids
- * (starter / professional / premium) are supported simultaneously so
- * existing subscriptions keep resolving while the new pricing rolls out.
- */
-const PLAN_PRICE_MAP: Record<string, string> = {
-  // Current pricing tiers (monthly + yearly).
-  [process.env.STRIPE_PRICE_PRO_MONTHLY ?? "price_pro_monthly"]: "pro",
-  [process.env.STRIPE_PRICE_PRO_YEARLY ?? "price_pro_yearly"]: "pro",
-  [process.env.STRIPE_PRICE_BUSINESS_MONTHLY ?? "price_business_monthly"]: "business",
-  [process.env.STRIPE_PRICE_BUSINESS_YEARLY ?? "price_business_yearly"]: "business",
-  // Legacy price IDs — map old tiers to new equivalents.
-  [process.env.STRIPE_PRICE_STARTER_MONTHLY ?? "price_starter_monthly"]: "pro",
-  [process.env.STRIPE_PRICE_STARTER_YEARLY ?? "price_starter_yearly"]: "pro",
-  [process.env.STRIPE_PRICE_PROFESSIONAL_MONTHLY ?? "price_professional_monthly"]: "pro",
-  [process.env.STRIPE_PRICE_PROFESSIONAL_YEARLY ?? "price_professional_yearly"]: "pro",
-  [process.env.STRIPE_PRICE_PREMIUM_MONTHLY ?? "price_premium_monthly"]: "business",
-  [process.env.STRIPE_PRICE_PREMIUM_YEARLY ?? "price_premium_yearly"]: "business",
-  // Legacy aliases.
-  [process.env.STRIPE_PRICE_POS_ONLY ?? "price_pos_only"]: "pro",
-  [process.env.STRIPE_PRICE_INVENTORY_ONLY ?? "price_inventory_only"]: "pro",
-  [process.env.STRIPE_PRICE_COMPLETE ?? "price_complete"]: "business",
-};
-
-function planFromPriceId(priceId: string): string {
-  return PLAN_PRICE_MAP[priceId] ?? "pro";
-}
 
 async function upsertSubscriptionForUser(
   userId: number,
@@ -117,174 +117,299 @@ async function upsertSubscriptionForUser(
   });
 }
 
-// ── POST /checkout — Create Stripe Checkout Session ───────────────────────────
+/**
+ * Sync a Clerk organization subscription to all members of the local org.
+ * Clerk B2B billing attaches subscriptions to organizations, so when we
+ * receive an org subscription event we need to update all org members.
+ */
+async function syncOrgSubscription(
+  organizationId: string,
+  values: Partial<typeof subscriptionsTable.$inferInsert>,
+) {
+  // Find all members of the organization
+  const members = await db
+    .select({ userId: organizationMembershipsTable.userId })
+    .from(organizationMembershipsTable)
+    .where(eq(organizationMembershipsTable.organizationId, organizationId));
+
+  for (const member of members) {
+    await upsertSubscriptionForUser(member.userId, {
+      ...values,
+      organizationId,
+    });
+  }
+
+  // Also update any subscription rows that reference this org directly
+  const [existingOrgSub] = await db
+    .select({ id: subscriptionsTable.id })
+    .from(subscriptionsTable)
+    .where(eq(subscriptionsTable.organizationId, organizationId))
+    .limit(1);
+
+  if (existingOrgSub && members.length === 0) {
+    // Org exists in subscriptions but has no members yet — update the row
+    await db
+      .update(subscriptionsTable)
+      .set({ ...values, updatedAt: new Date() })
+      .where(eq(subscriptionsTable.id, existingOrgSub.id));
+  }
+
+  console.log(`[Clerk Billing] Synced org ${organizationId} subscription to ${members.length} members`);
+}
+
+/**
+ * Resolve a Clerk organization ID to a local organization.
+ * Clerk sends org_id in subscription events for B2B billing.
+ */
+async function resolveClerkOrgId(clerkOrgId: string): Promise<string | null> {
+  if (!clerkOrgId) return null;
+
+  // First check if we have an org with this exact ID (Clerk org IDs may match)
+  const [org] = await db
+    .select({ id: organizationsTable.id })
+    .from(organizationsTable)
+    .where(eq(organizationsTable.id, clerkOrgId))
+    .limit(1);
+
+  if (org) return org.id;
+
+  // If not found by ID, look up by Clerk API to find the org email/name
+  // and match to local org via the owner
+  if (!CLERK_SECRET_KEY) return null;
+
+  try {
+    const res = await fetch(`https://api.clerk.com/v1/organizations/${encodeURIComponent(clerkOrgId)}`, {
+      headers: { Authorization: `Bearer ${CLERK_SECRET_KEY}` },
+    });
+    if (!res.ok) return null;
+    const clerkOrg = await res.json() as { created_by?: string; name?: string };
+
+    // Resolve the creator's email to find the local org
+    if (clerkOrg.created_by) {
+      const email = await emailForClerkUser(clerkOrg.created_by);
+      if (email) {
+        const [user] = await db
+          .select({ id: usersTable.id })
+          .from(usersTable)
+          .where(eq(usersTable.email, email))
+          .limit(1);
+
+        if (user) {
+          const [localOrg] = await db
+            .select({ id: organizationsTable.id })
+            .from(organizationsTable)
+            .where(eq(organizationsTable.ownerUserId, user.id))
+            .limit(1);
+
+          return localOrg?.id ?? null;
+        }
+      }
+    }
+  } catch (e) {
+    console.warn(`[Clerk Billing] Failed to resolve org ${clerkOrgId}:`, e);
+  }
+
+  return null;
+}
+
+function planFromClerkPlan(rawPlan: unknown): PlanId {
+  const plan = rawPlan && typeof rawPlan === "object" ? rawPlan as Record<string, unknown> : {};
+  const candidates = [
+    plan.slug,
+    plan.id,
+    plan.name,
+    typeof rawPlan === "string" ? rawPlan : null,
+  ]
+    .map((v) => String(v ?? "").trim().toLowerCase())
+    .filter(Boolean);
+
+  for (const value of candidates) {
+    if (CLERK_PLAN_SLUG_MAP[value]) return CLERK_PLAN_SLUG_MAP[value];
+    for (const localPlan of PLANS) {
+      if (value === localPlan.id) return localPlan.id;
+      if (value === localPlan.name.toLowerCase()) return localPlan.id;
+    }
+  }
+  return "trial";
+}
+
+function statusFromClerkEvent(type: string, data: Record<string, any>): string {
+  const rawStatus = String(data.status ?? "").trim();
+  if (type.endsWith(".active") || rawStatus === "active") return "active";
+  if (type.endsWith(".pastDue") || rawStatus === "past_due") return "past_due";
+  if (type.endsWith(".canceled") || type.endsWith(".ended") || type.endsWith(".abandoned")) return "canceled";
+  if (type.endsWith(".incomplete") || rawStatus === "incomplete") return "incomplete";
+  if (type.endsWith(".upcoming") || type.endsWith(".freeTrialEnding")) return "trialing";
+  return rawStatus || "active";
+}
+
+function dateFromClerkValue(value: unknown): Date | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return new Date(value < 10_000_000_000 ? value * 1000 : value);
+  }
+  if (typeof value === "string" && value.trim()) {
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+  }
+  return null;
+}
+
+function extractPayerUserId(data: Record<string, any>): string {
+  return String(
+    data.payer?.user_id ??
+    data.payer?.userId ??
+    data.subscription?.payer?.user_id ??
+    data.subscription?.payer?.userId ??
+    data.user_id ??
+    data.userId ??
+    "",
+  );
+}
+
+function extractPlan(data: Record<string, any>): PlanId {
+  const itemPlan = Array.isArray(data.items) ? data.items[0]?.plan : undefined;
+  return planFromClerkPlan(itemPlan ?? data.plan ?? data.subscription?.items?.[0]?.plan);
+}
+
+async function emailForClerkUser(clerkUserId: string): Promise<string | null> {
+  if (!CLERK_SECRET_KEY || !clerkUserId) return null;
+  const res = await fetch(`https://api.clerk.com/v1/users/${encodeURIComponent(clerkUserId)}`, {
+    headers: { Authorization: `Bearer ${CLERK_SECRET_KEY}` },
+  });
+  if (!res.ok) return null;
+  const user = await res.json() as {
+    primary_email_address_id?: string;
+    email_addresses?: Array<{ id?: string; email_address?: string }>;
+  };
+  const primary = user.email_addresses?.find((email) => email.id === user.primary_email_address_id);
+  return primary?.email_address ?? user.email_addresses?.[0]?.email_address ?? null;
+}
+
+async function localUserIdForClerkPayer(data: Record<string, any>): Promise<number | null> {
+  const metadataUserId = Number(data.metadata?.userId ?? data.subscription?.metadata?.userId ?? 0);
+  if (Number.isInteger(metadataUserId) && metadataUserId > 0) return metadataUserId;
+
+  const email = await emailForClerkUser(extractPayerUserId(data));
+  if (!email) return null;
+
+  const [user] = await db
+    .select({ id: usersTable.id })
+    .from(usersTable)
+    .where(eq(usersTable.email, email))
+    .limit(1);
+  return user?.id ?? null;
+}
+
+async function syncClerkBillingEvent(type: string, data: Record<string, any>): Promise<void> {
+  const subscriptionId = String(data.subscription?.id ?? data.subscription_id ?? data.id ?? "");
+  const currentPeriodEnd = dateFromClerkValue(data.period_end ?? data.periodEnd ?? data.current_period_end);
+  const cancelAt = dateFromClerkValue(data.canceled_at ?? data.cancel_at ?? data.cancelAt);
+  const plan = extractPlan(data);
+  const status = statusFromClerkEvent(type, data);
+
+  const subscriptionValues = {
+    clerkSubscriptionId: subscriptionId || null,
+    plan,
+    status,
+    currentPeriodEnd,
+    cancelAt,
+  };
+
+  // B2B: Check for organization-level subscription
+  const clerkOrgId = String(
+    data.subscriber?.org_id ??
+    data.subscriber?.organization_id ??
+    data.organization_id ??
+    data.org_id ??
+    data.subscription?.subscriber?.org_id ??
+    data.subscription?.organization_id ??
+    "",
+  );
+
+  if (clerkOrgId) {
+    const localOrgId = await resolveClerkOrgId(clerkOrgId);
+    if (localOrgId) {
+      await syncOrgSubscription(localOrgId, subscriptionValues);
+      console.log(`[Clerk Billing] Synced ${type} for org ${localOrgId} (clerk: ${clerkOrgId})`);
+      return;
+    }
+    console.warn(`[Clerk Billing] Could not resolve Clerk org ${clerkOrgId} to local org for event ${type}`);
+  }
+
+  // B2C fallback: sync to individual user
+  const userId = await localUserIdForClerkPayer(data);
+  if (!userId) {
+    console.warn(`[Clerk Billing] Could not map payer for event ${type}`);
+    return;
+  }
+
+  await upsertSubscriptionForUser(userId, subscriptionValues);
+  console.log(`[Clerk Billing] Synced ${type} for user ${userId}`);
+}
+
+// ── POST /checkout — Handoff to Clerk Billing ─────────────────────────────────
 
 router.post("/checkout", requireAuth as any, async (req: Request, res: Response): Promise<void> => {
-  if (!stripe) { res.status(503).json({ error: "Stripe not configured" }); return; }
-
-  const user = (req as any).user;
-  const sub = (req as any).subscription;
-  const { priceId } = req.body ?? {};
-
-  if (!priceId) { res.status(400).json({ error: "priceId is required" }); return; }
-
-  try {
-    // Reuse Stripe customer if exists
-    let customerId = sub?.stripeCustomerId;
-    if (!customerId) {
-      const customer = await stripe.customers.create({
-        email: user.email,
-        name: user.name,
-        metadata: { userId: String(user.id) },
-      });
-      customerId = customer.id;
-      await upsertSubscriptionForUser(user.id, { stripeCustomerId: customerId });
-    }
-
-    const session = await stripe.checkout.sessions.create({
-      customer: customerId,
-      mode: "subscription",
-      line_items: [{ price: priceId, quantity: 1 }],
-      success_url: `${PUBLIC_BASE_URL}/command?checkout=success`,
-      cancel_url: `${PUBLIC_BASE_URL}/command?checkout=cancel`,
-      subscription_data: {
-        metadata: { userId: String(user.id) },
-      },
-      metadata: {
-        userId: String(user.id),
-        priceId,
-        plan: planFromPriceId(priceId),
-      },
-      allow_promotion_codes: true,
-    });
-
-    res.json({ url: session.url });
-  } catch (e: any) {
-    console.error("[Stripe] Checkout error:", e.message);
-    res.status(500).json({ error: "Failed to create checkout session" });
+  const { planId, cadence = "monthly" } = req.body ?? {};
+  const plan = PLANS.find((p) => p.id === planId);
+  if (!plan || plan.id === "trial") {
+    res.status(400).json({ error: "A paid Clerk plan is required." });
+    return;
   }
+
+  const planKey = plan.id as Exclude<PlanId, "trial">;
+  const period = cadence === "yearly" ? "yearly" : "monthly";
+  const checkoutUrl = process.env[CLERK_CHECKOUT_URL_ENV[planKey][period]];
+
+  if (checkoutUrl) {
+    res.json({ url: checkoutUrl, provider: "clerk" });
+    return;
+  }
+
+  res.status(409).json({
+    error: "Clerk checkout is handled by the embedded Clerk PricingTable. Set VITE_CLERK_PUBLISHABLE_KEY on the dashboard app, or configure CLERK_CHECKOUT_*_URL for server redirects.",
+  });
 });
 
-// ── POST /portal — Create Stripe Customer Portal session ──────────────────────
+// ── POST /portal — Open Clerk billing management ──────────────────────────────
 
 router.post("/portal", requireAuth as any, async (req: Request, res: Response): Promise<void> => {
-  if (!stripe) { res.status(503).json({ error: "Stripe not configured" }); return; }
-
-  const sub = (req as any).subscription;
-  if (!sub?.stripeCustomerId) {
-    res.status(400).json({ error: "No Stripe customer found. Subscribe first." }); return;
-  }
-
-  try {
-    const session = await stripe.billingPortal.sessions.create({
-      customer: sub.stripeCustomerId,
-      return_url: `${PUBLIC_BASE_URL}/settings`,
-    });
-    res.json({ url: session.url });
-  } catch (e: any) {
-    console.error("[Stripe] Portal error:", e.message);
-    res.status(500).json({ error: "Failed to create portal session" });
-  }
+  res.json({ url: CLERK_BILLING_PORTAL_URL, provider: "clerk" });
 });
 
-// ── POST /webhook — Handle Stripe events ──────────────────────────────────────
+// ── POST /webhook — Handle Clerk Billing events ───────────────────────────────
 
 router.post("/webhook", async (req: Request, res: Response): Promise<void> => {
-  if (!stripe) { res.status(503).json({ error: "Stripe not configured" }); return; }
+  if (!CLERK_WEBHOOK_SECRET) {
+    res.status(503).json({ error: "CLERK_WEBHOOK_SECRET not configured" });
+    return;
+  }
 
-  const sig = req.headers["stripe-signature"];
-  if (!sig) { res.status(400).json({ error: "Missing stripe-signature header" }); return; }
-
-  let event: Stripe.Event;
+  let event: ClerkWebhookEvent;
   try {
-    event = stripe.webhooks.constructEvent(req.body, sig, STRIPE_WEBHOOK_SECRET);
+    const wh = new Webhook(CLERK_WEBHOOK_SECRET);
+    event = wh.verify(req.body, {
+      "svix-id": String(req.headers["svix-id"] ?? ""),
+      "svix-timestamp": String(req.headers["svix-timestamp"] ?? ""),
+      "svix-signature": String(req.headers["svix-signature"] ?? ""),
+    }) as ClerkWebhookEvent;
   } catch (e: any) {
-    console.error("[Stripe] Webhook signature verification failed:", e.message);
+    console.error("[Clerk Billing] Webhook signature verification failed:", e.message);
     res.status(400).json({ error: "Invalid signature" }); return;
   }
 
   try {
-    switch (event.type) {
-      case "checkout.session.completed": {
-        const session = event.data.object as Stripe.Checkout.Session;
-        const userId = parseInt(String(session.metadata?.userId ?? "0"), 10);
-        if (!userId) break;
-
-        const subscriptionId =
-          typeof session.subscription === "string"
-            ? session.subscription
-            : session.subscription?.id;
-        const customerId =
-          typeof session.customer === "string"
-            ? session.customer
-            : session.customer?.id;
-        const priceId = String(session.metadata?.priceId ?? "");
-
-        await upsertSubscriptionForUser(userId, {
-          stripeCustomerId: customerId ?? null,
-          stripeSubscriptionId: subscriptionId ?? null,
-          plan: priceId ? planFromPriceId(priceId) : String(session.metadata?.plan ?? "pro"),
-          status: "active",
-        });
-        break;
-      }
-
-      case "customer.subscription.created":
-      case "customer.subscription.updated": {
-        const sub = event.data.object as Stripe.Subscription;
-        let userId = parseInt(sub.metadata.userId ?? "0", 10);
-        if (!userId && typeof sub.customer === "string") {
-          const customer = await stripe.customers.retrieve(sub.customer);
-          if (!customer.deleted) userId = parseInt(String(customer.metadata?.userId ?? "0"), 10);
-        }
-        if (!userId) break;
-
-        const priceId = sub.items.data[0]?.price?.id ?? "";
-        const plan = planFromPriceId(priceId);
-
-        await upsertSubscriptionForUser(userId, {
-            stripeSubscriptionId: sub.id,
-            stripeCustomerId: sub.customer as string,
-            plan,
-            status: sub.status === "trialing" ? "trialing" : sub.status === "active" ? "active" : sub.status,
-            currentPeriodEnd: new Date((sub as any).current_period_end * 1000),
-            cancelAt: (sub as any).cancel_at ? new Date((sub as any).cancel_at * 1000) : null,
-          });
-
-        console.log(`[Stripe] Subscription ${sub.id} updated for user ${userId} — plan: ${plan}, status: ${sub.status}`);
-        break;
-      }
-
-      case "customer.subscription.deleted": {
-        const sub = event.data.object as Stripe.Subscription;
-        let userId = parseInt(sub.metadata.userId ?? "0", 10);
-        if (!userId && typeof sub.customer === "string") {
-          const customer = await stripe.customers.retrieve(sub.customer);
-          if (!customer.deleted) userId = parseInt(String(customer.metadata?.userId ?? "0"), 10);
-        }
-        if (!userId) break;
-
-        await upsertSubscriptionForUser(userId, {
-            status: "canceled",
-            cancelAt: new Date(),
-          });
-
-        console.log(`[Stripe] Subscription ${sub.id} canceled for user ${userId}`);
-        break;
-      }
-
-      case "invoice.payment_failed": {
-        const invoice = event.data.object as Stripe.Invoice;
-        const customerId = invoice.customer as string;
-        console.warn(`[Stripe] Payment failed for customer ${customerId}`);
-        break;
-      }
+    if (event.type?.startsWith("subscription." ) || event.type?.startsWith("subscriptionItem.")) {
+      await syncClerkBillingEvent(event.type, event.data ?? {});
+    } else if (event.type?.startsWith("paymentAttempt.")) {
+      console.log(`[Clerk Billing] Payment attempt event: ${event.type}`);
     }
   } catch (e: any) {
-    console.error("[Stripe] Webhook processing error:", e.message);
+    console.error("[Clerk Billing] Webhook processing error:", e.message);
   }
 
-  // Always respond 200 to Stripe
+  // Always respond 200 to Clerk after verification to avoid webhook retries
+  // for non-critical sync mapping issues.
   res.json({ received: true });
 });
 
