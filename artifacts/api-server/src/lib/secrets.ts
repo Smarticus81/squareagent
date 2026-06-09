@@ -4,34 +4,28 @@
  *
  * Format: `enc:v1:<iv_b64>:<ciphertext_b64>:<tag_b64>` (AES-256-GCM).
  *
- * Key derivation: HKDF-style HMAC-SHA256 of the SECRETS_ENCRYPTION_KEY env var
- * (or JWT_SECRET as a fallback so existing deployments keep working). No new
- * env var is strictly required.
+ * Key derivation: HMAC-SHA256 of SECRETS_ENCRYPTION_KEY, or ENCRYPTION_KEY
+ * for compatibility with the deployment checklist. Production must provide
+ * a dedicated 32+ character encryption key. Development may fall back to
+ * JWT_SECRET, then to a local-only default.
  *
- * `decrypt()` is forgiving — if the value isn't in the `enc:v1:` format we
- * assume it's a legacy plaintext value and return it unchanged. This lets us
+ * `decrypt()` is forgiving: if the value is not in the `enc:v1:` format we
+ * assume it is a legacy plaintext value and return it unchanged. This lets us
  * roll out encryption without a backfill migration.
  */
 import crypto from "node:crypto";
 
 const explicitKey = process.env.SECRETS_ENCRYPTION_KEY?.trim();
+const legacyExplicitKey = process.env.ENCRYPTION_KEY?.trim();
 const fallbackKey = process.env.JWT_SECRET?.trim();
-const KEY_SOURCE = explicitKey || fallbackKey || "voycelab-default-dev-key-do-not-use-in-prod";
+const DEV_KEY_SOURCE = "voycelab-default-dev-key-do-not-use-in-prod";
+const KEY_SOURCE = explicitKey || legacyExplicitKey || fallbackKey || DEV_KEY_SOURCE;
 
 if (process.env.NODE_ENV === "production") {
-  if (!explicitKey) {
-    // Don't crash boot — but make it loud. Operators should set a dedicated
-    // SECRETS_ENCRYPTION_KEY so JWT_SECRET can be rotated independently.
-    // eslint-disable-next-line no-console
-    console.warn(
-      "[secrets] SECRETS_ENCRYPTION_KEY is not set in production. " +
-        "Falling back to JWT_SECRET — rotating JWT_SECRET will make all encrypted user secrets unreadable. " +
-        "Set SECRETS_ENCRYPTION_KEY to a dedicated 32+ char random value.",
-    );
-  }
-  if (KEY_SOURCE === "voycelab-default-dev-key-do-not-use-in-prod") {
+  const productionExplicitKey = explicitKey || legacyExplicitKey;
+  if (!productionExplicitKey || productionExplicitKey.length < 32) {
     throw new Error(
-      "[secrets] Refusing to start: neither SECRETS_ENCRYPTION_KEY nor JWT_SECRET is set in production.",
+      "[secrets] Refusing to start: set SECRETS_ENCRYPTION_KEY or ENCRYPTION_KEY to a dedicated 32+ character random value in production.",
     );
   }
 }
@@ -51,7 +45,7 @@ export function encrypt(plain: string): string {
 
 export function decrypt(stored: string | null | undefined): string {
   if (!stored) return "";
-  if (!stored.startsWith(PREFIX)) return stored; // legacy plaintext
+  if (!stored.startsWith(PREFIX)) return stored;
   const parts = stored.slice(PREFIX.length).split(":");
   if (parts.length !== 3) return stored;
   try {

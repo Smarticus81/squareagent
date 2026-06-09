@@ -6,7 +6,7 @@
  */
 
 import { db, venuesTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNull, or } from "drizzle-orm";
 import { decrypt } from "../lib/secrets";
 
 interface CachedCredentials {
@@ -18,8 +18,8 @@ interface CachedCredentials {
 const TTL_MS = 5 * 60 * 1000; // 5 minutes
 const cache = new Map<string, CachedCredentials>();
 
-function cacheKey(userId: number, venueId: number): string {
-  return `${userId}:${venueId}`;
+function cacheKey(userId: number, venueId: number, organizationId?: string | null): string {
+  return `${organizationId ?? `user-${userId}`}:${venueId}`;
 }
 
 /**
@@ -29,8 +29,9 @@ function cacheKey(userId: number, venueId: number): string {
 export async function getCachedCredentials(
   userId: number,
   venueId: number,
+  organizationId?: string | null,
 ): Promise<{ squareToken: string; squareLocationId: string } | null> {
-  const key = cacheKey(userId, venueId);
+  const key = cacheKey(userId, venueId, organizationId);
   const cached = cache.get(key);
 
   if (cached && Date.now() < cached.expiresAt) {
@@ -41,7 +42,17 @@ export async function getCachedCredentials(
   const [venue] = await db
     .select()
     .from(venuesTable)
-    .where(and(eq(venuesTable.id, venueId), eq(venuesTable.userId, userId)));
+    .where(
+      and(
+        eq(venuesTable.id, venueId),
+        organizationId
+          ? or(
+              eq(venuesTable.organizationId, organizationId),
+              and(eq(venuesTable.userId, userId), isNull(venuesTable.organizationId)),
+            )
+          : eq(venuesTable.userId, userId),
+      ),
+    );
 
   if (!venue) {
     cache.delete(key);
@@ -63,6 +74,9 @@ export async function getCachedCredentials(
  */
 export function invalidateCredentials(userId: number, venueId: number): void {
   cache.delete(cacheKey(userId, venueId));
+  for (const key of cache.keys()) {
+    if (key.endsWith(`:${venueId}`)) cache.delete(key);
+  }
 }
 
 /**
@@ -70,9 +84,9 @@ export function invalidateCredentials(userId: number, venueId: number): void {
  * Call this after user deletion or broad credential changes.
  */
 export function invalidateUserCredentials(userId: number): void {
-  const prefix = `${userId}:`;
+  const userPrefix = `user-${userId}:`;
   for (const key of cache.keys()) {
-    if (key.startsWith(prefix)) cache.delete(key);
+    if (key.startsWith(userPrefix)) cache.delete(key);
   }
 }
 

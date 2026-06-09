@@ -21,7 +21,6 @@ import {
 } from "lucide-react";
 import { VoiceOrb } from "@/components/voice-orb";
 import { useVoycelabDemoRealtime } from "@/hooks/use-voycelab-demo-realtime";
-import { MockBarDemo } from "@/components/mock-bar-demo";
 
 /* animation config */
 const ease = [0.22, 1, 0.36, 1] as const;
@@ -58,8 +57,6 @@ export default function Landing() {
   return (
     <div className="vl-landing">
       <Hero onStart={startAssistant} />
-      <MockBarDemo />
-      <MinimalLanding onStart={startAssistant} />
     </div>
   );
 }
@@ -231,52 +228,6 @@ function Hero({ onStart }: { onStart: () => void }) {
   );
 }
 
-function MinimalLanding({ onStart }: { onStart: () => void }) {
-  return (
-    <main className="section-container pb-20">
-      <section className="grid gap-4 md:grid-cols-3">
-        {[
-          ["Connect", "Square, stock, reports, payments."],
-          ["Speak", "Ask naturally from the floor."],
-          ["Act", "Orders and updates sync live."],
-        ].map(([title, body]) => (
-          <div key={title} className="vl-card p-5">
-            <p className="vl-eyebrow">{title}</p>
-            <p className="mt-3 text-[15px] leading-relaxed" style={{ color: "var(--color-vl-ink-soft)" }}>
-              {body}
-            </p>
-          </div>
-        ))}
-      </section>
-
-      <section className="mt-8 grid gap-6 lg:grid-cols-[1fr_0.82fr] lg:items-start">
-        <div className="vl-card-glass p-6 md:p-8">
-          <p className="vl-eyebrow">Minimal setup</p>
-          <h2 className="vl-display mt-3 text-[clamp(2rem,4vw,3.4rem)]" style={{ color: "var(--color-vl-ink)" }}>
-            One assistant. One wake phrase. Real venue actions.
-          </h2>
-          <p className="mt-4 max-w-xl text-[15px] leading-relaxed" style={{ color: "var(--color-vl-ink-muted)" }}>
-            Connect your business systems, speak naturally, and get answers or actions from your assistant while you are on the floor or on the go.
-          </p>
-          <div className="mt-6 flex flex-wrap gap-3">
-            <button onClick={onStart} className="vl-btn-primary inline-flex items-center gap-2">
-              Create assistant <ArrowRight className="h-4 w-4" />
-            </button>
-            <Link href="/pricing" className="vl-btn-outline inline-flex items-center gap-2">
-              View billing
-            </Link>
-          </div>
-        </div>
-
-        <div className="vl-card p-5">
-          <p className="vl-eyebrow">Live demo</p>
-          <ConversationSection compact />
-        </div>
-      </section>
-    </main>
-  );
-}
-
 /* -- Hero scene: orbit rings + central waveform sphere + 3 floating assistant cards */
 function HeroScene() {
   const demo = useVoycelabDemoRealtime();
@@ -437,12 +388,10 @@ function FloatingAssistantCard({
 function IntegrationsStrip() {
   const integrations = [
     { name: "Square", color: "#0A0A0B" },
-    { name: "Toast", color: "#FF4F2D" },
-    { name: "Lightspeed", color: "#000000" },
-    { name: "7Shifts", color: "#0A0A0B" },
-    { name: "Xero", color: "#13B5EA" },
-    { name: "Resy", color: "#0A0A0B" },
-    { name: "OpenTable", color: "#DA3743" },
+    { name: "Knowledge base", color: "#5B5BD6" },
+    { name: "Gmail", color: "#D93025" },
+    { name: "Postgres", color: "#336791" },
+    { name: "Private systems", color: "#0A0A0B" },
     { name: "Clerk Billing", color: "#635BFF" },
   ];
 
@@ -560,7 +509,7 @@ function ConversationSection({ compact = false }: { compact?: boolean }) {
 
             <div className="mt-5 flex items-center gap-2 text-[13px]" style={{ color: "var(--color-vl-ink-muted)" }}>
               <ShieldCheck className="w-3.5 h-3.5" style={{ color: "var(--color-vl-success)" }} />
-              Microphone required - Answers only cover VoyceLab (demo sandbox - no POS tools).
+              Microphone required - Answers only cover VoyceLab (demo sandbox - no POS commands).
             </div>
 
             <p className="mt-4 text-[12px] max-w-110" style={{ color: "var(--color-vl-ink-faint)" }}>
@@ -835,7 +784,7 @@ function AssistantTour() {
             className="mt-5 text-[16px] leading-relaxed max-w-xl"
             style={{ color: "var(--color-vl-ink-muted)" }}
           >
-            VoyceLab ships with hospitality assistants that connect to the tools your team
+            VoyceLab ships with hospitality assistants that connect to the systems your team
             already uses. Pick one, name it, and let it run with you.
           </motion.p>
         </motion.div>

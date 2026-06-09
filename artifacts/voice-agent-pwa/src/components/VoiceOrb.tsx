@@ -73,6 +73,9 @@ export function VoiceOrb({ state, remoteStream, onTap, size = 240 }: Props) {
   const heightsRef = useRef<number[]>(new Array(BAR_COUNT).fill(FLAT_H));
 
   useEffect(() => {
+    if ((state === "speaking" || state === "thinking" || state === "connecting") && ctxRef.current?.state === "suspended") {
+      void ctxRef.current.resume().catch(() => {});
+    }
     stateRef.current = state;
   }, [state]);
 
@@ -92,6 +95,7 @@ export function VoiceOrb({ state, remoteStream, onTap, size = 240 }: Props) {
       an.fftSize = 512;
       an.smoothingTimeConstant = 0.78;
       src.connect(an);
+      void ctx.resume().catch(() => {});
       ctxRef.current = ctx;
       sourceRef.current = src;
       analyserRef.current = an;

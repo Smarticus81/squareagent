@@ -5,8 +5,8 @@
  *  - list_knowledge:   show what documents are available.
  */
 
-import { db, pool, knowledgeDocumentsTable, knowledgeChunksTable } from "@workspace/db";
-import { eq, desc } from "drizzle-orm";
+import { db, pool, knowledgeDocumentsTable } from "@workspace/db";
+import { and, desc, eq, isNull, or } from "drizzle-orm";
 import type { ToolDefinition, ToolExecutor, ToolContext, ToolResult } from "../types";
 import { embed } from "../../lib/embeddings";
 
@@ -49,16 +49,25 @@ async function searchKnowledge(args: Record<string, unknown>, ctx: ToolContext):
   }
 
   const vecStr = `[${queryVec.join(",")}]`;
+  const params: unknown[] = [vecStr, ctx.userId, topK];
+  const tenantSql = ctx.organizationId
+    ? `(
+        (c.organization_id = $4 OR (c.user_id = $2 AND c.organization_id IS NULL))
+        AND
+        (d.organization_id = $4 OR (d.user_id = $2 AND d.organization_id IS NULL))
+      )`
+    : "(c.user_id = $2 AND d.user_id = $2)";
+  if (ctx.organizationId) params.push(ctx.organizationId);
 
   const { rows } = await pool.query(
     `SELECT c.id, c.document_id, c.text, d.title,
             c.embedding <=> $1::vector AS distance
      FROM knowledge_chunks c
      JOIN knowledge_documents d ON d.id = c.document_id
-     WHERE c.user_id = $2
+     WHERE ${tenantSql}
      ORDER BY distance
      LIMIT $3`,
-    [vecStr, ctx.userId, topK],
+    params,
   );
 
   if (rows.length === 0) {
@@ -85,7 +94,14 @@ async function listKnowledge(_args: Record<string, unknown>, ctx: ToolContext): 
   const docs = await db
     .select()
     .from(knowledgeDocumentsTable)
-    .where(eq(knowledgeDocumentsTable.userId, ctx.userId))
+    .where(
+      ctx.organizationId
+        ? or(
+            eq(knowledgeDocumentsTable.organizationId, ctx.organizationId),
+            and(eq(knowledgeDocumentsTable.userId, ctx.userId), isNull(knowledgeDocumentsTable.organizationId)),
+          )
+        : eq(knowledgeDocumentsTable.userId, ctx.userId),
+    )
     .orderBy(desc(knowledgeDocumentsTable.createdAt));
   if (docs.length === 0) return { result: "No documents in the knowledge base yet." };
   return {

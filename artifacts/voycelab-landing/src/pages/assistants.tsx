@@ -55,20 +55,8 @@ export default function Assistants() {
   });
 
   return (
-    <div className="relative flex-1 overflow-hidden px-4 pb-24 pt-16 sm:px-6 lg:px-10">
-      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
-        <div className="absolute left-[-12%] top-[-18%] h-95 w-140 rounded-full blur-3xl" style={{ background: "rgba(251, 207, 232, 0.42)" }} />
-        <div className="absolute right-[-12%] top-[8%] h-115 w-140 rounded-full blur-3xl" style={{ background: "rgba(199, 210, 254, 0.30)" }} />
-        <div className="absolute bottom-[-18%] right-[8%] h-105 w-170 rounded-full blur-3xl" style={{ background: "rgba(167, 243, 208, 0.25)" }} />
-      </div>
+    <div className="relative flex-1 overflow-hidden bg-vl-cream px-4 pb-24 pt-16 sm:px-6 lg:px-10">
       <div className="mx-auto w-full max-w-295">
-        <Link
-          href="/command"
-          className="inline-flex items-center gap-1.5 text-[12px] mb-5 transition-colors"
-          style={{ color: "var(--color-vl-ink-muted)" }}
-        >
-          <ArrowLeft className="w-3.5 h-3.5" /> Console
-        </Link>
         <div className="mb-10 flex flex-wrap items-end justify-between gap-5">
           <div>
             <p className="vl-eyebrow">Assistants</p>
@@ -98,7 +86,7 @@ export default function Assistants() {
         ) : (
           <div className="grid gap-5 lg:grid-cols-2">
             {list.map((a) => (
-              <article key={a.id} className="vl-card-glass overflow-hidden p-6 md:p-7">
+              <article key={a.id} className="vl-panel overflow-hidden p-6 md:p-7">
                 <div className="mb-5 flex items-start justify-between gap-4">
                   <div className="flex items-center gap-3">
                     <div className="flex h-12 w-12 items-center justify-center rounded-2xl" style={{ background: "var(--color-vl-coral-tint)", color: "var(--color-vl-coral-deep)", border: "1px solid rgba(99, 102, 241,0.16)" }}>
@@ -202,7 +190,7 @@ function Row({ k, v }: { k: string; v: string }) {
 
 function EmptyState({ onCreate }: { onCreate: () => void }) {
   return (
-    <div className="vl-card-glass p-10 text-center md:p-12">
+    <div className="vl-panel p-10 text-center md:p-12">
       <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl" style={{ background: "var(--color-vl-coral-tint)", color: "var(--color-vl-coral-deep)" }}>
         <Store className="h-6 w-6" />
       </div>
@@ -270,6 +258,8 @@ function useDeleteAssistant() {
 }
 
 function pipelineLabel(provider: string): string {
+  if (provider === "google_gemini_3_1_flash_live") return "Gemini 3.1 Flash Live";
+  if (provider === "google_gemini_2_5_flash_native_audio") return "Gemini 2.5 Native Audio";
   if (provider.includes("gemini")) return "Gemini Live";
   if (provider.includes("browser_speech")) return "Browser Speech";
   if (provider.includes("push_to_talk")) return "Push-to-talk";

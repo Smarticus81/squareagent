@@ -3,6 +3,17 @@ import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { SignedIn, SignedOut, SignInButton, OrganizationSwitcher } from "@clerk/clerk-react";
 import { ArrowLeft, ArrowRight, ArrowUpRight, BarChart3, Building2, CheckCircle2, CreditCard, Loader2, Lock, UserRound } from "lucide-react";
+import { getClerkSessionToken } from "@/lib/clerk-session";
+
+type BillingSubscription = {
+  plan: string | null;
+  status: string | null;
+  trialEndsAt?: string | null;
+  currentPeriodEnd?: string | null;
+  clerkSubscriptionId?: string | null;
+  organizationId?: string | null;
+  billingSource?: "local_db" | "clerk_claims" | null;
+};
 
 /**
  * Settings — account only.
@@ -28,6 +39,18 @@ export default function Settings() {
 
   const [billingLoading, setBillingLoading] = useState(false);
   const [billingMsg, setBillingMsg] = useState<null | { tone: "ok" | "error"; text: string }>(null);
+  const [billingStatus, setBillingStatus] = useState<null | {
+    provider: "clerk";
+    configured: boolean;
+    operational?: boolean;
+    embeddedCheckoutReady: boolean;
+    serverCheckoutReady: boolean;
+    portalReady: boolean;
+    webhooksReady: boolean;
+    secretKeyConfigured: boolean;
+    publishableKeyConfigured: boolean;
+    subscription?: BillingSubscription | null;
+  }>(null);
 
   useEffect(() => {
     if (!isLoading && !auth?.user) setLocation("/login");
@@ -39,6 +62,21 @@ export default function Settings() {
       setEmail(auth.user.email ?? "");
     }
   }, [auth?.user, name, email]);
+
+  useEffect(() => {
+    if (!auth?.user) return;
+    const token = localStorage.getItem("voycelab_token");
+    if (!token) return;
+    (async () => {
+      const clerkToken = await getClerkSessionToken();
+      const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
+      if (clerkToken) headers["x-clerk-session-token"] = clerkToken;
+      const res = await fetch("/api/subscriptions/status", { headers });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data) setBillingStatus(data);
+    })().catch(() => {});
+  }, [auth?.user]);
 
   if (isLoading) {
     return (
@@ -106,18 +144,29 @@ export default function Settings() {
 
   const handleManageBilling = async () => {
     setBillingMsg(null);
-    const status = auth?.subscription?.status;
+    const status = billingStatus?.subscription?.status ?? auth?.subscription?.status;
 
     if (status !== "active") {
       setLocation("/pricing");
       return;
     }
 
+    if (billingStatus && !billingStatus.portalReady) {
+      setBillingMsg({
+        tone: "error",
+        text: "Billing portal is not configured on this deployment.",
+      });
+      return;
+    }
+
     setBillingLoading(true);
     try {
+      const clerkToken = await getClerkSessionToken();
+      const headers: Record<string, string> = getHeaders();
+      if (clerkToken) headers["x-clerk-session-token"] = clerkToken;
       const res = await fetch("/api/subscriptions/portal", {
         method: "POST",
-        headers: getHeaders(),
+        headers,
       });
       let data: { url?: unknown; error?: unknown } = {};
       try {
@@ -147,30 +196,38 @@ export default function Settings() {
     }
   };
 
-  const status = auth.subscription?.status ?? "trialing";
-  const trialEndsAt = auth.subscription?.trialEndsAt ? new Date(auth.subscription.trialEndsAt) : null;
+  const effectiveSubscription = (billingStatus?.subscription ?? auth.subscription ?? null) as BillingSubscription | null;
+  const status = effectiveSubscription?.status ?? "trialing";
+  const plan = effectiveSubscription?.plan ?? auth.subscription?.plan ?? "trial";
+  const trialEndsAt = effectiveSubscription?.trialEndsAt ? new Date(effectiveSubscription.trialEndsAt) : null;
+  const currentPeriodEnd = effectiveSubscription?.currentPeriodEnd ? new Date(effectiveSubscription.currentPeriodEnd) : null;
   const trialActive = status === "trialing" && (!trialEndsAt || trialEndsAt > new Date());
   const trialExpired = status === "trialing" && trialEndsAt && trialEndsAt < new Date();
   const planActive = status === "active";
+  const billingVerifiedByClerk = effectiveSubscription?.billingSource === "clerk_claims";
+  const billingLinked = planActive && (Boolean(effectiveSubscription?.clerkSubscriptionId) || billingVerifiedByClerk);
+  const billingOperational =
+    billingStatus?.operational ??
+    Boolean(
+      billingStatus?.configured &&
+      billingStatus.portalReady &&
+      billingStatus.webhooksReady &&
+      billingStatus.secretKeyConfigured,
+    );
   const daysLeft = trialEndsAt
     ? Math.max(0, Math.ceil((trialEndsAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
     : 0;
 
   return (
-    <div className="relative flex-1 overflow-hidden px-4 pb-24 pt-16 sm:px-6 lg:px-10">
-      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
-        <div className="absolute left-[-12%] top-[-18%] h-95 w-140 rounded-full blur-3xl" style={{ background: "rgba(251, 207, 232, 0.42)" }} />
-        <div className="absolute right-[-14%] top-[6%] h-120 w-155 rounded-full blur-3xl" style={{ background: "rgba(199, 210, 254, 0.28)" }} />
-        <div className="absolute bottom-[-18%] right-[10%] h-105 w-170 rounded-full blur-3xl" style={{ background: "rgba(167, 243, 208, 0.22)" }} />
-      </div>
+    <div className="relative flex-1 overflow-hidden bg-vl-cream px-4 pb-24 pt-16 sm:px-6 lg:px-10">
       <div className="mx-auto w-full max-w-230">
-        {/* Back to the console */}
+        {/* Back to assistants */}
         <Link
-          href="/command"
+          href="/assistants"
           className="inline-flex items-center gap-1.5 text-[12px] mb-5 transition-colors"
           style={{ color: "var(--color-vl-ink-muted)" }}
         >
-          <ArrowLeft className="w-3.5 h-3.5" /> Console
+          <ArrowLeft className="w-3.5 h-3.5" /> Assistants
         </Link>
 
         <p className="vl-eyebrow">Account</p>
@@ -178,15 +235,15 @@ export default function Settings() {
           Your account
         </h1>
         <p className="mt-4 max-w-140 text-[15px] leading-relaxed" style={{ color: "var(--color-vl-ink-muted)" }}>
-          Manage sign-in, password, and billing in one polished control room.
+          Sign-in, usage, and billing for your organization.
         </p>
 
         <div className="mt-10 space-y-4">
           {/* Usage */}
-          <UsageCard token={localStorage.getItem("voycelab_token")} plan={auth.subscription?.plan} />
+          <UsageCard token={localStorage.getItem("voycelab_token")} plan={plan} />
 
           {/* Profile */}
-          <Section icon={<UserRound className="h-5 w-5" />} title="Profile" description="Your name and email on the console.">
+          <Section icon={<UserRound className="h-5 w-5" />} title="Profile" description="Your name and email.">
             <form onSubmit={handleProfileUpdate} className="grid sm:grid-cols-2 gap-4">
               <Field label="Name">
                 <input value={name} onChange={(e) => setName(e.target.value)} className="vl-compact-input" />
@@ -252,22 +309,53 @@ export default function Settings() {
               <div>
                 <p className="text-[15px] font-medium" style={{ color: "var(--color-vl-ink)" }}>
                   {planActive
-                    ? `${capitalize(auth.subscription?.plan ?? "Plan")} · Active`
+                    ? `${capitalize(plan)} · Active`
                     : trialActive
-                    ? `Free trial · ${capitalize(auth.subscription?.plan ?? "trial")}`
+                    ? `Free trial · ${capitalize(plan)}`
                     : trialExpired
                     ? "Trial ended"
                     : capitalize(status)}
                 </p>
                 <p className="text-[12.5px] mt-1" style={{ color: "var(--color-vl-ink-muted)" }}>
                   {planActive
-                    ? "Your organization's plan renews automatically via Clerk Billing."
+                    ? currentPeriodEnd
+                      ? `Your organization's plan renews ${currentPeriodEnd.toLocaleDateString()} via Clerk Billing.`
+                      : "Your organization's plan renews automatically via Clerk Billing."
                     : trialActive && trialEndsAt
                     ? `${daysLeft} days left · Ends ${trialEndsAt.toLocaleDateString()}`
                     : trialExpired
                     ? "Upgrade your organization to keep using your assistant."
                     : "Pick a plan to get started."}
                 </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <BillingBadge
+                    tone={billingStatus?.configured ? "ok" : "warn"}
+                    text={billingStatus?.configured ? "Checkout linked" : "Checkout setup needed"}
+                  />
+                  <BillingBadge
+                    tone={billingStatus?.portalReady ? "ok" : "warn"}
+                    text={billingStatus?.portalReady ? "Portal ready" : "Portal setup needed"}
+                  />
+                  <BillingBadge
+                    tone={billingStatus?.webhooksReady ? "ok" : "warn"}
+                    text={billingStatus?.webhooksReady ? "Webhook active" : "Webhook setup needed"}
+                  />
+                  <BillingBadge
+                    tone={billingStatus?.secretKeyConfigured ? "ok" : "warn"}
+                    text={billingStatus?.secretKeyConfigured ? "Server sync ready" : "Server sync needed"}
+                  />
+                  {planActive && (
+                    <BillingBadge
+                      tone={billingLinked ? "ok" : "warn"}
+                      text={billingVerifiedByClerk ? "Clerk plan verified" : billingLinked ? "Subscription synced" : "Plan active locally"}
+                    />
+                  )}
+                </div>
+                {billingStatus && !billingOperational && (
+                  <p className="mt-2 max-w-xl text-[12px] leading-relaxed" style={{ color: "var(--color-vl-ink-muted)" }}>
+                    Finish Clerk Billing configuration before launch so checkout, the billing portal, webhook sync, and server-side organization matching all work from one account page.
+                  </p>
+                )}
               </div>
               <div className="flex flex-col items-end gap-2">
                 <button
@@ -328,8 +416,8 @@ export default function Settings() {
               hint="Square and other integrations."
             />
             <NextLink
-              href="/command"
-              title="Back to the console"
+              href="/assistants"
+              title="Assistants"
               hint="Open your assistant."
             />
           </div>
@@ -371,9 +459,9 @@ function Section({
   children: ReactNode;
 }) {
   return (
-    <section className="vl-card-glass grid gap-6 p-6 md:grid-cols-[240px_1fr] md:gap-10">
+    <section className="vl-panel grid gap-6 p-5 md:grid-cols-[220px_1fr] md:gap-8">
       <div className="flex gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl" style={{ background: "var(--color-vl-coral-tint)", color: "var(--color-vl-coral-deep)" }}>
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg" style={{ background: "var(--color-vl-coral-tint)", color: "var(--color-vl-coral-deep)" }}>
           {icon}
         </div>
         <div>
@@ -412,6 +500,23 @@ function InlineStatus({ tone, text }: { tone: "ok" | "error"; text: string }) {
       }}
     >
       {tone === "ok" && <CheckCircle2 className="w-3.5 h-3.5" />}
+      {text}
+    </span>
+  );
+}
+
+function BillingBadge({ tone, text }: { tone: "ok" | "warn"; text: string }) {
+  const ok = tone === "ok";
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium"
+      style={{
+        color: ok ? "var(--color-vl-success)" : "var(--color-vl-ink-muted)",
+        borderColor: ok ? "rgba(20, 133, 85, 0.24)" : "rgba(10, 10, 11, 0.12)",
+        background: ok ? "rgba(20, 133, 85, 0.08)" : "rgba(255, 255, 255, 0.46)",
+      }}
+    >
+      {ok && <CheckCircle2 className="h-3 w-3" />}
       {text}
     </span>
   );
@@ -476,7 +581,7 @@ function UsageCard({ token, plan }: { token: string | null; plan?: string }) {
   const pct = Math.min(100, Math.round((used / limit) * 100));
 
   return (
-    <Section icon={<BarChart3 className="h-5 w-5" />} title="Usage" description="Voice minutes and tool activity this period.">
+    <Section icon={<BarChart3 className="h-5 w-5" />} title="Usage" description="Voice minutes and command activity this period.">
       {loading ? (
         <div className="flex items-center gap-2 py-4">
           <Loader2 className="w-4 h-4 animate-spin" style={{ color: "var(--color-vl-brass2)" }} />

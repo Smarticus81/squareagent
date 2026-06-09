@@ -26,7 +26,7 @@ interface OrderContextType {
   clearOrder: () => void;
   /** Mark the current order as submitted by the voice agent (Square was already called server-side). */
   markVoiceOrderSubmitted: () => void;
-  submitOrder: (accessToken: string, locationId: string) => Promise<{ success: boolean; orderId?: string; error?: string; warning?: string; paymentRecorded?: boolean }>;
+  submitOrder: (venueId?: string | null, authToken?: string | null) => Promise<{ success: boolean; orderId?: string; error?: string; warning?: string; paymentRecorded?: boolean }>;
   isSubmitting: boolean;
   submitError: string | null;
   submitWarning: string | null;
@@ -92,22 +92,25 @@ export function OrderProvider({ children }: { children: ReactNode }) {
     setTimeout(() => setLastSubmittedOrder(null), 5000);
   }
 
-  async function submitOrder(accessToken: string, locationId: string) {
+  async function submitOrder(venueId?: string | null, authToken?: string | null) {
     if (!currentOrder?.items.length) return { success: false, error: "No items" };
     setIsSubmitting(true);
     setSubmitError(null);
     setSubmitWarning(null);
     try {
-      const res = await fetch(`${getBaseUrl()}api/square/orders`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-square-token": accessToken, "x-square-location": locationId },
-        body: JSON.stringify({
-          items: currentOrder.items.map((i) => ({
-            catalogItemId: i.catalogItem.id, variationId: i.catalogItem.variationId,
-            quantity: i.quantity, name: i.catalogItem.name, price: i.catalogItem.price,
-          })),
-        }),
-      });
+      const items = currentOrder.items.map((i) => ({
+        catalogItemId: i.catalogItem.id, variationId: i.catalogItem.variationId,
+        quantity: i.quantity, name: i.catalogItem.name, price: i.catalogItem.price,
+      }));
+      if (!venueId || !authToken) {
+        throw new Error("Square is not connected.");
+      }
+
+      const res = await fetch(`${getBaseUrl()}api/venues/${encodeURIComponent(venueId)}/orders`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+            body: JSON.stringify({ items }),
+          });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed");
       const done: Order = { ...currentOrder, status: "completed", squareOrderId: data.orderId };

@@ -45,6 +45,8 @@ export interface ToolContext {
   requestId?: string;
   /** Authenticated user id — used by general-assistant tools to scope queries. */
   userId?: number;
+  /** Active workspace id for shared knowledge, database, and email integrations. */
+  organizationId?: string | null;
   /** Active venue id — used to filter knowledge / db / email rows by venue. */
   venueId?: number;
   /** Which assistant kind invoked this tool. Helpful for branching behaviour. */
@@ -53,6 +55,10 @@ export interface ToolContext {
   noiseMode?: NoiseMode;
   /** Whether the caller has already confirmed this tool invocation. */
   confirmed?: boolean;
+  /** Signed confirmation token returned by a previous REQUIRES_CONFIRMATION response. */
+  confirmationToken?: string;
+  /** Server-internal bypass for trusted orchestrations such as workflows. */
+  confirmationTrusted?: boolean;
 }
 
 // ── Result returned by every tool executor ────────────────────────────────────

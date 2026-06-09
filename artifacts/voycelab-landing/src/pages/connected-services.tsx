@@ -14,13 +14,11 @@ import {
   CheckCircle2,
   ChevronDown,
   Database,
-  ExternalLink,
   FileText,
   Loader2,
   Mail,
   MapPin,
   Plus,
-  PlugZap,
   Store,
   Trash2,
   Upload,
@@ -55,6 +53,22 @@ type EmailConfig = {
   createdAt: string;
 } | null;
 
+type ConnectedServiceProviderStatus =
+  | "available"
+  | "needs_configuration"
+  | "request_access"
+  | "unavailable";
+
+type ConnectedServiceProviderInfo = {
+  provider: string;
+  displayName: string;
+  description: string;
+  status: ConnectedServiceProviderStatus;
+  capabilities: string[];
+  notes?: string;
+  isImplemented?: boolean;
+};
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function fmtBytes(n: number): string {
@@ -75,6 +89,21 @@ function getHeaders(extra: Record<string, string> = {}) {
 function getAuthHeader(): Record<string, string> {
   const token = localStorage.getItem("voycelab_token");
   return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+function providerStatusText(provider?: ConnectedServiceProviderInfo | null): string {
+  if (!provider) return "Checking";
+  if (!provider.isImplemented) return "Unavailable";
+  switch (provider.status) {
+    case "available": return "Ready";
+    case "needs_configuration": return "Setup needed";
+    case "request_access": return "Request access";
+    default: return "Unavailable";
+  }
+}
+
+function providerStatusTone(provider?: ConnectedServiceProviderInfo | null): "ok" | "warn" {
+  return provider?.isImplemented && provider.status === "available" ? "ok" : "warn";
 }
 
 // ── Section wrapper (collapsible <details>) ──────────────────────────────────
@@ -119,7 +148,6 @@ function IntegrationSection({
     </details>
   );
 }
-
 // ── Main page ────────────────────────────────────────────────────────────────
 
 export default function ConnectedServices() {
@@ -130,12 +158,13 @@ export default function ConnectedServices() {
   const deleteVenue = useDeleteVenue();
   const fetchLocations = useSquareLocations();
 
-  const [oauthToken, setOauthToken] = useState<string | null>(null);
+  const [squareOAuthClaim, setSquareOAuthClaim] = useState<string | null>(null);
   const [oauthMerchantId, setOauthMerchantId] = useState<string | null>(null);
   const [locations, setLocations] = useState<SquareLocation[]>([]);
   const [showLocationPicker, setShowLocationPicker] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [serviceProviders, setServiceProviders] = useState<ConnectedServiceProviderInfo[]>([]);
 
   useEffect(() => {
     if (!isLoading && !auth?.user) setLocation("/login");
@@ -160,12 +189,14 @@ export default function ConnectedServices() {
       (async () => {
         setConnecting(true);
         try {
-          const tokenRes = await fetch(`/api/square/oauth/token?ts=${encodeURIComponent(oauthTs)}`);
+          const tokenRes = await fetch(`/api/square/oauth/token?ts=${encodeURIComponent(oauthTs)}`, {
+            headers: getAuthHeader(),
+          });
           const tokenData = await tokenRes.json();
-          if (!tokenRes.ok) throw new Error(tokenData.error || "Failed to get token");
-          setOauthToken(tokenData.token);
+          if (!tokenRes.ok) throw new Error(tokenData.error || "Failed to verify Square connection");
+          setSquareOAuthClaim(tokenData.tokenState);
           setOauthMerchantId(tokenData.merchantId || null);
-          const locs = await fetchLocations.mutateAsync(tokenData.token);
+          const locs = await fetchLocations.mutateAsync(tokenData.tokenState);
           setLocations(locs);
           setShowLocationPicker(true);
         } catch (e) {
@@ -177,23 +208,56 @@ export default function ConnectedServices() {
     }
   }, [fetchLocations]);
 
-  const handleConnectSquare = useCallback(() => {
+  useEffect(() => {
+    if (!auth?.user) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/v1/connected-service-providers", {
+          headers: getAuthHeader(),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!cancelled && res.ok) {
+          setServiceProviders(Array.isArray(data.providers) ? data.providers : []);
+        }
+      } catch {
+        if (!cancelled) setServiceProviders([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [auth?.user]);
+
+  const handleConnectSquare = useCallback(async () => {
     setConnecting(true);
-    window.location.href = "/api/square/oauth/authorize?mode=redirect&return_url=/services";
+    setErrorMsg(null);
+    try {
+      const res = await fetch("/api/square/oauth/authorize?mode=redirect&handoff=json&return_url=/services", {
+        headers: getAuthHeader(),
+      });
+      const data = await res.json().catch(() => ({}));
+      const url = typeof data.url === "string" ? data.url : null;
+      if (!res.ok || !url) throw new Error(data.error || "Could not start Square authorization");
+      window.location.href = url;
+    } catch (e) {
+      setConnecting(false);
+      setErrorMsg(e instanceof Error ? e.message : "Could not start Square authorization");
+    }
   }, []);
 
   const handleSelectLocation = useCallback(
     async (loc: SquareLocation) => {
-      if (!oauthToken) return;
+      if (!squareOAuthClaim) return;
       try {
         await saveVenue.mutateAsync({
-          accessToken: oauthToken,
+          squareOAuthClaim,
           merchantId: oauthMerchantId || undefined,
           locationId: loc.id,
           locationName: loc.name,
           name: loc.name,
         });
-        setOauthToken(null);
+        setSquareOAuthClaim(null);
         setOauthMerchantId(null);
         setLocations([]);
         setShowLocationPicker(false);
@@ -201,7 +265,7 @@ export default function ConnectedServices() {
         setErrorMsg(e instanceof Error ? e.message : "Failed to save location");
       }
     },
-    [oauthToken, oauthMerchantId, saveVenue],
+    [squareOAuthClaim, oauthMerchantId, saveVenue],
   );
 
   if (isLoading || (venuesLoading && !venuesError)) {
@@ -215,16 +279,18 @@ export default function ConnectedServices() {
   if (!auth?.user) return null;
 
   const hasVenues = (venues ?? []).length > 0;
+  const squareProvider = serviceProviders.find((p) => p.provider === "square") ?? null;
+  const squareReady = !squareProvider || (squareProvider.isImplemented && squareProvider.status === "available");
 
   return (
     <div className="flex-1 pt-20 sm:pt-24 pb-16">
       <div className="w-full max-w-240 mx-auto px-4 sm:px-6 lg:px-10">
         <Link
-          href="/command"
+          href="/assistants"
           className="inline-flex items-center gap-1.5 text-[12px] mb-5 transition-colors"
           style={{ color: "var(--color-vl-ink-muted)" }}
         >
-          <ArrowLeft className="w-3.5 h-3.5" /> Console
+          <ArrowLeft className="w-3.5 h-3.5" /> Assistants
         </Link>
 
         <div className="mb-10">
@@ -238,6 +304,19 @@ export default function ConnectedServices() {
           <p className="mt-2 text-[14px] leading-relaxed max-w-xl" style={{ color: "rgba(10,10,11,0.62)" }}>
             Your assistant can only act on systems you connect here. Start with Square for live POS actions, then add knowledge and data sources to expand what it can do.
           </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <span
+              className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-semibold"
+              style={{
+                color: providerStatusTone(squareProvider) === "ok" ? "var(--color-vl-success)" : "rgba(138,99,24,0.95)",
+                borderColor: providerStatusTone(squareProvider) === "ok" ? "rgba(47,158,100,0.22)" : "rgba(138,99,24,0.22)",
+                background: providerStatusTone(squareProvider) === "ok" ? "rgba(47,158,100,0.08)" : "rgba(253,224,71,0.16)",
+              }}
+            >
+              <CheckCircle2 className="h-3 w-3" />
+              Square adapter: {providerStatusText(squareProvider)}
+            </span>
+          </div>
         </div>
 
         {errorMsg && (
@@ -285,8 +364,9 @@ export default function ConnectedServices() {
             {hasVenues && (
               <button
                 onClick={handleConnectSquare}
-                disabled={connecting}
+                disabled={connecting || !squareReady}
                 className="vl-btn-outline hidden items-center gap-2 px-4 py-2 text-[13px] sm:inline-flex"
+                title={squareReady ? "Add Square location" : squareProvider?.notes ?? "Square is not available on this server"}
               >
                 {connecting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
                 Add location
@@ -308,9 +388,14 @@ export default function ConnectedServices() {
                     Choose a Square location so your assistant can search the menu, build orders, check inventory, and send to your terminal.
                   </p>
                 </div>
-                <button onClick={handleConnectSquare} disabled={connecting} className="vl-btn-primary inline-flex shrink-0 items-center gap-2">
+                <button
+                  onClick={handleConnectSquare}
+                  disabled={connecting || !squareReady}
+                  className="vl-btn-primary inline-flex shrink-0 items-center gap-2"
+                  title={squareReady ? "Connect Square" : squareProvider?.notes ?? "Square is not available on this server"}
+                >
                   {connecting && <Loader2 className="w-4 h-4 animate-spin" />}
-                  Connect Square
+                  {squareReady ? "Connect Square" : providerStatusText(squareProvider)}
                   {!connecting && <ArrowRight className="h-4 w-4" />}
                 </button>
               </div>
@@ -359,7 +444,12 @@ export default function ConnectedServices() {
           </div>
           {hasVenues && (
             <div className="mt-3 sm:hidden">
-              <button onClick={handleConnectSquare} disabled={connecting} className="vl-btn-outline inline-flex items-center gap-2 px-4 py-2 text-[13px]">
+              <button
+                onClick={handleConnectSquare}
+                disabled={connecting || !squareReady}
+                className="vl-btn-outline inline-flex items-center gap-2 px-4 py-2 text-[13px]"
+                title={squareReady ? "Add another Square location" : squareProvider?.notes ?? "Square is not available on this server"}
+              >
                 {connecting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
                 Add another location
               </button>
@@ -384,7 +474,7 @@ export default function ConnectedServices() {
           iconBg="linear-gradient(135deg, #FFFFFF, rgba(253,224,71,0.2))"
           iconColor="var(--color-vl-accent)"
           title="Email"
-          subtitle="Gmail OAuth or Resend API for outbound mail"
+          subtitle="Gmail sign-in or Resend for outbound mail"
         >
           <EmailSection />
         </IntegrationSection>
@@ -395,54 +485,11 @@ export default function ConnectedServices() {
           iconBg="linear-gradient(135deg, #FFFFFF, rgba(167,243,208,0.3))"
           iconColor="var(--color-vl-accent)"
           title="Database"
-          subtitle="Read-only Postgres connection for the query tool"
+          subtitle="Read-only Postgres connection for database commands"
         >
           <DatabaseSection />
         </IntegrationSection>
 
-        {/* ── 5. Coming soon ──────────────────────────────────────── */}
-        <section>
-          <div className="mb-4">
-            <p className="text-[13px] font-semibold" style={{ color: "var(--color-vl-ink-muted)" }}>
-              Coming soon
-            </p>
-            <p className="mt-1 text-[12px]" style={{ color: "rgba(10,10,11,0.42)" }}>
-              Tell us what to build next.
-            </p>
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {UPCOMING_INTEGRATIONS.map((p) => (
-              <div
-                key={p.id}
-                className="rounded-2xl border bg-white p-4 flex items-start gap-3"
-                style={{ borderColor: "rgba(10,10,11,0.06)" }}
-              >
-                <span
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg mt-0.5"
-                  style={{
-                    background: "rgba(10, 10, 11,0.03)",
-                    color: "rgba(10,10,11,0.35)",
-                    border: "1px solid rgba(10, 10, 11,0.06)",
-                  }}
-                >
-                  <PlugZap className="h-3.5 w-3.5" />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="text-[13px] font-semibold" style={{ color: "var(--color-vl-ink)" }}>{p.name}</p>
-                  <p className="mt-0.5 text-[11.5px] leading-relaxed" style={{ color: "rgba(10,10,11,0.45)" }}>{p.description}</p>
-                  <a
-                    href={`mailto:hello@voycelab.com?subject=${encodeURIComponent(`Integration request: ${p.name}`)}`}
-                    className="inline-flex items-center gap-1 mt-2 text-[11px] font-medium transition-colors"
-                    style={{ color: "var(--color-vl-accent)" }}
-                  >
-                    Request <ExternalLink className="w-2.5 h-2.5" />
-                  </a>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
       </div>
 
       {/* Location picker modal */}
@@ -465,7 +512,7 @@ export default function ConnectedServices() {
               <button
                 onClick={() => {
                   setShowLocationPicker(false);
-                  setOauthToken(null);
+                  setSquareOAuthClaim(null);
                   setLocations([]);
                 }}
                 className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors"
@@ -736,7 +783,7 @@ function EmailSection() {
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Save failed");
+      if (!res.ok) throw new Error(data.detail ? `${data.error}: ${data.detail}` : data.error || "Save failed");
       setMsg({ tone: "ok", text: "Email config saved." });
       setApiKey("");
       await load();
@@ -805,7 +852,7 @@ function EmailSection() {
       style={{ borderColor: "rgba(10,10,11,0.08)", boxShadow: "0 1px 2px rgba(10,10,11,0.04), 0 8px 24px -12px rgba(10,10,11,0.08)" }}
     >
       <p className="text-[14px] mb-4" style={{ color: "rgba(10,10,11,0.62)" }}>
-        Choose how outbound mail is sent. The <code className="rounded px-1" style={{ color: "var(--color-vl-ink)", background: "rgba(10,10,11,0.06)" }}>send_email</code> tool delivers from this address — the assistant always reads the recipient and subject back to you before sending.
+        Choose how outbound mail is sent. The email command delivers from this address - the assistant always reads the recipient and subject back to you before sending.
       </p>
 
       {loading ? (
@@ -836,7 +883,7 @@ function EmailSection() {
           {provider === "gmail_oauth" ? (
             <div className="space-y-3">
               <p className="text-[13px]" style={{ color: "rgba(10,10,11,0.55)" }}>
-                Sign in with Google to grant VoyceLab the <code className="rounded px-1" style={{ background: "rgba(10,10,11,0.06)" }}>gmail.send</code> scope. Mail is sent from your Gmail address — no app password, no SMTP setup. Daily limit = 500 emails. You can revoke access any time at <a href="https://myaccount.google.com/permissions" target="_blank" rel="noreferrer" className="underline" style={{ color: "var(--color-vl-accent)" }}>your Google Account</a>.
+                Sign in with Google to let VoyceLab read, search, and send mail for assistant commands. Mail is sent from your Gmail address - no app password or SMTP setup. You can revoke access any time at <a href="https://myaccount.google.com/permissions" target="_blank" rel="noreferrer" className="underline" style={{ color: "var(--color-vl-accent)" }}>your Google Account</a>.
               </p>
 
               {isGmailConnected ? (
@@ -877,7 +924,7 @@ function EmailSection() {
           ) : (
             <form onSubmit={saveResend} className="space-y-3">
               <p className="text-[13px]" style={{ color: "rgba(10,10,11,0.55)" }}>
-                Plug in a <a href="https://resend.com" target="_blank" rel="noreferrer" className="underline" style={{ color: "var(--color-vl-accent)" }}>Resend</a> API key. Best for sending from a verified custom domain.
+                Plug in a <a href="https://resend.com" target="_blank" rel="noreferrer" className="underline" style={{ color: "var(--color-vl-accent)" }}>Resend</a> key. Best for sending from a verified custom domain.
               </p>
               <div className="grid md:grid-cols-2 gap-3">
                 <input
@@ -898,7 +945,7 @@ function EmailSection() {
               </div>
               <input
                 type="password"
-                placeholder={isResendConnected ? "Resend API key (leave blank to keep current)" : "Resend API key (re_...)"}
+                placeholder={isResendConnected ? "Resend key (leave blank to keep current)" : "Resend key (re_...)"}
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
                 className="w-full bg-white border border-black/12 rounded-lg px-3 py-2 text-sm font-mono text-(--color-vl-ink) placeholder:text-black/35"
@@ -976,8 +1023,8 @@ function DatabaseSection() {
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Save failed");
-      setMsg({ tone: "ok", text: "Connection saved." });
+      if (!res.ok) throw new Error(data.detail ? `${data.error}: ${data.detail}` : data.error || "Save failed");
+      setMsg({ tone: "ok", text: data.validated ? "Connection tested and saved." : "Connection saved." });
       setConnectionString("");
       await load();
     } catch (err) {
@@ -1002,7 +1049,7 @@ function DatabaseSection() {
       style={{ borderColor: "rgba(10,10,11,0.08)", boxShadow: "0 1px 2px rgba(10,10,11,0.04), 0 8px 24px -12px rgba(10,10,11,0.08)" }}
     >
       <p className="text-[14px] mb-2" style={{ color: "rgba(10,10,11,0.62)" }}>
-        Read-only Postgres. The assistant gets a <code className="rounded px-1" style={{ color: "var(--color-vl-ink)", background: "rgba(10,10,11,0.06)" }}>query_database</code> tool that runs SELECT
+        Read-only Postgres. The assistant gets a database command that runs SELECT
         statements (capped at 100 rows, 8 second timeout). The connection string is encrypted at rest.
       </p>
       <p className="text-xs mb-6" style={{ color: "#8A6318" }}>
@@ -1078,14 +1125,3 @@ function DatabaseSection() {
     </div>
   );
 }
-
-// ── Coming soon data ─────────────────────────────────────────────────────────
-
-const UPCOMING_INTEGRATIONS = [
-  { id: "toast", name: "Toast", description: "Restaurant POS, kitchen display, tabs." },
-  { id: "clover", name: "Clover", description: "Clover Station, Mini, and Flex." },
-  { id: "lightspeed", name: "Lightspeed", description: "Retail and Restaurant K-Series." },
-  { id: "shopify_pos", name: "Shopify POS", description: "Unified in-store and online." },
-  { id: "revel", name: "Revel", description: "Enterprise iPad POS for QSR." },
-  { id: "custom", name: "Custom API", description: "Bring your own system via webhook." },
-] as const;

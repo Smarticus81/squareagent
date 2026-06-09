@@ -2,8 +2,15 @@
 
 import { Router, type Request, type Response } from "express";
 import { v1 } from "@workspace/api-zod";
-import { db, agentProfilesTable, serviceConnectionsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import {
+  db,
+  agentProfilesTable,
+  serviceConnectionsTable,
+  emailCredentialsTable,
+  externalDbConnectionsTable,
+  knowledgeDocumentsTable,
+} from "@workspace/db";
+import { and, eq, isNull, or } from "drizzle-orm";
 import {
   jsonError,
   requireDb,
@@ -19,10 +26,55 @@ import {
   buildInstructionsFromSkills,
   getSkillsForSession,
 } from "../../skills";
+import type { ToolDefinition } from "../../tools";
+import { planAllowsPipeline } from "@workspace/voicelab-core/pricing";
 import type { VoicePipelineProvider } from "@workspace/voicelab-core/voice-pipeline";
+import { getNoiseModeBehavior, type NoiseMode } from "@workspace/voicelab-core/noise";
 
 const router = Router();
 router.use(v1RequireAuth as never, requireDb);
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item): item is string => typeof item === "string");
+}
+
+function filterToolsByProfile(tools: ToolDefinition[], allowedToolNames: string[] | null): ToolDefinition[] {
+  if (!allowedToolNames || allowedToolNames.length === 0) return tools;
+  const allowed = new Set(allowedToolNames);
+  return tools.filter((tool) => tool.name === "wait_for_user" || allowed.has(tool.name));
+}
+
+function tenantWhere<T extends { userId: any; organizationId: any }>(
+  table: T,
+  userId: number,
+  organizationId: string,
+) {
+  return or(
+    eq(table.organizationId, organizationId),
+    and(eq(table.userId, userId), isNull(table.organizationId)),
+  );
+}
+
+async function hasGeneralConnectedSystems(userId: number, organizationId: string): Promise<boolean> {
+  const [[email], [document], [database]] = await Promise.all([
+    db
+      .select({ id: emailCredentialsTable.id })
+      .from(emailCredentialsTable)
+      .where(tenantWhere(emailCredentialsTable, userId, organizationId))
+      .limit(1),
+    db
+      .select({ id: knowledgeDocumentsTable.id })
+      .from(knowledgeDocumentsTable)
+      .where(tenantWhere(knowledgeDocumentsTable, userId, organizationId))
+      .limit(1),
+    db
+      .select({ id: externalDbConnectionsTable.id })
+      .from(externalDbConnectionsTable)
+      .where(tenantWhere(externalDbConnectionsTable, userId, organizationId))
+      .limit(1),
+  ]);
+  return Boolean(email || document || database);
+}
 
 router.post("/", async (req: Request, res: Response) => {
   const user = userFromReq(req);
@@ -47,11 +99,18 @@ router.post("/", async (req: Request, res: Response) => {
 
   const provider: VoicePipelineProvider =
     parsed.data.pipelineOverride ?? (profile.voicePipelineProvider as VoicePipelineProvider);
-  const adapter = getVoicePipelineAdapter(provider);
-
+  const isAdmin = Boolean((req as Request & { isAdmin?: boolean }).isAdmin);
   const plan = (req as Request & { subscription?: { plan?: string } }).subscription?.plan ?? "trial";
-  const skills = getSkillsForSession(plan);
-  const tools = buildToolsFromSkills(skills);
+  if (!isAdmin && !planAllowsPipeline(plan, provider)) {
+    jsonError(
+      res,
+      402,
+      "pipeline_not_in_plan",
+      `The "${provider}" voice engine is not included in your "${plan}" plan. Upgrade to unlock it.`,
+    );
+    return;
+  }
+  const adapter = getVoicePipelineAdapter(provider);
 
   // Infer assistant kind from the connected service. Anything that isn't
   // Square gets the general business persona.
@@ -60,12 +119,27 @@ router.post("/", async (req: Request, res: Response) => {
     const [conn] = await db
       .select({ provider: serviceConnectionsTable.provider })
       .from(serviceConnectionsTable)
-      .where(eq(serviceConnectionsTable.id, profile.connectedServiceId))
+      .where(
+        and(
+          eq(serviceConnectionsTable.id, profile.connectedServiceId),
+          eq(serviceConnectionsTable.organizationId, profile.organizationId),
+        ),
+      )
       .limit(1);
+    if (!conn) {
+      jsonError(res, 403, "service_forbidden", "Connected service is not available for this workspace.");
+      return;
+    }
     if (conn && conn.provider !== "square") assistantKind = "general";
   } else {
     assistantKind = "general";
   }
+
+  const includeGeneralTools =
+    assistantKind === "venue" && (await hasGeneralConnectedSystems(user.id, profile.organizationId));
+  const profileAllowedTools = isStringArray(profile.allowedTools) ? profile.allowedTools : null;
+  const skills = getSkillsForSession(plan, { kind: assistantKind, includeGeneralTools });
+  const tools = filterToolsByProfile(buildToolsFromSkills(skills), profileAllowedTools);
 
   // Catalog is fetched lazily; build instructions with empty catalog/order — the
   // skill instructions still describe capabilities. The PWA can reload catalog
@@ -77,25 +151,28 @@ router.post("/", async (req: Request, res: Response) => {
     buildInstructionsFromSkills(skills, [], [], assistantKind);
 
   try {
+    const noiseMode: NoiseMode =
+      profile.noiseMode === "loud" || profile.noiseMode === "push_to_talk" ? profile.noiseMode : "standard";
     const session = await adapter.createSession({
       connectionId: profile.connectedServiceId ?? "",
       agentProfileId: profile.id,
       agentDisplayName: profile.displayName,
       userId: String(user.id),
-      allowedToolNames:
-        Array.isArray(profile.allowedTools) && profile.allowedTools.length > 0
-          ? (profile.allowedTools as string[])
-          : tools.map((t) => t.name),
-      providerOptions: { ...(profile.voicePipelineConfig as Record<string, unknown>), tools },
+      allowedToolNames: tools.map((t) => t.name),
+      providerOptions: { ...(profile.voicePipelineConfig as Record<string, unknown>), noiseMode, tools },
       instructions,
     });
+    const behavior = getNoiseModeBehavior(noiseMode);
     res.json({
       sessionId: session.sessionId,
       provider: session.provider,
       agentDisplayName: profile.displayName,
-      noiseMode: profile.noiseMode,
+      noiseMode,
       clientHandshake: session.clientHandshake,
-      capabilities: session.capabilities,
+      capabilities: {
+        ...session.capabilities,
+        bargeIn: session.capabilities.bargeIn && behavior.bargeInEnabled,
+      },
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : "session creation failed";

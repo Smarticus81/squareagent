@@ -8,11 +8,23 @@ import { SquareAdapter } from "./square/adapter";
 import { MockAdapter } from "./mock/adapter";
 import { GenericRestAdapter } from "./generic-rest/adapter";
 
+const mockConnectorEnabled =
+  process.env.VOYCELAB_ENABLE_MOCK_CONNECTOR === "true" ||
+  process.env.NODE_ENV === "development" ||
+  process.env.NODE_ENV === "test";
+const genericRestConnectorEnabled = process.env.VOYCELAB_ENABLE_CUSTOM_REST_CONNECTOR === "true";
+
 const adapters: Partial<Record<ConnectedServiceProvider, ConnectedServiceAdapter>> = {
   square: new SquareAdapter(),
-  mock: new MockAdapter(),
-  generic_rest: new GenericRestAdapter(),
 };
+
+if (mockConnectorEnabled) {
+  adapters.mock = new MockAdapter();
+}
+
+if (genericRestConnectorEnabled) {
+  adapters.generic_rest = new GenericRestAdapter();
+}
 
 export class ConnectedServiceUnavailableError extends Error {
   readonly provider: ConnectedServiceProvider;

@@ -12,7 +12,7 @@ export default function NotFound() {
           Off the rail.
         </h1>
         <p className="mt-3 text-[14px]" style={{ color: "rgba(245,239,227,0.6)" }}>
-          That page does not exist. The agent is still listening.
+          That page does not exist. Your assistant is still listening.
         </p>
         <div className="mt-6">
           <VoiceRail state="error" />
@@ -21,8 +21,8 @@ export default function NotFound() {
           <Link href="/">
             <button className="vl-btn-primary text-[13px]">Back home</button>
           </Link>
-          <Link href="/command">
-            <button className="vl-btn-ghost text-[13px]">Open console</button>
+          <Link href="/assistants">
+            <button className="vl-btn-ghost text-[13px]">Open assistants</button>
           </Link>
         </div>
       </div>

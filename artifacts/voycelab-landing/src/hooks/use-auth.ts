@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
+import { withClerkBillingHeader } from "@/lib/clerk-session";
 
 // Schemas
 export const UserSchema = z.object({
@@ -51,6 +52,8 @@ const getHeaders = () => {
   };
 };
 
+const getBillingHeaders = () => withClerkBillingHeader(getHeaders());
+
 // Hooks
 export function useAuth() {
   return useQuery({
@@ -59,7 +62,7 @@ export function useAuth() {
       const token = getToken();
       if (!token) return null;
 
-      const res = await fetch("/api/auth/me", { headers: getHeaders() });
+      const res = await fetch("/api/auth/me", { headers: await getBillingHeaders() });
       if (!res.ok) {
         let errorMessage = "Failed to load current user";
 

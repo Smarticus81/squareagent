@@ -24,10 +24,28 @@ export function clerkBillingMiddleware() {
     return (_req: Request, _res: Response, next: NextFunction) => next();
   }
 
-  return clerkMiddleware({
+  const middleware = clerkMiddleware({
     secretKey: CLERK_SECRET_KEY,
     publishableKey: CLERK_PUBLISHABLE_KEY,
   });
+
+  return (req: Request, res: Response, next: NextFunction) => {
+    const voyceLabAuthorization = req.headers.authorization;
+    const clerkSessionToken = req.headers["x-clerk-session-token"];
+    const clerkToken = Array.isArray(clerkSessionToken) ? clerkSessionToken[0] : clerkSessionToken;
+
+    if (!clerkToken) {
+      middleware(req, res, next);
+      return;
+    }
+
+    req.headers.authorization = `Bearer ${clerkToken}`;
+    middleware(req, res, (err?: unknown) => {
+      if (voyceLabAuthorization === undefined) delete req.headers.authorization;
+      else req.headers.authorization = voyceLabAuthorization;
+      next(err);
+    });
+  };
 }
 
 /**

@@ -10,9 +10,10 @@ import { Router, Request, Response } from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
-import { db, usersTable, sessionsTable, subscriptionsTable, exchangeCodesTable, organizationMembershipsTable } from "@workspace/db";
-import { eq, lt } from "drizzle-orm";
+import { db, usersTable, sessionsTable, subscriptionsTable, exchangeCodesTable, organizationMembershipsTable, venuesTable, agentProfilesTable } from "@workspace/db";
+import { and, eq, isNull, lt, or } from "drizzle-orm";
 import { checkClerkOrgPlan } from "../lib/clerk-billing";
+import { decrypt, encrypt } from "../lib/secrets";
 
 const router = Router();
 
@@ -23,13 +24,24 @@ const SESSION_DAYS = 30;
 /**
  * Platform admin emails — never-expiring trial, every pipeline unlocked,
  * every skill tier on, no plan gating. Configurable via ADMIN_EMAILS env
- * (comma-separated). Compared case-insensitively.
+ * (comma-separated). Compared case-insensitively. Production has no default.
  */
 const FAR_FUTURE = new Date("9999-12-31T23:59:59Z");
-const ADMIN_EMAILS = (process.env.ADMIN_EMAILS ?? "tmusoni@thinkertons.com")
+const DEFAULT_DEV_ADMIN_EMAIL = "tmusoni@thinkertons.com";
+const ADMIN_EMAILS = (
+  process.env.ADMIN_EMAILS ??
+  (process.env.NODE_ENV === "production" ? "" : DEFAULT_DEV_ADMIN_EMAIL)
+)
   .split(",")
   .map((s) => s.trim().toLowerCase())
   .filter(Boolean);
+
+if (process.env.NODE_ENV === "production" && process.env.ADMIN_EMAILS) {
+  const invalidAdminEmail = ADMIN_EMAILS.find((email) => !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email));
+  if (invalidAdminEmail) {
+    throw new Error(`FATAL: ADMIN_EMAILS contains an invalid email address: ${invalidAdminEmail}`);
+  }
+}
 
 export function isAdminEmail(email: string | null | undefined): boolean {
   if (!email) return false;
@@ -121,6 +133,76 @@ async function ensureAdminSubscription(userId: number): Promise<SubscriptionRow 
   }
 }
 
+function buildClerkClaimSubscription(
+  userId: number,
+  organizationId: string | null,
+  plan: string,
+): SubscriptionRow {
+  return {
+    id: -2,
+    userId,
+    organizationId,
+    clerkSubscriptionId: null,
+    plan,
+    status: "active",
+    trialEndsAt: null,
+    currentPeriodEnd: null,
+    cancelAt: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  } as SubscriptionRow;
+}
+
+async function ensureClerkClaimSubscription(
+  userId: number,
+  organizationId: string | null,
+  plan: string,
+  existing?: SubscriptionRow | null,
+): Promise<SubscriptionRow> {
+  const fallback = buildClerkClaimSubscription(userId, organizationId, plan);
+  if (!db) return fallback;
+  try {
+    const current =
+      existing ??
+      (await db
+        .select()
+        .from(subscriptionsTable)
+        .where(eq(subscriptionsTable.userId, userId))
+        .then((rows: SubscriptionRow[]) => rows[0] ?? null));
+
+    if (current) {
+      const [updated] = await db
+        .update(subscriptionsTable)
+        .set({
+          organizationId,
+          plan,
+          status: "active",
+          trialEndsAt: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(subscriptionsTable.id, current.id))
+        .returning();
+      return (updated as SubscriptionRow | undefined) ?? { ...current, ...fallback, id: current.id };
+    }
+
+    const [inserted] = await db
+      .insert(subscriptionsTable)
+      .values({
+        userId,
+        organizationId,
+        plan,
+        status: "active",
+        trialEndsAt: null,
+        currentPeriodEnd: null,
+      })
+      .returning();
+    return (inserted as SubscriptionRow | undefined) ?? fallback;
+  } catch (e) {
+    console.error("[Auth] ensureClerkClaimSubscription failed:", e instanceof Error ? e.message : e);
+    return fallback;
+  }
+}
+
 // ── Auth context cache ────────────────────────────────────────────────────────
 // The voice flow fires a tool call (POST /api/realtime/tools) on every spoken
 // command, plus a heartbeat every 60s. Without caching, requireAuth ran 4–6
@@ -145,6 +227,12 @@ const authCache = new Map<string, CachedAuth>();
 /** Drop a cached auth context (call on logout or when entitlements change). */
 export function invalidateAuthCache(sessionId: string): void {
   authCache.delete(sessionId);
+}
+
+export function invalidateAuthCacheForUser(userId: number): void {
+  for (const [sid, entry] of authCache) {
+    if (entry.user.id === userId) authCache.delete(sid);
+  }
 }
 
 // Bound memory: sweep expired entries periodically.
@@ -213,7 +301,10 @@ export async function requireAuth(req: Request, res: Response, next: Function): 
     // session and user are independent (both derive from the verified token),
     // so fetch them concurrently rather than serially.
     const [[session], [user]] = await Promise.all([
-      db.select().from(sessionsTable).where(eq(sessionsTable.id, payload.sid)),
+      db
+        .select()
+        .from(sessionsTable)
+        .where(and(eq(sessionsTable.id, payload.sid), eq(sessionsTable.userId, payload.sub))),
       db.select().from(usersTable).where(eq(usersTable.id, payload.sub)),
     ]);
 
@@ -276,28 +367,20 @@ export async function requireAuth(req: Request, res: Response, next: Function): 
 
 /** Middleware: require an active subscription (trial or paid). */
 export function requirePlan() {
-  return (req: Request, res: Response, next: Function): void => {
+  return async (req: Request, res: Response, next: Function): Promise<void> => {
     if ((req as any).isAdmin) { next(); return; }
 
     const sub = (req as any).subscription;
+    const userId = Number((req as any).user?.id ?? 0);
+    const organizationId = ((req as any).organization?.id as string | undefined) ?? null;
 
     // Clerk B2B fallback: if no local subscription, check Clerk org claims
     if (!sub) {
       const clerkPlan = checkClerkOrgPlan(req);
       if (clerkPlan?.active) {
-        // Attach a synthetic subscription so downstream code sees a plan
-        (req as any).subscription = {
-          id: -1,
-          userId: (req as any).user?.id ?? 0,
-          plan: clerkPlan.plan,
-          status: "active",
-          clerkSubscriptionId: null,
-          trialEndsAt: null,
-          currentPeriodEnd: null,
-          cancelAt: null,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        };
+        // Persist the Clerk-verified plan immediately so relay-only paths
+        // that cannot carry Clerk headers see the same entitlement.
+        (req as any).subscription = await ensureClerkClaimSubscription(userId, organizationId, clerkPlan.plan);
         next();
         return;
       }
@@ -310,7 +393,7 @@ export function requirePlan() {
         // Before rejecting, check if Clerk org has an active plan
         const clerkPlan = checkClerkOrgPlan(req);
         if (clerkPlan?.active) {
-          (req as any).subscription = { ...sub, plan: clerkPlan.plan, status: "active" };
+          (req as any).subscription = await ensureClerkClaimSubscription(userId, organizationId, clerkPlan.plan, sub);
           next();
           return;
         }
@@ -324,7 +407,7 @@ export function requirePlan() {
       // Check Clerk as fallback for payment issues resolved there
       const clerkPlan = checkClerkOrgPlan(req);
       if (clerkPlan?.active) {
-        (req as any).subscription = { ...sub, plan: clerkPlan.plan, status: "active" };
+        (req as any).subscription = await ensureClerkClaimSubscription(userId, organizationId, clerkPlan.plan, sub);
         next();
         return;
       }
@@ -416,10 +499,11 @@ router.post("/login", async (req: Request, res: Response): Promise<void> => {
 
     const isAdmin = isAdminEmail(user.email);
     if (isAdmin) await ensureAdminSubscription(user.id);
-    let [subscription] = await db.select().from(subscriptionsTable).where(eq(subscriptionsTable.userId, user.id));
-    if (!subscription && isAdmin) subscription = buildAdminSubscription(user.id) as never;
+    let subscription =
+      ((req as Request & { subscription?: SubscriptionRow | null }).subscription ?? null) as SubscriptionRow | null;
 
-    let organizationId: string | null = null;
+    let organizationId =
+      ((req as Request & { organization?: { id?: string | null } }).organization?.id ?? null) as string | null;
     try {
       const { ensureUserOrganization } = await import("./v1/_helpers");
       const org = await ensureUserOrganization(user);
@@ -457,6 +541,16 @@ router.get("/me", requireAuth as any, async (req: Request, res: Response): Promi
       organizationId = org.id;
     } catch {
       // Tables may not yet be migrated; the wizard will surface an actionable error.
+    }
+    if (!subscription) {
+      [subscription] = await db.select().from(subscriptionsTable).where(eq(subscriptionsTable.userId, user.id));
+    }
+    if (!subscription && isAdmin) subscription = buildAdminSubscription(user.id) as never;
+
+    const clerkPlan = checkClerkOrgPlan(req);
+    if (clerkPlan?.active) {
+      subscription = await ensureClerkClaimSubscription(user.id, organizationId, clerkPlan.plan, subscription);
+      (req as Request & { subscription?: SubscriptionRow }).subscription = subscription;
     }
     res.json({
       user: { id: user.id, email: user.email, name: user.name, isAdmin },
@@ -501,6 +595,75 @@ setInterval(async () => {
 }, 5 * 60_000);
 
 /** POST /api/auth/exchange/create — Authenticated. Returns a one-time code (valid 5 min). */
+async function validateExchangeLaunchScope(
+  userId: number,
+  organizationId: string | null,
+  venueId: unknown,
+  agentProfileId: unknown,
+): Promise<{ ok: true; venueId: string; agentProfileId: string | null } | { ok: false; status: number; error: string }> {
+  let normalizedVenueId = "";
+  let profileVenueId: number | null = null;
+
+  if (agentProfileId) {
+    if (typeof agentProfileId !== "string") {
+      return { ok: false, status: 400, error: "agentProfileId must be a string" };
+    }
+    if (!organizationId) {
+      return { ok: false, status: 403, error: "Organization membership required" };
+    }
+    const [profile] = await db
+      .select({
+        id: agentProfilesTable.id,
+        organizationId: agentProfilesTable.organizationId,
+        venueId: agentProfilesTable.venueId,
+      })
+      .from(agentProfilesTable)
+      .where(and(eq(agentProfilesTable.id, agentProfileId), eq(agentProfilesTable.organizationId, organizationId)))
+      .limit(1);
+    if (!profile) {
+      return { ok: false, status: 404, error: "Assistant not found" };
+    }
+    profileVenueId = profile.venueId ?? null;
+  }
+
+  if (venueId) {
+    const numericVenueId = Number(venueId);
+    if (!Number.isInteger(numericVenueId) || numericVenueId <= 0) {
+      return { ok: false, status: 400, error: "venueId must be a positive integer" };
+    }
+    const [venue] = await db
+      .select({ id: venuesTable.id })
+      .from(venuesTable)
+      .where(
+        and(
+          eq(venuesTable.id, numericVenueId),
+          organizationId
+            ? or(
+                eq(venuesTable.organizationId, organizationId),
+                and(eq(venuesTable.userId, userId), isNull(venuesTable.organizationId)),
+              )
+            : eq(venuesTable.userId, userId),
+        ),
+      )
+      .limit(1);
+    if (!venue) {
+      return { ok: false, status: 404, error: "Venue not found" };
+    }
+    if (profileVenueId !== null && profileVenueId !== numericVenueId) {
+      return { ok: false, status: 400, error: "Assistant is not linked to this venue" };
+    }
+    normalizedVenueId = String(numericVenueId);
+  } else if (profileVenueId !== null) {
+    normalizedVenueId = String(profileVenueId);
+  }
+
+  return {
+    ok: true,
+    venueId: normalizedVenueId,
+    agentProfileId: typeof agentProfileId === "string" ? agentProfileId : null,
+  };
+}
+
 router.post("/exchange/create", requireAuth as any, async (req: Request, res: Response): Promise<void> => {
   if (!ensureAuthStore(res)) return;
 
@@ -508,18 +671,25 @@ router.post("/exchange/create", requireAuth as any, async (req: Request, res: Re
   const { venueId, agentProfileId } = req.body ?? {};
   if (!venueId && !agentProfileId) { res.status(400).json({ error: "venueId or agentProfileId is required" }); return; }
 
+  const organizationId = (req as any).organization?.id ?? null;
+  const scope = await validateExchangeLaunchScope((req as any).user.id, organizationId, venueId, agentProfileId);
+  if (!scope.ok) {
+    res.status(scope.status).json({ error: scope.error });
+    return;
+  }
+
   const code = crypto.randomBytes(32).toString("hex");
   const expiresAt = new Date(Date.now() + 5 * 60_000);
 
   try {
     await db.insert(exchangeCodesTable).values({
       code,
-      token,
-      venueId: venueId ? String(venueId) : "",
-      agentProfileId: agentProfileId || null,
+      token: encrypt(token),
+      venueId: scope.venueId,
+      agentProfileId: scope.agentProfileId,
       expiresAt,
     });
-    res.json({ code, agentProfileId: agentProfileId ?? null });
+    res.json({ code, agentProfileId: scope.agentProfileId });
   } catch (e: any) {
     console.error("[Exchange] Failed to create code:", e.message);
     res.status(503).json({ error: "Exchange service temporarily unavailable. Please try again." });
@@ -544,7 +714,12 @@ router.post("/exchange/redeem", async (req: Request, res: Response): Promise<voi
 
     // Delete immediately — one-time use
     await db.delete(exchangeCodesTable).where(eq(exchangeCodesTable.code, code));
-    res.json({ token: entry.token, venueId: entry.venueId, agentProfileId: (entry as any).agentProfileId ?? null });
+    const token = decrypt(entry.token);
+    if (!token) {
+      res.status(400).json({ error: "Invalid or expired code" });
+      return;
+    }
+    res.json({ token, venueId: entry.venueId, agentProfileId: (entry as any).agentProfileId ?? null });
   } catch (e: any) {
     console.error("[Exchange] Failed to redeem code:", e.message);
     res.status(503).json({ error: "Exchange service temporarily unavailable. Please try again." });

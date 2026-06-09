@@ -12,6 +12,8 @@ const getHeaders = () => {
 
 export interface Venue {
   id: number;
+  serviceConnectionId: string | null;
+  serviceConnectionStatus: string | null;
   name: string;
   squareMerchantId: string | null;
   squareLocationId: string | null;
@@ -46,7 +48,7 @@ export function useSaveVenue() {
 
   return useMutation({
     mutationFn: async (body: {
-      accessToken: string;
+      squareOAuthClaim: string;
       merchantId?: string;
       locationId: string;
       locationName?: string;
@@ -89,9 +91,9 @@ export function useDeleteVenue() {
 
 export function useSquareLocations() {
   return useMutation({
-    mutationFn: async (accessToken: string) => {
-      const res = await fetch("/api/square/locations", {
-        headers: { ...getHeaders(), "x-square-token": accessToken },
+    mutationFn: async (squareOAuthClaim: string) => {
+      const res = await fetch(`/api/square/locations?oauth_ts=${encodeURIComponent(squareOAuthClaim)}`, {
+        headers: getHeaders(),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to load locations");

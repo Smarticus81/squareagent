@@ -75,7 +75,7 @@ export const voyceCopy = {
   brandTagline: "Where voice runs hospitality.",
   tagline: "Hospitality, orchestrated by voice.",
   promise:
-    "VoyceLab connects voice assistants to the tools that power your venue. Natural conversations turn into real actions across service, inventory, POS, events, and your entire operation.",
+    "VoyceLab connects voice assistants to the systems that power your venue. Natural conversations turn into real actions across service, inventory, POS, events, and your entire operation.",
   supporting: "Less busywork. More guest magic.",
   conversion: "Let's put your venue in conversation.",
   positioning: "Beyond commands. Beyond systems.",
@@ -154,13 +154,10 @@ export const DEFAULT_PIPELINE_PROVIDER = "openai_realtime_webrtc" as const;
 
 export const connectedServices = [
   { id: "square", name: "Square", status: "live" as const, description: "Catalog, orders, terminal, stock checks." },
-  { id: "custom", name: "Custom connection", status: "request" as const, description: "Bridge your own system. Available on request." },
-  { id: "toast", name: "Toast", status: "request" as const, description: "Restaurant POS with kitchen display and tabs." },
-  { id: "clover", name: "Clover", status: "request" as const, description: "Clover Station, Mini, and Flex." },
-  { id: "lightspeed", name: "Lightspeed", status: "request" as const, description: "Retail and Restaurant K-Series." },
-  { id: "shopify_pos", name: "Shopify POS", status: "request" as const, description: "In-store and online unified commerce." },
-  { id: "godaddy_poynt", name: "GoDaddy / Poynt", status: "request" as const, description: "Poynt-based countertop and mobile." },
-  { id: "revel", name: "Revel", status: "request" as const, description: "Enterprise iPad POS for QSR and retail." },
+  { id: "knowledge", name: "Knowledge base", status: "live" as const, description: "Documents and operating notes the assistant can search." },
+  { id: "email", name: "Email", status: "live" as const, description: "Gmail reading plus outbound email workflows." },
+  { id: "database", name: "Database", status: "live" as const, description: "Read-only Postgres answers for connected business data." },
+  { id: "custom_rest", name: "Custom REST", status: "request" as const, description: "Configurable adapter for private systems when enabled." },
 ] as const;
 
 /* ─────────────────────────────────────────────────────────────────

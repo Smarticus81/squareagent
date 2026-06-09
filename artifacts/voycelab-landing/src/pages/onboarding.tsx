@@ -7,6 +7,7 @@ import {
   useSquareLocations,
   type SquareLocation,
 } from "@/hooks/use-venues";
+import { withClerkBillingHeader } from "@/lib/clerk-session";
 import {
   Check,
   CheckCircle2,
@@ -29,6 +30,11 @@ const VOICES = [
 
 const SAMPLE_LINE = "Hey, ready when you are. Two ranch waters and a Bud heavy?";
 
+function getAuthHeader(): Record<string, string> {
+  const token = localStorage.getItem("voycelab_token");
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 /* ── Main component ──────────────────────────────────────────────────── */
 
 export default function Onboarding() {
@@ -50,7 +56,7 @@ export default function Onboarding() {
   const [voice, setVoice] = useState("verse");
 
   /* Square OAuth state */
-  const [oauthToken, setOauthToken] = useState<string | null>(null);
+  const [squareOAuthClaim, setSquareOAuthClaim] = useState<string | null>(null);
   const [oauthMerchantId, setOauthMerchantId] = useState<string | null>(null);
   const [locations, setLocations] = useState<SquareLocation[]>([]);
   const [connecting, setConnecting] = useState(false);
@@ -97,12 +103,14 @@ export default function Onboarding() {
       (async () => {
         setConnecting(true);
         try {
-          const tokenRes = await fetch(`/api/square/oauth/token?ts=${encodeURIComponent(oauthTs)}`);
+          const tokenRes = await fetch(`/api/square/oauth/token?ts=${encodeURIComponent(oauthTs)}`, {
+            headers: getAuthHeader(),
+          });
           const tokenData = await tokenRes.json();
-          if (!tokenRes.ok) throw new Error(tokenData.error || "Failed to get token");
-          setOauthToken(tokenData.token);
+          if (!tokenRes.ok) throw new Error(tokenData.error || "Failed to verify Square connection");
+          setSquareOAuthClaim(tokenData.tokenState);
           setOauthMerchantId(tokenData.merchantId || null);
-          const locs = await fetchLocations.mutateAsync(tokenData.token);
+          const locs = await fetchLocations.mutateAsync(tokenData.tokenState);
           setLocations(locs);
         } catch (e) {
           setError(e instanceof Error ? e.message : "Failed to connect Square");
@@ -124,18 +132,30 @@ export default function Onboarding() {
     }
   }, [venues, squareConnected]);
 
-  function handleConnectSquare() {
+  async function handleConnectSquare() {
     // Save name so it persists across OAuth redirect
     sessionStorage.setItem("voycelab.onboarding_name", name);
     setConnecting(true);
-    window.location.href = "/api/square/oauth/authorize?mode=redirect&return_url=/onboarding?step=2";
+    setError(null);
+    try {
+      const res = await fetch("/api/square/oauth/authorize?mode=redirect&handoff=json&return_url=/onboarding?step=2", {
+        headers: getAuthHeader(),
+      });
+      const data = await res.json().catch(() => ({}));
+      const url = typeof data.url === "string" ? data.url : null;
+      if (!res.ok || !url) throw new Error(data.error || "Could not start Square authorization");
+      window.location.href = url;
+    } catch (e) {
+      setConnecting(false);
+      setError(e instanceof Error ? e.message : "Could not start Square authorization");
+    }
   }
 
   async function handleSelectLocation(loc: SquareLocation) {
-    if (!oauthToken) return;
+    if (!squareOAuthClaim) return;
     try {
       const venue = await saveVenue.mutateAsync({
-        accessToken: oauthToken,
+        squareOAuthClaim,
         merchantId: oauthMerchantId || undefined,
         locationId: loc.id,
         locationName: loc.name,
@@ -144,7 +164,7 @@ export default function Onboarding() {
       setSquareConnected(true);
       setSelectedVenueId(venue.id);
       setConnectedLocationName(loc.name);
-      setOauthToken(null);
+      setSquareOAuthClaim(null);
       setLocations([]);
       await refetchVenues();
     } catch (e) {
@@ -172,10 +192,10 @@ export default function Onboarding() {
 
       const res = await fetch("/api/v1/agent-profiles", {
         method: "POST",
-        headers: {
+        headers: await withClerkBillingHeader({
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
-        },
+        }),
         body: JSON.stringify(body),
       });
       if (!res.ok) {
@@ -222,10 +242,10 @@ export default function Onboarding() {
           );
         }
       } catch {
-        // Non-fatal -- still redirect to /command
+        // Non-fatal -- still redirect to the assistants page.
       }
 
-      navigate("/command");
+      navigate("/assistants");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not create assistant.");
     } finally {

@@ -1,11 +1,14 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useParams, useSearch } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { useVenues } from "@/hooks/use-venues";
+import { withClerkBillingHeader } from "@/lib/clerk-session";
+import { getPlanAllowedPipelines } from "@workspace/voicelab-core/pricing";
 import {
   ArrowLeft,
   Check,
   ChevronDown,
+  Lock,
   Loader2,
   Pause,
   Play,
@@ -19,13 +22,57 @@ const VOICES = [
   { id: "coral", label: "Coral", gender: "female" },
 ] as const;
 
+const GEMINI_VOICES = [
+  { id: "Kore", label: "Kore", gender: "neutral" },
+  { id: "Aoede", label: "Aoede", gender: "female" },
+  { id: "Puck", label: "Puck", gender: "male" },
+  { id: "Charon", label: "Charon", gender: "male" },
+  { id: "Leda", label: "Leda", gender: "female" },
+  { id: "Fenrir", label: "Fenrir", gender: "male" },
+] as const;
+
+const VOICE_ENGINES = [
+  {
+    id: "openai_realtime_webrtc",
+    label: "OpenAI Realtime",
+    description: "Lowest-friction browser voice.",
+    defaultVoice: "verse",
+  },
+  {
+    id: "google_gemini_3_1_flash_live",
+    label: "Gemini 3.1 Flash Live",
+    description: "Newest low-latency native audio for busy rooms.",
+    defaultVoice: "Kore",
+  },
+  {
+    id: "google_gemini_2_5_flash_native_audio",
+    label: "Gemini 2.5 Native Audio",
+    description: "Stable native audio over the low-latency relay.",
+    defaultVoice: "Aoede",
+  },
+] as const;
+
+type VoiceEngineId = (typeof VOICE_ENGINES)[number]["id"];
+
 const SAMPLE_LINE = "Hey, ready when you are. Two ranch waters and a Bud heavy?";
+
+function allowedVoiceEnginesFor(plan: string | null | undefined, isAdmin?: boolean): Set<VoiceEngineId> {
+  if (isAdmin) return new Set(VOICE_ENGINES.map((engine) => engine.id));
+  const allowed = getPlanAllowedPipelines(plan);
+  return new Set(
+    VOICE_ENGINES
+      .filter((engine) => allowed.includes(engine.id))
+      .map((engine) => engine.id),
+  );
+}
 
 interface AgentProfile {
   id: string;
   displayName: string;
   venueId: number | null;
+  connectedServiceId: string | null;
   wakePhrase: string;
+  wakeMode?: "ambient" | "tap";
   voicePipelineProvider: string;
   voicePipelineConfig: Record<string, unknown>;
   noiseMode: string;
@@ -49,8 +96,12 @@ export default function CreateAssistant() {
   const [venueId, setVenueId] = useState<number | null>(null);
   const [voice, setVoice] = useState("verse");
   const [noiseMode, setNoiseMode] = useState("standard");
-  const [voicePipelineProvider] = useState("openai_realtime_webrtc");
+  const [voicePipelineProvider, setVoicePipelineProvider] = useState<VoiceEngineId>("openai_realtime_webrtc");
   const [wakePhrase, setWakePhrase] = useState("Hey Voyce");
+  const [wakeMode, setWakeMode] = useState<"ambient" | "tap">("ambient");
+  const [geminiThinkingLevel, setGeminiThinkingLevel] = useState<"minimal" | "low" | "medium" | "high">("minimal");
+  const [geminiProactiveAudio, setGeminiProactiveAudio] = useState(true);
+  const [geminiAffectiveDialog, setGeminiAffectiveDialog] = useState(false);
   const [personality, setPersonality] = useState("");
 
   const [saving, setSaving] = useState(false);
@@ -75,10 +126,34 @@ export default function CreateAssistant() {
         setName(profile.displayName);
         setVenueId(profile.venueId);
         setWakePhrase(profile.wakePhrase || "Hey Voyce");
+        setWakeMode(profile.wakeMode === "tap" ? "tap" : "ambient");
         setNoiseMode(profile.noiseMode || "standard");
         setPersonality(profile.personality || "");
-        const cfg = profile.voicePipelineConfig as { voice?: string } | undefined;
-        if (cfg?.voice) setVoice(cfg.voice);
+        if (
+          profile.voicePipelineProvider === "openai_realtime_webrtc" ||
+          profile.voicePipelineProvider === "google_gemini_3_1_flash_live" ||
+          profile.voicePipelineProvider === "google_gemini_2_5_flash_native_audio"
+        ) {
+          setVoicePipelineProvider(profile.voicePipelineProvider);
+        }
+        const cfg = profile.voicePipelineConfig as {
+          voice?: string;
+          voiceName?: string;
+          thinkingLevel?: string;
+          proactiveAudio?: boolean;
+          affectiveDialog?: boolean;
+        } | undefined;
+        if (cfg?.voiceName || cfg?.voice) setVoice(cfg.voiceName ?? cfg.voice ?? voice);
+        if (
+          cfg?.thinkingLevel === "minimal" ||
+          cfg?.thinkingLevel === "low" ||
+          cfg?.thinkingLevel === "medium" ||
+          cfg?.thinkingLevel === "high"
+        ) {
+          setGeminiThinkingLevel(cfg.thinkingLevel);
+        }
+        if (typeof cfg?.proactiveAudio === "boolean") setGeminiProactiveAudio(cfg.proactiveAudio);
+        if (typeof cfg?.affectiveDialog === "boolean") setGeminiAffectiveDialog(cfg.affectiveDialog);
       } catch {
         setError("Could not load this assistant for editing.");
       } finally {
@@ -94,9 +169,37 @@ export default function CreateAssistant() {
     }
   }, [venues, venueId, kind, editId]);
 
+  useEffect(() => {
+    const availableVoices = voicePipelineProvider.startsWith("google_gemini_") ? GEMINI_VOICES : VOICES;
+    if (!availableVoices.some((v) => v.id === voice)) {
+      setVoice(VOICE_ENGINES.find((engine) => engine.id === voicePipelineProvider)?.defaultVoice ?? availableVoices[0].id);
+    }
+  }, [voicePipelineProvider, voice]);
+
+  useEffect(() => {
+    if (noiseMode === "push_to_talk" && wakeMode !== "tap") {
+      setWakeMode("tap");
+    }
+  }, [noiseMode, wakeMode]);
+
+  const allowedVoiceEngines = useMemo(
+    () => allowedVoiceEnginesFor(auth?.subscription?.plan, auth?.isAdmin),
+    [auth?.subscription?.plan, auth?.isAdmin],
+  );
+  const canUseSelectedEngine = allowedVoiceEngines.has(voicePipelineProvider);
+
+  useEffect(() => {
+    if (allowedVoiceEngines.has(voicePipelineProvider)) return;
+    const fallback = VOICE_ENGINES.find((engine) => allowedVoiceEngines.has(engine.id))?.id ?? "openai_realtime_webrtc";
+    setVoicePipelineProvider(fallback);
+  }, [allowedVoiceEngines, voicePipelineProvider]);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) return setError("Give your assistant a name.");
+    if (!canUseSelectedEngine) {
+      return setError("Choose a voice engine included with your plan, or upgrade to unlock Gemini.");
+    }
     if (!auth?.organizationId) {
       return setError(
         "Your account isn't fully set up yet. Reload and try again.",
@@ -106,18 +209,36 @@ export default function CreateAssistant() {
     setError(null);
     try {
       const token = localStorage.getItem("voycelab_token") || "";
+      const isGeminiPipeline = voicePipelineProvider.startsWith("google_gemini_");
+      const voicePipelineConfig = isGeminiPipeline
+        ? {
+            voiceName: voice,
+            voice,
+            ...(voicePipelineProvider === "google_gemini_3_1_flash_live"
+              ? { thinkingLevel: geminiThinkingLevel }
+              : {
+                  proactiveAudio: geminiProactiveAudio,
+                  affectiveDialog: geminiAffectiveDialog,
+                }),
+          }
+        : { voice };
       const body: Record<string, unknown> = {
         organizationId: auth.organizationId,
         displayName: name.trim(),
         wakePhrase: wakePhrase.trim() || "Hey Voyce",
+        wakeMode: noiseMode === "push_to_talk" ? "tap" : wakeMode,
         voicePipelineProvider,
-        voicePipelineConfig: { voice },
+        voicePipelineConfig,
         noiseMode,
         personality,
         allowedTools: [],
         confirmationPolicy: { approvals: {} },
       };
-      if (venueId) body.venueId = venueId;
+      if (venueId) {
+        body.venueId = venueId;
+        const selectedVenue = venues?.find((v) => v.id === venueId);
+        body.connectedServiceId = selectedVenue?.serviceConnectionId ?? null;
+      }
 
       const url = editId
         ? `/api/v1/agent-profiles/${encodeURIComponent(editId)}`
@@ -126,10 +247,10 @@ export default function CreateAssistant() {
 
       const res = await fetch(url, {
         method,
-        headers: {
+        headers: await withClerkBillingHeader({
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
+        }),
         body: JSON.stringify(body),
       });
       if (!res.ok) {
@@ -142,7 +263,7 @@ export default function CreateAssistant() {
         );
       }
       sessionStorage.removeItem("voycelab.pending_assistant_name");
-      navigate(editId ? "/assistants" : "/command");
+      navigate("/assistants");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save.");
     } finally {
@@ -169,24 +290,10 @@ export default function CreateAssistant() {
     ? "A general assistant for questions, notes, and connected data. You can connect Square later."
     : "Name it, connect it, pick a voice. Everything else has sane defaults.";
   const submitLabel = editId ? "Save changes" : "Create assistant";
+  const activeVoiceOptions = voicePipelineProvider.startsWith("google_gemini_") ? GEMINI_VOICES : VOICES;
 
   return (
-    <div className="relative flex-1 overflow-hidden px-4 pb-20 pt-16 sm:px-6 lg:px-10">
-      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
-        <div
-          className="absolute left-[-12%] top-[-18%] h-95 w-140 rounded-full blur-3xl"
-          style={{ background: "rgba(251, 207, 232, 0.42)" }}
-        />
-        <div
-          className="absolute right-[-14%] top-[5%] h-120 w-150 rounded-full blur-3xl"
-          style={{ background: "rgba(199, 210, 254, 0.30)" }}
-        />
-        <div
-          className="absolute bottom-[-18%] right-[12%] h-105 w-170 rounded-full blur-3xl"
-          style={{ background: "rgba(167, 243, 208, 0.23)" }}
-        />
-      </div>
-
+    <div className="relative flex-1 overflow-hidden bg-vl-cream px-4 pb-20 pt-16 sm:px-6 lg:px-10">
       <div className="mx-auto w-full max-w-xl">
         <div className="flex items-center gap-x-5 mb-6 text-[12px]">
           <Link
@@ -303,11 +410,31 @@ export default function CreateAssistant() {
 
           {/* ── Voice ────────────────────────────────────────── */}
           <fieldset>
-            <legend className="vl-eyebrow block mb-3">Voice</legend>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              {VOICES.map((v) => (
+            <legend className="vl-eyebrow block mb-3">Voice engine</legend>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {VOICE_ENGINES.map((engine) => (
+                <VoiceEngineCard
+                  key={engine.id}
+                  engine={engine}
+                  selected={voicePipelineProvider === engine.id}
+                  locked={!allowedVoiceEngines.has(engine.id)}
+                  onSelect={() => setVoicePipelineProvider(engine.id)}
+                />
+              ))}
+            </div>
+            {!auth?.isAdmin && !allowedVoiceEngines.has("google_gemini_3_1_flash_live") && (
+              <p className="mt-2 text-[12px]" style={{ color: "rgba(10,10,11,0.52)" }}>
+                Gemini voices unlock on Pro and Business.{" "}
+                <Link href="/pricing" className="underline" style={{ color: "var(--color-vl-brass2)" }}>
+                  View plans
+                </Link>
+              </p>
+            )}
+            <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {activeVoiceOptions.map((v) => (
                 <VoiceOption
                   key={v.id}
+                  provider={voicePipelineProvider}
                   voiceId={v.id}
                   label={v.label}
                   gender={v.gender}
@@ -359,6 +486,88 @@ export default function CreateAssistant() {
                   maxLength={60}
                 />
               </label>
+
+              <fieldset>
+                <legend className="vl-eyebrow block mb-2">Start mode</legend>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { id: "ambient", label: "Wake phrase", hint: "Always ready" },
+                    { id: "tap", label: "Tap only", hint: "Quietest setup" },
+                  ].map((option) => {
+                    const disabled = noiseMode === "push_to_talk" && option.id === "ambient";
+                    return (
+                      <button
+                        key={option.id}
+                        type="button"
+                        disabled={disabled}
+                        onClick={() => {
+                          if (!disabled) setWakeMode(option.id as "ambient" | "tap");
+                        }}
+                        className="vl-card p-3 text-left transition-colors"
+                        style={{
+                          borderColor: wakeMode === option.id
+                            ? "rgba(124,110,245,0.6)"
+                            : "rgba(10, 10, 11,0.10)",
+                          background: wakeMode === option.id ? "rgba(124,110,245,0.06)" : "#FFFFFF",
+                          opacity: disabled ? 0.48 : 1,
+                          cursor: disabled ? "not-allowed" : "pointer",
+                        }}
+                      >
+                        <span className="block text-[13px] font-semibold" style={{ color: "var(--color-vl-ink)" }}>
+                          {option.label}
+                        </span>
+                        <span className="mt-1 block text-[11.5px]" style={{ color: "rgba(10,10,11,0.48)" }}>
+                          {disabled ? "Disabled for push to talk" : option.hint}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </fieldset>
+
+              {voicePipelineProvider.startsWith("google_gemini_") && (
+                <fieldset className="space-y-3">
+                  <legend className="vl-eyebrow block">Gemini live behavior</legend>
+                  {voicePipelineProvider === "google_gemini_3_1_flash_live" ? (
+                    <label className="block">
+                      <span className="mb-1.5 block text-[12px] font-semibold" style={{ color: "var(--color-vl-ink)" }}>
+                        Thinking level
+                      </span>
+                      <div className="relative">
+                        <select
+                          value={geminiThinkingLevel}
+                          onChange={(e) => setGeminiThinkingLevel(e.target.value as typeof geminiThinkingLevel)}
+                          className="vl-input appearance-none pr-10"
+                        >
+                          <option value="minimal">Minimal latency</option>
+                          <option value="low">Low</option>
+                          <option value="medium">Medium</option>
+                          <option value="high">High</option>
+                        </select>
+                        <ChevronDown
+                          className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2"
+                          style={{ color: "var(--color-vl-ink-faint)" }}
+                        />
+                      </div>
+                    </label>
+                  ) : (
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <ToggleCard
+                        label="Proactive audio"
+                        hint="Stays quiet when speech is not meant for the assistant."
+                        checked={geminiProactiveAudio}
+                        onChange={setGeminiProactiveAudio}
+                      />
+                      <ToggleCard
+                        label="Affective dialog"
+                        hint="Adapts tone to the user's expression and delivery."
+                        checked={geminiAffectiveDialog}
+                        onChange={setGeminiAffectiveDialog}
+                      />
+                    </div>
+                  )}
+                </fieldset>
+              )}
 
               <label className="block">
                 <span className="vl-eyebrow block mb-1.5">Personality</span>
@@ -431,13 +640,109 @@ export default function CreateAssistant() {
    Voice option card with sample playback
    ───────────────────────────────────────────────────────────────── */
 
+function VoiceEngineCard({
+  engine,
+  selected,
+  locked,
+  onSelect,
+}: {
+  engine: (typeof VOICE_ENGINES)[number];
+  selected: boolean;
+  locked: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={locked}
+      onClick={onSelect}
+      className="vl-card p-4 text-left transition-colors"
+      style={{
+        borderColor: selected
+          ? "rgba(124,110,245,0.6)"
+          : locked
+            ? "rgba(10,10,11,0.08)"
+            : "rgba(10, 10, 11,0.10)",
+        background: selected ? "rgba(124,110,245,0.06)" : "#FFFFFF",
+        opacity: locked ? 0.6 : 1,
+        cursor: locked ? "not-allowed" : "pointer",
+      }}
+    >
+      <span className="flex items-start justify-between gap-3">
+        <span className="text-[14px] font-semibold" style={{ color: "var(--color-vl-ink)" }}>
+          {engine.label}
+        </span>
+        {locked && (
+          <span
+            className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em]"
+            style={{
+              color: "rgba(10,10,11,0.52)",
+              background: "rgba(10,10,11,0.06)",
+            }}
+          >
+            <Lock className="h-3 w-3" /> Pro
+          </span>
+        )}
+      </span>
+      <span className="mt-1 block text-[12px]" style={{ color: "rgba(10,10,11,0.52)" }}>
+        {locked ? "Upgrade to use this voice engine." : engine.description}
+      </span>
+    </button>
+  );
+}
+
+function ToggleCard({
+  label,
+  hint,
+  checked,
+  onChange,
+}: {
+  label: string;
+  hint: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onChange(!checked)}
+      className="vl-card flex min-h-[88px] items-start gap-3 p-3 text-left transition-colors"
+      style={{
+        borderColor: checked ? "rgba(124,110,245,0.6)" : "rgba(10,10,11,0.10)",
+        background: checked ? "rgba(124,110,245,0.06)" : "#FFFFFF",
+      }}
+      aria-pressed={checked}
+    >
+      <span
+        className="mt-0.5 inline-flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition-colors"
+        style={{ background: checked ? "var(--color-vl-coral)" : "rgba(10,10,11,0.16)" }}
+      >
+        <span
+          className="block h-4 w-4 rounded-full bg-white transition-transform"
+          style={{ transform: checked ? "translateX(16px)" : "translateX(0)" }}
+        />
+      </span>
+      <span>
+        <span className="block text-[13px] font-semibold" style={{ color: "var(--color-vl-ink)" }}>
+          {label}
+        </span>
+        <span className="mt-1 block text-[11.5px] leading-snug" style={{ color: "rgba(10,10,11,0.48)" }}>
+          {hint}
+        </span>
+      </span>
+    </button>
+  );
+}
+
 function VoiceOption({
+  provider,
   voiceId,
   label,
   gender,
   selected,
   onSelect,
 }: {
+  provider: string;
   voiceId: string;
   label: string;
   gender: string;
@@ -465,7 +770,7 @@ function VoiceOption({
     }
     setPlayState("loading");
     try {
-      const url = `/api/v1/voice-pipelines/openai_realtime_webrtc/sample?voice=${encodeURIComponent(voiceId)}`;
+      const url = `/api/v1/voice-pipelines/${encodeURIComponent(provider)}/sample?voice=${encodeURIComponent(voiceId)}`;
       const res = await fetch(url);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const blob = await res.blob();

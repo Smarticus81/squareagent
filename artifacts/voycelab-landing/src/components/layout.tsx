@@ -5,22 +5,18 @@ import { LogOut, Menu, X, ArrowRight } from "lucide-react";
 import { useState } from "react";
 
 const APP_NAV = [
-  { href: "/command", label: "Console" },
   { href: "/assistants", label: "Assistants" },
   { href: "/services", label: "Integrations" },
   { href: "/settings", label: "Account" },
 ];
 
 const LANDING_NAV: { href: string; label: string }[] = [
-  { href: "#how-it-works", label: "How it works" },
-  { href: "#voice-demo", label: "Voice demo" },
-  { href: "#use-cases", label: "Customers" },
   { href: "/pricing", label: "Pricing" },
 ];
 
 /** Map legacy URLs so nav highlighting matches canonical routes. */
 function normalizeAppPath(loc: string): string {
-  if (loc === "/dashboard") return "/command";
+  if (loc === "/dashboard") return "/assistants";
   if (loc === "/account") return "/settings";
   if (loc === "/plans") return "/pricing";
   if (loc.startsWith("/agents")) return `/assistants${loc.slice("/agents".length)}`;
@@ -106,11 +102,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     <>
                       {!showAppShellNav && (
                         <Link
-                          href="/command"
+                          href="/assistants"
                           className="hidden sm:inline-flex text-[13px] font-medium px-4 py-1.5 rounded-full vl-btn-outline"
                           style={{ padding: "0.5rem 1.1rem" }}
                         >
-                          Open console
+                          Open assistants
                         </Link>
                       )}
                       <button
@@ -226,7 +222,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 title="Product"
                 links={[
                   { href: "/assistants/new", label: "Create your assistant" },
-                  { href: "/command", label: "Console" },
+                  { href: "/assistants", label: "Assistants" },
                   { href: "/services", label: "Integrations" },
                   { href: "/pricing", label: "Pricing" },
                 ]}

@@ -6,8 +6,16 @@ import { useSquare } from "@/contexts/SquareContext";
 import { OrderPanel } from "@/components/OrderPanel";
 import { VoiceOrb } from "@/components/VoiceOrb";
 import { useWakeWord, isWakeWordSupported } from "@/hooks/useWakeWord";
+import { useWakeLock } from "@/hooks/useWakeLock";
 import { soundWake, soundChime, soundItemAdd, soundSubmit, soundError, soundSleep } from "@/lib/sounds";
 import { matchTermination } from "@/lib/voice-termination";
+import { commandLabel } from "@/lib/command-labels";
+
+const DEBUG_APP_EVENTS = import.meta.env.DEV;
+
+function debugAppLog(message: string, ...args: unknown[]): void {
+  if (DEBUG_APP_EVENTS) console.log(message, ...args);
+}
 
 /* ── App modes ─────────────────────────────────────────────────── */
 type AppMode = "idle" | "wake_word" | "command" | "shutdown";
@@ -62,7 +70,7 @@ function buildWakeWords(wakePhrase: string): string[] {
       words.add(`hey ${compact}`);
     }
   } else {
-    words.add("hey bar");
+    words.add("hey voyce");
   }
   return Array.from(words);
 }
@@ -92,7 +100,7 @@ export default function App() {
   const {
     agentState, isConnected, conversation, partialTranscript, error, remoteStream,
     pendingConfirmation, connect, disconnect, setToolHandler, interrupt,
-    setCatalog, setCurrentOrder, setSquareCredentials, setAuthParams,
+    setCatalog, setCurrentOrder, setAuthParams,
     confirmPending, denyPending,
   } = useVoiceAgent();
 
@@ -106,13 +114,12 @@ export default function App() {
     catalogItems,
     isLoadingCatalog,
     catalogError,
-    accessToken,
-    locationId,
     venueId: sqVenueId,
     authToken: sqAuthToken,
     agentProfile,
     agentProfileId,
     wakePhrase,
+    wakeMode,
     assistantKind,
   } = useSquare();
 
@@ -123,6 +130,11 @@ export default function App() {
   const modeRef = useRef<AppMode>("idle");
   const prevItemCountRef = useRef(0);
   const terminationHandledRef = useRef(false);
+  const pushToTalkRequired = agentProfile?.noiseMode === "push_to_talk";
+  const wakeEnabled = wakeMode !== "tap" && !pushToTalkRequired;
+  const wakeWordAvailable = wakeEnabled && isWakeWordSupported();
+
+  const wakeLockStatus = useWakeLock(mode === "wake_word" || mode === "command");
 
   useEffect(() => { modeRef.current = mode; }, [mode]);
 
@@ -138,12 +150,8 @@ export default function App() {
   // Keep refs for stale-closure-proof callbacks
   const catalogRef = useRef(catalogItems);
   const orderRef = useRef(currentOrder);
-  const tokenRef = useRef(accessToken);
-  const locRef = useRef(locationId);
   useEffect(() => { catalogRef.current = catalogItems; }, [catalogItems]);
   useEffect(() => { orderRef.current = currentOrder; }, [currentOrder]);
-  useEffect(() => { tokenRef.current = accessToken; }, [accessToken]);
-  useEffect(() => { locRef.current = locationId; }, [locationId]);
 
   // Push catalog to voice agent
   useEffect(() => {
@@ -152,19 +160,20 @@ export default function App() {
     })));
   }, [catalogItems, setCatalog]);
 
-  // Push Square credentials to voice agent
-  useEffect(() => {
-    if (accessToken && locationId) setSquareCredentials(accessToken, locationId);
-  }, [accessToken, locationId, setSquareCredentials]);
-
   // Pass venueId + auth JWT to voice agent for server-side credential lookup.
   // Always pass the auth token whenever we have one — the general assistant
   // works without a venue or assistant profile and just needs the JWT.
   useEffect(() => {
     const venueId = sqVenueId || "";
     const authToken = sqAuthToken || "";
-    setAuthParams(venueId, authToken, agentProfileId ?? undefined);
-  }, [sqVenueId, sqAuthToken, agentProfileId, setAuthParams]);
+    setAuthParams(
+      venueId,
+      authToken,
+      agentProfileId ?? undefined,
+      agentProfile?.voicePipelineProvider,
+      agentProfile?.voicePipelineConfig,
+    );
+  }, [sqVenueId, sqAuthToken, agentProfileId, agentProfile, setAuthParams]);
 
   // Push current order to voice agent
   useEffect(() => {
@@ -217,7 +226,7 @@ export default function App() {
 
   // ── Wake word handlers ──────────────────────────────────────────
   const onWakeWordDetected = useCallback(() => {
-    console.log("[App] Wake word detected → entering command mode");
+    debugAppLog("[App] Wake word detected - entering command mode");
     soundWake();
     setTimeout(() => soundChime(), 280);
     setMode("command");
@@ -225,15 +234,15 @@ export default function App() {
   }, [connect]);
 
   const onStopDetected = useCallback(() => {
-    console.log("[App] Terminating phrase → back to wake word mode");
+    debugAppLog("[App] Terminating phrase - back to wake word mode");
     soundSleep();
     const wasCommand = modeRef.current === "command";
-    setMode("wake_word");
+    setMode(wakeWordAvailable ? "wake_word" : "idle");
     if (wasCommand) void disconnect();
-  }, [disconnect]);
+  }, [disconnect, wakeWordAvailable]);
 
   const onShutdownDetected = useCallback(() => {
-    console.log("[App] Shutdown phrase → stopping completely");
+    debugAppLog("[App] Shutdown phrase - stopping completely");
     soundSleep();
     const wasCommand = modeRef.current === "command";
     setMode("shutdown");
@@ -253,9 +262,9 @@ export default function App() {
   // When agent disconnects naturally or via response, return to wake listening (unless fully shut down)
   useEffect(() => {
     if (mode === "command" && agentState === "disconnected") {
-      setMode("wake_word");
+      setMode(wakeWordAvailable ? "wake_word" : "idle");
     }
-  }, [mode, agentState]);
+  }, [mode, agentState, wakeWordAvailable]);
 
   useEffect(() => {
     if (mode === "command") terminationHandledRef.current = false;
@@ -268,23 +277,23 @@ export default function App() {
 
   // Start/stop wake word based on mode
   useEffect(() => {
-    if (mode === "wake_word") {
+    if (mode === "wake_word" && wakeWordAvailable) {
       const timer = setTimeout(() => startWakeWord(), 600);
       return () => clearTimeout(timer);
     } else {
       stopWakeWord();
     }
-  }, [mode, startWakeWord, stopWakeWord]);
+  }, [mode, wakeWordAvailable, startWakeWord, stopWakeWord]);
 
   const applyVoiceTermination = useCallback(
     (kind: "soft" | "hard") => {
       if (terminationHandledRef.current) return;
       terminationHandledRef.current = true;
       soundSleep();
-      setMode(kind === "hard" ? "shutdown" : "wake_word");
+      setMode(kind === "hard" ? "shutdown" : wakeWordAvailable ? "wake_word" : "idle");
       void disconnect();
     },
-    [disconnect],
+    [disconnect, wakeWordAvailable],
   );
 
   const lastConversationLenRef = useRef(0);
@@ -311,11 +320,11 @@ export default function App() {
 
   // ── Rail tap / initial activation ─────────────────────────────
   async function handleRailTap() {
-    console.log("[App] rail tap — mode:", mode, "micGranted:", micPermissionGranted, "agentState:", agentState);
+    debugAppLog("[App] rail tap", { mode, micGranted: micPermissionGranted, agentState });
     if (mode === "idle" || mode === "shutdown") {
       if (!micPermissionGranted) {
         if (!navigator.mediaDevices?.getUserMedia) {
-          setMicError("Microphone API unavailable. Use HTTPS or localhost.");
+          setMicError("Microphone unavailable. Use HTTPS or localhost.");
           console.warn("[App] navigator.mediaDevices.getUserMedia not available");
           return;
         }
@@ -337,7 +346,12 @@ export default function App() {
         }
       }
       soundWake();
-      setMode("wake_word");
+      if (wakeWordAvailable) {
+        setMode("wake_word");
+      } else {
+        setMode("command");
+        connect();
+      }
     } else if (mode === "wake_word") {
       stopWakeWord();
       soundWake();
@@ -349,7 +363,7 @@ export default function App() {
       } else {
         soundSleep();
         disconnect();
-        setMode("wake_word");
+        setMode(wakeWordAvailable ? "wake_word" : "idle");
       }
     }
   }
@@ -482,7 +496,8 @@ export default function App() {
             onTap={handleRailTap}
           />
           <div className="orb-label">{label ?? (mode === "idle" ? "" : "")}</div>
-          {mode === "idle" && <div className="orb-hint">tap to begin</div>}
+          {mode === "idle" && <div className="orb-hint">{wakeWordAvailable ? "tap for wake mode" : "tap to speak"}</div>}
+          {mode === "wake_word" && wakeWordAvailable && <div className="orb-hint">say {wakePhrase || "Hey Voyce"}</div>}
           {agentState === "speaking" && <div className="orb-hint">tap to interrupt</div>}
         </div>
       </div>
@@ -514,8 +529,13 @@ export default function App() {
           }}
         >
           <div style={{ fontSize: 13, fontWeight: 600, color: "#E65100", marginBottom: 8 }}>
-            Confirm: {pendingConfirmation.tool_name.replace(/_/g, " ")}
+            Confirm {commandLabel(pendingConfirmation.tool_name)}
           </div>
+          {pendingConfirmation.prompt && (
+            <div style={{ fontSize: 12, lineHeight: 1.35, color: "#8A3E00", marginBottom: 8 }}>
+              {pendingConfirmation.prompt}
+            </div>
+          )}
           <div style={{ display: "flex", gap: 8 }}>
             <button
               type="button"
@@ -561,6 +581,7 @@ export default function App() {
         pendingConfirmation={pendingConfirmation}
         onConfirm={confirmPending}
         onDeny={denyPending}
+        screenWakeStatus={wakeLockStatus}
       />
     </div>
   );

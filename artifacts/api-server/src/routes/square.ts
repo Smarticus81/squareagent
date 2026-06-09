@@ -1,6 +1,12 @@
 import { Router, type IRouter, Request, Response } from "express";
 import crypto from "crypto";
-import { encrypt, decrypt } from "../lib/secrets";
+import { requireAuth } from "./auth";
+import { ensureUserOrganization } from "./v1/_helpers";
+import {
+  peekPendingSquareOAuthToken,
+  purgeExpiredSquareOAuthTokens,
+  storePendingSquareOAuthToken,
+} from "../lib/square-oauth-claims";
 
 const router: IRouter = Router();
 
@@ -72,25 +78,42 @@ function squareHeaders(token: string) {
   };
 }
 
+function redactSquareId(id: unknown): string {
+  if (typeof id !== "string" || id.length === 0) return "unknown";
+  if (id.length <= 8) return `${id.slice(0, 2)}...${id.slice(-2)}`;
+  return `${id.slice(0, 4)}...${id.slice(-4)}`;
+}
+
+function squareErrorSummary(errors: unknown): string {
+  if (!Array.isArray(errors) || errors.length === 0) return "unknown_error";
+  return errors
+    .slice(0, 2)
+    .map((err) => {
+      if (!err || typeof err !== "object") return "unknown_error";
+      const e = err as Record<string, unknown>;
+      return [e.category, e.code, e.detail ? "detail_present" : null].filter(Boolean).join(":");
+    })
+    .join(",");
+}
+
 // ── In-memory state stores (TTL: 10 min) ─────────────────────────────────────
 
 interface PendingState {
   timestamp: number;
   redirectUri: string;
+  userId: number;
+  organizationId: string | null;
   mode?: "redirect";
   returnUrl?: string;
   returnOrigin?: string;
 }
-interface PendingToken { token: string; merchantId: string; timestamp: number }
-
 const pendingStates = new Map<string, PendingState>();
-const pendingTokens = new Map<string, PendingToken>();
 
 // Clean up stale entries every 5 minutes
 setInterval(() => {
   const cutoff = Date.now() - 10 * 60 * 1000;
   for (const [k, v] of pendingStates) if (v.timestamp < cutoff) pendingStates.delete(k);
-  for (const [k, v] of pendingTokens) if (v.timestamp < cutoff) pendingTokens.delete(k);
+  purgeExpiredSquareOAuthTokens();
 }, 5 * 60 * 1000);
 
 // ── OAuth routes ──────────────────────────────────────────────────────────────
@@ -99,12 +122,16 @@ setInterval(() => {
 // Default: returns { url, state } for popup flow.
 // With ?mode=redirect&return_url=/path: redirects directly to Square OAuth,
 // and the callback will redirect back to return_url with ?oauth_ts=<claim key>.
-router.get("/oauth/authorize", (req: Request, res: Response): void => {
+router.get("/oauth/authorize", requireAuth as any, async (req: Request, res: Response): Promise<void> => {
   const appId = process.env.SQUARE_APPLICATION_ID;
   if (!appId) { res.status(500).json({ error: "SQUARE_APPLICATION_ID not configured" }); return; }
+  const user = (req as any).user;
+  const organizationId =
+    (req as any).organization?.id ?? (await ensureUserOrganization(user)).id;
 
   const mode = req.query.mode as string | undefined;
   const returnUrl = req.query.return_url as string | undefined;
+  const handoff = req.query.handoff as string | undefined;
 
   // Validate return_url to prevent open redirect attacks
   if (mode === "redirect") {
@@ -116,7 +143,12 @@ router.get("/oauth/authorize", (req: Request, res: Response): void => {
 
   const state = crypto.randomUUID();
   const redirectUri = getRedirectUri(req);
-  const pendingState: PendingState = { timestamp: Date.now(), redirectUri };
+  const pendingState: PendingState = {
+    timestamp: Date.now(),
+    redirectUri,
+    userId: user.id,
+    organizationId,
+  };
   if (mode === "redirect" && returnUrl) {
     pendingState.mode = "redirect";
     pendingState.returnUrl = returnUrl;
@@ -137,11 +169,11 @@ router.get("/oauth/authorize", (req: Request, res: Response): void => {
 
   console.log(`[Square OAuth] authorize → redirect_uri=${redirectUri}`);
 
-  if (mode === "redirect") {
+  if (mode === "redirect" && handoff !== "json") {
     // Full-page redirect — works in standalone PWA
     res.redirect(oauthUrl);
   } else {
-    // Popup mode — client opens URL in window.open()
+    // Popup mode, or authenticated SPA handoff before full-page navigation.
     res.json({ url: oauthUrl, state, redirect_uri: redirectUri });
   }
 });
@@ -206,11 +238,11 @@ router.get("/oauth/callback", async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    const ts = crypto.randomUUID();
-    pendingTokens.set(ts, {
-      token: encrypt(data.access_token),
+    const ts = storePendingSquareOAuthToken({
+      token: data.access_token,
       merchantId: data.merchant_id ?? "",
-      timestamp: Date.now(),
+      userId: pendingOAuthState.userId,
+      organizationId: pendingOAuthState.organizationId,
     });
 
     if (isRedirectMode) {
@@ -229,13 +261,18 @@ router.get("/oauth/callback", async (req: Request, res: Response): Promise<void>
 });
 
 // GET /api/square/oauth/token?ts=...
-// Client polls this once after receiving tokenState from postMessage
-router.get("/oauth/token", (req: Request, res: Response): void => {
+// Client claims OAuth metadata after callback. Square tokens stay server-side.
+router.get("/oauth/token", requireAuth as any, async (req: Request, res: Response): Promise<void> => {
   const { ts } = req.query as Record<string, string>;
-  const pending = pendingTokens.get(ts);
-  if (!pending) { res.status(404).json({ error: "Token not found or already claimed" }); return; }
-  pendingTokens.delete(ts);
-  res.json({ token: decrypt(pending.token), merchantId: pending.merchantId });
+  const user = (req as any).user;
+  const organizationId =
+    (req as any).organization?.id ?? (await ensureUserOrganization(user)).id;
+  const pending = peekPendingSquareOAuthToken({ claimId: ts, userId: user.id, organizationId });
+  if (!pending) {
+    res.status(404).json({ error: "Token not found, expired, or already claimed" });
+    return;
+  }
+  res.json({ tokenState: ts, merchantId: pending.merchantId });
 });
 
 // ── Popup HTML helper ─────────────────────────────────────────────────────────
@@ -284,11 +321,22 @@ function popupHtml(tokenState: string | null, error: string | null): string {
 </html>`;
 }
 
+// All raw-token Square proxy calls require a VoyceLab session. OAuth callback
+// routes above stay public because Square redirects to them server-to-server.
+router.use(requireAuth as any);
+
 // ── Square API proxy routes ───────────────────────────────────────────────────
 
 // GET /api/square/locations
 router.get("/locations", async (req: Request, res: Response): Promise<void> => {
-  const token = req.headers["x-square-token"] as string;
+  const claimId = typeof req.query.oauth_ts === "string" ? req.query.oauth_ts : "";
+  const user = (req as any).user;
+  const organizationId =
+    (req as any).organization?.id ?? (await ensureUserOrganization(user)).id;
+  const pending = claimId
+    ? peekPendingSquareOAuthToken({ claimId, userId: user.id, organizationId })
+    : null;
+  const token = pending?.token ?? (req.headers["x-square-token"] as string);
   if (!token) { res.status(401).json({ error: "Missing Square access token" }); return; }
 
   try {
@@ -406,9 +454,9 @@ router.get("/orders/recent", async (req: Request, res: Response): Promise<void> 
       }),
     });
     const data = await response.json() as any;
-    console.log("[Square] Recent orders search:", JSON.stringify(data).slice(0, 500));
+    console.log(`[Square] Recent orders search status=${response.status} count=${data.orders?.length ?? 0}`);
     if (!response.ok) {
-      res.status(response.status).json({ error: data.errors?.[0]?.detail || "Search failed", raw: data });
+      res.status(response.status).json({ error: data.errors?.[0]?.detail || "Search failed" });
       return;
     }
     res.json({
@@ -453,9 +501,9 @@ router.post("/orders", async (req: Request, res: Response): Promise<void> => {
     const merchantRes = await fetch(`${SQUARE_BASE}/merchants/me`, { headers: squareHeaders(token) });
     const merchantData = await merchantRes.json() as any;
     const merchant = merchantData.merchant;
-    console.log("[Square] Token belongs to merchant:", merchant?.business_name, "| id:", merchant?.id, "| country:", merchant?.country, "| status:", merchant?.status);
+    console.log(`[Square] Token merchant verified merchant=${redactSquareId(merchant?.id)} country=${merchant?.country ?? "unknown"} status=${merchant?.status ?? "unknown"}`);
 
-    console.log("[Square] Creating order — location:", locationId, "items:", JSON.stringify(lineItems));
+    console.log(`[Square] Creating order location=${redactSquareId(locationId)} itemCount=${lineItems.length}`);
 
     const ticketRef = `VOICE-${Date.now()}`;
     const response = await fetch(`${SQUARE_BASE}/orders`, {
@@ -474,14 +522,14 @@ router.post("/orders", async (req: Request, res: Response): Promise<void> => {
     const data = await response.json() as any;
     if (!response.ok) {
       const errMsg = data.errors?.[0]?.detail || "Failed to create order";
-      console.error("[Square] Order failed:", JSON.stringify(data.errors));
+      console.error("[Square] Order failed:", squareErrorSummary(data.errors));
       res.status(response.status).json({ error: errMsg });
       return;
     }
 
     const orderId = data.order?.id;
     const orderTotal = data.order?.total_money?.amount ?? 0;
-    console.log("[Square] Order created:", orderId, "| state:", data.order?.state, "| total:", orderTotal);
+    console.log(`[Square] Order created order=${redactSquareId(orderId)} state=${data.order?.state ?? "unknown"}`);
 
     // Create an external payment to mark the order as a completed transaction
     // so it appears in Square's sales reports and transaction history
@@ -508,9 +556,9 @@ router.post("/orders", async (req: Request, res: Response): Promise<void> => {
       : null;
 
     if (paymentError) {
-      console.warn("[Square] Payment failed (order still created):", JSON.stringify(paymentData.errors));
+      console.warn("[Square] Payment failed (order still created):", squareErrorSummary(paymentData.errors));
     } else {
-      console.log("[Square] Payment created:", paymentData.payment?.id, "| status:", paymentData.payment?.status);
+      console.log(`[Square] Payment created payment=${redactSquareId(paymentData.payment?.id)} status=${paymentData.payment?.status ?? "unknown"}`);
     }
 
     res.json({
@@ -608,7 +656,7 @@ router.post("/terminal/checkout", async (req: Request, res: Response): Promise<v
       return;
     }
 
-    console.log(`[Square] Terminal checkout created: ${data.checkout?.id} → device ${deviceId}`);
+    console.log(`[Square] Terminal checkout created checkout=${redactSquareId(data.checkout?.id)} device=${redactSquareId(deviceId)}`);
     res.json({
       success: true,
       checkoutId: data.checkout?.id,

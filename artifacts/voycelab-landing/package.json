@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@clerk/clerk-react": "^5.61.3",
+    "@workspace/voicelab-core": "workspace:*",
     "@workspace/voicelab-client": "workspace:*"
   },
   "devDependencies": {

@@ -10,7 +10,6 @@ import { Layout } from "@/components/layout";
 import Landing from "@/pages/landing";
 import Login from "@/pages/login";
 import Signup from "@/pages/signup";
-import Command from "@/pages/command";
 import Assistants from "@/pages/assistants";
 import CreateAssistant from "@/pages/create-assistant";
 import ConnectedServices from "@/pages/connected-services";
@@ -40,8 +39,8 @@ const queryClient = new QueryClient({
       // into 8–10 retries across page navigations.
       retry: false,
       refetchOnWindowFocus: false,
-      // Keep cache fresh across page navigations so visiting Command,
-      // Agents, Services, and AgentSetup in sequence does not re-fetch
+      // Keep cache fresh across page navigations so visiting Assistants,
+      // Services, and assistant setup in sequence does not re-fetch
       // /api/venues four times.
       staleTime: 30_000,
       gcTime: 5 * 60_000,
@@ -57,7 +56,7 @@ function Router() {
         <Route path="/login" component={Login} />
         <Route path="/signup" component={Signup} />
         <Route path="/dashboard">
-          <NavigateReplace to="/command" />
+          <NavigateReplace to="/assistants" />
         </Route>
         <Route path="/account">
           <NavigateReplace to="/settings" />
@@ -66,7 +65,6 @@ function Router() {
           <NavigateReplace to="/pricing" />
         </Route>
         <Route path="/onboarding" component={Onboarding} />
-        <Route path="/command" component={Command} />
         <Route path="/assistants" component={Assistants} />
         <Route path="/assistants/new" component={CreateAssistant} />
         <Route path="/assistants/edit/:id" component={CreateAssistant} />

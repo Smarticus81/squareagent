@@ -220,6 +220,9 @@ importers:
       '@workspace/voicelab-client':
         specifier: workspace:*
         version: link:../../lib/voicelab-client
+      '@workspace/voicelab-core':
+        specifier: workspace:*
+        version: link:../../lib/voicelab-core
     devDependencies:
       '@radix-ui/react-dialog':
         specifier: ^1.1.7

@@ -4,12 +4,12 @@
  *  - External Postgres connection for the query_database tool.
  *  - Outbound email credentials for the send_email tool.
  *
- * All routes are scoped to the authenticated user (req.user.id). Multi-tenant
- * org scoping can be layered on later.
+ * Routes are scoped to the authenticated user's active organization. Legacy
+ * rows without organization_id remain visible to their original owner.
  */
 
 import { Router, type Request, type Response } from "express";
-import { and, eq, desc } from "drizzle-orm";
+import { and, eq, desc, isNull, or } from "drizzle-orm";
 import {
   db,
   knowledgeDocumentsTable,
@@ -18,11 +18,15 @@ import {
   emailCredentialsTable,
 } from "@workspace/db";
 import { requireAuth } from "../auth";
+import { ensureUserOrganization } from "./_helpers";
 import { embedBatch, chunkText } from "../../lib/embeddings";
 import { encrypt } from "../../lib/secrets";
 import { extractTextFromUpload } from "../../lib/document-extract";
 import multer from "multer";
 import rateLimit, { ipKeyGenerator } from "express-rate-limit";
+import pg from "pg";
+
+const { Client } = pg;
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
@@ -56,10 +60,51 @@ const router = Router();
 
 router.use(requireAuth as any);
 
+async function currentOrganizationId(req: Request): Promise<string | null> {
+  const existing = (req as Request & { organization?: { id: string } | null }).organization?.id;
+  if (existing) return existing;
+  const user = (req as any).user;
+  if (!user) return null;
+  return (await ensureUserOrganization(user)).id;
+}
+
+function tenantWhere(table: { userId: any; organizationId: any }, userId: number, organizationId: string | null) {
+  return organizationId
+    ? or(
+        eq(table.organizationId, organizationId),
+        and(eq(table.userId, userId), isNull(table.organizationId)),
+      )
+    : eq(table.userId, userId);
+}
+
+async function validatePostgresConnection(connectionString: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  const client = new Client({
+    connectionString,
+    connectionTimeoutMillis: 5_000,
+    statement_timeout: 5_000,
+    query_timeout: 5_000,
+  });
+  try {
+    await client.connect();
+    await client.query("BEGIN READ ONLY");
+    await client.query("SELECT 1 AS voycelab_connection_check");
+    await client.query("ROLLBACK");
+    return { ok: true };
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message.slice(0, 240) : "Could not connect to database",
+    };
+  } finally {
+    try { await client.end(); } catch { /* ignore */ }
+  }
+}
+
 // ── Knowledge documents ───────────────────────────────────────────────────────
 
 router.post("/documents", uploadLimiter, async (req: Request, res: Response): Promise<void> => {
   const userId = (req as any).user.id as number;
+  const organizationId = await currentOrganizationId(req);
   const { title, text, sourceType = "text", sourceUri } = req.body ?? {};
   if (!title || typeof title !== "string") {
     res.status(400).json({ error: "title is required" });
@@ -93,6 +138,7 @@ router.post("/documents", uploadLimiter, async (req: Request, res: Response): Pr
       .insert(knowledgeDocumentsTable)
       .values({
         userId,
+        organizationId,
         title: title.trim().slice(0, 200),
         sourceType: String(sourceType).slice(0, 32),
         sourceUri: typeof sourceUri === "string" ? sourceUri.slice(0, 1000) : null,
@@ -105,6 +151,7 @@ router.post("/documents", uploadLimiter, async (req: Request, res: Response): Pr
       chunks.map((c, i) => ({
         documentId: doc.id,
         userId,
+        organizationId,
         chunkIndex: i,
         text: c,
         embedding: embeddings[i],
@@ -126,6 +173,7 @@ router.post("/documents", uploadLimiter, async (req: Request, res: Response): Pr
 
 router.get("/documents", async (req: Request, res: Response): Promise<void> => {
   const userId = (req as any).user.id as number;
+  const organizationId = await currentOrganizationId(req);
   const docs = await db
     .select({
       id: knowledgeDocumentsTable.id,
@@ -137,17 +185,18 @@ router.get("/documents", async (req: Request, res: Response): Promise<void> => {
       createdAt: knowledgeDocumentsTable.createdAt,
     })
     .from(knowledgeDocumentsTable)
-    .where(eq(knowledgeDocumentsTable.userId, userId))
+    .where(tenantWhere(knowledgeDocumentsTable, userId, organizationId))
     .orderBy(desc(knowledgeDocumentsTable.createdAt));
   res.json({ documents: docs });
 });
 
 router.delete("/documents/:id", async (req: Request, res: Response): Promise<void> => {
   const userId = (req as any).user.id as number;
+  const organizationId = await currentOrganizationId(req);
   const id = String(req.params.id);
   const result = await db
     .delete(knowledgeDocumentsTable)
-    .where(and(eq(knowledgeDocumentsTable.id, id), eq(knowledgeDocumentsTable.userId, userId)))
+    .where(and(eq(knowledgeDocumentsTable.id, id), tenantWhere(knowledgeDocumentsTable, userId, organizationId)))
     .returning({ id: knowledgeDocumentsTable.id });
   if (result.length === 0) {
     res.status(404).json({ error: "Document not found" });
@@ -160,6 +209,7 @@ router.delete("/documents/:id", async (req: Request, res: Response): Promise<voi
 
 router.get("/database-connections", async (req: Request, res: Response): Promise<void> => {
   const userId = (req as any).user.id as number;
+  const organizationId = await currentOrganizationId(req);
   const rows = await db
     .select({
       id: externalDbConnectionsTable.id,
@@ -169,12 +219,13 @@ router.get("/database-connections", async (req: Request, res: Response): Promise
       createdAt: externalDbConnectionsTable.createdAt,
     })
     .from(externalDbConnectionsTable)
-    .where(eq(externalDbConnectionsTable.userId, userId));
+    .where(tenantWhere(externalDbConnectionsTable, userId, organizationId));
   res.json({ connections: rows });
 });
 
 router.post("/database-connections", writeLimiter, async (req: Request, res: Response): Promise<void> => {
   const userId = (req as any).user.id as number;
+  const organizationId = await currentOrganizationId(req);
   const { label = "default", connectionString, schemaHint } = req.body ?? {};
   if (!connectionString || typeof connectionString !== "string") {
     res.status(400).json({ error: "connectionString is required" });
@@ -184,35 +235,44 @@ router.post("/database-connections", writeLimiter, async (req: Request, res: Res
     res.status(400).json({ error: "Only postgres:// connection strings are supported." });
     return;
   }
+  const validation = await validatePostgresConnection(connectionString);
+  if (!validation.ok) {
+    res.status(400).json({
+      error: "Could not connect to this database with a read-only test query.",
+      detail: validation.error,
+    });
+    return;
+  }
 
   // Upsert by (userId, label)
   const existing = await db
     .select()
     .from(externalDbConnectionsTable)
-    .where(and(eq(externalDbConnectionsTable.userId, userId), eq(externalDbConnectionsTable.label, label)));
+    .where(and(tenantWhere(externalDbConnectionsTable, userId, organizationId), eq(externalDbConnectionsTable.label, label)));
 
   if (existing.length > 0) {
     await db
       .update(externalDbConnectionsTable)
-      .set({ connectionString: encrypt(connectionString), schemaHint: schemaHint ?? null, updatedAt: new Date() })
+      .set({ organizationId: existing[0].organizationId ?? organizationId, connectionString: encrypt(connectionString), schemaHint: schemaHint ?? null, updatedAt: new Date() })
       .where(eq(externalDbConnectionsTable.id, existing[0].id));
-    res.json({ id: existing[0].id, label, updated: true });
+    res.json({ id: existing[0].id, label, updated: true, validated: true });
     return;
   }
 
   const [row] = await db
     .insert(externalDbConnectionsTable)
-    .values({ userId, label, connectionString: encrypt(connectionString), schemaHint: schemaHint ?? null })
+    .values({ userId, organizationId, label, connectionString: encrypt(connectionString), schemaHint: schemaHint ?? null })
     .returning();
-  res.status(201).json({ id: row.id, label: row.label });
+  res.status(201).json({ id: row.id, label: row.label, validated: true });
 });
 
 router.delete("/database-connections/:id", async (req: Request, res: Response): Promise<void> => {
   const userId = (req as any).user.id as number;
+  const organizationId = await currentOrganizationId(req);
   const id = String(req.params.id);
   const result = await db
     .delete(externalDbConnectionsTable)
-    .where(and(eq(externalDbConnectionsTable.id, id), eq(externalDbConnectionsTable.userId, userId)))
+    .where(and(eq(externalDbConnectionsTable.id, id), tenantWhere(externalDbConnectionsTable, userId, organizationId)))
     .returning({ id: externalDbConnectionsTable.id });
   if (result.length === 0) {
     res.status(404).json({ error: "Connection not found" });
@@ -225,6 +285,7 @@ router.delete("/database-connections/:id", async (req: Request, res: Response): 
 
 router.get("/email", async (req: Request, res: Response): Promise<void> => {
   const userId = (req as any).user.id as number;
+  const organizationId = await currentOrganizationId(req);
   const [row] = await db
     .select({
       id: emailCredentialsTable.id,
@@ -234,13 +295,14 @@ router.get("/email", async (req: Request, res: Response): Promise<void> => {
       createdAt: emailCredentialsTable.createdAt,
     })
     .from(emailCredentialsTable)
-    .where(eq(emailCredentialsTable.userId, userId))
+    .where(tenantWhere(emailCredentialsTable, userId, organizationId))
     .limit(1);
   res.json({ email: row ?? null });
 });
 
 router.put("/email", writeLimiter, async (req: Request, res: Response): Promise<void> => {
   const userId = (req as any).user.id as number;
+  const organizationId = await currentOrganizationId(req);
   const {
     provider = "resend",
     apiKey,
@@ -273,7 +335,7 @@ router.put("/email", writeLimiter, async (req: Request, res: Response): Promise<
   const existing = await db
     .select()
     .from(emailCredentialsTable)
-    .where(eq(emailCredentialsTable.userId, userId))
+    .where(tenantWhere(emailCredentialsTable, userId, organizationId))
     .limit(1);
 
   // Resolve which encrypted password column to write. For gmail/smtp we reuse smtpPass.
@@ -291,6 +353,7 @@ router.put("/email", writeLimiter, async (req: Request, res: Response): Promise<
       .update(emailCredentialsTable)
       .set({
         provider,
+        organizationId: existing[0].organizationId ?? organizationId,
         apiKey: provider === "resend" ? (apiKey ? encrypt(apiKey) : existing[0].apiKey) : null,
         fromAddress,
         fromName: fromName ?? null,
@@ -318,6 +381,7 @@ router.put("/email", writeLimiter, async (req: Request, res: Response): Promise<
     .insert(emailCredentialsTable)
     .values({
       userId,
+      organizationId,
       provider,
       apiKey: provider === "resend" && apiKey ? encrypt(apiKey) : null,
       fromAddress,
@@ -339,6 +403,7 @@ router.post(
   upload.single("file"),
   async (req: Request, res: Response): Promise<void> => {
     const userId = (req as any).user.id as number;
+    const organizationId = await currentOrganizationId(req);
     const file = (req as any).file as { originalname: string; mimetype: string; buffer: Buffer } | undefined;
     if (!file) {
       res.status(400).json({ error: "file is required (multipart field 'file')" });
@@ -362,6 +427,7 @@ router.post(
         .insert(knowledgeDocumentsTable)
         .values({
           userId,
+          organizationId,
           title,
           sourceType: file.mimetype || "upload",
           sourceUri: file.originalname,
@@ -374,6 +440,7 @@ router.post(
         chunks.map((c, i) => ({
           documentId: doc.id,
           userId,
+          organizationId,
           chunkIndex: i,
           text: c,
           embedding: embeddings[i],
@@ -396,7 +463,8 @@ router.post(
 
 router.delete("/email", async (req: Request, res: Response): Promise<void> => {
   const userId = (req as any).user.id as number;
-  await db.delete(emailCredentialsTable).where(eq(emailCredentialsTable.userId, userId));
+  const organizationId = await currentOrganizationId(req);
+  await db.delete(emailCredentialsTable).where(tenantWhere(emailCredentialsTable, userId, organizationId));
   res.json({ ok: true });
 });
 

@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from "express";
 import { v1 } from "@workspace/api-zod";
-import { db, agentProfilesTable, venuesTable } from "@workspace/db";
-import { and, eq } from "drizzle-orm";
+import { db, agentProfilesTable, serviceConnectionsTable, venuesTable } from "@workspace/db";
+import { and, eq, isNull, or } from "drizzle-orm";
 import {
   ensureUserOrganization,
   jsonError,
@@ -29,6 +29,7 @@ interface AgentProfileRow {
   connectedServiceId: string | null;
   displayName: string;
   wakePhrase: string;
+  wakeMode: string;
   voicePipelineProvider: string;
   voicePipelineConfig: Record<string, unknown>;
   noiseMode: string;
@@ -48,6 +49,7 @@ function rowToResponse(row: AgentProfileRow): Record<string, unknown> {
     connectedServiceId: row.connectedServiceId,
     displayName: row.displayName,
     wakePhrase: row.wakePhrase,
+    wakeMode: row.wakeMode ?? "ambient",
     voicePipelineProvider: row.voicePipelineProvider,
     voicePipelineConfig: row.voicePipelineConfig,
     noiseMode: row.noiseMode,
@@ -58,6 +60,65 @@ function rowToResponse(row: AgentProfileRow): Record<string, unknown> {
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
+}
+
+async function validateVenueForOrganization(
+  res: Response,
+  userId: number,
+  venueId: number | null | undefined,
+  organizationId: string,
+): Promise<boolean> {
+  if (!venueId) return true;
+  const [venue] = await db
+    .select()
+    .from(venuesTable)
+    .where(
+      and(
+        eq(venuesTable.id, venueId),
+        or(
+          eq(venuesTable.organizationId, organizationId),
+          and(eq(venuesTable.userId, userId), isNull(venuesTable.organizationId)),
+        ),
+      ),
+    )
+    .limit(1);
+  if (!venue) {
+    jsonError(res, 404, "venue_not_found", "Venue not found in this organization.");
+    return false;
+  }
+  return true;
+}
+
+async function validateConnectedServiceForOrganization(
+  res: Response,
+  connectedServiceId: string | null | undefined,
+  organizationId: string,
+  venueId?: number | null,
+): Promise<boolean> {
+  if (!connectedServiceId) return true;
+  const [connection] = await db
+    .select()
+    .from(serviceConnectionsTable)
+    .where(
+      and(
+        eq(serviceConnectionsTable.id, connectedServiceId),
+        eq(serviceConnectionsTable.organizationId, organizationId),
+      ),
+    )
+    .limit(1);
+  if (!connection) {
+    jsonError(res, 404, "service_not_found", "Connected service not found in this organization.");
+    return false;
+  }
+  if (
+    venueId &&
+    connection.venueId !== null &&
+    connection.venueId !== venueId
+  ) {
+    jsonError(res, 403, "service_venue_mismatch", "Connected service is attached to a different venue.");
+    return false;
+  }
+  return true;
 }
 
 router.get("/", async (req: Request, res: Response) => {
@@ -96,22 +157,18 @@ router.post("/", async (req: Request, res: Response) => {
     jsonError(res, 403, "forbidden", "User does not own this organization.");
     return;
   }
-  if (body.venueId) {
-    const [venue] = await db
-      .select()
-      .from(venuesTable)
-      .where(and(eq(venuesTable.id, body.venueId), eq(venuesTable.userId, user.id)))
-      .limit(1);
-    if (!venue) {
-      jsonError(res, 404, "venue_not_found", "Venue not found or not owned by user.");
-      return;
-    }
-  }
+  if (!(await validateVenueForOrganization(res, user.id, body.venueId, body.organizationId))) return;
+  if (!(await validateConnectedServiceForOrganization(
+    res,
+    body.connectedServiceId,
+    body.organizationId,
+    body.venueId ?? null,
+  ))) return;
 
   // Pipeline-tier gating: prevent picking a pipeline that's not unlocked
   // by the user's current subscription plan. This is enforced server-side
   // so the wizard can't bypass it by sending a different provider.
-  // Platform admins (tmusoni@thinkertons.com etc.) bypass tier gating.
+  // Platform admins configured via ADMIN_EMAILS bypass tier gating.
   const isAdmin = Boolean((req as Request & { isAdmin?: boolean }).isAdmin);
   const plan = (req as Request & { subscription?: { plan?: string } }).subscription?.plan ?? "trial";
   if (
@@ -128,6 +185,7 @@ router.post("/", async (req: Request, res: Response) => {
   }
 
   const wakePhrase = body.wakePhrase ?? defaultWakePhraseFor(body.displayName);
+  const wakeMode = body.noiseMode === "push_to_talk" ? "tap" : body.wakeMode;
 
   const [row] = await db
     .insert(agentProfilesTable)
@@ -137,6 +195,7 @@ router.post("/", async (req: Request, res: Response) => {
       connectedServiceId: body.connectedServiceId ?? null,
       displayName: body.displayName,
       wakePhrase,
+      wakeMode,
       voicePipelineProvider: body.voicePipelineProvider,
       voicePipelineConfig: body.voicePipelineConfig,
       noiseMode: body.noiseMode,
@@ -201,6 +260,17 @@ router.patch("/:id", async (req: Request, res: Response) => {
     jsonError(res, 403, "forbidden", "Access denied.");
     return;
   }
+  const nextVenueId =
+    parsed.data.venueId !== undefined ? parsed.data.venueId : existing.venueId;
+  const nextConnectedServiceId =
+    parsed.data.connectedServiceId !== undefined ? parsed.data.connectedServiceId : existing.connectedServiceId;
+  if (!(await validateVenueForOrganization(res, user.id, nextVenueId, existing.organizationId))) return;
+  if (!(await validateConnectedServiceForOrganization(
+    res,
+    nextConnectedServiceId,
+    existing.organizationId,
+    nextVenueId ?? null,
+  ))) return;
   if (parsed.data.voicePipelineProvider) {
     const isAdmin = Boolean((req as Request & { isAdmin?: boolean }).isAdmin);
     const plan = (req as Request & { subscription?: { plan?: string } }).subscription?.plan ?? "trial";
@@ -218,6 +288,11 @@ router.patch("/:id", async (req: Request, res: Response) => {
     }
   }
   const updates: Record<string, unknown> = { ...parsed.data, updatedAt: new Date() };
+  const nextNoiseMode =
+    typeof parsed.data.noiseMode === "string" ? parsed.data.noiseMode : existing.noiseMode;
+  if (nextNoiseMode === "push_to_talk") {
+    updates.wakeMode = "tap";
+  }
   // Drop undefined keys so we don't overwrite columns with null.
   for (const k of Object.keys(updates)) {
     if (updates[k] === undefined) delete updates[k];

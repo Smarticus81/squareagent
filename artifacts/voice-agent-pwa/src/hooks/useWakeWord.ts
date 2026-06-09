@@ -12,13 +12,19 @@ import {
   matchWakeWord,
 } from "@/lib/voice-termination";
 
-export const WAKE_WORDS = ["hey bar", "hey bars", "okay bar", "hey voyce", "hey voicelab", "voycelab"];
+export const WAKE_WORDS = ["hey voyce", "hey voicelab", "hey voycelab", "voycelab"];
 
 /** Soft termination — back to wake listening after closing live agent session */
 export const STOP_PHRASES = [...SOFT_BACK_TO_WAKE_PHRASES];
 
 /** Hard shutdown — stop all ambient listening until user taps to resume */
 export const SHUTDOWN_PHRASES = [...HARD_SHUTDOWN_PHRASES];
+
+const DEBUG_WAKE_EVENTS = import.meta.env.DEV;
+
+function debugWakeLog(message: string, ...args: unknown[]): void {
+  if (DEBUG_WAKE_EVENTS) console.log(message, ...args);
+}
 
 function getSR(): any {
   if (typeof window === "undefined") return null;
@@ -125,7 +131,7 @@ export function useWakeWord({
       if (!activeRef.current) return;
       captureFailsRef.current = 0;
       setIsListening(true);
-      console.log("[WakeWord] Mic confirmed open");
+      debugWakeLog("[WakeWord] Mic confirmed open");
     };
 
     rec.onresult = (event: any) => {
@@ -142,29 +148,29 @@ export function useWakeWord({
         if (transcripts.length === 0) continue;
         const combined = transcripts.join(" ");
         const isFinal = !!result.isFinal;
-        console.log("[WakeWord] Transcript:", combined, isFinal ? "(final)" : "(interim)");
+        debugWakeLog("[WakeWord] Transcript received", isFinal ? "(final)" : "(interim)");
 
         // Termination phrases use the shared matcher: hard anywhere, soft
         // requires end-of-utterance for interim transcripts.
         const term = matchTermination(combined, { partial: !isFinal });
         if (term === "hard") {
-          console.log("[WakeWord] Shutdown phrase:", combined);
+          debugWakeLog("[WakeWord] Shutdown phrase detected");
           stop();
           onShutdownRef.current();
           return;
         }
         if (term === "soft") {
-          console.log("[WakeWord] Stop phrase:", combined);
+          debugWakeLog("[WakeWord] Stop phrase detected");
           stop();
           onStopRef.current();
           return;
         }
 
-        // Wake words: word-boundary match so "hey bars" doesn't fire on
-        // "hey bartender".
+        // Wake words: word-boundary match so configured phrases do not fire
+        // on longer nearby words.
         const hit = matchWakeWord(combined, wakeWordsRef.current);
         if (hit) {
-          console.log("[WakeWord] Wake word detected:", hit, "in", combined);
+          debugWakeLog("[WakeWord] Wake word detected:", hit);
           stop();
           onWakeRef.current();
           return;

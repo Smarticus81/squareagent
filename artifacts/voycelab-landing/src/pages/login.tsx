@@ -13,7 +13,11 @@ export default function Login() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    login.mutate({ email, password }, { onSuccess: () => setLocation("/command") });
+    login.mutate({ email, password }, {
+      onSuccess: () => {
+        setLocation(sessionStorage.getItem("voycelab.pending_plan") ? "/pricing" : "/assistants");
+      },
+    });
   };
 
   return (
@@ -51,7 +55,7 @@ export default function Login() {
             className="text-[14px] text-center mt-2"
             style={{ color: "var(--color-vl-ink-muted)" }}
           >
-            Open your console and pick up where you left off.
+            Open your assistants and pick up where you left off.
           </p>
           <div className="mt-6 mb-2">
             <VoiceRail state="ready" intensity={0.4} />

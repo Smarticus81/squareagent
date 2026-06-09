@@ -8,7 +8,7 @@
  */
 
 import { db, externalDbConnectionsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull, or } from "drizzle-orm";
 import pg from "pg";
 import { decrypt } from "../../lib/secrets";
 import type { ToolDefinition, ToolExecutor, ToolContext, ToolResult } from "../types";
@@ -16,6 +16,15 @@ import type { ToolDefinition, ToolExecutor, ToolContext, ToolResult } from "../t
 const { Client } = pg;
 
 const FORBIDDEN = /\b(insert|update|delete|drop|truncate|alter|create|grant|revoke|copy|vacuum|analyze)\b/i;
+
+function tenantWhere(userId: number, organizationId?: string | null) {
+  return organizationId
+    ? or(
+        eq(externalDbConnectionsTable.organizationId, organizationId),
+        and(eq(externalDbConnectionsTable.userId, userId), isNull(externalDbConnectionsTable.organizationId)),
+      )
+    : eq(externalDbConnectionsTable.userId, userId);
+}
 
 export const definitions: ToolDefinition[] = [
   {
@@ -56,7 +65,7 @@ async function queryDatabase(args: Record<string, unknown>, ctx: ToolContext): P
   const rows = await db
     .select()
     .from(externalDbConnectionsTable)
-    .where(eq(externalDbConnectionsTable.userId, ctx.userId));
+    .where(tenantWhere(ctx.userId, ctx.organizationId));
   const conn = rows.find((r: typeof rows[number]) => r.label === label) ?? rows[0];
   if (!conn) {
     return { result: "query_database: no database connection configured. Add one in the dashboard." };
@@ -92,7 +101,7 @@ async function listConnections(_args: Record<string, unknown>, ctx: ToolContext)
   const rows = await db
     .select()
     .from(externalDbConnectionsTable)
-    .where(eq(externalDbConnectionsTable.userId, ctx.userId));
+    .where(tenantWhere(ctx.userId, ctx.organizationId));
   if (rows.length === 0) return { result: "No database connections configured." };
   return {
     result: rows

@@ -459,6 +459,163 @@ html[data-theme="dark"] .cat-row:hover { background: rgba(255,255,255,0.03); }
 .cat-price { font-weight: 500; font-size: 14px; color: var(--cat-price); margin-left: auto; }
 
 /* Settings */
+.settings-sheet {
+  padding: 12px 16px 18px;
+  overflow-y: auto;
+}
+.settings-account-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+  padding: 8px 2px;
+}
+.settings-account-main {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--settings-txt);
+  font-size: 12px;
+  font-weight: 500;
+}
+.settings-account-main span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.settings-summary {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.settings-summary > div {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--divider);
+  border-radius: 12px;
+  background: rgba(255,255,255,0.56);
+}
+html[data-theme="dark"] .settings-summary > div {
+  background: rgba(255,255,255,0.035);
+}
+.settings-summary-label {
+  margin-bottom: 4px;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--empty-txt);
+}
+.settings-summary-value {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--settings-txt);
+  font-size: 12.5px;
+  font-weight: 650;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+.settings-group {
+  border: 1px solid var(--divider);
+  border-radius: 14px;
+  background: rgba(255,255,255,0.46);
+  overflow: hidden;
+}
+.settings-group + .settings-group { margin-top: 8px; }
+html[data-theme="dark"] .settings-group {
+  background: rgba(255,255,255,0.025);
+}
+.settings-group summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 12px;
+  cursor: pointer;
+  list-style: none;
+  color: var(--settings-txt);
+  font-size: 13px;
+  font-weight: 650;
+}
+.settings-group summary::-webkit-details-marker { display: none; }
+.settings-group summary span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.settings-group summary > svg {
+  transition: transform 0.16s ease;
+  color: var(--empty-txt);
+}
+.settings-group[open] summary > svg { transform: rotate(90deg); }
+.settings-group-body {
+  padding: 0 12px 12px;
+}
+.settings-action-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding-top: 8px;
+}
+.settings-primary-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 38px;
+  padding: 9px 14px;
+  border-radius: 999px;
+  background: var(--brand);
+  color: #FFFFFF;
+  border: 1px solid var(--brand);
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+  opacity: 1;
+  font-family: var(--font);
+}
+.settings-primary-action:disabled {
+  cursor: wait;
+  opacity: 0.62;
+}
+.settings-mini-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 0;
+  font-size: 12px;
+  color: var(--empty-txt);
+}
+.settings-mini-row strong {
+  min-width: 0;
+  color: var(--settings-txt);
+  font-size: 12.5px;
+  font-weight: 650;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+.settings-mini-label {
+  padding: 10px 0 2px;
+  color: var(--empty-txt);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.settings-muted {
+  margin: 4px 0 0;
+  color: var(--empty-txt);
+  font-size: 12px;
+  line-height: 1.45;
+}
 .settings-section-label {
   font-family: var(--font); font-weight: 600; font-size: 10px;
   letter-spacing: 0.18em; text-transform: uppercase;
@@ -469,6 +626,15 @@ html[data-theme="dark"] .cat-row:hover { background: rgba(255,255,255,0.03); }
   border-bottom: 1px solid var(--divider); cursor: pointer;
   border-radius: 12px;
   transition: background 0.15s;
+}
+.settings-row.compact {
+  width: 100%;
+  padding: 10px 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-family: var(--font);
+  text-align: left;
 }
 .settings-row:hover { background: var(--surface-2); }
 html[data-theme="dark"] .settings-row:hover { background: rgba(255,255,255,0.03); }

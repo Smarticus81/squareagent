@@ -1,10 +1,13 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
-import { X, MoreVertical, Trash2, Loader, Link, ChevronRight, Sun, Moon, RefreshCw, LogIn, User, MapPin, LogOut, Play, ClipboardCheck, Package, Clock } from "lucide-react";
+import { X, MoreVertical, Trash2, Loader, Link, ChevronRight, Sun, Moon, RefreshCw, LogIn, User, MapPin, LogOut, Play, ClipboardCheck, Package, Clock, Mic2 } from "lucide-react";
 import { useOrder, type OrderLineItem } from "@/contexts/OrderContext";
 import { useSquare } from "@/contexts/SquareContext";
 import { OrderCard } from "./OrderCard";
 import { getVoicePrefs, setVoicePref, setSpeedPref, VOICES, SPEEDS } from "@/lib/voice-prefs";
 import { getBaseUrl } from "@/lib/api";
+import { isWakeWordSupported } from "@/hooks/useWakeWord";
+import type { WakeLockStatus } from "@/hooks/useWakeLock";
+import { commandLabel } from "@/lib/command-labels";
 
 interface Props {
   open: boolean;
@@ -18,9 +21,10 @@ interface Props {
   } | null;
   onConfirm?: () => void;
   onDeny?: () => void;
+  screenWakeStatus?: WakeLockStatus;
 }
 
-export function OrderPanel({ open, onClose, pendingConfirmation, onConfirm, onDeny }: Props) {
+export function OrderPanel({ open, onClose, pendingConfirmation, onConfirm, onDeny, screenWakeStatus = "off" }: Props) {
   if (!open) return null;
   return (
     <>
@@ -32,6 +36,7 @@ export function OrderPanel({ open, onClose, pendingConfirmation, onConfirm, onDe
           pendingConfirmation={pendingConfirmation}
           onConfirm={onConfirm}
           onDeny={onDeny}
+          screenWakeStatus={screenWakeStatus}
         />
       </div>
     </>
@@ -43,11 +48,13 @@ function PanelContent({
   pendingConfirmation,
   onConfirm,
   onDeny,
+  screenWakeStatus,
 }: {
   onClose: () => void;
   pendingConfirmation?: Props["pendingConfirmation"];
   onConfirm?: () => void;
   onDeny?: () => void;
+  screenWakeStatus: WakeLockStatus;
 }) {
   const [settingsOpen, setSettingsOpen] = useState(false);
 
@@ -63,7 +70,7 @@ function PanelContent({
       </nav>
       <div className="panel-body">
         {settingsOpen ? (
-          <SettingsSheet onBack={() => setSettingsOpen(false)} />
+          <SettingsSheet onBack={() => setSettingsOpen(false)} screenWakeStatus={screenWakeStatus} />
         ) : (
           <OrderScreen
             pendingConfirmation={pendingConfirmation}
@@ -89,7 +96,7 @@ function OrderScreen({
     currentOrder, lastSubmittedOrder,
     updateQuantity, removeItem, clearOrder, submitOrder, isSubmitting, submitError, submitWarning,
   } = useOrder();
-  const { isConfigured, accessToken, locationId, authToken, venues } = useSquare();
+  const { isConfigured, venueId, authToken } = useSquare();
   const prevCountRef = useRef(0);
 
   const items = currentOrder?.items ?? [];
@@ -108,10 +115,13 @@ function OrderScreen({
       {pendingConfirmation && (
         <div className="confirmation-banner">
           <div className="confirmation-text">
-            Confirm: {pendingConfirmation.tool_name.replace(/_/g, " ")}
+            Confirm {commandLabel(pendingConfirmation.tool_name)}
             {pendingConfirmation.risk_level === "high" || pendingConfirmation.risk_level === "destructive"
               ? " (high risk)" : ""}
           </div>
+          {pendingConfirmation.prompt && (
+            <div className="confirmation-prompt">{pendingConfirmation.prompt}</div>
+          )}
           <div className="confirmation-actions">
             <button className="confirm-btn" onClick={onConfirm}>Confirm</button>
             <button className="deny-btn" onClick={onDeny}>Cancel</button>
@@ -173,8 +183,7 @@ function OrderScreen({
                   className="submit-btn"
                   disabled={isSubmitting || !isConfigured}
                   onClick={async () => {
-                    if (!accessToken || !locationId) return;
-                    await submitOrder(accessToken, locationId);
+                    await submitOrder(venueId, authToken);
                   }}
                 >
                   {isSubmitting ? <Loader size={16} className="spin" /> : "process"}
@@ -186,7 +195,7 @@ function OrderScreen({
       )}
 
       {/* Workflow buttons */}
-      <WorkflowButtons authToken={authToken} venueId={venues?.[0]?.id} />
+      <WorkflowButtons authToken={authToken} venueId={venueId ? Number(venueId) : undefined} />
 
       <style>{`
         @keyframes orderSlideIn {
@@ -202,6 +211,12 @@ function OrderScreen({
           font-size: 13px;
           font-weight: 600;
           color: #E65100;
+          margin-bottom: 4px;
+        }
+        .confirmation-prompt {
+          font-size: 12px;
+          line-height: 1.35;
+          color: #8A3E00;
           margin-bottom: 8px;
         }
         .confirmation-actions {
@@ -324,11 +339,78 @@ function WorkflowButtons({ authToken, venueId }: { authToken: string | null; ven
   );
 }
 
-function SettingsSheet({ onBack }: { onBack: () => void }) {
+function voicePipelineLabel(provider?: string): string {
+  switch (provider) {
+    case "openai_realtime_webrtc": return "OpenAI Realtime";
+    case "openai_realtime_server_ws": return "OpenAI Relay";
+    case "google_gemini_3_1_flash_live": return "Gemini 3.1 Flash Live";
+    case "google_gemini_2_5_flash_native_audio": return "Gemini 2.5 Native Audio";
+    case "google_gemini_live_native_audio": return "Gemini Live";
+    case "browser_speech_api": return "Browser Speech";
+    case "push_to_talk_text": return "Push to talk";
+    case "text_only": return "Text only";
+    default: return provider ? provider.replace(/_/g, " ") : "Default voice";
+  }
+}
+
+function configuredVoiceLabel(agentProfile: { voicePipelineProvider?: string; voicePipelineConfig?: Record<string, unknown> } | null): string {
+  const config = agentProfile?.voicePipelineConfig ?? {};
+  const voice = typeof config.voice === "string" ? config.voice : undefined;
+  const voiceName = typeof config.voiceName === "string" ? config.voiceName : undefined;
+  const provider = agentProfile?.voicePipelineProvider ?? "";
+  if (provider.startsWith("google_gemini_")) return voiceName ?? voice ?? "Platform default";
+  return voice ?? "PWA preference";
+}
+
+function onOffLabel(value: unknown, fallback = "Default"): string {
+  if (typeof value === "boolean") return value ? "On" : "Off";
+  return fallback;
+}
+
+function thinkingLabel(value: unknown): string {
+  return typeof value === "string" && value ? value.replace(/^./, (c) => c.toUpperCase()) : "Minimal";
+}
+
+function languageLabel(value: unknown): string {
+  if (!Array.isArray(value)) return "Auto";
+  const codes = value.filter((code): code is string => typeof code === "string" && code.trim().length > 0);
+  return codes.length > 0 ? codes.join(", ") : "Auto";
+}
+
+function noiseModeLabel(mode?: string): string {
+  switch (mode) {
+    case "standard": return "Standard room";
+    case "loud": return "Loud venue";
+    case "push_to_talk": return "Push to talk";
+    default: return "Standard room";
+  }
+}
+
+function screenWakeLabel(status: WakeLockStatus): string {
+  switch (status) {
+    case "active": return "Stays on";
+    case "unsupported": return "Browser may sleep";
+    case "blocked": return "Device may sleep";
+    default: return "Off";
+  }
+}
+
+function screenWakeHint(status: WakeLockStatus, ambientWakeConfigured: boolean, browserWakeSupported: boolean): string {
+  if (status === "active") return "Screen lock is active while the assistant is on.";
+  if (!browserWakeSupported) return "Tap the orb to speak; ambient listening is not available in this browser.";
+  if (!ambientWakeConfigured) return "Tap the orb when you need the assistant.";
+  switch (status) {
+    case "unsupported": return "This browser does not support keeping the screen awake.";
+    case "blocked": return "The device denied screen lock. Check battery or browser settings.";
+    default: return "Tap the orb to turn the assistant on.";
+  }
+}
+
+function SettingsSheet({ onBack, screenWakeStatus }: { onBack: () => void; screenWakeStatus: WakeLockStatus }) {
   const {
     isConfigured, clearCredentials, connectionError, isReconnecting, refreshCredentials,
     userInfo, venues, login, signup, logout, selectVenue, loadCatalog,
-    agentProfile, assistantKind, authToken,
+    agentProfile, assistantKind, wakePhrase, wakeMode,
   } = useSquare();
 
   const [prefs, setPrefs] = useState(getVoicePrefs);
@@ -375,8 +457,29 @@ function SettingsSheet({ onBack }: { onBack: () => void }) {
     } finally { setVenueLoading(false); }
   }
 
+  const selectedProvider = agentProfile?.voicePipelineProvider;
+  const isGeminiVoice = selectedProvider?.startsWith("google_gemini_") ?? false;
+  const voiceConfig = agentProfile?.voicePipelineConfig ?? {};
+  const assistantName = agentProfile?.displayName ?? (assistantKind === "venue" ? "Venue assistant" : "General assistant");
+  const connectedSystem = assistantKind === "venue"
+    ? (isConfigured ? "Square connected" : "Square not connected")
+    : "General assistant";
+  const browserWakeSupported = isWakeWordSupported();
+  const pushToTalkRequired = agentProfile?.noiseMode === "push_to_talk";
+  const ambientWakeConfigured = wakeMode !== "tap" && !pushToTalkRequired;
+  const wakeRuntimeLabel = !ambientWakeConfigured
+    ? "Tap to speak"
+    : browserWakeSupported
+      ? (wakePhrase || "Hey assistant")
+      : "Tap fallback";
+  const wakeDetailLabel = !ambientWakeConfigured
+    ? pushToTalkRequired ? "Push to talk" : "Tap only"
+    : browserWakeSupported
+      ? "Wake phrase"
+      : "Wake phrase unavailable";
+
   return (
-    <div style={{ padding: "12px 16px", overflowY: "auto" }}>
+    <div className="settings-sheet">
       <button onClick={onBack} style={{
         display: "flex", alignItems: "center", gap: 6, marginBottom: 12,
         background: "transparent", border: "none", cursor: "pointer",
@@ -431,77 +534,176 @@ function SettingsSheet({ onBack }: { onBack: () => void }) {
       ) : (
         <>
           {isLoggedIn && (
-            <div className="settings-row" style={{ padding: "10px 10px", borderBottom: "none" }}>
-              <User size={15} />
-              <span className="settings-txt" style={{ fontSize: 13, flex: 1 }}>{userInfo?.email}</span>
+            <div className="settings-account-strip">
+              <div className="settings-account-main">
+                <User size={14} />
+                <span>{userInfo?.email}</span>
+              </div>
               <button className="auth-logout-sm" onClick={logout}><LogOut size={13} /> Sign out</button>
             </div>
           )}
 
-          {assistantKind === "venue" && (
-            <div className="settings-row" style={{ cursor: isConfigured ? "pointer" : "default", borderBottom: "none", padding: "10px 10px" }}
-              onClick={() => { if (isConfigured && confirm("Disconnect Square?")) clearCredentials(); }}>
-              <Link size={15} />
-              <span className="settings-txt" style={{ fontSize: 14 }}>
-                {isConfigured ? "Square Connected" : "Square Not Connected"}
-              </span>
-              <span className="status-dot" style={{ background: isConfigured ? "#10B981" : "#A1A1AA" }} />
+          <div className="settings-summary">
+            <div>
+              <div className="settings-summary-label">Assistant</div>
+              <div className="settings-summary-value">{assistantName}</div>
             </div>
-          )}
-
-          {assistantKind === "venue" && !isConfigured && (
-            <div style={{ padding: "4px 10px 8px", display: "flex", flexDirection: "column", gap: 6 }}>
-              {connectionError && <div className="error-text" style={{ fontSize: 12 }}>{connectionError}</div>}
-              <button disabled={isReconnecting} onClick={() => refreshCredentials()}
-                style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 16px", borderRadius: 999,
-                  background: "var(--brand)", color: "#FFFFFF", border: "1px solid var(--brand)",
-                  fontSize: 13, fontWeight: 600, cursor: isReconnecting ? "wait" : "pointer",
-                  opacity: isReconnecting ? 0.6 : 1, fontFamily: "var(--font)" }}>
-                {isReconnecting ? <Loader size={13} className="spin" /> : <RefreshCw size={13} />}
-                {isReconnecting ? "Reconnecting..." : "Reconnect"}
-              </button>
+            <div>
+              <div className="settings-summary-label">Start mode</div>
+              <div className="settings-summary-value">
+                {wakeRuntimeLabel}
+              </div>
             </div>
-          )}
-
-          <div className="divider" style={{ margin: "8px 0" }} />
-
-          <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "2px 0 4px" }}>
-            <span className="rec-label" style={{ margin: 0, whiteSpace: "nowrap" }}>VOICE</span>
-          </div>
-          <div className="voice-grid">
-            {VOICES.map((v) => (
-              <button key={v.id} className={`voice-chip${prefs.voice === v.id ? " active" : ""}`} onClick={() => updateVoice(v.id)}>
-                <div className="voice-chip-name">{v.label}</div>
-              </button>
-            ))}
+            <div>
+              <div className="settings-summary-label">Voice engine</div>
+              <div className="settings-summary-value">{voicePipelineLabel(selectedProvider)}</div>
+            </div>
+            <div>
+              <div className="settings-summary-label">System</div>
+              <div className="settings-summary-value">
+                {connectedSystem}
+                <span className="status-dot" style={{ background: assistantKind === "general" || isConfigured ? "#10B981" : "#A1A1AA" }} />
+              </div>
+            </div>
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 0 4px" }}>
-            <span className="rec-label" style={{ margin: 0 }}>SPEED</span>
-            <div className="speed-row" style={{ flex: 1, padding: 0 }}>
-              {SPEEDS.map((s) => (
-                <button key={s.label} className={`speed-chip${prefs.speed === s.id ? " active" : ""}`} onClick={() => updateSpeed(s.id)}>
-                  {s.label}
+          <details className="settings-group" open={assistantKind === "venue" && !isConfigured}>
+            <summary>
+              <span><Link size={14} /> Connected system</span>
+              <ChevronRight size={14} />
+            </summary>
+            {assistantKind === "venue" ? (
+              <div className="settings-group-body">
+                <button
+                  className="settings-row compact"
+                  style={{ cursor: isConfigured ? "pointer" : "default" }}
+                  onClick={() => { if (isConfigured && confirm("Disconnect Square?")) clearCredentials(); }}
+                >
+                  <span className="settings-txt">{isConfigured ? "Square connected" : "Square not connected"}</span>
+                  <span className="status-dot" style={{ background: isConfigured ? "#10B981" : "#A1A1AA" }} />
                 </button>
-              ))}
-            </div>
-          </div>
+                {!isConfigured && (
+                  <div className="settings-action-stack">
+                    {connectionError && <div className="error-text" style={{ fontSize: 12 }}>{connectionError}</div>}
+                    <button className="settings-primary-action" disabled={isReconnecting} onClick={() => refreshCredentials()}>
+                      {isReconnecting ? <Loader size={13} className="spin" /> : <RefreshCw size={13} />}
+                      {isReconnecting ? "Reconnecting..." : "Reconnect Square"}
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="settings-group-body">
+                <p className="settings-muted">This assistant uses general business commands and does not require Square.</p>
+              </div>
+            )}
+          </details>
 
-          <div className="divider" style={{ margin: "8px 0" }} />
-
-          <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "2px 0 6px" }}>
-            <span className="rec-label" style={{ margin: 0 }}>THEME</span>
-            <div className="speed-row" style={{ flex: 1, padding: 0 }}>
-              <button className={`speed-chip${theme === "light" ? " active" : ""}`} onClick={toggleTheme}
-                style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
-                <Sun size={13} /> Light
-              </button>
-              <button className={`speed-chip${theme === "dark" ? " active" : ""}`} onClick={toggleTheme}
-                style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
-                <Moon size={13} /> Dark
-              </button>
+          <details className="settings-group">
+            <summary>
+              <span><Mic2 size={14} /> Activation</span>
+              <ChevronRight size={14} />
+            </summary>
+            <div className="settings-group-body">
+              <div className="settings-mini-row">
+                <span>Mode</span>
+                <strong>{wakeDetailLabel}</strong>
+              </div>
+              {ambientWakeConfigured && (
+                <div className="settings-mini-row">
+                  <span>Phrase</span>
+                  <strong>{wakePhrase || "Hey assistant"}</strong>
+                </div>
+              )}
+              <div className="settings-mini-row">
+                <span>Room behavior</span>
+                <strong>{noiseModeLabel(agentProfile?.noiseMode)}</strong>
+              </div>
+              <div className="settings-mini-row">
+                <span>Screen</span>
+                <strong>{screenWakeLabel(screenWakeStatus)}</strong>
+              </div>
+              <p className="settings-muted">
+                {screenWakeHint(screenWakeStatus, ambientWakeConfigured, browserWakeSupported)}
+              </p>
             </div>
-          </div>
+          </details>
+
+          <details className="settings-group">
+            <summary>
+              <span><Play size={14} /> Voice</span>
+              <ChevronRight size={14} />
+            </summary>
+            <div className="settings-group-body">
+              <div className="settings-mini-row">
+                <span>Engine</span>
+                <strong>{voicePipelineLabel(selectedProvider)}</strong>
+              </div>
+              <div className="settings-mini-row">
+                <span>Voice</span>
+                <strong>{configuredVoiceLabel(agentProfile)}</strong>
+              </div>
+              {!isGeminiVoice ? (
+                <>
+                  <div className="voice-grid">
+                    {VOICES.map((v) => (
+                      <button key={v.id} className={`voice-chip${prefs.voice === v.id ? " active" : ""}`} onClick={() => updateVoice(v.id)}>
+                        <div className="voice-chip-name">{v.label}</div>
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="settings-mini-label">Speed</div>
+                  <div className="speed-row">
+                    {SPEEDS.map((s) => (
+                      <button key={s.label} className={`speed-chip${prefs.speed === s.id ? " active" : ""}`} onClick={() => updateSpeed(s.id)}>
+                        {s.label}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="settings-mini-row">
+                    <span>Proactive audio</span>
+                    <strong>{onOffLabel(voiceConfig.proactiveAudio, "Default")}</strong>
+                  </div>
+                  <div className="settings-mini-row">
+                    <span>Affective dialog</span>
+                    <strong>{onOffLabel(voiceConfig.affectiveDialog, "Off")}</strong>
+                  </div>
+                  <div className="settings-mini-row">
+                    <span>Thinking</span>
+                    <strong>{thinkingLabel(voiceConfig.thinkingLevel)}</strong>
+                  </div>
+                  <div className="settings-mini-row">
+                    <span>Language</span>
+                    <strong>{languageLabel(voiceConfig.languageCodes)}</strong>
+                  </div>
+                  <p className="settings-muted">Configured on this assistant's web app profile.</p>
+                </>
+              )}
+            </div>
+          </details>
+
+          <details className="settings-group">
+            <summary>
+              <span><Sun size={14} /> Appearance</span>
+              <ChevronRight size={14} />
+            </summary>
+            <div className="settings-group-body">
+              <div className="speed-row">
+                <button className={`speed-chip${theme === "light" ? " active" : ""}`} onClick={toggleTheme}
+                  style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
+                  <Sun size={13} /> Light
+                </button>
+                <button className={`speed-chip${theme === "dark" ? " active" : ""}`} onClick={toggleTheme}
+                  style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
+                  <Moon size={13} /> Dark
+                </button>
+              </div>
+            </div>
+          </details>
         </>
       )}
     </div>

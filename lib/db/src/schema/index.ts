@@ -123,6 +123,7 @@ export const agentProfilesTable = pgTable("agent_profiles", {
   connectedServiceId: uuid("connected_service_id").references(() => serviceConnectionsTable.id, { onDelete: "set null" }),
   displayName: text("display_name").notNull(),
   wakePhrase: text("wake_phrase").notNull(),
+  wakeMode: text("wake_mode").notNull().default("ambient"),
   voicePipelineProvider: text("voice_pipeline_provider").notNull(),
   voicePipelineConfig: jsonb("voice_pipeline_config").notNull().default({}),
   noiseMode: text("noise_mode").notNull().default("standard"),
@@ -264,6 +265,7 @@ export const usageEventsTable = pgTable("usage_events", {
 export const knowledgeDocumentsTable = pgTable("knowledge_documents", {
   id: uuid("id").defaultRandom().primaryKey(),
   userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  organizationId: uuid("organization_id").references(() => organizationsTable.id, { onDelete: "cascade" }),
   venueId: integer("venue_id").references(() => venuesTable.id, { onDelete: "cascade" }),
   title: text("title").notNull(),
   sourceType: text("source_type").notNull().default("text"), // text | url | pdf
@@ -273,6 +275,7 @@ export const knowledgeDocumentsTable = pgTable("knowledge_documents", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (table) => [
   index("knowledge_documents_user_idx").on(table.userId),
+  index("knowledge_documents_org_idx").on(table.organizationId),
   index("knowledge_documents_venue_idx").on(table.venueId),
 ]);
 
@@ -282,6 +285,7 @@ export const knowledgeChunksTable = pgTable("knowledge_chunks", {
   id: uuid("id").defaultRandom().primaryKey(),
   documentId: uuid("document_id").notNull().references(() => knowledgeDocumentsTable.id, { onDelete: "cascade" }),
   userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  organizationId: uuid("organization_id").references(() => organizationsTable.id, { onDelete: "cascade" }),
   venueId: integer("venue_id").references(() => venuesTable.id, { onDelete: "cascade" }),
   chunkIndex: integer("chunk_index").notNull(),
   text: text("text").notNull(),
@@ -290,17 +294,19 @@ export const knowledgeChunksTable = pgTable("knowledge_chunks", {
 }, (table) => [
   index("knowledge_chunks_document_idx").on(table.documentId),
   index("knowledge_chunks_user_idx").on(table.userId),
+  index("knowledge_chunks_org_idx").on(table.organizationId),
 ]);
 
 export type KnowledgeChunk = typeof knowledgeChunksTable.$inferSelect;
 
 // -- External Postgres Connections ---------------------------------------------
-// Per-user read-only Postgres connection strings exposed to the
-// query_database tool. Stored in plaintext for now � TODO: encrypt at rest.
+// Organization-scoped read-only Postgres connection strings exposed to the
+// query_database command. Values are encrypted by the API before storage.
 
 export const externalDbConnectionsTable = pgTable("external_db_connections", {
   id: uuid("id").defaultRandom().primaryKey(),
   userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  organizationId: uuid("organization_id").references(() => organizationsTable.id, { onDelete: "cascade" }),
   venueId: integer("venue_id").references(() => venuesTable.id, { onDelete: "cascade" }),
   label: text("label").notNull().default("default"),
   kind: text("kind").notNull().default("postgres"), // postgres only for now
@@ -311,6 +317,7 @@ export const externalDbConnectionsTable = pgTable("external_db_connections", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (table) => [
   index("external_db_connections_user_idx").on(table.userId),
+  index("external_db_connections_org_idx").on(table.organizationId),
 ]);
 
 export type ExternalDbConnection = typeof externalDbConnectionsTable.$inferSelect;
@@ -322,6 +329,7 @@ export type ExternalDbConnection = typeof externalDbConnectionsTable.$inferSelec
 export const emailCredentialsTable = pgTable("email_credentials", {
   id: uuid("id").defaultRandom().primaryKey(),
   userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  organizationId: uuid("organization_id").references(() => organizationsTable.id, { onDelete: "cascade" }),
   venueId: integer("venue_id").references(() => venuesTable.id, { onDelete: "cascade" }),
   provider: text("provider").notNull().default("resend"), // resend | gmail | gmail_oauth | smtp
   apiKey: text("api_key"),
@@ -338,6 +346,7 @@ export const emailCredentialsTable = pgTable("email_credentials", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (table) => [
   index("email_credentials_user_idx").on(table.userId),
+  index("email_credentials_org_idx").on(table.organizationId),
 ]);
 
 export type EmailCredential = typeof emailCredentialsTable.$inferSelect;

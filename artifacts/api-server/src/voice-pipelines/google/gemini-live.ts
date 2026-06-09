@@ -27,6 +27,7 @@ import type {
   VoicePipelineSession,
   VoicePipelineSessionContext,
 } from "@workspace/voicelab-core/voice-pipeline";
+import type { NoiseMode } from "@workspace/voicelab-core/noise";
 
 export interface GeminiLiveAdapterSpec {
   provider: VoicePipelineProvider;
@@ -40,6 +41,30 @@ export interface GeminiLiveAdapterSpec {
 
 function readApiKey(): string {
   return process.env.GOOGLE_GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY ?? "";
+}
+
+function stringOption(options: Record<string, unknown>, key: string): string | undefined {
+  const value = options[key];
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function booleanOption(options: Record<string, unknown>, key: string): boolean | undefined {
+  const value = options[key];
+  return typeof value === "boolean" ? value : undefined;
+}
+
+function languageCodesOption(options: Record<string, unknown>): string | undefined {
+  const value = options.languageCodes;
+  if (!Array.isArray(value)) return undefined;
+  const codes = value
+    .filter((code): code is string => typeof code === "string" && code.trim().length > 0)
+    .map((code) => code.trim());
+  return codes.length > 0 ? codes.join(",") : undefined;
+}
+
+function noiseModeOption(options: Record<string, unknown>): NoiseMode | undefined {
+  const value = options.noiseMode;
+  return value === "standard" || value === "loud" || value === "push_to_talk" ? value : undefined;
 }
 
 /**
@@ -181,6 +206,12 @@ export class GoogleGeminiLiveAdapter implements VoicePipelineAdapter {
       throw new Error("GOOGLE_GEMINI_API_KEY missing");
     }
     const sessionId = `gemini-${ctx.userId}-${Date.now()}`;
+    const voiceName = stringOption(ctx.providerOptions, "voiceName") ?? stringOption(ctx.providerOptions, "voice");
+    const proactiveAudio = booleanOption(ctx.providerOptions, "proactiveAudio");
+    const affectiveDialog = booleanOption(ctx.providerOptions, "affectiveDialog");
+    const thinkingLevel = stringOption(ctx.providerOptions, "thinkingLevel");
+    const languageCodes = languageCodesOption(ctx.providerOptions);
+    const noiseMode = noiseModeOption(ctx.providerOptions);
     return {
       sessionId,
       provider: this.provider,
@@ -192,6 +223,12 @@ export class GoogleGeminiLiveAdapter implements VoicePipelineAdapter {
             sessionId,
             agentProfileId: ctx.agentProfileId,
             modelId: this.modelId,
+            ...(voiceName ? { voice: voiceName } : {}),
+            ...(typeof proactiveAudio === "boolean" ? { proactiveAudio: String(proactiveAudio) } : {}),
+            ...(typeof affectiveDialog === "boolean" ? { affectiveDialog: String(affectiveDialog) } : {}),
+            ...(thinkingLevel ? { thinkingLevel } : {}),
+            ...(languageCodes ? { languageCodes } : {}),
+            ...(noiseMode ? { noiseMode } : {}),
           },
         },
       },
@@ -287,10 +324,33 @@ export interface GeminiSetupOptions {
   inputLanguageCodes?: string[];
   /** Whether to enable Proactive Audio (2.5 native only). */
   proactiveAudio?: boolean;
+  /** Whether to enable Affective Dialog (2.5 native only, v1alpha endpoint). */
+  affectiveDialog?: boolean;
   /** Thinking depth for 3.1 Flash Live. */
   thinkingLevel?: "minimal" | "low" | "medium" | "high";
   /** Output voice (for native audio). Optional — Gemini uses defaults. */
   voiceName?: string;
+  noiseMode?: NoiseMode;
+}
+
+function geminiRealtimeInputConfig(noiseMode: NoiseMode | undefined): Record<string, unknown> {
+  const timing =
+    noiseMode === "loud"
+      ? { prefixPaddingMs: 500, silenceDurationMs: 1100 }
+      : noiseMode === "push_to_talk"
+        ? { prefixPaddingMs: 150, silenceDurationMs: 500 }
+        : { prefixPaddingMs: 300, silenceDurationMs: 700 };
+
+  return {
+    automaticActivityDetection: {
+      disabled: false,
+      ...timing,
+      startOfSpeechSensitivity: "START_SENSITIVITY_HIGH",
+      endOfSpeechSensitivity: "END_SENSITIVITY_HIGH",
+    },
+    activityHandling: "START_OF_ACTIVITY_INTERRUPTS",
+    turnCoverage: "TURN_INCLUDES_ONLY_ACTIVITY",
+  };
 }
 
 export function buildGeminiLiveSetupMessage(opts: GeminiSetupOptions): Record<string, unknown> {
@@ -317,17 +377,7 @@ export function buildGeminiLiveSetupMessage(opts: GeminiSetupOptions): Record<st
       parts: [{ text: opts.instructions }],
     },
     tools: toolDefinitionsToGeminiTools(opts.tools),
-    realtimeInputConfig: {
-      automaticActivityDetection: {
-        disabled: false,
-        prefixPaddingMs: 300,
-        silenceDurationMs: 700,
-        startOfSpeechSensitivity: "START_SENSITIVITY_HIGH",
-        endOfSpeechSensitivity: "END_SENSITIVITY_HIGH",
-      },
-      activityHandling: "START_OF_ACTIVITY_INTERRUPTS",
-      turnCoverage: "TURN_INCLUDES_ONLY_ACTIVITY",
-    },
+    realtimeInputConfig: geminiRealtimeInputConfig(opts.noiseMode),
     inputAudioTranscription:
       opts.inputLanguageCodes && opts.inputLanguageCodes.length > 0
         ? { languageCodes: opts.inputLanguageCodes }
@@ -336,21 +386,27 @@ export function buildGeminiLiveSetupMessage(opts: GeminiSetupOptions): Record<st
   };
 
   // Proactive audio: lets the model stay silent on irrelevant speech. Only
-  // valid on the 2.5 GA native-audio model per the public schema.
+  // valid on the 2.5 native-audio model per the public schema.
   if (opts.proactiveAudio && opts.capabilityProfile === "ga_2_5") {
     setup.proactivity = { proactiveAudio: true };
+  }
+  if (opts.affectiveDialog && opts.capabilityProfile === "ga_2_5") {
+    setup.enableAffectiveDialog = true;
   }
 
   return { setup };
 }
 
-export const GEMINI_LIVE_ENDPOINT =
-  "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent";
+export function geminiLiveEndpoint(apiVersion: "v1alpha" | "v1beta" = "v1beta"): string {
+  return `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.${apiVersion}.GenerativeService.BidiGenerateContent`;
+}
 
-export function buildGeminiLiveUrl(): string {
+export const GEMINI_LIVE_ENDPOINT = geminiLiveEndpoint("v1beta");
+
+export function buildGeminiLiveUrl(apiVersion: "v1alpha" | "v1beta" = "v1beta"): string {
   const apiKey = readApiKey();
   if (!apiKey) throw new Error("GOOGLE_GEMINI_API_KEY missing");
-  return `${GEMINI_LIVE_ENDPOINT}?key=${encodeURIComponent(apiKey)}`;
+  return `${geminiLiveEndpoint(apiVersion)}?key=${encodeURIComponent(apiKey)}`;
 }
 
 export const GEMINI_LIVE_ADAPTER_SPECS: GeminiLiveAdapterSpec[] = [

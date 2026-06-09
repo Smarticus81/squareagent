@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { v1RequireAuth, jsonError } from "./_helpers";
+import { ensureUserOrganization, v1RequireAuth, jsonError } from "./_helpers";
 import { requirePlan } from "../auth";
 import { ALL_WORKFLOWS } from "../../workflows";
 import { executeWorkflow } from "../../workflows/engine";
@@ -25,7 +25,8 @@ router.post("/:slug/run", v1RequireAuth as any, requirePlan() as any, async (req
     return;
   }
 
-  const creds = await getCachedCredentials(req.user.id, Number(venueId));
+  const organizationId = req.organization?.id ?? (await ensureUserOrganization(req.user)).id;
+  const creds = await getCachedCredentials(req.user.id, Number(venueId), organizationId);
   if (!creds || !creds.squareToken) {
     jsonError(res, 400, "no_credentials", "Venue not connected to Square");
     return;
@@ -48,10 +49,12 @@ router.post("/:slug/run", v1RequireAuth as any, requirePlan() as any, async (req
     session,
     squareClient,
     userId: req.user.id,
+    organizationId,
     venueId: Number(venueId),
     assistantKind: "venue",
     noiseMode: "standard",
     confirmed: true,
+    confirmationTrusted: true,
   };
 
   try {

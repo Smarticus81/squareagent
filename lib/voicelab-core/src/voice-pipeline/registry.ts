@@ -48,7 +48,7 @@ export const VOICE_PIPELINE_PROVIDERS: Record<
     category: "native_realtime_speech_to_speech",
     displayName: "Gemini 3.1 Flash Live",
     shortDescription:
-      "Google's newest native audio-to-audio model. 90+ languages, tunable thinking, async function calling, 90.8% on ComplexFuncBench Audio. Best background-noise rejection in this class.",
+      "Google's newest native audio-to-audio Live model. Tunable thinking, multilingual audio, native barge-in, and strong noisy-room turn taking.",
     recommendedFor: [
       "lowest_latency_browser",
       "lowest_latency_mobile",
@@ -65,11 +65,11 @@ export const VOICE_PIPELINE_PROVIDERS: Record<
     category: "native_realtime_speech_to_speech",
     displayName: "Gemini 2.5 Flash Native Audio",
     shortDescription:
-      "GA model with Proactive Audio (only responds when addressed) and Affective Dialog (responds to user emotional tone). Stable and production-ready.",
+      "Native audio Live model with Proactive Audio and Affective Dialog for venue environments where the assistant should stay quiet until addressed.",
     recommendedFor: ["best_voice_quality", "best_turn_taking", "enterprise_observability"],
     requiredCredentials: ["GOOGLE_GEMINI_API_KEY"],
     notes:
-      "GA model gemini-live-2.5-flash-native-audio. Recommended when stability matters more than the absolute latest preview.",
+      "Model gemini-live-2.5-flash-native-audio. Recommended when proactive listening and affective dialogue matter more than the absolute newest preview.",
   },
   google_gemini_live_native_audio: {
     provider: "google_gemini_live_native_audio",

@@ -14,14 +14,22 @@
 
 import { Router } from "express";
 import { requireAuth, requirePlan } from "./auth";
-import { db, serviceConnectionsTable, usageEventsTable, emailCredentialsTable } from "@workspace/db";
+import {
+  db,
+  serviceConnectionsTable,
+  usageEventsTable,
+  emailCredentialsTable,
+  knowledgeDocumentsTable,
+  externalDbConnectionsTable,
+} from "@workspace/db";
 import {
   PLANS,
   listConnectedServiceProviders,
   listVoicePipelineProviders,
 } from "@workspace/voicelab-core";
+import { planAllowsPipeline } from "@workspace/voicelab-core/pricing";
 import { getNoiseModeBehavior, type NoiseMode } from "@workspace/voicelab-core/noise";
-import { eq, sql, and, gte } from "drizzle-orm";
+import { eq, sql, and, gte, isNull, or } from "drizzle-orm";
 import {
   type CatalogItem,
   type OrderItem,
@@ -29,6 +37,7 @@ import {
 import { SquareClient } from "../lib/square-client";
 import { getCachedCredentials } from "../lib/credential-cache";
 import { getCachedAgentProfile } from "../lib/agent-profile-cache";
+import { ensureUserOrganization, userOwnsOrganization } from "./v1/_helpers";
 import { executeToolCall } from "../tools";
 import {
   getSkillsForSession,
@@ -38,6 +47,7 @@ import {
 } from "../skills";
 import {
   getOrCreateSession,
+  getSession,
   markDirty,
   removeSession,
 } from "../lib/session-store";
@@ -58,6 +68,47 @@ const OPENAI_REALTIME_REASONING_EFFORT =
 // speech and the client runs half-duplex (mic gated during playback) with
 // tap-to-interrupt. Set ACOUSTIC_BARGE_IN=1 to opt back in.
 const ACOUSTIC_BARGE_IN_ENABLED = process.env.ACOUSTIC_BARGE_IN === "1";
+
+async function currentOrganizationId(req: any): Promise<string | null> {
+  const existing = req.organization?.id;
+  if (existing) return existing;
+  if (!req.user) return null;
+  const org = await ensureUserOrganization(req.user);
+  return org.id;
+}
+
+function tenantWhere(table: { organizationId: any; userId: any }, userId: number, organizationId: string) {
+  return or(
+    eq(table.organizationId, organizationId),
+    and(eq(table.userId, userId), isNull(table.organizationId)),
+  );
+}
+
+async function hasGeneralConnectedSystems(userId: number, organizationId: string | null): Promise<boolean> {
+  if (!organizationId) return false;
+  try {
+    const [[email], [document], [database]] = await Promise.all([
+      db
+        .select({ id: emailCredentialsTable.id })
+        .from(emailCredentialsTable)
+        .where(tenantWhere(emailCredentialsTable, userId, organizationId))
+        .limit(1),
+      db
+        .select({ id: knowledgeDocumentsTable.id })
+        .from(knowledgeDocumentsTable)
+        .where(tenantWhere(knowledgeDocumentsTable, userId, organizationId))
+        .limit(1),
+      db
+        .select({ id: externalDbConnectionsTable.id })
+        .from(externalDbConnectionsTable)
+        .where(tenantWhere(externalDbConnectionsTable, userId, organizationId))
+        .limit(1),
+    ]);
+    return Boolean(email || document || database);
+  } catch {
+    return false;
+  }
+}
 
 function formatLimit(value: number, label: string): string {
   if (value === -1) return `unlimited ${label}`;
@@ -629,6 +680,7 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
   const PLAN_LIMITS: Record<string, number> = { trial: 60, pro: 500, business: 2000, starter: 500, professional: 500, premium: 2000 };
   const limit = PLAN_LIMITS[plan] ?? 100;
   const overageCap = Math.floor(limit * 1.5);
+  const organizationId = await currentOrganizationId(req);
 
   try {
     const periodStart = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
@@ -636,7 +688,12 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
       .select({ total: sql<number>`coalesce(sum(${usageEventsTable.quantity}), 0)` })
       .from(usageEventsTable)
       .where(and(
-        eq(usageEventsTable.userId, req.user.id),
+        organizationId
+          ? or(
+              eq(usageEventsTable.organizationId, organizationId),
+              and(eq(usageEventsTable.userId, req.user.id), isNull(usageEventsTable.organizationId)),
+            )
+          : eq(usageEventsTable.userId, req.user.id),
         eq(usageEventsTable.kind, "voice_minutes"),
         gte(usageEventsTable.occurredAt, periodStart),
       ));
@@ -658,7 +715,7 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
   let squareToken = "";
   let squareLocationId = "";
   if (venueId) {
-    const creds = await getCachedCredentials(req.user.id, Number(venueId));
+    const creds = await getCachedCredentials(req.user.id, Number(venueId), organizationId);
     if (creds) {
       squareToken = creds.squareToken;
       squareLocationId = creds.squareLocationId;
@@ -676,44 +733,58 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
 
   if (agentProfileId) {
     const profile = await getCachedAgentProfile(String(agentProfileId));
-    if (profile) {
-      provider = profile.voicePipelineProvider;
-      providerConfig = (profile.voicePipelineConfig as Record<string, unknown>) ?? {};
-      if (profile.noiseMode) noiseMode = profile.noiseMode as NoiseMode;
-      profileDisplayName = profile.displayName || "";
-      profilePersonality = profile.personality || "";
-      if (profile.connectedServiceId) {
-        const [conn] = await db
-          .select({ provider: serviceConnectionsTable.provider })
-          .from(serviceConnectionsTable)
-          .where(eq(serviceConnectionsTable.id, profile.connectedServiceId))
-          .limit(1);
-        if (conn && conn.provider !== "square") assistantKind = "general";
+    if (!profile) {
+      res.status(404).json({ error: "agent_profile_not_found" });
+      return;
+    }
+    if (!(await userOwnsOrganization(req.user.id, profile.organizationId))) {
+      res.status(403).json({ error: "agent_profile_forbidden" });
+      return;
+    }
+    provider = profile.voicePipelineProvider;
+    providerConfig = (profile.voicePipelineConfig as Record<string, unknown>) ?? {};
+    if (profile.noiseMode) noiseMode = profile.noiseMode as NoiseMode;
+    profileDisplayName = profile.displayName || "";
+    profilePersonality = profile.personality || "";
+    if (profile.connectedServiceId) {
+      const [conn] = await db
+        .select({ provider: serviceConnectionsTable.provider })
+        .from(serviceConnectionsTable)
+        .where(
+          and(
+            eq(serviceConnectionsTable.id, profile.connectedServiceId),
+            eq(serviceConnectionsTable.organizationId, profile.organizationId),
+          ),
+        )
+        .limit(1);
+      if (!conn) {
+        res.status(403).json({ error: "connected_service_forbidden" });
+        return;
       }
+      if (conn.provider !== "square") assistantKind = "general";
     }
   }
 
   // Without an agent profile (or with no connected service), fall back to
   // "general" if the venue has no Square credentials — that way the assistant
   // never pretends to be a bar manager when there's no POS to talk to.
+  const isAdmin = Boolean(req.isAdmin);
+  if (!isAdmin && !planAllowsPipeline(plan, provider as import("@workspace/voicelab-core/voice-pipeline").VoicePipelineProvider)) {
+    res.status(402).json({
+      error: "pipeline_not_in_plan",
+      detail: `The "${provider}" voice engine is not included in your "${plan}" plan. Upgrade to unlock it.`,
+      provider,
+    });
+    return;
+  }
+
   if (assistantKind === "venue" && !squareToken) assistantKind = "general";
 
-  // When the user has email credentials or other general data sources
-  // configured, merge general-assistant tools (Gmail, knowledge, web, db)
-  // into the venue session so both POS and email are available.
-  let includeGeneralTools = false;
-  if (assistantKind === "venue") {
-    try {
-      const [emailCreds] = await db
-        .select({ provider: emailCredentialsTable.provider })
-        .from(emailCredentialsTable)
-        .where(eq(emailCredentialsTable.userId, req.user.id))
-        .limit(1);
-      // Merge general-assistant tools when Gmail OAuth is connected (inbox read/send)
-      // or any outbound email provider is configured (send_email).
-      if (emailCreds) includeGeneralTools = true;
-    } catch {}
-  }
+  // When general connected systems are configured, merge those commands into
+  // venue sessions so Square plus email/knowledge/database workflows can run
+  // in one assistant.
+  const includeGeneralTools =
+    assistantKind === "venue" && (await hasGeneralConnectedSystems(req.user.id, organizationId));
 
   const skills = getSkillsForSession(plan, { kind: assistantKind, includeGeneralTools });
 
@@ -798,6 +869,7 @@ router.post("/tools", requireAuth as any, requirePlan() as any, async (req: any,
     order = [],
     venueId,
     confirmed,
+    confirmationToken,
     agentProfileId,
   } = req.body ?? {};
 
@@ -811,8 +883,9 @@ router.post("/tools", requireAuth as any, requirePlan() as any, async (req: any,
   // is provided so venue-mode tools keep working.
   let squareToken = "";
   let squareLocationId = "";
+  const organizationId = await currentOrganizationId(req);
   if (venueId) {
-    const creds = await getCachedCredentials(req.user.id, Number(venueId));
+    const creds = await getCachedCredentials(req.user.id, Number(venueId), organizationId);
     if (creds) {
       squareToken = creds.squareToken;
       squareLocationId = creds.squareLocationId;
@@ -821,19 +894,57 @@ router.post("/tools", requireAuth as any, requirePlan() as any, async (req: any,
 
   // Use a stable fallback so multiple tool calls in one conversation share the same session
   const sessionId = String(session_id || `rt-${req.user.id}-${venueId ?? "general"}`);
-  const session = getOrCreateSession(sessionId, squareToken, squareLocationId, req.user.id, Number(venueId ?? 0));
+  const existingSession = getSession(sessionId);
+  const numericVenueId = Number(venueId ?? 0);
+  if (
+    existingSession &&
+    (existingSession.userId !== req.user.id || existingSession.venueId !== numericVenueId)
+  ) {
+    res.status(403).json({ error: "session_forbidden" });
+    return;
+  }
+  const session = getOrCreateSession(sessionId, squareToken, squareLocationId, req.user.id, numericVenueId);
 
   let noiseMode: import("@workspace/voicelab-core/noise").NoiseMode = "standard";
+  let profileAllowedTools: string[] | null = null;
   if (agentProfileId) {
     const profile = await getCachedAgentProfile(String(agentProfileId));
-    if (profile?.noiseMode) {
+    if (!profile) {
+      res.status(404).json({ error: "agent_profile_not_found" });
+      return;
+    }
+    if (!(await userOwnsOrganization(req.user.id, profile.organizationId))) {
+      res.status(403).json({ error: "agent_profile_forbidden" });
+      return;
+    }
+    if (profile.noiseMode) {
       noiseMode = profile.noiseMode as typeof noiseMode;
+    }
+    if (Array.isArray(profile.allowedTools) && profile.allowedTools.every((name: unknown): name is string => typeof name === "string")) {
+      profileAllowedTools = profile.allowedTools;
     }
   }
 
   try {
     const squareClient = squareToken ? new SquareClient(squareToken, squareLocationId) : undefined;
     const assistantKind: "venue" | "general" = squareToken ? "venue" : "general";
+    const includeGeneralTools =
+      assistantKind === "venue" && (await hasGeneralConnectedSystems(req.user.id, organizationId));
+    const toolDefinitions = buildToolsFromSkills(getSkillsForSession(
+      (req.subscription?.plan as string | undefined) ?? "trial",
+      { kind: assistantKind, includeGeneralTools },
+    ));
+    const allowedToolSet = new Set(toolDefinitions.map((tool) => tool.name));
+    if (profileAllowedTools && profileAllowedTools.length > 0) {
+      const profileAllowedSet = new Set(profileAllowedTools);
+      for (const name of [...allowedToolSet]) {
+        if (name !== "wait_for_user" && !profileAllowedSet.has(name)) allowedToolSet.delete(name);
+      }
+    }
+    if (!allowedToolSet.has(String(tool_name))) {
+      res.status(403).json({ error: "tool_not_allowed", detail: `Command not allowed in this assistant: ${tool_name}` });
+      return;
+    }
     const { result, command } = await executeToolCall(
       tool_name,
       args,
@@ -846,10 +957,12 @@ router.post("/tools", requireAuth as any, requirePlan() as any, async (req: any,
         squareClient,
         requestId: sessionId,
         userId: req.user.id,
+        organizationId,
         venueId: Number(venueId),
         assistantKind,
         noiseMode,
         confirmed: confirmed === true,
+        confirmationToken: typeof confirmationToken === "string" ? confirmationToken : undefined,
       },
     );
 
@@ -870,7 +983,10 @@ router.post("/tools", requireAuth as any, requirePlan() as any, async (req: any,
 
 interface HeartbeatEntry {
   userId: number;
+  organizationId: string | null;
   venueId: number;
+  provider?: string;
+  agentProfileId?: string | null;
   lastHeartbeatMs: number;
   startMs: number;
 }
@@ -879,15 +995,25 @@ const heartbeatMap = new Map<string, HeartbeatEntry>();
 
 router.post("/session/:id/heartbeat", requireAuth as any, async (req: any, res: any) => {
   const sessionId = req.params.id;
-  const { elapsedMs } = req.body ?? {};
+  const { elapsedMs, provider, agentProfileId } = req.body ?? {};
+  const organizationId = await currentOrganizationId(req);
 
   const existing = heartbeatMap.get(sessionId);
   if (existing) {
+    if (existing.userId !== req.user.id || existing.organizationId !== organizationId) {
+      res.status(403).json({ error: "session_forbidden" });
+      return;
+    }
     existing.lastHeartbeatMs = typeof elapsedMs === "number" ? elapsedMs : Date.now() - existing.startMs;
+    if (typeof provider === "string" && provider) existing.provider = provider;
+    if (typeof agentProfileId === "string" && agentProfileId) existing.agentProfileId = agentProfileId;
   } else {
     heartbeatMap.set(sessionId, {
       userId: req.user.id,
+      organizationId,
       venueId: Number(req.body?.venueId ?? 0),
+      provider: typeof provider === "string" && provider ? provider : undefined,
+      agentProfileId: typeof agentProfileId === "string" && agentProfileId ? agentProfileId : null,
       lastHeartbeatMs: typeof elapsedMs === "number" ? elapsedMs : 0,
       startMs: Date.now(),
     });
@@ -898,9 +1024,20 @@ router.post("/session/:id/heartbeat", requireAuth as any, async (req: any, res: 
 
 router.post("/session/:id/end", requireAuth as any, async (req: any, res: any) => {
   const sessionId = req.params.id;
-  const { durationMs } = req.body ?? {};
+  const { durationMs, provider, agentProfileId } = req.body ?? {};
   const entry = heartbeatMap.get(sessionId);
+  const organizationId = await currentOrganizationId(req);
+  if (entry && (entry.userId !== req.user.id || entry.organizationId !== organizationId)) {
+    res.status(403).json({ error: "session_forbidden" });
+    return;
+  }
   const venueId = entry?.venueId ?? Number(req.body?.venueId ?? 0);
+  const effectiveProvider = typeof provider === "string" && provider
+    ? provider
+    : entry?.provider ?? "openai_realtime_webrtc";
+  const effectiveAgentProfileId = typeof agentProfileId === "string" && agentProfileId
+    ? agentProfileId
+    : entry?.agentProfileId ?? null;
 
   const effectiveDuration = typeof durationMs === "number" && durationMs > 0
     ? durationMs
@@ -911,9 +1048,10 @@ router.post("/session/:id/end", requireAuth as any, async (req: any, res: any) =
       await db.insert(usageEventsTable).values({
         kind: "voice_minutes",
         userId: req.user.id,
-        venueId: venueId || null,
+        organizationId,
+        agentProfileId: effectiveAgentProfileId,
         quantity: Math.ceil(effectiveDuration / 60000),
-        metadata: { durationMs: effectiveDuration, provider: "openai_realtime_webrtc" },
+        metadata: { durationMs: effectiveDuration, provider: effectiveProvider, venueId: venueId || null },
       });
     } catch {
       // non-critical — don't fail the response

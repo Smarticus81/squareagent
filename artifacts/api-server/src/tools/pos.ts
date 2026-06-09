@@ -9,7 +9,9 @@ import {
   cancelLiveOrder,
   completeLiveOrder,
   pushToTerminal,
+  redactSquareId,
   SQUARE_BASE,
+  squareErrorSummary,
   squareHeaders,
 } from "../lib/square-helpers";
 
@@ -153,7 +155,7 @@ async function submitOrder(_args: Record<string, unknown>, ctx: ToolContext): Pr
     if (session.squareOrderId) {
       const { orderId, total, paymentId, error } = await completeLiveOrder(session, squareToken, squareLocationId);
       if (error) console.warn(`[Tools/POS] Live payment failed: ${error}`);
-      else console.log(`[Tools/POS] Live order completed: ${orderId} | $${total.toFixed(2)} | payment=${paymentId}`);
+      else console.log(`[Tools/POS] Live order completed order=${redactSquareId(orderId)} payment=${redactSquareId(paymentId)}`);
       sessionOrder.splice(0, sessionOrder.length);
       session.squareOrderId = undefined;
       session.squareOrderVersion = undefined;
@@ -184,7 +186,7 @@ async function submitOrder(_args: Record<string, unknown>, ctx: ToolContext): Pr
     const orderData = await orderRes.json() as any;
     if (!orderRes.ok) {
       const errMsg = orderData.errors?.[0]?.detail || "Failed to create order";
-      console.error("[Tools/POS] Order failed:", JSON.stringify(orderData.errors));
+      console.error("[Tools/POS] Order failed:", squareErrorSummary(orderData.errors));
       return { result: `Order failed: ${errMsg}` };
     }
     const orderId = orderData.order?.id;
@@ -205,7 +207,7 @@ async function submitOrder(_args: Record<string, unknown>, ctx: ToolContext): Pr
     });
     if (!paymentRes.ok) {
       const pd = await paymentRes.json() as any;
-      console.warn("[Tools/POS] Payment failed:", JSON.stringify(pd.errors));
+      console.warn("[Tools/POS] Payment failed:", squareErrorSummary(pd.errors));
     }
 
     sessionOrder.splice(0, sessionOrder.length);

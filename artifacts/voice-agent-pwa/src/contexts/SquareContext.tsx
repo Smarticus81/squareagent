@@ -11,27 +11,22 @@ export interface SquareCatalogItem {
   variationId?: string;
 }
 
-export interface SquareLocation {
-  id: string;
-  name: string;
-  address?: string;
-}
-
 interface AgentProfileLaunchInfo {
   id: string;
+  venueId?: number | null;
   displayName: string;
   wakePhrase: string;
+  wakeMode?: "ambient" | "tap";
   voicePipelineProvider?: string;
   voicePipelineConfig?: Record<string, unknown>;
+  noiseMode?: string;
 }
 
 
 interface SquareContextType {
-  accessToken: string | null;
   locationId: string | null;
   venueId: string | null;
   authToken: string | null;
-  locations: SquareLocation[];
   catalogItems: SquareCatalogItem[];
   isConfigured: boolean;
   isLoadingCatalog: boolean;
@@ -46,6 +41,7 @@ interface SquareContextType {
   agentProfile: AgentProfileLaunchInfo | null;
   agentProfileId: string | null;
   wakePhrase: string;
+  wakeMode: "ambient" | "tap";
   /**
    * 'venue' = POS-attached assistant (Square credentials loaded, order/menu UI active).
    * 'general' = no POS connection (web/email/knowledge tools only).
@@ -59,11 +55,9 @@ interface SquareContextType {
   logout: () => Promise<void>;
   /** Select a venue and load its Square credentials */
   selectVenue: (venueId: number) => Promise<string | null>;
-  setCredentials: (token: string, locationId: string) => void;
   clearCredentials: () => void;
   refreshCredentials: () => Promise<boolean>;
-  loadCatalog: (overrideToken?: string, overrideLocationId?: string) => Promise<number>;
-  fetchLocations: (token: string) => Promise<SquareLocation[]>;
+  loadCatalog: () => Promise<number>;
   searchCatalog: (query: string) => SquareCatalogItem[];
 }
 
@@ -76,16 +70,7 @@ const VENUE_ID_KEY = "voycelab_venue_id";
 const WAKE_PHRASE_KEY = "voycelab_wake_phrase";
 const AGENT_PROFILE_KEY = "voycelab_agent_profile";
 const AGENT_PROFILE_ID_KEY = "voycelab_agent_profile_id";
-
-function getWebLaunchParams(): { venueId?: string; authToken: string; agentProfileId?: string } | null {
-  const params = new URLSearchParams(window.location.search);
-  // Support both exchange code (new) and direct token (legacy/dev)
-  const venueId = params.get("venue");
-  const authToken = params.get("token");
-  const agentProfileId = params.get("agentProfileId") ?? undefined;
-  if (authToken && (venueId || agentProfileId)) return { venueId: venueId ?? undefined, authToken, agentProfileId };
-  return null;
-}
+const DEFAULT_WAKE_PHRASE = "Hey Voyce";
 
 /** Redeem a one-time exchange code to get token + venueId. */
 async function redeemExchangeCode(code: string): Promise<{ venueId?: string; authToken: string; agentProfileId?: string } | null> {
@@ -106,9 +91,7 @@ async function redeemExchangeCode(code: string): Promise<{ venueId?: string; aut
 }
 
 export function SquareProvider({ children }: { children: ReactNode }) {
-  const [accessToken, setAccessToken] = useState<string | null>(null);
   const [locationId, setLocationId] = useState<string | null>(null);
-  const [locations, setLocations] = useState<SquareLocation[]>([]);
   const [catalogItems, setCatalogItems] = useState<SquareCatalogItem[]>([]);
   const [isLoadingCatalog, setIsLoadingCatalog] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
@@ -121,7 +104,18 @@ export function SquareProvider({ children }: { children: ReactNode }) {
   const [venues, setVenues] = useState<{ id: number; name: string; squareLocationName?: string }[]>([]);
   const [agentProfile, setAgentProfile] = useState<AgentProfileLaunchInfo | null>(null);
   const [agentProfileId, setAgentProfileId] = useState<string | null>(localStorage.getItem(AGENT_PROFILE_ID_KEY));
-  const [wakePhrase, setWakePhrase] = useState("Hey Bar");
+  const [wakePhrase, setWakePhrase] = useState(DEFAULT_WAKE_PHRASE);
+  const [wakeMode, setWakeMode] = useState<"ambient" | "tap">("ambient");
+
+  function applyVenueConnection(data: any, nextVenueId: string) {
+    setLocationId(data.locationId ?? null);
+    localStorage.removeItem(TOKEN_KEY);
+    if (data.locationId) localStorage.setItem(LOC_KEY, data.locationId);
+    localStorage.setItem(VENUE_ID_KEY, nextVenueId);
+    applyAgentLaunchInfo(data);
+    setVenueId(nextVenueId);
+    setConnectionError(null);
+  }
 
   function applyAgentLaunchInfo(data: any) {
     const profile = data.agentProfile as AgentProfileLaunchInfo | null | undefined;
@@ -130,11 +124,12 @@ export function SquareProvider({ children }: { children: ReactNode }) {
         ? profile.wakePhrase.trim()
         : typeof data.wakePhrase === "string" && data.wakePhrase.trim()
           ? data.wakePhrase.trim()
-          : "Hey Bar";
+          : DEFAULT_WAKE_PHRASE;
 
     setAgentProfile(profile ?? null);
     setAgentProfileId(profile?.id ?? null);
     setWakePhrase(nextWakePhrase);
+    setWakeMode(profile?.wakeMode === "tap" ? "tap" : "ambient");
     localStorage.setItem(WAKE_PHRASE_KEY, nextWakePhrase);
     if (profile?.id) localStorage.setItem(AGENT_PROFILE_ID_KEY, profile.id);
     else localStorage.removeItem(AGENT_PROFILE_ID_KEY);
@@ -155,14 +150,14 @@ export function SquareProvider({ children }: { children: ReactNode }) {
     setVenues([]);
     setAgentProfile(null);
     setAgentProfileId(null);
-    setWakePhrase("Hey Bar");
+    setWakePhrase(DEFAULT_WAKE_PHRASE);
+    setWakeMode("ambient");
     if (message) setConnectionError(message);
   }
 
   // Load credentials once on mount:
   // 1. If launched with ?code=EXCHANGE_CODE, redeem it first
-  // 2. If launched with ?venue=ID&token=JWT (legacy/dev), use directly
-  // 3. Otherwise fall back to localStorage
+  // 2. Otherwise fall back to localStorage
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -184,7 +179,15 @@ export function SquareProvider({ children }: { children: ReactNode }) {
         window.history.replaceState({}, "", url.toString());
       }
 
-      if (!launch) launch = getWebLaunchParams();
+      if (!exchangeCode && (params.has("token") || params.has("venue"))) {
+        const url = new URL(window.location.href);
+        url.searchParams.delete("token");
+        url.searchParams.delete("venue");
+        window.history.replaceState({}, "", url.toString());
+        if (!localStorage.getItem(AUTH_TOKEN_KEY)) {
+          setConnectionError("Launch link expired. Open the assistant from the dashboard.");
+        }
+      }
 
       if (launch?.agentProfileId && !launch.venueId) {
         try {
@@ -196,11 +199,12 @@ export function SquareProvider({ children }: { children: ReactNode }) {
             setAuthToken(launch.authToken);
             setAgentProfile(profile);
             setAgentProfileId(profile.id);
-            setWakePhrase(profile.wakePhrase || "Hey Bar");
+            setWakePhrase(profile.wakePhrase || DEFAULT_WAKE_PHRASE);
+            setWakeMode(profile.wakeMode === "tap" ? "tap" : "ambient");
             localStorage.setItem(AUTH_TOKEN_KEY, launch.authToken);
             localStorage.setItem(AGENT_PROFILE_ID_KEY, profile.id);
             localStorage.setItem(AGENT_PROFILE_KEY, JSON.stringify(profile));
-            localStorage.setItem(WAKE_PHRASE_KEY, profile.wakePhrase || "Hey Bar");
+            localStorage.setItem(WAKE_PHRASE_KEY, profile.wakePhrase || DEFAULT_WAKE_PHRASE);
             localStorage.removeItem(VENUE_ID_KEY);
             setVenueId(null);
             setCredentialsReady(true);
@@ -221,17 +225,11 @@ export function SquareProvider({ children }: { children: ReactNode }) {
           });
           if (!cancelled && res.ok) {
             const data = await res.json();
-            if (data.accessToken && data.locationId) {
-              setAccessToken(data.accessToken);
-              setLocationId(data.locationId);
-              localStorage.setItem(TOKEN_KEY, data.accessToken);
-              localStorage.setItem(LOC_KEY, data.locationId);
+            if (data.locationId) {
               // Store auth params for voice agent session auth
-              localStorage.setItem(VENUE_ID_KEY, launch.venueId);
               localStorage.setItem(AUTH_TOKEN_KEY, launch.authToken);
               if (launch.agentProfileId) localStorage.setItem(AGENT_PROFILE_ID_KEY, launch.agentProfileId);
-              applyAgentLaunchInfo(data);
-              setVenueId(launch.venueId);
+              applyVenueConnection(data, launch.venueId);
               setAuthToken(launch.authToken);
               setCredentialsReady(true);
               return;
@@ -243,10 +241,9 @@ export function SquareProvider({ children }: { children: ReactNode }) {
       }
       // Fallback to localStorage
       if (!cancelled) {
-        const token = localStorage.getItem(TOKEN_KEY);
         const locId = localStorage.getItem(LOC_KEY);
-        if (token) setAccessToken(token);
         if (locId) setLocationId(locId);
+        localStorage.removeItem(TOKEN_KEY);
         const storedWakePhrase = localStorage.getItem(WAKE_PHRASE_KEY);
         const storedAgentProfileId = localStorage.getItem(AGENT_PROFILE_ID_KEY);
         if (storedWakePhrase) setWakePhrase(storedWakePhrase);
@@ -254,7 +251,10 @@ export function SquareProvider({ children }: { children: ReactNode }) {
         const storedProfile = localStorage.getItem(AGENT_PROFILE_KEY);
         if (storedProfile) {
           try {
-            setAgentProfile(JSON.parse(storedProfile));
+            const parsedProfile = JSON.parse(storedProfile) as AgentProfileLaunchInfo;
+            setAgentProfile(parsedProfile);
+            setWakePhrase(parsedProfile.wakePhrase?.trim() || storedWakePhrase || DEFAULT_WAKE_PHRASE);
+            setWakeMode(parsedProfile.wakeMode === "tap" ? "tap" : "ambient");
           } catch {
             localStorage.removeItem(AGENT_PROFILE_KEY);
           }
@@ -288,9 +288,9 @@ export function SquareProvider({ children }: { children: ReactNode }) {
 
   // Load catalog when credentials are available
   useEffect(() => {
-    if (!credentialsReady || !accessToken || !locationId) return;
-    loadCatalog();
-  }, [credentialsReady, accessToken, locationId]);
+    if (!credentialsReady) return;
+    if (venueId && authToken) loadCatalog();
+  }, [credentialsReady, locationId, venueId, authToken]);
 
   // ── VoyceLab Account Auth ────────────────────────────────────────────────────
 
@@ -369,7 +369,8 @@ export function SquareProvider({ children }: { children: ReactNode }) {
     setVenues([]);
     setAgentProfile(null);
     setAgentProfileId(null);
-    setWakePhrase("Hey Bar");
+    setWakePhrase(DEFAULT_WAKE_PHRASE);
+    setWakeMode("ambient");
   }
 
   async function selectVenue(vid: number): Promise<string | null> {
@@ -389,15 +390,9 @@ export function SquareProvider({ children }: { children: ReactNode }) {
         return (data as any).error || "Failed to load venue";
       }
       const data = await res.json();
-      if (data.accessToken && data.locationId) {
-        setAccessToken(data.accessToken);
-        setLocationId(data.locationId);
-        setVenueId(String(vid));
-        applyAgentLaunchInfo(data);
-        localStorage.setItem(TOKEN_KEY, data.accessToken);
-        localStorage.setItem(LOC_KEY, data.locationId);
+      if (data.locationId) {
+        applyVenueConnection(data, String(vid));
         localStorage.setItem(VENUE_ID_KEY, String(vid));
-        setConnectionError(null);
         return null;
       }
       return "Venue not connected to Square";
@@ -406,29 +401,9 @@ export function SquareProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  async function fetchLocations(token: string): Promise<SquareLocation[]> {
-    const res = await fetch(`${getBaseUrl()}api/square/locations`, { headers: { "x-square-token": token } });
-    if (!res.ok) throw new Error("Failed to fetch locations");
-    const data = await res.json();
-    const locs: SquareLocation[] = (data.locations || []).map((l: any) => ({
-      id: l.id, name: l.name,
-      address: [l.address?.address_line_1, l.address?.locality, l.address?.administrative_district_level_1].filter(Boolean).join(", "),
-    }));
-    setLocations(locs);
-    return locs;
-  }
-
-  function setCredentials(token: string, locId: string) {
-    localStorage.setItem(TOKEN_KEY, token);
-    localStorage.setItem(LOC_KEY, locId);
-    setAccessToken(token);
-    setLocationId(locId);
-  }
-
   function clearCredentials() {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(LOC_KEY);
-    setAccessToken(null);
     setLocationId(null);
     setCatalogItems([]);
     setConnectionError(null);
@@ -463,11 +438,8 @@ export function SquareProvider({ children }: { children: ReactNode }) {
       }
 
       const data = await res.json();
-      if (data.accessToken && data.locationId) {
-        setAccessToken(data.accessToken);
-        setLocationId(data.locationId);
-        localStorage.setItem(TOKEN_KEY, data.accessToken);
-        localStorage.setItem(LOC_KEY, data.locationId);
+      if (data.locationId) {
+        applyVenueConnection(data, vid);
         setCatalogError(null);
         setConnectionError(null);
         return true;
@@ -485,18 +457,18 @@ export function SquareProvider({ children }: { children: ReactNode }) {
 
   const loadingRef = useRef(false);
 
-  async function loadCatalog(overrideToken?: string, overrideLocationId?: string): Promise<number> {
-    const tok = overrideToken ?? accessToken;
-    const loc = overrideLocationId ?? locationId;
-    if (!tok || !loc) return 0;
+  async function loadCatalog(): Promise<number> {
+    const vid = venueId || localStorage.getItem(VENUE_ID_KEY);
+    const jwt = authToken || localStorage.getItem(AUTH_TOKEN_KEY);
+    if (!vid || !jwt) return 0;
     // Prevent overlapping fetches — but allow retries after failure
     if (loadingRef.current) return 0;
     loadingRef.current = true;
     setIsLoadingCatalog(true);
     setCatalogError(null);
     try {
-      const res = await fetch(`${getBaseUrl()}api/square/catalog`, {
-        headers: { "x-square-token": tok, "x-square-location": loc },
+      const res = await fetch(`${getBaseUrl()}api/venues/${encodeURIComponent(vid)}/catalog`, {
+        headers: { Authorization: `Bearer ${jwt}` },
       });
       if (!res.ok) {
         // If Square token expired, try refreshing credentials automatically
@@ -533,7 +505,7 @@ export function SquareProvider({ children }: { children: ReactNode }) {
     return catalogItems.filter((i) => i.name.toLowerCase().includes(q) || i.category?.toLowerCase().includes(q));
   }
 
-  const isConfigured = !!(accessToken && locationId);
+  const isConfigured = !!(venueId && authToken && locationId);
   // Default to the general business assistant unless we have an explicit
   // venue-bound assistant profile AND Square credentials. This means a
   // signed-in user who opens the PWA directly (no venue selected) gets the
@@ -545,11 +517,11 @@ export function SquareProvider({ children }: { children: ReactNode }) {
 
   return (
     <SquareContext.Provider value={{
-      accessToken, locationId, venueId, authToken, locations, catalogItems, isConfigured,
+      locationId, venueId, authToken, catalogItems, isConfigured,
       isLoadingCatalog, catalogError, connectionError, isReconnecting,
-      userInfo, venues, agentProfile, agentProfileId, wakePhrase, assistantKind, login, signup, logout, selectVenue,
-      setCredentials, clearCredentials, refreshCredentials,
-      loadCatalog, fetchLocations, searchCatalog,
+      userInfo, venues, agentProfile, agentProfileId, wakePhrase, wakeMode, assistantKind, login, signup, logout, selectVenue,
+      clearCredentials, refreshCredentials,
+      loadCatalog, searchCatalog,
     }}>
       {children}
     </SquareContext.Provider>

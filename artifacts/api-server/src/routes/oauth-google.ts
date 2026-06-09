@@ -19,9 +19,10 @@ import { Router, type IRouter, Request, Response } from "express";
 import jwt from "jsonwebtoken";
 import { google } from "googleapis";
 import { db, emailCredentialsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
-import { requireAuth } from "./auth";
+import { and, eq, isNull, or } from "drizzle-orm";
+import { JWT_SECRET, requireAuth } from "./auth";
 import { encrypt } from "../lib/secrets";
+import { ensureUserOrganization } from "./v1/_helpers";
 
 const router: IRouter = Router();
 
@@ -67,20 +68,31 @@ function getOAuthClient() {
   return new google.auth.OAuth2(clientId, clientSecret, getRedirectUri());
 }
 
+function emailTenantWhere(userId: number, organizationId: string | null) {
+  return organizationId
+    ? or(
+        eq(emailCredentialsTable.organizationId, organizationId),
+        and(eq(emailCredentialsTable.userId, userId), isNull(emailCredentialsTable.organizationId)),
+      )
+    : eq(emailCredentialsTable.userId, userId);
+}
+
 // ── GET /api/oauth/google/start ──────────────────────────────────────────────
 
 router.get("/start", requireAuth as any, async (req: Request, res: Response): Promise<void> => {
   try {
     const client = getOAuthClient();
     const userId = (req as any).user.id as number;
+    const organizationId =
+      (req as any).organization?.id ?? (await ensureUserOrganization((req as any).user)).id;
     const fromAddress = typeof req.query.from === "string" ? req.query.from.trim() : "";
     const fromName = typeof req.query.fromName === "string" ? req.query.fromName.trim() : "";
 
     const frontendOrigin = getFrontendOrigin(req);
 
     const state = jwt.sign(
-      { uid: userId, fromAddress, fromName, kind: "gmail-oauth", frontendOrigin },
-      process.env.JWT_SECRET ?? "dev-secret",
+      { uid: userId, organizationId, fromAddress, fromName, kind: "gmail-oauth", frontendOrigin },
+      JWT_SECRET,
       { expiresIn: STATE_TTL_SECONDS },
     );
 
@@ -103,11 +115,11 @@ router.get("/start", requireAuth as any, async (req: Request, res: Response): Pr
 router.get("/callback", async (req: Request, res: Response): Promise<void> => {
   const { code, state, error: oauthError } = req.query as Record<string, string | undefined>;
 
-  interface OAuthClaim { uid: number; fromAddress?: string; fromName?: string; frontendOrigin?: string }
+  interface OAuthClaim { uid: number; organizationId?: string | null; fromAddress?: string; fromName?: string; frontendOrigin?: string }
   let claim: OAuthClaim | null = null;
   if (state) {
     try {
-      claim = jwt.verify(state, process.env.JWT_SECRET ?? "dev-secret") as OAuthClaim;
+      claim = jwt.verify(state, JWT_SECRET) as OAuthClaim;
     } catch {}
   }
 
@@ -156,11 +168,12 @@ router.get("/callback", async (req: Request, res: Response): Promise<void> => {
     const encryptedRefresh = encrypt(tokens.refresh_token);
     const fromAddress = email;
     const fromName = claim.fromName?.trim() || null;
+    const organizationId = claim.organizationId ?? null;
 
     const existing = await db
       .select()
       .from(emailCredentialsTable)
-      .where(eq(emailCredentialsTable.userId, claim.uid))
+      .where(emailTenantWhere(claim.uid, organizationId))
       .limit(1);
 
     if (existing.length > 0) {
@@ -168,6 +181,7 @@ router.get("/callback", async (req: Request, res: Response): Promise<void> => {
         .update(emailCredentialsTable)
         .set({
           provider: "gmail_oauth",
+          organizationId: existing[0].organizationId ?? organizationId,
           apiKey: null,
           smtpHost: null,
           smtpPort: null,
@@ -182,6 +196,7 @@ router.get("/callback", async (req: Request, res: Response): Promise<void> => {
     } else {
       await db.insert(emailCredentialsTable).values({
         userId: claim.uid,
+        organizationId,
         provider: "gmail_oauth",
         oauthRefreshToken: encryptedRefresh,
         fromAddress,

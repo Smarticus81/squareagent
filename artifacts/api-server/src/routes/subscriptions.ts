@@ -10,12 +10,14 @@ import { Router, Request, Response } from "express";
 import { Webhook } from "svix";
 import { db, subscriptionsTable, usersTable, organizationsTable, organizationMembershipsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
-import { requireAuth } from "./auth";
+import { invalidateAuthCacheForUser, requireAuth } from "./auth";
+import { checkClerkOrgPlan } from "../lib/clerk-billing";
 import { PLANS, type PlanId } from "@workspace/voicelab-core/pricing";
 
 const router = Router();
 
 type Cadence = "monthly" | "yearly";
+type BillingSource = "local_db" | "clerk_claims" | null;
 type ClerkWebhookEvent = {
   id?: string;
   type?: string;
@@ -27,8 +29,10 @@ const PUBLIC_BASE_URL =
   (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : "http://localhost:5173");
 
 const CLERK_SECRET_KEY = process.env.CLERK_SECRET_KEY ?? "";
+const CLERK_PUBLISHABLE_KEY = process.env.VITE_CLERK_PUBLISHABLE_KEY ?? "";
 const CLERK_WEBHOOK_SECRET = process.env.CLERK_WEBHOOK_SECRET ?? "";
-const CLERK_BILLING_PORTAL_URL = process.env.CLERK_BILLING_PORTAL_URL ?? `${PUBLIC_BASE_URL}/billing`;
+const EXPLICIT_CLERK_BILLING_PORTAL_URL = process.env.CLERK_BILLING_PORTAL_URL ?? "";
+const CLERK_BILLING_PORTAL_URL = EXPLICIT_CLERK_BILLING_PORTAL_URL || `${PUBLIC_BASE_URL}/billing`;
 
 const CLERK_PLAN_ENV: Record<Exclude<PlanId, "trial">, string> = {
   pro: "CLERK_PLAN_PRO_ID",
@@ -54,6 +58,46 @@ const CLERK_PLAN_SLUG_MAP: Record<string, PlanId> = {
   business: "business",
   premium: "business",
 };
+
+function billingReadiness() {
+  const planReadiness = PLANS
+    .filter((plan): plan is typeof plan & { id: Exclude<PlanId, "trial"> } => plan.id !== "trial")
+    .map((plan) => {
+      const env = CLERK_PLAN_ENV[plan.id];
+      const monthlyEnv = CLERK_CHECKOUT_URL_ENV[plan.id].monthly;
+      const yearlyEnv = CLERK_CHECKOUT_URL_ENV[plan.id].yearly;
+      return {
+        id: plan.id,
+        name: plan.name,
+        clerkPlanIdConfigured: Boolean(process.env[env]),
+        checkoutMonthlyConfigured: Boolean(process.env[monthlyEnv]),
+        checkoutYearlyConfigured: Boolean(process.env[yearlyEnv]),
+      };
+    });
+
+  const embeddedCheckoutReady = Boolean(CLERK_PUBLISHABLE_KEY);
+  const serverCheckoutReady = planReadiness.some(
+    (plan) => plan.checkoutMonthlyConfigured || plan.checkoutYearlyConfigured,
+  );
+  const portalReady = Boolean(EXPLICIT_CLERK_BILLING_PORTAL_URL || CLERK_PUBLISHABLE_KEY);
+  const webhooksReady = Boolean(CLERK_WEBHOOK_SECRET);
+  const secretKeyConfigured = Boolean(CLERK_SECRET_KEY);
+  const operational = Boolean((embeddedCheckoutReady || serverCheckoutReady) && portalReady && webhooksReady && secretKeyConfigured);
+
+  return {
+    provider: "clerk" as const,
+    configured: embeddedCheckoutReady || serverCheckoutReady,
+    operational,
+    embeddedCheckoutReady,
+    serverCheckoutReady,
+    portalReady,
+    webhooksReady,
+    secretKeyConfigured,
+    publishableKeyConfigured: Boolean(CLERK_PUBLISHABLE_KEY),
+    explicitPortalConfigured: Boolean(EXPLICIT_CLERK_BILLING_PORTAL_URL),
+    plans: planReadiness,
+  };
+}
 
 // ── GET /plans — public, used by /pricing page and signup flows ───────────────
 
@@ -91,6 +135,65 @@ router.get("/plans", (_req: Request, res: Response) => {
   });
 });
 
+// ── GET /status — authenticated billing health for the account page ───────────
+
+router.get("/status", requireAuth as any, async (req: Request, res: Response) => {
+  const { subscription: sub, billingSource } = await syncActiveClerkClaimSubscription(
+    req,
+    (req as Request & { subscription?: any }).subscription ?? null,
+  );
+  const readiness = billingReadiness();
+  res.json({
+    ...readiness,
+    subscription: sub
+      ? {
+          plan: sub.plan ?? null,
+          status: sub.status ?? null,
+          trialEndsAt: sub.trialEndsAt ?? null,
+          currentPeriodEnd: sub.currentPeriodEnd ?? null,
+          clerkSubscriptionId: sub.clerkSubscriptionId ?? null,
+          organizationId: sub.organizationId ?? null,
+          billingSource,
+        }
+      : null,
+  });
+});
+
+async function syncActiveClerkClaimSubscription(
+  req: Request,
+  currentSub: any,
+): Promise<{ subscription: any; billingSource: BillingSource }> {
+  const clerkPlan = checkClerkOrgPlan(req);
+  if (!clerkPlan?.active) {
+    return { subscription: currentSub, billingSource: currentSub ? "local_db" : null };
+  }
+
+  const organizationId = (req as Request & { organization?: { id?: string } }).organization?.id ?? null;
+  const userId = (req as Request & { user?: { id?: number } }).user?.id ?? 0;
+  const subscription = {
+    ...(currentSub ?? {}),
+    id: currentSub?.id ?? -1,
+    userId,
+    plan: clerkPlan.plan,
+    status: "active",
+    trialEndsAt: null,
+    currentPeriodEnd: currentSub?.currentPeriodEnd ?? null,
+    clerkSubscriptionId: currentSub?.clerkSubscriptionId ?? null,
+    organizationId,
+  };
+
+  if (userId > 0) {
+    await upsertSubscriptionForUser(userId, {
+      plan: clerkPlan.plan,
+      status: "active",
+      trialEndsAt: null,
+      organizationId,
+    });
+  }
+
+  return { subscription, billingSource: "clerk_claims" };
+}
+
 async function upsertSubscriptionForUser(
   userId: number,
   values: Partial<typeof subscriptionsTable.$inferInsert>,
@@ -106,6 +209,7 @@ async function upsertSubscriptionForUser(
       .update(subscriptionsTable)
       .set({ ...values, updatedAt: new Date() })
       .where(eq(subscriptionsTable.id, existing.id));
+    invalidateAuthCacheForUser(userId);
     return;
   }
 
@@ -115,6 +219,7 @@ async function upsertSubscriptionForUser(
     status: "trialing",
     ...values,
   });
+  invalidateAuthCacheForUser(userId);
 }
 
 /**
@@ -146,7 +251,9 @@ async function syncOrgSubscription(
     .where(eq(subscriptionsTable.organizationId, organizationId))
     .limit(1);
 
-  if (existingOrgSub && members.length === 0) {
+  if (existingOrgSub) {
+    // Always refresh the org-level row when it exists, even when member rows
+    // were also updated.
     // Org exists in subscriptions but has no members yet — update the row
     await db
       .update(subscriptionsTable)
@@ -374,6 +481,18 @@ router.post("/checkout", requireAuth as any, async (req: Request, res: Response)
 // ── POST /portal — Open Clerk billing management ──────────────────────────────
 
 router.post("/portal", requireAuth as any, async (req: Request, res: Response): Promise<void> => {
+  const readiness = billingReadiness();
+  if (!readiness.portalReady) {
+    res.status(503).json({
+      error: "Clerk Billing portal is not configured. Set VITE_CLERK_PUBLISHABLE_KEY for the embedded organization billing page or CLERK_BILLING_PORTAL_URL for an external portal.",
+    });
+    return;
+  }
+
+  await syncActiveClerkClaimSubscription(
+    req,
+    (req as Request & { subscription?: any }).subscription ?? null,
+  );
   res.json({ url: CLERK_BILLING_PORTAL_URL, provider: "clerk" });
 });
 

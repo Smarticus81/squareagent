@@ -11,10 +11,15 @@ export default function Signup() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const hasPendingPlan = typeof window !== "undefined" && Boolean(sessionStorage.getItem("voycelab.pending_plan"));
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    signup.mutate({ name, email, password }, { onSuccess: () => setLocation("/onboarding") });
+    signup.mutate({ name, email, password }, {
+      onSuccess: () => {
+        setLocation(sessionStorage.getItem("voycelab.pending_plan") ? "/pricing" : "/onboarding");
+      },
+    });
   };
 
   return (
@@ -52,7 +57,7 @@ export default function Signup() {
             className="text-[14px] text-center mt-2"
             style={{ color: "var(--color-vl-ink-muted)" }}
           >
-            14 days free · No card required
+            {hasPendingPlan ? "Create your account, then finish secure checkout" : "14 days free · No card required"}
           </p>
           <div className="mt-6 mb-2">
             <VoiceRail state="ready" intensity={0.5} />
@@ -103,7 +108,7 @@ export default function Signup() {
                   <Loader2 className="w-4 h-4 animate-spin" /> Creating account…
                 </span>
               ) : (
-                "Start free trial"
+                hasPendingPlan ? "Continue to checkout" : "Start free trial"
               )}
             </button>
           </form>

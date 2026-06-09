@@ -14,12 +14,14 @@ import { db, agentProfilesTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 
 export interface CachedAgentProfile {
+  organizationId: string;
   voicePipelineProvider: string;
   voicePipelineConfig: Record<string, unknown> | null;
   connectedServiceId: string | null;
   noiseMode: string | null;
   displayName: string | null;
   personality: string | null;
+  allowedTools: string[] | null;
 }
 
 const TTL_MS = Number(process.env.AGENT_PROFILE_CACHE_TTL_MS ?? 60_000);
@@ -32,12 +34,14 @@ export async function getCachedAgentProfile(id: string): Promise<CachedAgentProf
 
   const [profile] = await db
     .select({
+      organizationId: agentProfilesTable.organizationId,
       voicePipelineProvider: agentProfilesTable.voicePipelineProvider,
       voicePipelineConfig: agentProfilesTable.voicePipelineConfig,
       connectedServiceId: agentProfilesTable.connectedServiceId,
       noiseMode: agentProfilesTable.noiseMode,
       displayName: agentProfilesTable.displayName,
       personality: agentProfilesTable.personality,
+      allowedTools: agentProfilesTable.allowedTools,
     })
     .from(agentProfilesTable)
     .where(eq(agentProfilesTable.id, id))

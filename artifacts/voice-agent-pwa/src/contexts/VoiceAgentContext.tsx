@@ -6,7 +6,6 @@
 import { createContext, useContext, useState, useRef, useCallback, useEffect, type ReactNode } from "react";
 import { getVoicePrefs } from "@/lib/voice-prefs";
 import { getBaseUrl } from "@/lib/api";
-import { useWakeLock } from "@/hooks/useWakeLock";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -35,6 +34,7 @@ export interface PendingConfirmation {
   args: Record<string, unknown>;
   risk_level: string;
   prompt: string;
+  token?: string;
   call_id: string;
 }
 
@@ -53,8 +53,13 @@ interface VoiceAgentContextType {
   interrupt: () => void;
   setCatalog: (items: unknown[]) => void;
   setCurrentOrder: (order: unknown[]) => void;
-  setSquareCredentials: (token: string, locationId: string) => void;
-  setAuthParams: (venueId: string, authToken: string, agentProfileId?: string) => void;
+  setAuthParams: (
+    venueId: string,
+    authToken: string,
+    agentProfileId?: string,
+    voicePipelineProvider?: string,
+    voicePipelineConfig?: Record<string, unknown>,
+  ) => void;
   confirmPending: () => void;
   denyPending: () => void;
 }
@@ -77,6 +82,58 @@ function clearStoredLaunchSession() {
 // A short tail lets the speaker's acoustic decay die out before the mic
 // re-opens, so the agent's final syllable can't re-trigger the VAD.
 const MIC_REOPEN_TAIL_MS = 250;
+const GEMINI_PROVIDER_PREFIX = "google_gemini_";
+const WS_INPUT_SAMPLE_RATE = 16000;
+const WS_OUTPUT_SAMPLE_RATE = 24000;
+const DEBUG_VOICE_EVENTS = import.meta.env.DEV;
+const SENSITIVE_LOG_KEY_RE = /(token|secret|password|pass|credential|authorization|email|recipient|subject|body|message|text|query|sql|connection|string|address|phone|name)/i;
+
+function summarizeToolArgs(args: Record<string, unknown>): Record<string, string> {
+  const summary: Record<string, string> = {};
+  for (const [key, value] of Object.entries(args)) {
+    if (SENSITIVE_LOG_KEY_RE.test(key)) {
+      summary[key] = "[redacted]";
+    } else if (Array.isArray(value)) {
+      summary[key] = `array(${value.length})`;
+    } else if (value && typeof value === "object") {
+      summary[key] = "object";
+    } else {
+      summary[key] = typeof value;
+    }
+  }
+  return summary;
+}
+
+function debugVoiceLog(message: string, ...args: unknown[]): void {
+  if (DEBUG_VOICE_EVENTS) console.log(message, ...args);
+}
+
+function floatToPcm16Base64(input: ArrayLike<number>): string {
+  const bytes = new Uint8Array(input.length * 2);
+  const view = new DataView(bytes.buffer);
+  for (let i = 0; i < input.length; i++) {
+    const s = Math.max(-1, Math.min(1, input[i]));
+    view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+  }
+  let binary = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
+function pcm16Base64ToFloat(input: string): Float32Array {
+  const binary = atob(input);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  const view = new DataView(bytes.buffer);
+  const out = new Float32Array(Math.floor(bytes.length / 2));
+  for (let i = 0; i < out.length; i++) {
+    out[i] = view.getInt16(i * 2, true) / 0x8000;
+  }
+  return out;
+}
 
 // ── Context ───────────────────────────────────────────────────────────────────
 
@@ -96,11 +153,11 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
   const commandHandlerRef = useRef<CommandHandler | null>(null);
   const catalogRef = useRef<unknown[]>([]);
   const currentOrderRef = useRef<unknown[]>([]);
-  const squareTokenRef = useRef("");
-  const squareLocationIdRef = useRef("");
   const venueIdRef = useRef("");
   const authTokenRef = useRef("");
   const agentProfileIdRef = useRef("");
+  const voicePipelineProviderRef = useRef("");
+  const voicePipelineConfigRef = useRef<Record<string, unknown>>({});
   const isRunning = useRef(false);
   const agentStateRef = useRef<AgentState>("disconnected");
   const sessionIdRef = useRef("");
@@ -110,6 +167,17 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
   const micTrackRef = useRef<MediaStreamTrack | null>(null);
   const fullDuplexRef = useRef(false);
   const micReopenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Server-relayed native audio providers (Gemini Live) use WebSocket PCM
+  // frames instead of a WebRTC media track.
+  const wsRef = useRef<WebSocket | null>(null);
+  const wsMicStreamRef = useRef<MediaStream | null>(null);
+  const wsInputCtxRef = useRef<AudioContext | null>(null);
+  const wsInputSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const wsInputProcessorRef = useRef<ScriptProcessorNode | null>(null);
+  const wsOutputCtxRef = useRef<AudioContext | null>(null);
+  const wsOutputDestinationRef = useRef<MediaStreamAudioDestinationNode | null>(null);
+  const wsPlaybackTimeRef = useRef(0);
+  const wsPlaybackDoneTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Shared helpers ──────────────────────────────────────────────────────────
 
@@ -130,16 +198,19 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
     sendContextUpdate();
   }, []);
 
-  const setSquareCredentials = useCallback((token: string, locationId: string) => {
-    squareTokenRef.current = token;
-    squareLocationIdRef.current = locationId;
-  }, []);
-
   /** Store venueId + auth JWT so realtime calls go through server-side credential lookup. */
-  const setAuthParams = useCallback((venueId: string, authToken: string, agentProfileId?: string) => {
+  const setAuthParams = useCallback((
+    venueId: string,
+    authToken: string,
+    agentProfileId?: string,
+    voicePipelineProvider?: string,
+    voicePipelineConfig?: Record<string, unknown>,
+  ) => {
     venueIdRef.current = venueId;
     authTokenRef.current = authToken;
     agentProfileIdRef.current = agentProfileId ?? "";
+    voicePipelineProviderRef.current = voicePipelineProvider ?? "";
+    voicePipelineConfigRef.current = voicePipelineConfig ?? {};
   }, []);
 
   // ── Half-duplex mic gating ──────────────────────────────────────────────────
@@ -193,7 +264,8 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
 
   const sendContextUpdate = useCallback(() => {
     const dc = dcRef.current;
-    if (!dc || dc.readyState !== "open") return;
+    const ws = wsRef.current;
+    if ((!dc || dc.readyState !== "open") && (!ws || ws.readyState !== WebSocket.OPEN)) return;
 
     const catalog = catalogRef.current as Array<{ name: string; price: number; category?: string }>;
     const catalogStr =
@@ -201,20 +273,38 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
         ? catalog.map((c) => `  - ${c.name}: $${c.price.toFixed(2)}${c.category ? ` (${c.category})` : ""}`).join("\n")
         : "  (No catalog loaded)";
 
-    const order = currentOrderRef.current as Array<{ quantity: number; item_name: string; price: number }>;
+    const order = currentOrderRef.current as Array<{ quantity: number; item_name?: string; name?: string; price: number }>;
     const orderStr =
       order.length > 0
-        ? order.map((i) => `  - ${i.quantity}x ${i.item_name} @ $${i.price.toFixed(2)}`).join("\n")
+        ? order.map((i) => `  - ${i.quantity}x ${i.item_name ?? i.name ?? "item"} @ $${i.price.toFixed(2)}`).join("\n")
         : "  (empty)";
 
-    dc.send(JSON.stringify({
-      type: "conversation.item.create",
-      item: {
-        type: "message",
-        role: "system",
-        content: [{ type: "input_text", text: `[Context update]\n\nCatalog:\n${catalogStr}\n\nCurrent order:\n${orderStr}` }],
-      },
-    }));
+    const voiceConfig = voicePipelineConfigRef.current;
+    const contextPayload = {
+      type: "x.context_update",
+      catalog: catalogRef.current,
+      order: currentOrderRef.current,
+      voice: typeof voiceConfig.voice === "string" ? voiceConfig.voice : undefined,
+      languageCodes: Array.isArray(voiceConfig.languageCodes) ? voiceConfig.languageCodes : undefined,
+      proactiveAudio: typeof voiceConfig.proactiveAudio === "boolean" ? voiceConfig.proactiveAudio : undefined,
+      thinkingLevel: typeof voiceConfig.thinkingLevel === "string" ? voiceConfig.thinkingLevel : undefined,
+    };
+
+    if (ws?.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(contextPayload));
+      return;
+    }
+
+    if (dc?.readyState === "open") {
+      dc.send(JSON.stringify({
+        type: "conversation.item.create",
+        item: {
+          type: "message",
+          role: "system",
+          content: [{ type: "input_text", text: `[Context update]\n\nCatalog:\n${catalogStr}\n\nCurrent order:\n${orderStr}` }],
+        },
+      }));
+    }
   }, []);
 
   // ── Execute tool via server REST API ────────────────────────────────────────
@@ -225,7 +315,45 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
     callId: string,
   ) => {
     const dc = dcRef.current;
-    if (!dc || dc.readyState !== "open") return;
+    const ws = wsRef.current;
+    const sendToolOutput = (output: string) => {
+      if (dc?.readyState === "open") {
+        dc.send(JSON.stringify({
+          type: "conversation.item.create",
+          item: {
+            type: "function_call_output",
+            call_id: callId,
+            output,
+          },
+        }));
+        dc.send(JSON.stringify({ type: "response.create" }));
+        return true;
+      }
+      if (ws?.readyState === WebSocket.OPEN) {
+        if (voicePipelineProviderRef.current.startsWith(GEMINI_PROVIDER_PREFIX)) {
+          ws.send(JSON.stringify({
+            toolResponse: {
+              functionResponses: [
+                { id: callId, name: toolName, response: { result: output } },
+              ],
+            },
+          }));
+        } else {
+          ws.send(JSON.stringify({
+            type: "conversation.item.create",
+            item: {
+              type: "function_call_output",
+              call_id: callId,
+              output,
+            },
+          }));
+          ws.send(JSON.stringify({ type: "response.create" }));
+        }
+        return true;
+      }
+      return false;
+    };
+    if (dc?.readyState !== "open" && ws?.readyState !== WebSocket.OPEN) return;
 
     try {
       const baseUrl = getBaseUrl();
@@ -248,53 +376,48 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
       });
 
       const data = await res.json();
-      console.log(`[WebRTC] Tool result (${toolName}):`, data.result);
+      debugVoiceLog(`[WebRTC] Tool result (${toolName}) received`);
 
       let parsed: any = null;
       try { parsed = JSON.parse(data.result); } catch { /* not JSON */ }
 
       if (parsed?.status === "REQUIRES_CONFIRMATION" && parsed.confirmation) {
         setPendingConfirmation({ ...parsed.confirmation, call_id: callId });
-        dc.send(JSON.stringify({
-          type: "conversation.item.create",
-          item: {
-            type: "function_call_output",
-            call_id: callId,
-            output: `Waiting for user confirmation for ${toolName}. Tell the user you need their confirmation before proceeding.`,
-          },
-        }));
-        dc.send(JSON.stringify({ type: "response.create" }));
+        sendToolOutput(`Waiting for user confirmation for ${toolName}. Tell the user you need their confirmation before proceeding.`);
         return;
       }
 
-      dc.send(JSON.stringify({
-        type: "conversation.item.create",
-        item: {
-          type: "function_call_output",
-          call_id: callId,
-          output: data.result ?? "Tool execution failed",
-        },
-      }));
-      dc.send(JSON.stringify({ type: "response.create" }));
+      sendToolOutput(data.result ?? "Tool execution failed");
 
       if (data.command) {
         commandHandlerRef.current?.([data.command]);
       }
     } catch (e: any) {
       console.error(`[WebRTC] Tool exec error:`, e.message);
-      dc.send(JSON.stringify({
-        type: "conversation.item.create",
-        item: {
-          type: "function_call_output",
-          call_id: callId,
-          output: `Error: ${e.message}`,
-        },
-      }));
-      dc.send(JSON.stringify({ type: "response.create" }));
+      sendToolOutput(`Error: ${e.message}`);
     }
   }, []);
 
   // ── Data channel event handler ──────────────────────────────────────────────
+
+  const scheduleWsPlaybackDone = useCallback(() => {
+    if (wsPlaybackDoneTimerRef.current) {
+      clearTimeout(wsPlaybackDoneTimerRef.current);
+      wsPlaybackDoneTimerRef.current = null;
+    }
+    const ctx = wsOutputCtxRef.current;
+    if (!ctx) return;
+    const delayMs = Math.max(80, (wsPlaybackTimeRef.current - ctx.currentTime + 0.08) * 1000);
+    wsPlaybackDoneTimerRef.current = setTimeout(() => {
+      wsPlaybackDoneTimerRef.current = null;
+      if (!isRunning.current || !wsRef.current) return;
+      if (agentStateRef.current === "speaking") {
+        reopenMic();
+        agentStateRef.current = "listening";
+        setAgentState("listening");
+      }
+    }, delayMs);
+  }, [reopenMic]);
 
   const handleDcEvent = useCallback((raw: string) => {
     let event: Record<string, unknown>;
@@ -303,6 +426,23 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
     const setAs = (s: AgentState) => { agentStateRef.current = s; setAgentState(s); };
 
     switch (event.type) {
+      case "x.order_command":
+        if (event.command && typeof event.command === "object") {
+          commandHandlerRef.current?.([event.command as unknown as OrderCommand]);
+        }
+        break;
+
+      case "x.pending_confirmation": {
+        const confirmation = event.confirmation;
+        if (confirmation && typeof confirmation === "object") {
+          setPendingConfirmation({
+            ...(confirmation as Omit<PendingConfirmation, "call_id">),
+            call_id: String(event.call_id ?? ""),
+          });
+        }
+        break;
+      }
+
       case "session.created":
         setAs("listening");
         if (!sessionIdRef.current) sessionIdRef.current = String((event.session as any)?.id ?? Date.now());
@@ -356,6 +496,15 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
 
       case "response.done":
         if (isRunning.current) {
+          const wsCtx = wsOutputCtxRef.current;
+          if (
+            wsRef.current &&
+            wsCtx &&
+            wsPlaybackTimeRef.current > wsCtx.currentTime + 0.05
+          ) {
+            scheduleWsPlaybackDone();
+            break;
+          }
           reopenMic();
           setAs("listening");
         }
@@ -366,7 +515,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
         let args: Record<string, unknown> = {};
         try { args = JSON.parse(String(event.arguments ?? "{}")); } catch {}
         const callId = String(event.call_id ?? "");
-        console.log(`[WebRTC] Tool call: ${toolName}(${JSON.stringify(args)})`);
+        debugVoiceLog(`[WebRTC] Tool call: ${toolName}`, summarizeToolArgs(args));
         executeToolViaServer(toolName, args, callId);
         break;
       }
@@ -381,7 +530,225 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
         break;
       }
     }
-  }, [addMessage, sendContextUpdate, executeToolViaServer, gateMicForPlayback, reopenMic, reopenMicNow]);
+  }, [addMessage, sendContextUpdate, executeToolViaServer, gateMicForPlayback, reopenMic, reopenMicNow, scheduleWsPlaybackDone]);
+
+  const cleanupWsAudio = useCallback(() => {
+    if (wsPlaybackDoneTimerRef.current) {
+      clearTimeout(wsPlaybackDoneTimerRef.current);
+      wsPlaybackDoneTimerRef.current = null;
+    }
+    try { wsInputProcessorRef.current?.disconnect(); } catch {}
+    try { wsInputSourceRef.current?.disconnect(); } catch {}
+    try { void wsInputCtxRef.current?.close(); } catch {}
+    try { void wsOutputCtxRef.current?.close(); } catch {}
+    wsMicStreamRef.current?.getTracks().forEach((track) => track.stop());
+    wsInputProcessorRef.current = null;
+    wsInputSourceRef.current = null;
+    wsInputCtxRef.current = null;
+    wsOutputCtxRef.current = null;
+    wsOutputDestinationRef.current = null;
+    wsMicStreamRef.current = null;
+    wsPlaybackTimeRef.current = 0;
+    setRemoteStream(null);
+  }, []);
+
+  const playWsAudioDelta = useCallback((base64Pcm: string) => {
+    let ctx = wsOutputCtxRef.current;
+    let destination = wsOutputDestinationRef.current;
+    if (!ctx) {
+      ctx = new AudioContext({ sampleRate: WS_OUTPUT_SAMPLE_RATE });
+      destination = ctx.createMediaStreamDestination();
+      wsOutputCtxRef.current = ctx;
+      wsOutputDestinationRef.current = destination;
+      setRemoteStream(destination.stream);
+    }
+    if (!destination) return;
+    void ctx.resume().catch(() => {});
+    const samples = pcm16Base64ToFloat(base64Pcm);
+    if (samples.length === 0) return;
+    const buffer = ctx.createBuffer(1, samples.length, WS_OUTPUT_SAMPLE_RATE);
+    buffer.getChannelData(0).set(samples);
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(ctx.destination);
+    source.connect(destination);
+    const startAt = Math.max(ctx.currentTime + 0.02, wsPlaybackTimeRef.current || 0);
+    source.start(startAt);
+    wsPlaybackTimeRef.current = startAt + buffer.duration;
+    scheduleWsPlaybackDone();
+  }, [scheduleWsPlaybackDone]);
+
+  const startWsMicStreaming = useCallback(async (ws: WebSocket) => {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
+    });
+    wsMicStreamRef.current = stream;
+    micTrackRef.current = stream.getAudioTracks()[0] ?? null;
+
+    const inputCtx = new AudioContext({ sampleRate: WS_INPUT_SAMPLE_RATE });
+    wsInputCtxRef.current = inputCtx;
+    await inputCtx.resume().catch(() => {});
+    const source = inputCtx.createMediaStreamSource(stream);
+    const processor = inputCtx.createScriptProcessor(2048, 1, 1);
+    wsInputSourceRef.current = source;
+    wsInputProcessorRef.current = processor;
+
+    processor.onaudioprocess = (event) => {
+      if (ws.readyState !== WebSocket.OPEN) return;
+      if (!micTrackRef.current?.enabled) return;
+      const input = event.inputBuffer.getChannelData(0);
+      ws.send(JSON.stringify({
+        type: "input_audio_buffer.append",
+        audio: floatToPcm16Base64(input),
+        sample_rate: Math.round(inputCtx.sampleRate),
+      }));
+    };
+
+    source.connect(processor);
+    processor.connect(inputCtx.destination);
+  }, []);
+
+  const connectGeminiRelay = useCallback(async (voice: string, speed: number, baseUrl: string) => {
+    const profileId = agentProfileIdRef.current;
+    if (!profileId) throw new Error("Choose an assistant profile before starting Gemini Live.");
+
+    const sessionHeaders: Record<string, string> = { "Content-Type": "application/json" };
+    sessionHeaders["Authorization"] = `Bearer ${authTokenRef.current}`;
+    const sessionRes = await fetch(`${baseUrl}api/v1/realtime-sessions`, {
+      method: "POST",
+      headers: sessionHeaders,
+      body: JSON.stringify({
+        agentProfileId: profileId,
+        catalog: catalogRef.current,
+        order: currentOrderRef.current,
+      }),
+    });
+    if (!sessionRes.ok) {
+      const err = await sessionRes.json().catch(() => ({ detail: "Failed to start Gemini session" }));
+      throw new Error(err.detail || err.error?.message || err.error || "Failed to start Gemini session");
+    }
+
+    const sessionData = await sessionRes.json();
+    sessionIdRef.current = String(sessionData.sessionId ?? sessionData.id ?? `gemini-${Date.now()}`);
+    fullDuplexRef.current = Boolean(sessionData.capabilities?.bargeIn);
+    const handshake = sessionData.clientHandshake;
+    if (handshake?.kind !== "ws_relay") {
+      throw new Error("Gemini session did not return a WebSocket relay handshake.");
+    }
+
+    const payload = handshake.payload ?? {};
+    const path = typeof payload.path === "string" ? payload.path : "/api/realtime/gemini";
+    const wsUrl = new URL(path, `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}`);
+    const query = payload.query && typeof payload.query === "object" ? payload.query as Record<string, unknown> : {};
+    for (const [key, value] of Object.entries(query)) {
+      if (value !== undefined && value !== null) wsUrl.searchParams.set(key, String(value));
+    }
+    wsUrl.searchParams.set("token", authTokenRef.current);
+    if (venueIdRef.current) wsUrl.searchParams.set("venueId", venueIdRef.current);
+    wsUrl.searchParams.set("agentProfileId", profileId);
+    const voiceConfig = voicePipelineConfigRef.current;
+    const configuredVoice =
+      (typeof voiceConfig.voiceName === "string" ? voiceConfig.voiceName : undefined) ??
+      (typeof voiceConfig.voice === "string" ? voiceConfig.voice : undefined) ??
+      voice;
+    if (configuredVoice) wsUrl.searchParams.set("voice", configuredVoice);
+    if (typeof voiceConfig.proactiveAudio === "boolean") {
+      wsUrl.searchParams.set("proactiveAudio", String(voiceConfig.proactiveAudio));
+    }
+    if (typeof voiceConfig.affectiveDialog === "boolean") {
+      wsUrl.searchParams.set("affectiveDialog", String(voiceConfig.affectiveDialog));
+    }
+    if (typeof voiceConfig.thinkingLevel === "string") {
+      wsUrl.searchParams.set("thinkingLevel", voiceConfig.thinkingLevel);
+    }
+    if (Array.isArray(voiceConfig.languageCodes)) {
+      const languageCodes = voiceConfig.languageCodes.filter((code): code is string => typeof code === "string" && code.trim().length > 0);
+      if (languageCodes.length > 0) wsUrl.searchParams.set("languageCodes", languageCodes.join(","));
+    }
+
+    const ws = new WebSocket(wsUrl);
+    wsRef.current = ws;
+    setAgentState("connecting");
+
+    await new Promise<void>((resolve, reject) => {
+      const failTimer = window.setTimeout(() => reject(new Error("Gemini relay connection timed out")), 15000);
+      ws.onopen = async () => {
+        window.clearTimeout(failTimer);
+        isRunning.current = true;
+        sessionStartTsRef.current = Date.now();
+        try {
+          await startWsMicStreaming(ws);
+          ws.send(JSON.stringify({
+            type: "x.context_update",
+            catalog: catalogRef.current,
+            order: currentOrderRef.current,
+            voice: configuredVoice,
+            speed,
+            languageCodes: voiceConfig.languageCodes,
+            proactiveAudio: voiceConfig.proactiveAudio,
+            affectiveDialog: voiceConfig.affectiveDialog,
+            thinkingLevel: voiceConfig.thinkingLevel,
+          }));
+          if (heartbeatIntervalRef.current) clearInterval(heartbeatIntervalRef.current);
+          heartbeatIntervalRef.current = setInterval(() => {
+            if (!sessionIdRef.current || !sessionStartTsRef.current) return;
+            const headers: Record<string, string> = { "Content-Type": "application/json" };
+            if (authTokenRef.current) headers["Authorization"] = `Bearer ${authTokenRef.current}`;
+            fetch(`${getBaseUrl()}api/realtime/session/${sessionIdRef.current}/heartbeat`, {
+              method: "POST",
+              headers,
+              body: JSON.stringify({
+                elapsedMs: Date.now() - sessionStartTsRef.current,
+                venueId: venueIdRef.current || undefined,
+                provider: voicePipelineProviderRef.current || "openai_realtime_webrtc",
+                agentProfileId: agentProfileIdRef.current || undefined,
+              }),
+            }).catch(() => {});
+          }, 60_000);
+          resolve();
+        } catch (e) {
+          reject(e);
+        }
+      };
+      ws.onerror = () => {
+        window.clearTimeout(failTimer);
+        reject(new Error("Gemini relay connection failed"));
+      };
+    });
+
+    ws.onmessage = (event) => {
+      const raw = String(event.data);
+      try {
+        const parsed = JSON.parse(raw) as Record<string, unknown>;
+        if (parsed.type === "response.audio.delta" && typeof parsed.delta === "string") {
+          gateMicForPlayback();
+          playWsAudioDelta(parsed.delta);
+        }
+      } catch {
+        // Shared handler below will ignore non-JSON.
+      }
+      handleDcEvent(raw);
+    };
+
+    ws.onclose = () => {
+      cleanupWsAudio();
+      wsRef.current = null;
+      if (isRunning.current) {
+        isRunning.current = false;
+        setAgentState((prev) => (prev === "error" ? "error" : "disconnected"));
+      }
+    };
+
+    ws.onerror = () => {
+      reopenMicNow();
+      setError("Gemini relay connection failed");
+      setAgentState("error");
+    };
+  }, [cleanupWsAudio, gateMicForPlayback, handleDcEvent, playWsAudioDelta, reopenMicNow, startWsMicStreaming]);
 
   // ── Connect via WebRTC ─────────────────────────────────────────────────────
 
@@ -401,9 +768,14 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
     const baseUrl = getBaseUrl();
 
     try {
+      if (voicePipelineProviderRef.current.startsWith(GEMINI_PROVIDER_PREFIX)) {
+        await connectGeminiRelay(voice, speed, baseUrl);
+        return;
+      }
+
       // 1. Get ephemeral token from our server
       const sessionPath = "api/realtime/session";
-      console.log(`[WebRTC] Requesting ephemeral token...`);
+      debugVoiceLog("[WebRTC] Requesting ephemeral token...");
       const sessionHeaders: Record<string, string> = { "Content-Type": "application/json" };
       if (authTokenRef.current) sessionHeaders["Authorization"] = `Bearer ${authTokenRef.current}`;
 
@@ -440,7 +812,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
       const ephemeralKey = sessionData.client_secret?.value;
       if (!ephemeralKey) throw new Error("No ephemeral key in session response");
 
-      console.log("[WebRTC] Got ephemeral token, creating peer connection...");
+      debugVoiceLog("[WebRTC] Got ephemeral token, creating peer connection...");
 
       // 2. Create RTCPeerConnection
       const pc = new RTCPeerConnection();
@@ -458,7 +830,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
       audioElRef.current = audioEl;
 
       pc.ontrack = (e) => {
-        console.log("[WebRTC] Got remote audio track");
+        debugVoiceLog("[WebRTC] Got remote audio track");
         audioEl.srcObject = e.streams[0];
         audioEl.play?.().catch(() => {});
         setRemoteStream(e.streams[0] ?? null);
@@ -481,7 +853,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
       dcRef.current = dc;
 
       dc.onopen = () => {
-        console.log("[WebRTC] Data channel open");
+        debugVoiceLog("[WebRTC] Data channel open");
         isRunning.current = true;
         sessionStartTsRef.current = Date.now();
 
@@ -497,6 +869,8 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
             body: JSON.stringify({
               elapsedMs: Date.now() - sessionStartTsRef.current,
               venueId: venueIdRef.current || undefined,
+              provider: voicePipelineProviderRef.current || "openai_realtime_webrtc",
+              agentProfileId: agentProfileIdRef.current || undefined,
             }),
           }).catch(() => {});
         }, 60_000);
@@ -505,7 +879,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
       dc.onmessage = (e) => handleDcEvent(e.data);
 
       dc.onclose = () => {
-        console.log("[WebRTC] Data channel closed");
+        debugVoiceLog("[WebRTC] Data channel closed");
         if (isRunning.current) {
           isRunning.current = false;
           setAgentState((prev) => (prev === "error" ? "error" : "disconnected"));
@@ -534,7 +908,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
       const answerSdp = await sdpRes.text();
       await pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
 
-      console.log("[WebRTC] Connection established");
+      debugVoiceLog("[WebRTC] Connection established");
     } catch (e: any) {
       console.error("[WebRTC] Connect error:", e.message);
       setError(e.message);
@@ -552,7 +926,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
         audioElRef.current = null;
       }
     }
-  }, [handleDcEvent, cancelMicReopen]);
+  }, [handleDcEvent, cancelMicReopen, connectGeminiRelay]);
 
   // ── Disconnect ─────────────────────────────────────────────────────────────
 
@@ -564,16 +938,14 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
     const payload = JSON.stringify({
       durationMs,
       venueId: venueIdRef.current || undefined,
+      provider: voicePipelineProviderRef.current || "openai_realtime_webrtc",
+      agentProfileId: agentProfileIdRef.current || undefined,
     });
     const url = `${baseUrl}api/realtime/session/${sessionIdRef.current}/end`;
 
-    if (typeof navigator.sendBeacon === "function") {
-      navigator.sendBeacon(url, new Blob([payload], { type: "application/json" }));
-    } else {
-      const headers: Record<string, string> = { "Content-Type": "application/json" };
-      if (authTokenRef.current) headers["Authorization"] = `Bearer ${authTokenRef.current}`;
-      fetch(url, { method: "POST", headers, body: payload, keepalive: true }).catch(() => {});
-    }
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (authTokenRef.current) headers["Authorization"] = `Bearer ${authTokenRef.current}`;
+    fetch(url, { method: "POST", headers, body: payload, keepalive: true }).catch(() => {});
   }, []);
 
   const disconnect = useCallback(async () => {
@@ -597,6 +969,10 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
     dcRef.current?.close();
     dcRef.current = null;
 
+    wsRef.current?.close();
+    wsRef.current = null;
+    cleanupWsAudio();
+
     pcRef.current?.close();
     pcRef.current = null;
 
@@ -608,12 +984,15 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
 
     setRemoteStream(null);
     setAgentState("disconnected");
-  }, [sendSessionEnd, cancelMicReopen]);
+  }, [sendSessionEnd, cancelMicReopen, cleanupWsAudio]);
 
   const interrupt = useCallback(() => {
     const dc = dcRef.current;
     if (dc?.readyState === "open") {
       dc.send(JSON.stringify({ type: "response.cancel" }));
+    }
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: "response.cancel" }));
     }
     // Deliberate barge-in: re-open the mic right away so the user can speak.
     reopenMicNow();
@@ -633,14 +1012,41 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
 
   const isConnected = agentState !== "disconnected" && agentState !== "error";
 
-  useWakeLock(isConnected);
-
   const confirmPending = useCallback(() => {
     const conf = pendingConfirmation;
     if (!conf) return;
     setPendingConfirmation(null);
     const dc = dcRef.current;
-    if (!dc || dc.readyState !== "open") return;
+    const ws = wsRef.current;
+    const sendToolOutput = (output: string) => {
+      const payload = JSON.stringify({
+        type: "conversation.item.create",
+        item: { type: "function_call_output", call_id: conf.call_id, output },
+      });
+      const resume = JSON.stringify({ type: "response.create" });
+      if (dc?.readyState === "open") {
+        dc.send(payload);
+        dc.send(resume);
+        return true;
+      }
+      if (ws?.readyState === WebSocket.OPEN) {
+        if (voicePipelineProviderRef.current.startsWith(GEMINI_PROVIDER_PREFIX)) {
+          ws.send(JSON.stringify({
+            toolResponse: {
+              functionResponses: [
+                { id: conf.call_id, name: conf.tool_name, response: { result: output } },
+              ],
+            },
+          }));
+        } else {
+          ws.send(payload);
+          ws.send(resume);
+        }
+        return true;
+      }
+      return false;
+    };
+    if (dc?.readyState !== "open" && ws?.readyState !== WebSocket.OPEN) return;
     const baseUrl = getBaseUrl();
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (authTokenRef.current) headers["Authorization"] = `Bearer ${authTokenRef.current}`;
@@ -652,24 +1058,17 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
         tool_name: conf.tool_name,
         arguments: conf.args,
         confirmed: true,
+        confirmationToken: conf.token,
         catalog: catalogRef.current,
         order: currentOrderRef.current,
         venueId: venueIdRef.current || undefined,
         agentProfileId: agentProfileIdRef.current || undefined,
       }),
     }).then(r => r.json()).then(data => {
-      dc.send(JSON.stringify({
-        type: "conversation.item.create",
-        item: { type: "function_call_output", call_id: conf.call_id, output: data.result ?? "Confirmed and executed." },
-      }));
-      dc.send(JSON.stringify({ type: "response.create" }));
+      sendToolOutput(data.result ?? "Confirmed and executed.");
       if (data.command) commandHandlerRef.current?.([data.command]);
     }).catch(e => {
-      dc.send(JSON.stringify({
-        type: "conversation.item.create",
-        item: { type: "function_call_output", call_id: conf.call_id, output: `Error: ${e.message}` },
-      }));
-      dc.send(JSON.stringify({ type: "response.create" }));
+      sendToolOutput(`Error: ${e.message}`);
     });
   }, [pendingConfirmation]);
 
@@ -678,19 +1077,36 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
     if (!conf) return;
     setPendingConfirmation(null);
     const dc = dcRef.current;
-    if (!dc || dc.readyState !== "open") return;
-    dc.send(JSON.stringify({
+    const ws = wsRef.current;
+    const payload = JSON.stringify({
       type: "conversation.item.create",
       item: { type: "function_call_output", call_id: conf.call_id, output: "User declined this action." },
-    }));
-    dc.send(JSON.stringify({ type: "response.create" }));
+    });
+    const resume = JSON.stringify({ type: "response.create" });
+    if (dc?.readyState === "open") {
+      dc.send(payload);
+      dc.send(resume);
+    } else if (ws?.readyState === WebSocket.OPEN) {
+      if (voicePipelineProviderRef.current.startsWith(GEMINI_PROVIDER_PREFIX)) {
+        ws.send(JSON.stringify({
+          toolResponse: {
+            functionResponses: [
+              { id: conf.call_id, name: conf.tool_name, response: { result: "User declined this action." } },
+            ],
+          },
+        }));
+      } else {
+        ws.send(payload);
+        ws.send(resume);
+      }
+    }
   }, [pendingConfirmation]);
 
   return (
     <VoiceAgentContext.Provider value={{
       agentState, isConnected, conversation, partialTranscript, error, remoteStream,
       pendingConfirmation, connect, disconnect, clearConversation, setToolHandler, interrupt,
-      setCatalog, setCurrentOrder, setSquareCredentials, setAuthParams,
+      setCatalog, setCurrentOrder, setAuthParams,
       confirmPending, denyPending,
     }}>
       {children}

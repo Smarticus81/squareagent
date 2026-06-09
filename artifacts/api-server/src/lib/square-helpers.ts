@@ -4,6 +4,24 @@
 
 export const SQUARE_BASE = "https://connect.squareup.com/v2";
 
+export function redactSquareId(id: unknown): string {
+  if (typeof id !== "string" || id.length === 0) return "unknown";
+  if (id.length <= 8) return `${id.slice(0, 2)}...${id.slice(-2)}`;
+  return `${id.slice(0, 4)}...${id.slice(-4)}`;
+}
+
+export function squareErrorSummary(errors: unknown): string {
+  if (!Array.isArray(errors) || errors.length === 0) return "unknown_error";
+  return errors
+    .slice(0, 2)
+    .map((err) => {
+      if (!err || typeof err !== "object") return "unknown_error";
+      const e = err as Record<string, unknown>;
+      return [e.category, e.code, e.detail ? "detail_present" : null].filter(Boolean).join(":");
+    })
+    .join(",");
+}
+
 export function squareHeaders(token: string) {
   return {
     Authorization: `Bearer ${token}`,
@@ -143,7 +161,7 @@ export async function syncLiveOrderToSquare(
         // not routed to the "Orders" tab. Open Tickets show in the ticket
         // drawer and load directly into the cart when tapped.
       };
-      console.log(`[LiveSync] Creating order at location=${locationId} with ${lineItems.length} items, ticket=${ticketName}`);
+      console.log(`[LiveSync] Creating order location=${redactSquareId(locationId)} itemCount=${lineItems.length}`);
       const res = await fetch(`${SQUARE_BASE}/orders`, {
         method: "POST",
         headers: squareHeaders(squareToken),
@@ -155,7 +173,7 @@ export async function syncLiveOrderToSquare(
       const data = (await res.json()) as any;
       if (!res.ok) {
         const errMsg = data.errors?.[0]?.detail || JSON.stringify(data.errors);
-        console.error("[LiveSync] Create order failed:", errMsg, JSON.stringify(data.errors));
+        console.error("[LiveSync] Create order failed:", squareErrorSummary(data.errors));
         return { ok: false, error: `Create order failed: ${errMsg}` };
       }
       session.squareOrderId = data.order.id;
@@ -163,7 +181,7 @@ export async function syncLiveOrderToSquare(
       session.squareOrderTotal = data.order.total_money?.amount ?? 0;
       session.referenceId = refId;
       session.lineItemUids = (data.order.line_items || []).map((li: any) => li.uid);
-      console.log(`[LiveSync] Order created: ${data.order.id} v${data.order.version} | $${((session.squareOrderTotal ?? 0) / 100).toFixed(2)} | ref=${refId} | ticket=${ticketName} | state=${data.order.state} | uids=${session.lineItemUids?.length ?? 0}`);
+      console.log(`[LiveSync] Order created order=${redactSquareId(data.order.id)} state=${data.order.state} itemCount=${session.lineItemUids?.length ?? 0}`);
     } else if (session.items.length > 0) {
       // ── UPDATE existing order — clear old line items by UID, set new ones ──
       const uidsToRemove = (session.lineItemUids || []).map((uid) => `line_items[${uid}]`);
@@ -182,20 +200,20 @@ export async function syncLiveOrderToSquare(
       const data = (await res.json()) as any;
       if (!res.ok) {
         const errMsg = data.errors?.[0]?.detail || JSON.stringify(data.errors);
-        console.error("[LiveSync] Update order failed:", errMsg);
+        console.error("[LiveSync] Update order failed:", squareErrorSummary(data.errors));
         return { ok: false, error: `Update order failed: ${errMsg}` };
       }
       session.squareOrderVersion = data.order.version;
       session.squareOrderTotal = data.order.total_money?.amount ?? 0;
       session.lineItemUids = (data.order.line_items || []).map((li: any) => li.uid);
-      console.log(`[LiveSync] Order updated: ${session.squareOrderId} v${data.order.version} | $${((session.squareOrderTotal ?? 0) / 100).toFixed(2)} | uids=${session.lineItemUids?.length ?? 0}`);
+      console.log(`[LiveSync] Order updated order=${redactSquareId(session.squareOrderId)} itemCount=${session.lineItemUids?.length ?? 0}`);
     } else {
       // Items were all removed — clear remaining line items from the order
       const uidsToRemove = (session.lineItemUids || []).map((uid) => `line_items[${uid}]`);
       if (uidsToRemove.length === 0) {
         // Nothing to clear — order already has no items
         session.squareOrderTotal = 0;
-        console.log(`[LiveSync] Order already empty: ${session.squareOrderId}`);
+        console.log(`[LiveSync] Order already empty order=${redactSquareId(session.squareOrderId)}`);
         return { ok: true, squareOrderId: session.squareOrderId };
       }
       const res = await fetch(`${SQUARE_BASE}/orders/${session.squareOrderId}`, {
@@ -212,13 +230,13 @@ export async function syncLiveOrderToSquare(
       const data = (await res.json()) as any;
       if (!res.ok) {
         const errMsg = data.errors?.[0]?.detail || JSON.stringify(data.errors);
-        console.error("[LiveSync] Clear items failed:", errMsg);
+        console.error("[LiveSync] Clear items failed:", squareErrorSummary(data.errors));
         return { ok: false, error: `Clear items failed: ${errMsg}` };
       }
       session.squareOrderVersion = data.order.version;
       session.squareOrderTotal = 0;
       session.lineItemUids = [];
-      console.log(`[LiveSync] Order emptied: ${session.squareOrderId} v${data.order.version}`);
+      console.log(`[LiveSync] Order emptied order=${redactSquareId(session.squareOrderId)}`);
     }
     return { ok: true, squareOrderId: session.squareOrderId };
   } catch (e: any) {
@@ -253,9 +271,9 @@ export async function cancelLiveOrder(
     });
     const data = (await res.json()) as any;
     if (!res.ok) {
-      console.warn("[LiveSync] Cancel failed:", JSON.stringify(data.errors));
+      console.warn("[LiveSync] Cancel failed:", squareErrorSummary(data.errors));
     } else {
-      console.log(`[LiveSync] Order canceled: ${session.squareOrderId}`);
+      console.log(`[LiveSync] Order canceled order=${redactSquareId(session.squareOrderId)}`);
     }
   } catch (e: any) {
     console.warn("[LiveSync] Cancel error:", e.message);
@@ -298,10 +316,10 @@ export async function completeLiveOrder(
     const paymentData = (await paymentRes.json()) as any;
     if (!paymentRes.ok) {
       const errMsg = paymentData.errors?.[0]?.detail || "Payment failed";
-      console.warn("[LiveSync] Payment failed:", JSON.stringify(paymentData.errors));
+      console.warn("[LiveSync] Payment failed:", squareErrorSummary(paymentData.errors));
       return { orderId, total: orderTotal / 100, error: errMsg };
     }
-    console.log(`[LiveSync] Payment completed: ${paymentData.payment?.id} for order ${orderId}`);
+    console.log(`[LiveSync] Payment completed payment=${redactSquareId(paymentData.payment?.id)} order=${redactSquareId(orderId)}`);
     return { orderId, total: orderTotal / 100, paymentId: paymentData.payment?.id };
   } catch (e: any) {
     console.error("[LiveSync] Payment error:", e.message);
@@ -341,10 +359,10 @@ export async function pushToTerminal(
     const data = (await res.json()) as any;
     if (!res.ok) {
       const errMsg = data.errors?.[0]?.detail || "Terminal checkout failed";
-      console.error("[Terminal] Checkout failed:", JSON.stringify(data.errors));
+      console.error("[Terminal] Checkout failed:", squareErrorSummary(data.errors));
       return { error: errMsg };
     }
-    console.log(`[Terminal] Checkout created: ${data.checkout?.id} → device ${deviceId}`);
+    console.log(`[Terminal] Checkout created checkout=${redactSquareId(data.checkout?.id)} device=${redactSquareId(deviceId)}`);
     return { checkoutId: data.checkout?.id };
   } catch (e: any) {
     console.error("[Terminal] Checkout error:", e.message);

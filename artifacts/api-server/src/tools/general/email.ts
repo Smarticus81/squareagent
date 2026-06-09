@@ -6,7 +6,7 @@
  */
 
 import { db, emailCredentialsTable } from "@workspace/db";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull, or } from "drizzle-orm";
 import nodemailer from "nodemailer";
 import { google } from "googleapis";
 import { decrypt } from "../../lib/secrets";
@@ -18,6 +18,15 @@ import type { ToolDefinition, ToolExecutor, ToolContext, ToolResult } from "../t
  */
 const SEND_LIMIT_PER_HOUR = 15;
 const sendLog = new Map<number, number[]>();
+
+function tenantWhere(userId: number, organizationId?: string | null) {
+  return organizationId
+    ? or(
+        eq(emailCredentialsTable.organizationId, organizationId),
+        and(eq(emailCredentialsTable.userId, userId), isNull(emailCredentialsTable.organizationId)),
+      )
+    : eq(emailCredentialsTable.userId, userId);
+}
 
 function checkSendLimit(userId: number): { allowed: boolean; remaining: number; resetMs: number } {
   const now = Date.now();
@@ -70,7 +79,7 @@ async function sendEmail(args: Record<string, unknown>, ctx: ToolContext): Promi
   const [creds] = await db
     .select()
     .from(emailCredentialsTable)
-    .where(eq(emailCredentialsTable.userId, ctx.userId))
+    .where(tenantWhere(ctx.userId, ctx.organizationId))
     .limit(1);
   if (!creds) {
     return { result: "send_email: no email credentials configured. Add a Resend API key in the dashboard." };
@@ -210,7 +219,10 @@ async function sendEmail(args: Record<string, unknown>, ctx: ToolContext): Promi
     }
   }
 
-  return { result: `send_email: provider "${creds.provider}" is not implemented yet.` };
+  return {
+    result:
+      `send_email: provider "${creds.provider}" is not supported for outbound mail. Use Gmail sign-in, Resend, Gmail SMTP, or generic SMTP.`,
+  };
 }
 
 export const executors: Record<string, ToolExecutor> = {

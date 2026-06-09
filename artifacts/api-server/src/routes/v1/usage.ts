@@ -1,13 +1,39 @@
 import { Router } from "express";
-import { v1RequireAuth, jsonError } from "./_helpers";
+import { ensureUserOrganization, v1RequireAuth, jsonError } from "./_helpers";
 import { db, toolCallsTable, usageEventsTable } from "@workspace/db";
-import { eq, sql, and, gte } from "drizzle-orm";
+import { eq, sql, and, gte, isNull, or } from "drizzle-orm";
 
 const router = Router();
+
+async function currentOrganizationId(req: any): Promise<string | null> {
+  const existing = req.organization?.id;
+  if (existing) return existing;
+  if (!req.user) return null;
+  return (await ensureUserOrganization(req.user)).id;
+}
+
+function usageTenantWhere(userId: number, organizationId: string | null) {
+  return organizationId
+    ? or(
+        eq(usageEventsTable.organizationId, organizationId),
+        and(eq(usageEventsTable.userId, userId), isNull(usageEventsTable.organizationId)),
+      )
+    : eq(usageEventsTable.userId, userId);
+}
+
+function toolTenantWhere(userId: number, organizationId: string | null) {
+  return organizationId
+    ? or(
+        eq(toolCallsTable.organizationId, organizationId),
+        and(eq(toolCallsTable.userId, userId), isNull(toolCallsTable.organizationId)),
+      )
+    : eq(toolCallsTable.userId, userId);
+}
 
 router.get("/current", v1RequireAuth as any, async (req: any, res: any) => {
   try {
     const userId = req.user.id;
+    const organizationId = await currentOrganizationId(req);
     const periodStart = req.subscription?.currentPeriodEnd
       ? new Date(new Date(req.subscription.currentPeriodEnd).getTime() - 30 * 24 * 60 * 60 * 1000)
       : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
@@ -16,7 +42,7 @@ router.get("/current", v1RequireAuth as any, async (req: any, res: any) => {
       .select({ total: sql<number>`coalesce(sum(${usageEventsTable.quantity}), 0)` })
       .from(usageEventsTable)
       .where(and(
-        eq(usageEventsTable.userId, userId),
+        usageTenantWhere(userId, organizationId),
         eq(usageEventsTable.kind, "voice_minutes"),
         gte(usageEventsTable.occurredAt, periodStart),
       ));
@@ -28,7 +54,7 @@ router.get("/current", v1RequireAuth as any, async (req: any, res: any) => {
       })
       .from(toolCallsTable)
       .where(and(
-        eq(toolCallsTable.userId, userId),
+        toolTenantWhere(userId, organizationId),
         gte(toolCallsTable.createdAt, periodStart),
       ))
       .groupBy(toolCallsTable.toolName)
@@ -43,7 +69,7 @@ router.get("/current", v1RequireAuth as any, async (req: any, res: any) => {
       })
       .from(toolCallsTable)
       .where(and(
-        eq(toolCallsTable.userId, userId),
+        toolTenantWhere(userId, organizationId),
         eq(toolCallsTable.status, "failed"),
         gte(toolCallsTable.createdAt, periodStart),
       ))
@@ -51,6 +77,8 @@ router.get("/current", v1RequireAuth as any, async (req: any, res: any) => {
       .limit(10);
 
     res.json({
+      scope: organizationId ? "organization" : "user",
+      organizationId,
       voiceMinutes: { used: Number(minutesResult?.total ?? 0) },
       topTools,
       recentErrors,

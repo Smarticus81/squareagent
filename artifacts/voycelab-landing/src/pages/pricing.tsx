@@ -3,6 +3,7 @@ import { Link, useLocation } from "wouter";
 import { PricingTable, SignInButton, SignedIn, SignedOut } from "@clerk/clerk-react";
 import { ArrowRight, Check, Loader2, Sparkles } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
+import { withClerkBillingHeader } from "@/lib/clerk-session";
 
 interface PlanBullet {
   text: string;
@@ -45,6 +46,7 @@ export default function Pricing() {
   const [loading, setLoading] = useState(true);
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [selectedCheckout, setSelectedCheckout] = useState<{ planId: string; cadence: Cadence } | null>(null);
 
   useEffect(() => {
     fetch("/api/subscriptions/plans")
@@ -54,7 +56,7 @@ export default function Pricing() {
       .finally(() => setLoading(false));
   }, []);
 
-  async function handleSelect(plan: PlanResponse) {
+  async function handleSelect(plan: PlanResponse, cadenceOverride: Cadence = cadence) {
     if (plan.id === "trial") {
       if (auth?.user) navigate("/assistants/new");
       else navigate("/signup");
@@ -63,21 +65,22 @@ export default function Pricing() {
     // Enterprise plan removed — no longer needed
     if (!auth?.user) {
       sessionStorage.setItem("voycelab.pending_plan", plan.id);
-      sessionStorage.setItem("voycelab.pending_cadence", cadence);
+      sessionStorage.setItem("voycelab.pending_cadence", cadenceOverride);
       navigate("/signup");
       return;
     }
     if (clerkBillingEnabled) {
+      setSelectedCheckout({ planId: plan.id, cadence: cadenceOverride });
       const checkout = document.getElementById("clerk-checkout");
       checkout?.scrollIntoView({ behavior: "smooth", block: "start" });
       return;
     }
 
-    const checkoutUrl = cadence === "yearly" ? plan.clerkCheckoutYearlyUrl : plan.clerkCheckoutMonthlyUrl;
+    const checkoutUrl = cadenceOverride === "yearly" ? plan.clerkCheckoutYearlyUrl : plan.clerkCheckoutMonthlyUrl;
     if (!checkoutUrl) {
       setError(
         `Clerk Billing is not configured yet for "${plan.name}". Set VITE_CLERK_PUBLISHABLE_KEY for the embedded checkout, or configure ${
-          cadence === "yearly" ? "CLERK_CHECKOUT_*_YEARLY_URL" : "CLERK_CHECKOUT_*_MONTHLY_URL"
+          cadenceOverride === "yearly" ? "CLERK_CHECKOUT_*_YEARLY_URL" : "CLERK_CHECKOUT_*_MONTHLY_URL"
         } on the server.`,
       );
       return;
@@ -86,13 +89,14 @@ export default function Pricing() {
     setCheckoutLoading(plan.id);
     try {
       const token = localStorage.getItem("voycelab_token") ?? "";
+      const headers = await withClerkBillingHeader({
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      });
       const res = await fetch("/api/subscriptions/checkout", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({ planId: plan.id, cadence }),
+        headers,
+        body: JSON.stringify({ planId: plan.id, cadence: cadenceOverride }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
@@ -106,6 +110,25 @@ export default function Pricing() {
       setCheckoutLoading(null);
     }
   }
+
+  useEffect(() => {
+    if (loading || !auth?.user || plans.length === 0) return;
+    const pendingPlan = sessionStorage.getItem("voycelab.pending_plan");
+    if (!pendingPlan) return;
+    const pendingCadence = sessionStorage.getItem("voycelab.pending_cadence") === "yearly" ? "yearly" : "monthly";
+    const plan = plans.find((p) => p.id === pendingPlan);
+    sessionStorage.removeItem("voycelab.pending_plan");
+    sessionStorage.removeItem("voycelab.pending_cadence");
+    setCadence(pendingCadence);
+    if (plan) {
+      setSelectedCheckout({ planId: plan.id, cadence: pendingCadence });
+      void handleSelect(plan, pendingCadence);
+    }
+  }, [loading, auth?.user, plans]);
+
+  const selectedCheckoutPlan = selectedCheckout
+    ? plans.find((plan) => plan.id === selectedCheckout.planId)
+    : null;
 
   return (
     <div className="flex-1 pt-24 pb-24 bg-vl-cream">
@@ -150,6 +173,19 @@ export default function Pricing() {
                 </SignInButton>
               </SignedOut>
             </div>
+            {selectedCheckoutPlan && (
+              <div
+                className="mb-5 rounded-2xl border bg-white/70 p-4 text-[13px]"
+                style={{ borderColor: "rgba(124,110,245,0.24)", color: "var(--color-vl-ink-muted)" }}
+              >
+                <span className="font-semibold" style={{ color: "var(--color-vl-ink)" }}>
+                  Selected: {selectedCheckoutPlan.name} · {selectedCheckout?.cadence === "yearly" ? "Yearly" : "Monthly"}
+                </span>
+                <span className="ml-1">
+                  Choose the matching plan below to link billing to this organization.
+                </span>
+              </div>
+            )}
             <SignedIn>
               <PricingTable for="organization" />
             </SignedIn>
@@ -191,12 +227,12 @@ export default function Pricing() {
             <Tile
               kicker="Platform fee"
               title="Predictable monthly base"
-              body="Covers every venue, every assistant, every connected service, and every skill in your tier. No per-tool charges, no per-action charges. You can rebuild your assistants every week and your bill doesn't move."
+              body="Covers every venue, every assistant, every connected service, and every capability in your tier. No per-command charges, no per-action charges. You can rebuild your assistants every week and your bill doesn't move."
             />
             <Tile
               kicker="Voice minutes"
               title="Only what your team speaks"
-              body="A minute is counted only when your assistant is actively in a session — listening, replying, or running a tool call. Idle screens and dashboard work cost nothing."
+              body="A minute is counted only when your assistant is actively in a session - listening, replying, or running a command. Idle screens and dashboard work cost nothing."
             />
             <Tile
               kicker="Overages"
@@ -252,7 +288,7 @@ export default function Pricing() {
             />
             <Faq
               q="Is the trial really 14 days, no card?"
-              a="Yes. 60 voice minutes and core POS tools. Card is collected only if you upgrade."
+              a="Yes. 60 voice minutes and core POS commands. Card is collected only if you upgrade."
             />
             <Faq
               q="What if I'm a chain or hospitality group?"

@@ -5,7 +5,7 @@
  *
  * Matching rules:
  *   - Phrase comparisons use word boundaries to prevent mid-word false
- *     positives (e.g. "hey bars" must not fire on "hey bartender").
+ *     positives by requiring a clean phrase boundary.
  *   - When matching against a partial / interim transcript, soft phrases
  *     must occur at the END of the utterance so mid-sentence speech
  *     ("we're done with the apps, now add...") does not terminate the session.

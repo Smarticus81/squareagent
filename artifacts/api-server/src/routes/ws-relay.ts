@@ -11,33 +11,81 @@ import { IncomingMessage } from "http";
 import { Server } from "http";
 import WebSocket, { WebSocketServer } from "ws";
 import jwt from "jsonwebtoken";
-import { db, venuesTable, sessionsTable, usersTable, subscriptionsTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import {
+  db,
+  venuesTable,
+  sessionsTable,
+  usersTable,
+  subscriptionsTable,
+  organizationMembershipsTable,
+  agentProfilesTable,
+  emailCredentialsTable,
+  knowledgeDocumentsTable,
+  externalDbConnectionsTable,
+} from "@workspace/db";
+import { eq, and, isNull, or } from "drizzle-orm";
 import {
   cancelLiveOrder,
   type CatalogItem,
   type OrderItem,
   type LiveSession,
 } from "../lib/square-helpers";
-import { ALL_TOOLS, executeToolCall, toolCount } from "../tools";
+import { executeToolCall, toolCount, type ToolDefinition } from "../tools";
+import { buildToolsFromSkills, getSkillsForSession } from "../skills";
 import {
   buildGeminiLiveSetupMessage,
   buildGeminiLiveUrl,
 } from "../voice-pipelines/google/gemini-live";
+import { decrypt } from "../lib/secrets";
+import type { NoiseMode } from "@workspace/voicelab-core/noise";
+import { planAllowsPipeline } from "@workspace/voicelab-core/pricing";
+import type { VoicePipelineProvider } from "@workspace/voicelab-core/voice-pipeline";
+import { isAdminEmail, JWT_SECRET } from "./auth";
 
-const JWT_SECRET = process.env.JWT_SECRET ?? "voycelab-dev-secret-change-in-production";
 const OPENAI_REALTIME_MODEL = process.env.OPENAI_REALTIME_MODEL ?? "gpt-realtime-2";
+const SENSITIVE_LOG_KEY_RE = /(token|secret|password|pass|credential|authorization|email|recipient|subject|body|message|text|query|sql|connection|string|address|phone|name)/i;
 
 type RelayKind = "openai" | "gemini";
 
 interface RelayCtx {
   userId: number;
+  organizationId: string | null;
   venueId: number | null;
+  agentProfileId: string | null;
+  plan: string;
+  allowedToolNames: string[] | null;
+  includeGeneralTools: boolean;
   squareToken: string;
   squareLocationId: string;
   kind: RelayKind;
+  voicePipelineProvider: VoicePipelineProvider | null;
   geminiModelId: string | null;
+  noiseMode: NoiseMode;
   query: Record<string, string>;
+}
+
+function summarizeToolArgs(args: Record<string, unknown>): Record<string, string> {
+  const summary: Record<string, string> = {};
+  for (const [key, value] of Object.entries(args)) {
+    if (SENSITIVE_LOG_KEY_RE.test(key)) {
+      summary[key] = "[redacted]";
+      continue;
+    }
+    if (Array.isArray(value)) {
+      summary[key] = `array(${value.length})`;
+      continue;
+    }
+    if (value && typeof value === "object") {
+      summary[key] = "object";
+      continue;
+    }
+    summary[key] = typeof value;
+  }
+  return summary;
+}
+
+function logToolCall(scope: string, toolName: string, args: Record<string, unknown>): void {
+  console.log(`${scope} Tool call: ${toolName} args=${JSON.stringify(summarizeToolArgs(args))}`);
 }
 
 function resamplePcm16Base64(base64Pcm: string, fromRate: number, toRate: number): string {
@@ -83,6 +131,43 @@ function geminiClientMessageFromRealtimeEvent(event: Record<string, unknown>): s
   }
 
   return null;
+}
+
+function getOpenAiFunctionOutputCallId(event: Record<string, unknown>): string | null {
+  if (event.type !== "conversation.item.create") return null;
+  const item = event.item as Record<string, unknown> | undefined;
+  if (item?.type !== "function_call_output") return null;
+  return typeof item.call_id === "string" && item.call_id ? item.call_id : null;
+}
+
+function isOpenAiFunctionOutputEvent(event: Record<string, unknown>): boolean {
+  if (event.type !== "conversation.item.create") return false;
+  const item = event.item as Record<string, unknown> | undefined;
+  return item?.type === "function_call_output";
+}
+
+function getGeminiToolResponseIds(event: Record<string, unknown>): string[] | null {
+  const toolResponse = event.toolResponse as Record<string, unknown> | undefined;
+  if (!toolResponse) return null;
+  const functionResponses = toolResponse.functionResponses;
+  if (!Array.isArray(functionResponses) || functionResponses.length === 0) return [];
+
+  const ids: string[] = [];
+  for (const response of functionResponses) {
+    if (!response || typeof response !== "object") return [];
+    const id = (response as Record<string, unknown>).id;
+    if (typeof id !== "string" || !id) return [];
+    ids.push(id);
+  }
+  return ids;
+}
+
+function canForwardConfirmedToolOutput(
+  callIds: string[],
+  pendingConfirmationCallIds: Set<string>,
+): boolean {
+  if (callIds.length === 0) return false;
+  return callIds.every((callId) => pendingConfirmationCallIds.has(callId));
 }
 
 function geminiServerMessagesForRealtimeClient(
@@ -135,34 +220,55 @@ function geminiServerMessagesForRealtimeClient(
   return messages;
 }
 
-// -- Auth helper ---
-
-const ADMIN_EMAILS = (process.env.ADMIN_EMAILS ?? "tmusoni@thinkertons.com")
-  .split(",")
-  .map((s) => s.trim().toLowerCase())
-  .filter(Boolean);
-
-function isAdminEmail(email: string | null | undefined): boolean {
-  if (!email) return false;
-  return ADMIN_EMAILS.includes(email.toLowerCase());
+function parseBooleanQuery(value: string | undefined): boolean | undefined {
+  if (value === "true") return true;
+  if (value === "false") return false;
+  return undefined;
 }
+
+function parseLanguageCodes(value: string | undefined): string[] | undefined {
+  if (!value) return undefined;
+  const codes = value
+    .split(",")
+    .map((code) => code.trim())
+    .filter(Boolean);
+  return codes.length > 0 ? codes : undefined;
+}
+
+function parseThinkingLevel(value: string | undefined): "minimal" | "low" | "medium" | "high" | undefined {
+  if (value === "minimal" || value === "low" || value === "medium" || value === "high") return value;
+  return undefined;
+}
+
+// -- Auth helper ---
 
 async function authenticateToken(
   token: string,
-): Promise<{ userId: number; subscription: any; isAdmin: boolean } | null> {
+): Promise<{ userId: number; organizationId: string | null; subscription: any; isAdmin: boolean } | null> {
   try {
     const payload = jwt.verify(token, JWT_SECRET) as unknown as { sub: number; sid: string };
     if (!payload?.sub || !payload?.sid) return null;
 
-    const [session] = await db.select().from(sessionsTable).where(eq(sessionsTable.id, payload.sid));
+    const [session] = await db
+      .select()
+      .from(sessionsTable)
+      .where(and(eq(sessionsTable.id, payload.sid), eq(sessionsTable.userId, payload.sub)));
     if (!session || session.expiresAt < new Date()) return null;
 
     const [user] = await db.select().from(usersTable).where(eq(usersTable.id, payload.sub));
     if (!user) return null;
 
-    const [subscription] = await db.select().from(subscriptionsTable).where(eq(subscriptionsTable.userId, user.id));
+    const [[subscription], [membership]] = await Promise.all([
+      db.select().from(subscriptionsTable).where(eq(subscriptionsTable.userId, user.id)),
+      db
+        .select({ organizationId: organizationMembershipsTable.organizationId })
+        .from(organizationMembershipsTable)
+        .where(eq(organizationMembershipsTable.userId, user.id))
+        .limit(1),
+    ]);
     return {
       userId: user.id,
+      organizationId: membership?.organizationId ?? null,
       subscription: subscription ?? null,
       isAdmin: isAdminEmail(user.email),
     };
@@ -187,13 +293,173 @@ function checkPlan(subscription: any, isAdmin: boolean): string | null {
   return null;
 }
 
-async function lookupVenueCredentials(userId: number, venueId: number) {
+function effectiveRelayPlan(subscription: any, isAdmin: boolean): string {
+  if (isAdmin) return "business";
+  return typeof subscription?.plan === "string" && subscription.plan ? subscription.plan : "trial";
+}
+
+async function lookupVenueCredentials(userId: number, venueId: number, organizationId: string | null) {
   const [venue] = await db
     .select()
     .from(venuesTable)
-    .where(and(eq(venuesTable.id, venueId), eq(venuesTable.userId, userId)));
+    .where(
+      and(
+        eq(venuesTable.id, venueId),
+        organizationId
+          ? or(
+              eq(venuesTable.organizationId, organizationId),
+              and(eq(venuesTable.userId, userId), isNull(venuesTable.organizationId)),
+            )
+          : eq(venuesTable.userId, userId),
+      ),
+    );
   if (!venue) return null;
-  return { squareToken: venue.squareAccessToken ?? "", squareLocationId: venue.squareLocationId ?? "" };
+  return { squareToken: decrypt(venue.squareAccessToken), squareLocationId: venue.squareLocationId ?? "" };
+}
+
+function tenantWhere(table: { organizationId: any; userId: any }, userId: number, organizationId: string) {
+  return or(
+    eq(table.organizationId, organizationId),
+    and(eq(table.userId, userId), isNull(table.organizationId)),
+  );
+}
+
+async function hasGeneralConnectedSystems(userId: number, organizationId: string | null): Promise<boolean> {
+  if (!organizationId) return false;
+  try {
+    const [[email], [document], [database]] = await Promise.all([
+      db
+        .select({ id: emailCredentialsTable.id })
+        .from(emailCredentialsTable)
+        .where(tenantWhere(emailCredentialsTable, userId, organizationId))
+        .limit(1),
+      db
+        .select({ id: knowledgeDocumentsTable.id })
+        .from(knowledgeDocumentsTable)
+        .where(tenantWhere(knowledgeDocumentsTable, userId, organizationId))
+        .limit(1),
+      db
+        .select({ id: externalDbConnectionsTable.id })
+        .from(externalDbConnectionsTable)
+        .where(tenantWhere(externalDbConnectionsTable, userId, organizationId))
+        .limit(1),
+    ]);
+    return Boolean(email || document || database);
+  } catch {
+    return false;
+  }
+}
+
+async function validateRelayScope(
+  userId: number,
+  organizationId: string | null,
+  venueIdStr: string | null,
+  agentProfileId: string | null,
+  kind: RelayKind,
+): Promise<{ ok: true; venueId: number | null; agentProfileId: string | null; geminiModelId: string | null; allowedToolNames: string[] | null; noiseMode: NoiseMode; voicePipelineProvider: VoicePipelineProvider | null } | { ok: false; status: 400 | 403 | 404 }> {
+  let venueId = venueIdStr ? Number(venueIdStr) : null;
+  let profileVenueId: number | null = null;
+  let geminiModelId: string | null = null;
+  let allowedToolNames: string[] | null = null;
+  let noiseMode: NoiseMode = "standard";
+  let voicePipelineProvider: VoicePipelineProvider | null = null;
+
+  if (venueIdStr && (!Number.isInteger(venueId) || venueId === null || venueId <= 0)) {
+    return { ok: false, status: 400 };
+  }
+
+  if (agentProfileId) {
+    if (!organizationId) return { ok: false, status: 403 };
+    const [profile] = await db
+      .select({
+        id: agentProfilesTable.id,
+        venueId: agentProfilesTable.venueId,
+        noiseMode: agentProfilesTable.noiseMode,
+        voicePipelineProvider: agentProfilesTable.voicePipelineProvider,
+        allowedTools: agentProfilesTable.allowedTools,
+      })
+      .from(agentProfilesTable)
+      .where(and(eq(agentProfilesTable.id, agentProfileId), eq(agentProfilesTable.organizationId, organizationId)))
+      .limit(1);
+    if (!profile) return { ok: false, status: 404 };
+    profileVenueId = profile.venueId ?? null;
+    voicePipelineProvider = profile.voicePipelineProvider as VoicePipelineProvider;
+    if (profile.noiseMode === "standard" || profile.noiseMode === "loud" || profile.noiseMode === "push_to_talk") {
+      noiseMode = profile.noiseMode;
+    }
+    allowedToolNames =
+      Array.isArray(profile.allowedTools) && profile.allowedTools.every((name: unknown): name is string => typeof name === "string")
+        ? profile.allowedTools
+        : null;
+    if (kind === "gemini") {
+      switch (profile.voicePipelineProvider) {
+        case "google_gemini_3_1_flash_live":
+          geminiModelId = "gemini-3.1-flash-live-preview";
+          break;
+        case "google_gemini_2_5_flash_native_audio":
+        case "google_gemini_live_native_audio":
+          geminiModelId = "gemini-live-2.5-flash-native-audio";
+          break;
+        default:
+          return { ok: false, status: 400 };
+      }
+    }
+  } else if (kind === "gemini") {
+    return { ok: false, status: 400 };
+  }
+
+  if (venueId !== null) {
+    const [venue] = await db
+      .select({ id: venuesTable.id })
+      .from(venuesTable)
+      .where(
+        and(
+          eq(venuesTable.id, venueId),
+          organizationId
+            ? or(
+                eq(venuesTable.organizationId, organizationId),
+                and(eq(venuesTable.userId, userId), isNull(venuesTable.organizationId)),
+              )
+            : eq(venuesTable.userId, userId),
+        ),
+      )
+      .limit(1);
+    if (!venue) return { ok: false, status: 404 };
+    if (profileVenueId !== null && profileVenueId !== venueId) return { ok: false, status: 400 };
+  } else if (profileVenueId !== null) {
+    venueId = profileVenueId;
+  }
+
+  return { ok: true, venueId, agentProfileId, geminiModelId, allowedToolNames, noiseMode, voicePipelineProvider };
+}
+
+function buildRelayTools(
+  plan: string,
+  assistantKind: "venue" | "general",
+  allowedToolNames: string[] | null,
+  includeGeneralTools: boolean,
+): ToolDefinition[] {
+  const tools = buildToolsFromSkills(getSkillsForSession(plan, { kind: assistantKind, includeGeneralTools }));
+  if (!allowedToolNames || allowedToolNames.length === 0) return tools;
+  const allowed = new Set(allowedToolNames);
+  return tools.filter((tool) => tool.name === "wait_for_user" || allowed.has(tool.name));
+}
+
+function isRelayToolAllowed(toolName: string, tools: ToolDefinition[]): boolean {
+  return tools.some((tool) => tool.name === toolName);
+}
+
+function parsePendingConfirmation(result: string): Record<string, unknown> | null {
+  try {
+    const parsed = JSON.parse(result) as Record<string, unknown>;
+    const confirmation = parsed.confirmation;
+    if (parsed.status === "REQUIRES_CONFIRMATION" && confirmation && typeof confirmation === "object") {
+      return confirmation as Record<string, unknown>;
+    }
+  } catch {
+    // Result is not a JSON confirmation envelope.
+  }
+  return null;
 }
 
 // -- System prompt (same as realtime.ts) ---
@@ -279,7 +545,8 @@ export function attachWebSocketRelay(server: Server): void {
 
     const token = url.searchParams.get("token");
     const venueIdStr = url.searchParams.get("venueId");
-    const geminiModelId = url.searchParams.get("modelId");
+    const agentProfileId = url.searchParams.get("agentProfileId");
+    const requestedGeminiModelId = url.searchParams.get("modelId");
 
     if (!token) {
       socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
@@ -302,12 +569,29 @@ export function attachWebSocketRelay(server: Server): void {
       socket.destroy();
       return;
     }
+    const effectivePlan = effectiveRelayPlan(auth.subscription, auth.isAdmin);
+
+    const scope = await validateRelayScope(auth.userId, auth.organizationId, venueIdStr, agentProfileId, kind);
+    if (!scope.ok) {
+      socket.write(`HTTP/1.1 ${scope.status} ${scope.status === 400 ? "Bad Request" : scope.status === 403 ? "Forbidden" : "Not Found"}\r\n\r\n`);
+      socket.destroy();
+      return;
+    }
+    if (
+      scope.voicePipelineProvider &&
+      !auth.isAdmin &&
+      !planAllowsPipeline(effectivePlan, scope.voicePipelineProvider)
+    ) {
+      socket.write("HTTP/1.1 402 Payment Required\r\n\r\n");
+      socket.destroy();
+      return;
+    }
 
     // Lookup venue credentials
     let squareToken = "";
     let squareLocationId = "";
-    if (venueIdStr) {
-      const creds = await lookupVenueCredentials(auth.userId, Number(venueIdStr));
+    if (scope.venueId !== null) {
+      const creds = await lookupVenueCredentials(auth.userId, scope.venueId, auth.organizationId);
       if (creds) {
         squareToken = creds.squareToken;
         squareLocationId = creds.squareLocationId;
@@ -318,15 +602,24 @@ export function attachWebSocketRelay(server: Server): void {
     url.searchParams.forEach((value, key) => {
       queryParams[key] = value;
     });
+    const includeGeneralTools =
+      scope.venueId !== null && (await hasGeneralConnectedSystems(auth.userId, auth.organizationId));
 
     wss.handleUpgrade(req, socket, head, (clientWs) => {
       const ctx: RelayCtx = {
         userId: auth.userId,
-        venueId: venueIdStr ? Number(venueIdStr) : null,
+        organizationId: auth.organizationId,
+        venueId: scope.venueId,
+        agentProfileId: scope.agentProfileId,
+        plan: effectivePlan,
+        allowedToolNames: scope.allowedToolNames,
+        includeGeneralTools,
         squareToken,
         squareLocationId,
         kind,
-        geminiModelId,
+        voicePipelineProvider: scope.voicePipelineProvider,
+        geminiModelId: kind === "gemini" ? scope.geminiModelId : requestedGeminiModelId,
+        noiseMode: scope.noiseMode,
         query: queryParams,
       };
       wss.emit("connection", clientWs, req, ctx);
@@ -351,8 +644,10 @@ export function attachWebSocketRelay(server: Server): void {
     const session: LiveSession = { items: [] };
     let sessionSquareToken = ctx.squareToken;
     let sessionLocationId = ctx.squareLocationId;
+    const assistantKind: "venue" | "general" = sessionSquareToken ? "venue" : "general";
+    const relayTools = buildRelayTools(ctx.plan, assistantKind, ctx.allowedToolNames, ctx.includeGeneralTools);
 
-    console.log(`[WS-Relay] Connected for user ${ctx.userId} with ${toolCount()} tools`);
+    console.log(`[WS-Relay] Connected for user ${ctx.userId} with ${relayTools.length}/${toolCount()} tools`);
 
     // Connect to OpenAI Realtime API
     const openaiUrl = `wss://api.openai.com/v1/realtime?model=${OPENAI_REALTIME_MODEL}`;
@@ -364,6 +659,7 @@ export function attachWebSocketRelay(server: Server): void {
 
     let openaiReady = false;
     let pendingFromClient: string[] = [];
+    const pendingConfirmationCallIds = new Set<string>();
 
     openaiWs.on("open", () => {
       console.log(`[WS-Relay] OpenAI connected for user ${ctx.userId}`);
@@ -376,7 +672,7 @@ export function attachWebSocketRelay(server: Server): void {
           modalities: ["text", "audio"],
           voice: "ash",
           instructions: buildInstructions(catalog, order),
-          tools: ALL_TOOLS,
+          tools: relayTools,
           tool_choice: "auto",
           input_audio_format: "pcm16",
           output_audio_format: "pcm16",
@@ -412,13 +708,26 @@ export function attachWebSocketRelay(server: Server): void {
         try { args = JSON.parse(String(event.arguments ?? "{}")); } catch {}
         const callId = String(event.call_id ?? "");
 
-        console.log(`[WS-Relay] Tool call: ${toolName}(${JSON.stringify(args)})`);
+        logToolCall("[WS-Relay]", toolName, args);
 
         try {
+          if (!isRelayToolAllowed(toolName, relayTools)) {
+            throw new Error(`Command not allowed in this assistant: ${toolName}`);
+          }
           const { result, command } = await executeToolCall(
             toolName, args,
-            { catalog, order, squareToken: sessionSquareToken, squareLocationId: sessionLocationId, session, userId: ctx.userId, venueId: ctx.venueId ?? undefined, assistantKind: sessionSquareToken ? "venue" : "general" },
+            { catalog, order, squareToken: sessionSquareToken, squareLocationId: sessionLocationId, session, userId: ctx.userId, organizationId: ctx.organizationId, venueId: ctx.venueId ?? undefined, assistantKind },
           );
+          const pendingConfirmation = parsePendingConfirmation(result);
+          if (pendingConfirmation && clientWs.readyState === WebSocket.OPEN) {
+            if (callId) pendingConfirmationCallIds.add(callId);
+            clientWs.send(JSON.stringify({
+              type: "x.pending_confirmation",
+              confirmation: pendingConfirmation,
+              call_id: callId,
+            }));
+            return;
+          }
 
           // Send tool output back to OpenAI
           openaiWs.send(JSON.stringify({
@@ -448,8 +757,9 @@ export function attachWebSocketRelay(server: Server): void {
           openaiWs.send(JSON.stringify({ type: "response.create" }));
         }
 
-        // Still forward the event to client for transcript/UI purposes
-        clientWs.send(raw);
+        // The relay has already executed this command and returned the result
+        // upstream. Do not forward the raw function-call event to the PWA, or
+        // the client will execute the same command a second time.
         return;
       }
 
@@ -475,8 +785,6 @@ export function attachWebSocketRelay(server: Server): void {
       const raw = data.toString();
       let event: Record<string, unknown>;
       try { event = JSON.parse(raw); } catch {
-        if (openaiReady) openaiWs.send(raw);
-        else pendingFromClient.push(raw);
         return;
       }
 
@@ -484,8 +792,6 @@ export function attachWebSocketRelay(server: Server): void {
       if (event.type === "x.context_update") {
         if (Array.isArray(event.catalog)) catalog = event.catalog as CatalogItem[];
         if (Array.isArray(event.order)) order = event.order as OrderItem[];
-        if (event.squareToken) sessionSquareToken = String(event.squareToken);
-        if (event.squareLocationId) sessionLocationId = String(event.squareLocationId);
 
         const voice = event.voice ? String(event.voice) : undefined;
 
@@ -500,6 +806,18 @@ export function attachWebSocketRelay(server: Server): void {
           }));
         }
         return;
+      }
+
+      if (isOpenAiFunctionOutputEvent(event)) {
+        const functionOutputCallId = getOpenAiFunctionOutputCallId(event);
+        if (
+          !functionOutputCallId ||
+          !canForwardConfirmedToolOutput([functionOutputCallId], pendingConfirmationCallIds)
+        ) {
+          console.warn(`[WS-Relay] Blocked untrusted client tool output user=${ctx.userId}`);
+          return;
+        }
+        pendingConfirmationCallIds.delete(functionOutputCallId);
       }
 
       // Forward standard Realtime API messages to OpenAI
@@ -550,17 +868,23 @@ function handleGeminiRelay(clientWs: WebSocket, ctx: RelayCtx): void {
   const session: LiveSession = { items: [] };
   let sessionSquareToken = ctx.squareToken;
   let sessionLocationId = ctx.squareLocationId;
-  let inputLanguageCodes: string[] | undefined;
-  let proactiveAudio = capabilityProfile === "ga_2_5";
-  let thinkingLevel: "minimal" | "low" | "medium" | "high" = "minimal";
-  let voiceName: string | undefined;
+  const assistantKind: "venue" | "general" = sessionSquareToken ? "venue" : "general";
+  const relayTools = buildRelayTools(ctx.plan, assistantKind, ctx.allowedToolNames, ctx.includeGeneralTools);
+  let inputLanguageCodes = parseLanguageCodes(ctx.query.languageCodes);
+  let proactiveAudio = parseBooleanQuery(ctx.query.proactiveAudio) ?? capabilityProfile === "ga_2_5";
+  let affectiveDialog = parseBooleanQuery(ctx.query.affectiveDialog) ?? false;
+  let thinkingLevel: "minimal" | "low" | "medium" | "high" =
+    parseThinkingLevel(ctx.query.thinkingLevel) ?? "minimal";
+  let voiceName = ctx.query.voice || undefined;
 
-  console.log(`[WS-Relay/Gemini] Connected for user ${ctx.userId} model=${modelId}`);
+  console.log(`[WS-Relay/Gemini] Connected for user ${ctx.userId} model=${modelId} tools=${relayTools.length}/${toolCount()}`);
   const sessionId = ctx.query.sessionId || `gemini-${ctx.userId}-${Date.now()}`;
 
   const upstreamUrl = (() => {
     try {
-      return buildGeminiLiveUrl();
+      const apiVersion =
+        capabilityProfile === "ga_2_5" && (proactiveAudio || affectiveDialog) ? "v1alpha" : "v1beta";
+      return buildGeminiLiveUrl(apiVersion);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "url build failed";
       clientWs.send(JSON.stringify({ type: "error", error: { message: msg } }));
@@ -574,17 +898,20 @@ function handleGeminiRelay(clientWs: WebSocket, ctx: RelayCtx): void {
   let upstreamReady = false;
   let setupSent = false;
   let pendingFromClient: string[] = [];
+  const pendingConfirmationCallIds = new Set<string>();
 
   function sendSetup(): void {
     const setup = buildGeminiLiveSetupMessage({
       modelId,
       instructions: buildInstructions(catalog, order),
-      tools: ALL_TOOLS,
+      tools: relayTools,
       capabilityProfile,
       inputLanguageCodes,
       proactiveAudio,
+      affectiveDialog,
       thinkingLevel,
       voiceName,
+      noiseMode: ctx.noiseMode,
     });
     upstream.send(JSON.stringify(setup));
     setupSent = true;
@@ -629,13 +956,26 @@ function handleGeminiRelay(clientWs: WebSocket, ctx: RelayCtx): void {
         const name = String(fc.name ?? "");
         const id = String(fc.id ?? "");
         const args = (fc.args ?? {}) as Record<string, unknown>;
-        console.log(`[WS-Relay/Gemini] Tool call: ${name}(${JSON.stringify(args)})`);
+        logToolCall("[WS-Relay/Gemini]", name, args);
         try {
+          if (!isRelayToolAllowed(name, relayTools)) {
+            throw new Error(`Command not allowed in this assistant: ${name}`);
+          }
           const { result, command } = await executeToolCall(
             name,
             args,
-            { catalog, order, squareToken: sessionSquareToken, squareLocationId: sessionLocationId, session, userId: ctx.userId, venueId: ctx.venueId ?? undefined, assistantKind: sessionSquareToken ? "venue" : "general" },
+            { catalog, order, squareToken: sessionSquareToken, squareLocationId: sessionLocationId, session, userId: ctx.userId, organizationId: ctx.organizationId, venueId: ctx.venueId ?? undefined, assistantKind },
           );
+          const pendingConfirmation = parsePendingConfirmation(result);
+          if (pendingConfirmation && clientWs.readyState === WebSocket.OPEN) {
+            if (id) pendingConfirmationCallIds.add(id);
+            clientWs.send(JSON.stringify({
+              type: "x.pending_confirmation",
+              confirmation: pendingConfirmation,
+              call_id: id,
+            }));
+            continue;
+          }
           responses.push({ id, name, response: { result } });
           if (command && clientWs.readyState === WebSocket.OPEN) {
             clientWs.send(JSON.stringify({ type: "x.order_command", command }));
@@ -646,9 +986,9 @@ function handleGeminiRelay(clientWs: WebSocket, ctx: RelayCtx): void {
           responses.push({ id, name, response: { error: msg } });
         }
       }
-      upstream.send(JSON.stringify({ toolResponse: { functionResponses: responses } }));
-      // Forward to client too so the UI can show the tool call event.
-      if (clientWs.readyState === WebSocket.OPEN) clientWs.send(raw);
+      if (responses.length > 0) {
+        upstream.send(JSON.stringify({ toolResponse: { functionResponses: responses } }));
+      }
       return;
     }
 
@@ -683,8 +1023,6 @@ function handleGeminiRelay(clientWs: WebSocket, ctx: RelayCtx): void {
     try {
       event = JSON.parse(raw);
     } catch {
-      if (upstreamReady && setupSent) upstream.send(raw);
-      else pendingFromClient.push(raw);
       return;
     }
 
@@ -692,10 +1030,9 @@ function handleGeminiRelay(clientWs: WebSocket, ctx: RelayCtx): void {
     if (event.type === "x.context_update") {
       if (Array.isArray(event.catalog)) catalog = event.catalog as CatalogItem[];
       if (Array.isArray(event.order)) order = event.order as OrderItem[];
-      if (event.squareToken) sessionSquareToken = String(event.squareToken);
-      if (event.squareLocationId) sessionLocationId = String(event.squareLocationId);
       if (Array.isArray(event.languageCodes)) inputLanguageCodes = event.languageCodes as string[];
       if (typeof event.proactiveAudio === "boolean") proactiveAudio = event.proactiveAudio;
+      if (typeof event.affectiveDialog === "boolean") affectiveDialog = event.affectiveDialog;
       if (
         typeof event.thinkingLevel === "string" &&
         ["minimal", "low", "medium", "high"].includes(event.thinkingLevel)
@@ -724,6 +1061,15 @@ function handleGeminiRelay(clientWs: WebSocket, ctx: RelayCtx): void {
         );
       }
       return;
+    }
+
+    const toolResponseIds = getGeminiToolResponseIds(event);
+    if (toolResponseIds) {
+      if (!canForwardConfirmedToolOutput(toolResponseIds, pendingConfirmationCallIds)) {
+        console.warn(`[WS-Relay/Gemini] Blocked untrusted client tool response user=${ctx.userId}`);
+        return;
+      }
+      for (const callId of toolResponseIds) pendingConfirmationCallIds.delete(callId);
     }
 
     const geminiMessage = geminiClientMessageFromRealtimeEvent(event);

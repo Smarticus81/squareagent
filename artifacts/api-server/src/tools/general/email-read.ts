@@ -7,10 +7,19 @@
  */
 
 import { db, emailCredentialsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull, or } from "drizzle-orm";
 import { google, type gmail_v1 } from "googleapis";
 import { decrypt } from "../../lib/secrets";
 import type { ToolDefinition, ToolExecutor, ToolContext, ToolResult } from "../types";
+
+function tenantWhere(userId: number, organizationId?: string | null) {
+  return organizationId
+    ? or(
+        eq(emailCredentialsTable.organizationId, organizationId),
+        and(eq(emailCredentialsTable.userId, userId), isNull(emailCredentialsTable.organizationId)),
+      )
+    : eq(emailCredentialsTable.userId, userId);
+}
 
 async function gmailClient(ctx: ToolContext): Promise<
   | { ok: true; gmail: gmail_v1.Gmail }
@@ -22,7 +31,7 @@ async function gmailClient(ctx: ToolContext): Promise<
   const [creds] = await db
     .select()
     .from(emailCredentialsTable)
-    .where(eq(emailCredentialsTable.userId, ctx.userId))
+    .where(tenantWhere(ctx.userId, ctx.organizationId))
     .limit(1);
   if (!creds) return { ok: false, error: "no email account connected — connect Gmail in the dashboard" };
   if (creds.provider !== "gmail_oauth") {
@@ -289,7 +298,7 @@ async function createEmailDraft(args: Record<string, unknown>, ctx: ToolContext)
     const [creds] = await db
       .select()
       .from(emailCredentialsTable)
-      .where(eq(emailCredentialsTable.userId, ctx.userId))
+      .where(tenantWhere(ctx.userId, ctx.organizationId))
       .limit(1);
     if (creds) {
       fromHeader = creds.fromName ? `${creds.fromName} <${creds.fromAddress}>` : creds.fromAddress;

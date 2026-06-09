@@ -9,10 +9,27 @@ import type { ToolExecutor, ToolContext, ToolResult } from "./types";
 import { requiresConfirmation, getToolRisk } from "@workspace/voicelab-core/confirmation";
 import { createComponentLogger } from "../lib/logger";
 import { db, toolCallsTable } from "@workspace/db";
+import { createHmac, timingSafeEqual } from "crypto";
 
 const log = createComponentLogger("tool");
 
-const SENSITIVE_KEY_RE = /password|token|secret|key/i;
+const SENSITIVE_KEY_RE = /(password|token|secret|key|credential|authorization|email|recipient|subject|body|message|text|query|sql|connection|string|address|phone|name)/i;
+const CONFIRMATION_TOKEN_TTL_MS = 5 * 60 * 1000;
+const DEV_CONFIRMATION_SECRET = "voycelab-dev-confirmation-secret-change-in-production";
+
+function getConfirmationSecret(): string {
+  const secret =
+    process.env.CONFIRMATION_TOKEN_SECRET?.trim() ||
+    process.env.JWT_SECRET?.trim() ||
+    process.env.SESSION_SECRET?.trim();
+  if (secret) return secret;
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("FATAL: CONFIRMATION_TOKEN_SECRET or JWT_SECRET must be set in production.");
+  }
+  return DEV_CONFIRMATION_SECRET;
+}
+
+const CONFIRMATION_SECRET = getConfirmationSecret();
 
 // ── Middleware type ─────────────────────────────────────────────────────────
 
@@ -102,10 +119,15 @@ export const errorMiddleware: ToolMiddleware = async (toolName, args, ctx, next)
  * Logging middleware — logs tool invocations with sanitized args.
  */
 export const loggingMiddleware: ToolMiddleware = async (toolName, args, ctx, next) => {
-  // Sanitize args: omit large fields, truncate long strings
   const sanitized: Record<string, unknown> = {};
   for (const [key, val] of Object.entries(args)) {
-    if (typeof val === "string" && val.length > 100) {
+    if (SENSITIVE_KEY_RE.test(key)) {
+      sanitized[key] = "[REDACTED]";
+    } else if (Array.isArray(val)) {
+      sanitized[key] = `array(${val.length})`;
+    } else if (val && typeof val === "object") {
+      sanitized[key] = "object";
+    } else if (typeof val === "string" && val.length > 100) {
       sanitized[key] = val.slice(0, 100) + "...";
     } else {
       sanitized[key] = val;
@@ -136,11 +158,12 @@ export const auditMiddleware: ToolMiddleware = async (toolName, args, ctx, next)
         .values({
           toolName,
           args: sanitizedArgs,
-          result: { result: result.result },
+          result: { status: isError ? "failed" : "succeeded" },
           status: isError ? "failed" : "succeeded",
-          errorMessage: isError ? result.result : null,
+          errorMessage: isError ? "Command failed. See server logs for diagnostic details." : null,
           durationMs,
           userId: ctx.userId ?? null,
+          organizationId: ctx.organizationId ?? null,
           venueId: ctx.venueId ?? null,
         })
         .catch((err: any) => {
@@ -153,6 +176,64 @@ export const auditMiddleware: ToolMiddleware = async (toolName, args, ctx, next)
 
   return result;
 };
+
+function stableStringify(value: unknown): string {
+  if (value === undefined) return "undefined";
+  if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "undefined";
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
+  const obj = value as Record<string, unknown>;
+  return `{${Object.keys(obj).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(obj[key])}`).join(",")}}`;
+}
+
+function argsHash(args: Record<string, unknown>): string {
+  return createHmac("sha256", CONFIRMATION_SECRET)
+    .update(stableStringify(args))
+    .digest("base64url");
+}
+
+function confirmationScope(toolName: string, args: Record<string, unknown>, ctx: ToolContext): Record<string, unknown> {
+  return {
+    toolName,
+    argsHash: argsHash(args),
+    userId: ctx.userId ?? null,
+    organizationId: ctx.organizationId ?? null,
+    venueId: ctx.venueId ?? null,
+  };
+}
+
+function signPayload(payload: Record<string, unknown>): string {
+  return createHmac("sha256", CONFIRMATION_SECRET)
+    .update(stableStringify(payload))
+    .digest("base64url");
+}
+
+function createConfirmationToken(toolName: string, args: Record<string, unknown>, ctx: ToolContext): string {
+  const payload = {
+    ...confirmationScope(toolName, args, ctx),
+    exp: Date.now() + CONFIRMATION_TOKEN_TTL_MS,
+  };
+  const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  return `${body}.${signPayload(payload)}`;
+}
+
+function isConfirmationTokenValid(token: string | undefined, toolName: string, args: Record<string, unknown>, ctx: ToolContext): boolean {
+  if (!token || !token.includes(".")) return false;
+  const [body, signature] = token.split(".", 2);
+  try {
+    const payload = JSON.parse(Buffer.from(body, "base64url").toString("utf8")) as Record<string, unknown>;
+    if (typeof payload.exp !== "number" || payload.exp < Date.now()) return false;
+    const expectedScope = confirmationScope(toolName, args, ctx);
+    for (const [key, value] of Object.entries(expectedScope)) {
+      if (payload[key] !== value) return false;
+    }
+    const expectedSignature = signPayload(payload);
+    const provided = Buffer.from(signature, "base64url");
+    const expected = Buffer.from(expectedSignature, "base64url");
+    return provided.length === expected.length && timingSafeEqual(provided, expected);
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Confirmation middleware — blocks tool execution when the tool's risk level
@@ -167,6 +248,24 @@ export const confirmationMiddleware: ToolMiddleware = async (toolName, args, ctx
   const riskLevel = getToolRisk(toolName);
   const needsConfirmation = requiresConfirmation(toolName, riskLevel, noiseMode);
 
+  if (needsConfirmation && confirmed) {
+    if (ctx.confirmationTrusted || isConfirmationTokenValid(ctx.confirmationToken, toolName, args, ctx)) {
+      return next(args, ctx);
+    }
+    return {
+      result: JSON.stringify({
+        status: "REQUIRES_CONFIRMATION",
+        confirmation: {
+          tool_name: toolName,
+          args,
+          risk_level: riskLevel,
+          prompt: `Confirm ${toolName}?`,
+          token: createConfirmationToken(toolName, args, ctx),
+        },
+      }),
+    };
+  }
+
   if (needsConfirmation && !confirmed) {
     return {
       result: JSON.stringify({
@@ -176,6 +275,7 @@ export const confirmationMiddleware: ToolMiddleware = async (toolName, args, ctx
           args,
           risk_level: riskLevel,
           prompt: `Confirm ${toolName}?`,
+          token: createConfirmationToken(toolName, args, ctx),
         },
       }),
     };
@@ -190,5 +290,6 @@ export const DEFAULT_MIDDLEWARES: ToolMiddleware[] = [
   errorMiddleware,
   timingMiddleware,
   loggingMiddleware,
+  confirmationMiddleware,
   auditMiddleware,
 ];

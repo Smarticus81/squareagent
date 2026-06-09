@@ -24,6 +24,7 @@ import {
 import {
   SQUARE_BASE,
   squareHeaders,
+  squareErrorSummary,
   syncLiveOrderToSquare,
   cancelLiveOrder,
   completeLiveOrder,
@@ -35,6 +36,7 @@ import {
   type LiveSession,
   type SessionOrderItem,
 } from "../../lib/square-helpers";
+import { decrypt } from "../../lib/secrets";
 
 interface SquareCredentials {
   accessToken: string;
@@ -48,7 +50,7 @@ interface SquareConnectionConfig {
 
 function readSquareCreds(connection: ServiceConnection): SquareCredentials {
   const c = connection.credentials as Record<string, unknown>;
-  const accessToken = typeof c.accessToken === "string" ? c.accessToken : "";
+  const accessToken = typeof c.accessToken === "string" ? decrypt(c.accessToken) : "";
   const merchantId = typeof c.merchantId === "string" ? c.merchantId : undefined;
   if (!accessToken) {
     throw new ConnectedServiceError("square", "Missing Square access token in connection credentials.");
@@ -73,7 +75,7 @@ async function fetchSquareCatalog(token: string): Promise<NormalizedCatalogItem[
   });
   if (!res.ok) {
     const err = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-    throw new ConnectedServiceError("square", `catalog list failed: ${JSON.stringify(err)}`, {
+    throw new ConnectedServiceError("square", `catalog list failed: ${squareErrorSummary((err as { errors?: unknown }).errors)}`, {
       capability: "catalog:read",
       retryable: res.status >= 500,
     });
@@ -305,7 +307,7 @@ export class SquareAdapter implements ConnectedServiceAdapter {
     });
     if (!res.ok) {
       const err = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-      throw new ConnectedServiceError("square", `adjustInventory failed: ${JSON.stringify(err)}`, {
+      throw new ConnectedServiceError("square", `adjustInventory failed: ${squareErrorSummary((err as { errors?: unknown }).errors)}`, {
         capability: "inventory:adjust",
       });
     }
@@ -361,7 +363,7 @@ export class SquareAdapter implements ConnectedServiceAdapter {
         rows: Array.from(buckets.entries()).map(([hour, cents]) => ({ hour, revenue: cents / 100 })),
       };
     }
-    throw new ConnectedServiceError("square", `report kind ${input.kind} not implemented`, {
+    throw new ConnectedServiceError("square", `unsupported report kind "${input.kind}". Supported kinds: daily_sales, item_performance, hourly_sales`, {
       capability: "reports:read",
     });
   }
