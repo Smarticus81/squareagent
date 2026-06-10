@@ -33,7 +33,7 @@ import {
   type LiveSession,
 } from "../lib/square-helpers";
 import { executeToolCall, toolCount, type ToolDefinition } from "../tools";
-import { buildToolsFromSkills, getSkillsForSession } from "../skills";
+import { buildInstructionsFromSkills, buildToolsFromSkills, getSkillsForSession } from "../skills";
 import {
   buildGeminiLiveSetupMessage,
   buildGeminiLiveUrl,
@@ -63,6 +63,8 @@ type RelayScope =
       allowedToolNames: string[] | null;
       noiseMode: NoiseMode;
       voicePipelineProvider: VoicePipelineProvider | null;
+      profileDisplayName: string;
+      profilePersonality: string;
     }
   | { ok: false; status: 400 | 403 | 404 };
 
@@ -78,6 +80,8 @@ interface RelayCtx {
   squareLocationId: string;
   kind: RelayKind;
   voicePipelineProvider: VoicePipelineProvider | null;
+  profileDisplayName: string;
+  profilePersonality: string;
   geminiModelId: string | null;
   noiseMode: NoiseMode;
   query: Record<string, string>;
@@ -386,6 +390,8 @@ async function validateRelayScope(
   let allowedToolNames: string[] | null = null;
   let noiseMode: NoiseMode = "standard";
   let voicePipelineProvider: VoicePipelineProvider | null = null;
+  let profileDisplayName = "";
+  let profilePersonality = "";
 
   if (venueIdStr && (!Number.isInteger(venueId) || venueId === null || venueId <= 0)) {
     return { ok: false, status: 400 };
@@ -401,6 +407,8 @@ async function validateRelayScope(
         voicePipelineProvider: agentProfilesTable.voicePipelineProvider,
         allowedTools: agentProfilesTable.allowedTools,
         connectedServiceId: agentProfilesTable.connectedServiceId,
+        displayName: agentProfilesTable.displayName,
+        personality: agentProfilesTable.personality,
       })
       .from(agentProfilesTable)
       .where(and(eq(agentProfilesTable.id, agentProfileId), eq(agentProfilesTable.organizationId, organizationId)))
@@ -409,6 +417,8 @@ async function validateRelayScope(
     profileVenueId = profile.venueId ?? null;
     connectedServiceId = profile.connectedServiceId ?? null;
     voicePipelineProvider = profile.voicePipelineProvider as VoicePipelineProvider;
+    profileDisplayName = profile.displayName ?? "";
+    profilePersonality = profile.personality ?? "";
     if (profile.noiseMode === "standard" || profile.noiseMode === "loud" || profile.noiseMode === "push_to_talk") {
       noiseMode = profile.noiseMode;
     }
@@ -428,6 +438,11 @@ async function validateRelayScope(
         default:
           return { ok: false, status: 400 };
       }
+    } else if (
+      profile.voicePipelineProvider !== "openai_realtime_server_ws" &&
+      profile.voicePipelineProvider !== "openai_realtime_webrtc"
+    ) {
+      return { ok: false, status: 400 };
     }
     if (connectedServiceId) {
       const [connection] = await db
@@ -479,6 +494,8 @@ async function validateRelayScope(
     allowedToolNames,
     noiseMode,
     voicePipelineProvider,
+    profileDisplayName,
+    profilePersonality,
   };
 }
 
@@ -511,68 +528,25 @@ function parsePendingConfirmation(result: string): Record<string, unknown> | nul
   return null;
 }
 
-// -- System prompt (same as realtime.ts) ---
+// -- System prompt ---
 
-function buildInstructions(catalog: CatalogItem[], order: OrderItem[]): string {
-  const catalogStr =
-    catalog.length > 0
-      ? catalog.map((c) => `  - ${c.name}: $${c.price.toFixed(2)}${c.category ? ` (${c.category})` : ""}`).join("\n")
-      : "  (No catalog loaded -- ask user to connect Square)";
-
-  const orderStr =
-    order.length > 0
-      ? order.map((i) => `  - ${i.quantity}x ${i.item_name} @ $${i.price.toFixed(2)}`).join("\n")
-      : "  (empty)";
-
-  return `You are VoyceLab, the voice operating assistant for modern venues running on Square. You have FULL access to the Square platform -- ordering, inventory, catalog management, customer profiles, payments, team management, reporting, and more.
-
-Catalog:
-${catalogStr}
-
-Current order:
-${orderStr}
-
-Persona:
-- Sharp, knowledgeable, confident. You're the venue's operations brain.
-- Speak like bar staff: short, punchy, no fluff. One or two sentences max.
-- Understand bartender slang: "86 it" = remove/out of stock, "ring it up" / "close it out" = submit, "tab it" = add to order, "what's on the ticket" = get order.
-- Understand inventory terms: "we got a case of" = add 24, "count" = check levels.
-
-POS Rules:
-- Add items only on clear intent ("two Fosters", "tab a Bud Light").
-- Never submit until they say so ("ring it up", "close it out", "that's it"). Confirm the total first.
-- If browsing or chatting, just talk -- don't push items.
-- Say prices naturally: "eight fifty" not "$8.50". Never say "dollar sign".
-- Items appear on the Square POS in real-time -- mention naturally: "got it, that's on the screen".
-- If they want to pay by card, use send_to_terminal. Say "sent to the terminal, go ahead and tap".
-
-Catalog Management:
-- You can create, update, and delete menu items in Square.
-- Always confirm before destructive actions.
-- When updating prices, say the old and new price.
-
-Inventory Rules:
-- Always confirm quantities before making changes.
-- Low stock alerts: proactively mention if an item drops below 5 units.
-- Understand bulk language: "case of" = 24, "keg" = context-dependent.
-
-Customers & Payments:
-- Search/create/update customer profiles.
-- List payments, issue refunds, cancel pending payments.
-- Always confirm refund amounts before executing.
-
-Team & Shifts:
-- List team members, see who's clocked in, clock people in/out.
-
-Reports:
-- Sales reports: today, yesterday, this week, last 7 days, this month.
-- Present numbers naturally: "you did forty-two orders, twelve hundred in revenue."
-- Top sellers, hourly breakdowns, item performance, daily summaries available.
-
-General:
-- Noisy environment -- ignore background chatter. Only respond to direct speech. If unclear, ask.
-- Never guess on destructive actions -- always confirm.
-- You have full Square access -- use it confidently.`;
+function buildInstructions(
+  ctx: RelayCtx,
+  catalog: CatalogItem[],
+  order: OrderItem[],
+  assistantKind: "venue" | "general",
+): string {
+  const skills = getSkillsForSession(ctx.plan, {
+    kind: assistantKind,
+    includeGeneralTools: ctx.includeGeneralTools,
+  });
+  let instructions = buildInstructionsFromSkills(skills, catalog, order, assistantKind);
+  if (ctx.profileDisplayName || ctx.profilePersonality) {
+    const identity = ctx.profileDisplayName ? `You are ${ctx.profileDisplayName}. ` : "";
+    const personality = ctx.profilePersonality ? `${ctx.profilePersonality}\n\n` : "";
+    instructions = `${identity}${personality}${instructions}`;
+  }
+  return instructions;
 }
 
 // -- Attach WebSocket server to HTTP server ---
@@ -681,6 +655,8 @@ export function attachWebSocketRelay(server: Server): void {
         squareLocationId,
         kind,
         voicePipelineProvider: scope.voicePipelineProvider,
+        profileDisplayName: scope.profileDisplayName,
+        profilePersonality: scope.profilePersonality,
         geminiModelId: kind === "gemini" ? scope.geminiModelId : requestedGeminiModelId,
         noiseMode: scope.noiseMode,
         query: queryParams,
@@ -741,24 +717,33 @@ export function attachWebSocketRelay(server: Server): void {
       openaiReady = true;
 
       // Configure session
+      const voice = ctx.query.voice || "ash";
+      const speed = Number.isFinite(Number(ctx.query.speed)) ? Number(ctx.query.speed) : 1;
       const sessionConfig = {
         type: "session.update",
         session: {
-          modalities: ["text", "audio"],
-          voice: "ash",
-          instructions: buildInstructions(catalog, order),
+          type: "realtime",
+          instructions: buildInstructions(ctx, catalog, order, assistantKind),
           tools: relayTools,
           tool_choice: "auto",
-          input_audio_format: "pcm16",
-          output_audio_format: "pcm16",
-          input_audio_transcription: { model: "whisper-1" },
-          turn_detection: {
-            type: "semantic_vad",
-            eagerness: "low",
-            create_response: true,
-            interrupt_response: true,
+          output_modalities: ["audio"],
+          audio: {
+            input: {
+              format: { type: "audio/pcm", rate: 24000 },
+              transcription: { model: "gpt-realtime-whisper" },
+              turn_detection: {
+                type: "semantic_vad",
+                eagerness: "low",
+                create_response: true,
+                interrupt_response: true,
+              },
+            },
+            output: {
+              format: { type: "audio/pcm", rate: 24000 },
+              voice,
+              speed,
+            },
           },
-          temperature: 0.6,
         },
       };
       openaiWs.send(JSON.stringify(sessionConfig));
@@ -881,14 +866,24 @@ export function attachWebSocketRelay(server: Server): void {
         if (Array.isArray(event.order)) order = event.order as OrderItem[];
 
         const voice = event.voice ? String(event.voice) : undefined;
+        const speed = typeof event.speed === "number" && Number.isFinite(event.speed) ? event.speed : undefined;
 
         // Send updated instructions to OpenAI
         if (openaiReady) {
           openaiWs.send(JSON.stringify({
             type: "session.update",
             session: {
-              instructions: buildInstructions(catalog, order),
-              ...(voice ? { voice } : {}),
+              instructions: buildInstructions(ctx, catalog, order, assistantKind),
+              ...(voice || speed
+                ? {
+                    audio: {
+                      output: {
+                        ...(voice ? { voice } : {}),
+                        ...(speed ? { speed } : {}),
+                      },
+                    },
+                  }
+                : {}),
             },
           }));
         }
@@ -1006,7 +1001,7 @@ function handleGeminiRelay(clientWs: WebSocket, ctx: RelayCtx): void {
   function sendSetup(): void {
     const setup = buildGeminiLiveSetupMessage({
       modelId,
-      instructions: buildInstructions(catalog, order),
+      instructions: buildInstructions(ctx, catalog, order, assistantKind),
       tools: relayTools,
       capabilityProfile,
       inputLanguageCodes,
@@ -1172,7 +1167,7 @@ function handleGeminiRelay(clientWs: WebSocket, ctx: RelayCtx): void {
                   role: "user",
                   parts: [
                     {
-                      text: `[Updated context]\n${buildInstructions(catalog, order)}`,
+                      text: `[Updated context]\n${buildInstructions(ctx, catalog, order, assistantKind)}`,
                     },
                   ],
                 },

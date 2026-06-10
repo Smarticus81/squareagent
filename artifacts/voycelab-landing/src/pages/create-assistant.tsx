@@ -82,6 +82,12 @@ const FALLBACK_VOICE_ENGINES: VoiceEngine[] = [
     defaultVoice: "verse",
   },
   {
+    id: "openai_realtime_server_ws",
+    label: "OpenAI Realtime Relay",
+    description: "Server-routed OpenAI voice for managed observability.",
+    defaultVoice: "ash",
+  },
+  {
     id: "google_gemini_3_1_flash_live",
     label: "Gemini 3.1 Flash Live",
     description: "Newest low-latency native audio for busy rooms.",
@@ -107,7 +113,11 @@ function defaultVoiceForPipeline(provider: string, sampleVoices?: string[]): str
 }
 
 function isSelectableVoicePipeline(provider: string): boolean {
-  return provider === "openai_realtime_webrtc" || provider.startsWith("google_gemini_");
+  return (
+    provider === "openai_realtime_webrtc" ||
+    provider === "openai_realtime_server_ws" ||
+    provider.startsWith("google_gemini_")
+  );
 }
 
 function voiceOptionsForEngine(engine: VoiceEngine | undefined) {
@@ -187,6 +197,7 @@ export default function CreateAssistant() {
         setPersonality(profile.personality || "");
         if (
           profile.voicePipelineProvider === "openai_realtime_webrtc" ||
+          profile.voicePipelineProvider === "openai_realtime_server_ws" ||
           profile.voicePipelineProvider === "google_gemini_3_1_flash_live" ||
           profile.voicePipelineProvider === "google_gemini_2_5_flash_native_audio"
         ) {

@@ -42,7 +42,7 @@ export class OpenAiRealtimeServerWsAdapter implements VoicePipelineAdapter {
   readonly supportsWakeWord = true;
   readonly supportsMultilingual = true;
   readonly supportsMobile = true;
-  readonly supportsBrowser = false;
+  readonly supportsBrowser = true;
 
   readonly requiresServerRelay = true;
   readonly requiresEphemeralToken = false;

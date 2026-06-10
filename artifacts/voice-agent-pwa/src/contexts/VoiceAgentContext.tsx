@@ -83,7 +83,9 @@ function clearStoredLaunchSession() {
 // re-opens, so the agent's final syllable can't re-trigger the VAD.
 const MIC_REOPEN_TAIL_MS = 250;
 const GEMINI_PROVIDER_PREFIX = "google_gemini_";
-const WS_INPUT_SAMPLE_RATE = 16000;
+const OPENAI_SERVER_WS_PROVIDER = "openai_realtime_server_ws";
+const GEMINI_INPUT_SAMPLE_RATE = 16000;
+const OPENAI_RELAY_INPUT_SAMPLE_RATE = 24000;
 const WS_OUTPUT_SAMPLE_RATE = 24000;
 const DEBUG_VOICE_EVENTS = import.meta.env.DEV;
 const SENSITIVE_LOG_KEY_RE = /(token|secret|password|pass|credential|authorization|email|recipient|subject|body|message|text|query|sql|connection|string|address|phone|name)/i;
@@ -459,6 +461,9 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
         // "speaking" can only be residual echo — ignore it rather than self-cut.
         if (fullDuplexRef.current && agentStateRef.current === "speaking") {
           dcRef.current?.send(JSON.stringify({ type: "response.cancel" }));
+          if (wsRef.current?.readyState === WebSocket.OPEN) {
+            wsRef.current.send(JSON.stringify({ type: "response.cancel" }));
+          }
           reopenMicNow();
         }
         setAs("listening");
@@ -578,7 +583,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
     scheduleWsPlaybackDone();
   }, [scheduleWsPlaybackDone]);
 
-  const startWsMicStreaming = useCallback(async (ws: WebSocket) => {
+  const startWsMicStreaming = useCallback(async (ws: WebSocket, inputSampleRate: number) => {
     const stream = await navigator.mediaDevices.getUserMedia({
       audio: {
         echoCancellation: true,
@@ -589,7 +594,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
     wsMicStreamRef.current = stream;
     micTrackRef.current = stream.getAudioTracks()[0] ?? null;
 
-    const inputCtx = new AudioContext({ sampleRate: WS_INPUT_SAMPLE_RATE });
+    const inputCtx = new AudioContext({ sampleRate: inputSampleRate });
     wsInputCtxRef.current = inputCtx;
     await inputCtx.resume().catch(() => {});
     const source = inputCtx.createMediaStreamSource(stream);
@@ -612,9 +617,11 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
     processor.connect(inputCtx.destination);
   }, []);
 
-  const connectGeminiRelay = useCallback(async (voice: string, speed: number, baseUrl: string) => {
+  const connectRelaySession = useCallback(async (voice: string, speed: number, baseUrl: string) => {
     const profileId = agentProfileIdRef.current;
-    if (!profileId) throw new Error("Choose an assistant profile before starting Gemini Live.");
+    const provider = voicePipelineProviderRef.current;
+    const isGemini = provider.startsWith(GEMINI_PROVIDER_PREFIX);
+    if (!profileId) throw new Error("Choose an assistant profile before starting this voice engine.");
 
     const sessionHeaders: Record<string, string> = { "Content-Type": "application/json" };
     sessionHeaders["Authorization"] = `Bearer ${authTokenRef.current}`;
@@ -628,8 +635,8 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
       }),
     });
     if (!sessionRes.ok) {
-      const err = await sessionRes.json().catch(() => ({ detail: "Failed to start Gemini session" }));
-      throw new Error(err.detail || err.error?.message || err.error || "Failed to start Gemini session");
+      const err = await sessionRes.json().catch(() => ({ detail: "Failed to start voice session" }));
+      throw new Error(err.detail || err.error?.message || err.error || "Failed to start voice session");
     }
 
     const sessionData = await sessionRes.json();
@@ -637,7 +644,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
     fullDuplexRef.current = Boolean(sessionData.capabilities?.bargeIn);
     const handshake = sessionData.clientHandshake;
     if (handshake?.kind !== "ws_relay") {
-      throw new Error("Gemini session did not return a WebSocket relay handshake.");
+      throw new Error("Voice session did not return a WebSocket relay handshake.");
     }
 
     const payload = handshake.payload ?? {};
@@ -655,6 +662,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
       (typeof voiceConfig.voice === "string" ? voiceConfig.voice : undefined) ??
       voice;
     if (configuredVoice) wsUrl.searchParams.set("voice", configuredVoice);
+    if (Number.isFinite(speed)) wsUrl.searchParams.set("speed", String(speed));
     if (typeof voiceConfig.proactiveAudio === "boolean") {
       wsUrl.searchParams.set("proactiveAudio", String(voiceConfig.proactiveAudio));
     }
@@ -674,13 +682,13 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
     setAgentState("connecting");
 
     await new Promise<void>((resolve, reject) => {
-      const failTimer = window.setTimeout(() => reject(new Error("Gemini relay connection timed out")), 15000);
+      const failTimer = window.setTimeout(() => reject(new Error("Voice relay connection timed out")), 15000);
       ws.onopen = async () => {
         window.clearTimeout(failTimer);
         isRunning.current = true;
         sessionStartTsRef.current = Date.now();
         try {
-          await startWsMicStreaming(ws);
+          await startWsMicStreaming(ws, isGemini ? GEMINI_INPUT_SAMPLE_RATE : OPENAI_RELAY_INPUT_SAMPLE_RATE);
           ws.send(JSON.stringify({
             type: "x.context_update",
             catalog: catalogRef.current,
@@ -715,7 +723,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
       };
       ws.onerror = () => {
         window.clearTimeout(failTimer);
-        reject(new Error("Gemini relay connection failed"));
+        reject(new Error("Voice relay connection failed"));
       };
     });
 
@@ -744,7 +752,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
 
     ws.onerror = () => {
       reopenMicNow();
-      setError("Gemini relay connection failed");
+      setError("Voice relay connection failed");
       setAgentState("error");
     };
   }, [cleanupWsAudio, gateMicForPlayback, handleDcEvent, playWsAudioDelta, reopenMicNow, startWsMicStreaming]);
@@ -767,8 +775,11 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
     const baseUrl = getBaseUrl();
 
     try {
-      if (voicePipelineProviderRef.current.startsWith(GEMINI_PROVIDER_PREFIX)) {
-        await connectGeminiRelay(voice, speed, baseUrl);
+      if (
+        voicePipelineProviderRef.current.startsWith(GEMINI_PROVIDER_PREFIX) ||
+        voicePipelineProviderRef.current === OPENAI_SERVER_WS_PROVIDER
+      ) {
+        await connectRelaySession(voice, speed, baseUrl);
         return;
       }
 
@@ -925,7 +936,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
         audioElRef.current = null;
       }
     }
-  }, [handleDcEvent, cancelMicReopen, connectGeminiRelay]);
+  }, [handleDcEvent, cancelMicReopen, connectRelaySession]);
 
   // ── Disconnect ─────────────────────────────────────────────────────────────
 

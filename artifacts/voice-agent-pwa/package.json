@@ -10,7 +10,8 @@
   "scripts": {
     "dev": "vite --port 8081",
     "build": "tsc && vite build",
-    "preview": "vite preview --port 8081"
+    "preview": "vite preview --port 8081",
+    "smoke:browser-voice-relays": "node ./scripts/smoke-browser-voice-relays.cjs"
   },
   "dependencies": {
     "@workspace/voicelab-client": "workspace:*",
