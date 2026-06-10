@@ -4,7 +4,8 @@ import * as schema from "./schema";
 
 const { Pool } = pg;
 
-export const hasDatabaseConfig = Boolean(process.env.DATABASE_URL);
+const databaseUrl = process.env.DATABASE_URL?.trim() ?? "";
+export const hasDatabaseConfig = Boolean(databaseUrl);
 
 if (!hasDatabaseConfig) {
   console.warn(
@@ -14,7 +15,7 @@ if (!hasDatabaseConfig) {
 
 export const pool = hasDatabaseConfig
   ? new Pool({
-      connectionString: process.env.DATABASE_URL,
+      connectionString: databaseUrl,
       max: 20,
       idleTimeoutMillis: 30_000,
       connectionTimeoutMillis: 5_000,

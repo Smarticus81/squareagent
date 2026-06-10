@@ -1,8 +1,11 @@
 import { Router, type Request, type Response } from "express";
 import { listConnectedServiceProviders } from "@workspace/voicelab-core/connected-service";
 import { listImplementedProviders } from "../../connectors";
+import { requireAuth } from "../auth";
 
 const router = Router();
+
+router.use(requireAuth as never);
 
 router.get("/", (_req: Request, res: Response) => {
   const showMock =

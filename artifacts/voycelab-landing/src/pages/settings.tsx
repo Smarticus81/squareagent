@@ -2,8 +2,9 @@ import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { SignedIn, SignedOut, SignInButton, OrganizationSwitcher } from "@clerk/clerk-react";
-import { ArrowLeft, ArrowRight, ArrowUpRight, BarChart3, Building2, CheckCircle2, CreditCard, Loader2, Lock, UserRound } from "lucide-react";
+import { ArrowLeft, ArrowRight, ArrowUpRight, BarChart3, Building2, CheckCircle2, CreditCard, KeyRound, Loader2, Lock, UserRound } from "lucide-react";
 import { getClerkSessionToken } from "@/lib/clerk-session";
+import { getPlan } from "@workspace/voicelab-core/pricing";
 
 type BillingSubscription = {
   plan: string | null;
@@ -14,6 +15,53 @@ type BillingSubscription = {
   organizationId?: string | null;
   billingSource?: "local_db" | "clerk_claims" | null;
 };
+
+type PlatformConfigStatus = {
+  status: "ok";
+  nodeEnv: string;
+  publicBaseUrlConfigured: boolean;
+  databaseConfigured: boolean;
+  jwtSecretConfigured: boolean;
+  secretsEncryption: {
+    configured: boolean;
+    source: string;
+    productionReady: boolean;
+    message?: string;
+  };
+  providers: {
+    openai: ProviderKeyStatus;
+    gemini: ProviderKeyStatus;
+  };
+  billing: {
+    clerkPublishableKeyConfigured: boolean;
+    clerkSecretKeyConfigured: boolean;
+    clerkWebhookSecretConfigured: boolean;
+  };
+  square: {
+    applicationIdConfigured: boolean;
+    applicationSecretConfigured: boolean;
+  };
+};
+
+type ProviderKeyStatus = {
+  configured: boolean;
+  canonicalEnv?: string;
+  sourceEnv?: string | null;
+  usingAlias?: boolean;
+};
+
+const isClerkLinkedSubscription = (subscription: BillingSubscription | null | undefined) =>
+  Boolean(subscription?.clerkSubscriptionId) || subscription?.billingSource === "clerk_claims";
+
+const rememberPendingPlan = (plan: string | null | undefined) => {
+  if (plan && plan !== "trial") sessionStorage.setItem("voycelab.pending_plan", plan);
+};
+
+function providerReadinessText(label: string, status: ProviderKeyStatus | undefined): string {
+  if (!status?.configured) return `${label} key needed`;
+  if (status.usingAlias && status.sourceEnv) return `${label} ready via ${status.sourceEnv}`;
+  return `${label} ready`;
+}
 
 /**
  * Settings — account only.
@@ -46,11 +94,13 @@ export default function Settings() {
     embeddedCheckoutReady: boolean;
     serverCheckoutReady: boolean;
     portalReady: boolean;
+    portalMode?: "external" | "embedded" | "none";
     webhooksReady: boolean;
     secretKeyConfigured: boolean;
     publishableKeyConfigured: boolean;
     subscription?: BillingSubscription | null;
   }>(null);
+  const [platformStatus, setPlatformStatus] = useState<PlatformConfigStatus | null>(null);
 
   useEffect(() => {
     if (!isLoading && !auth?.user) setLocation("/login");
@@ -77,6 +127,23 @@ export default function Settings() {
       if (data) setBillingStatus(data);
     })().catch(() => {});
   }, [auth?.user]);
+
+  useEffect(() => {
+    if (!auth?.user?.isAdmin) return;
+    const token = localStorage.getItem("voycelab_token");
+    if (!token) return;
+    (async () => {
+      const clerkToken = await getClerkSessionToken();
+      const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
+      if (clerkToken) headers["x-clerk-session-token"] = clerkToken;
+      const res = await fetch("/api/healthz/config", {
+        headers,
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data?.status === "ok") setPlatformStatus(data as PlatformConfigStatus);
+    })().catch(() => {});
+  }, [auth?.user?.isAdmin]);
 
   if (isLoading) {
     return (
@@ -144,9 +211,21 @@ export default function Settings() {
 
   const handleManageBilling = async () => {
     setBillingMsg(null);
-    const status = billingStatus?.subscription?.status ?? auth?.subscription?.status;
+    const subscription = (billingStatus?.subscription ?? auth?.subscription ?? null) as BillingSubscription | null;
+    const status = subscription?.status;
 
     if (status !== "active") {
+      rememberPendingPlan(subscription?.plan ?? auth?.subscription?.plan);
+      setLocation("/pricing");
+      return;
+    }
+
+    if (billingStatus && !isClerkLinkedSubscription(subscription)) {
+      rememberPendingPlan(subscription?.plan);
+      setBillingMsg({
+        tone: "error",
+        text: "This plan is active locally, but it is not linked to Clerk Billing yet.",
+      });
       setLocation("/pricing");
       return;
     }
@@ -205,7 +284,7 @@ export default function Settings() {
   const trialExpired = status === "trialing" && trialEndsAt && trialEndsAt < new Date();
   const planActive = status === "active";
   const billingVerifiedByClerk = effectiveSubscription?.billingSource === "clerk_claims";
-  const billingLinked = planActive && (Boolean(effectiveSubscription?.clerkSubscriptionId) || billingVerifiedByClerk);
+  const billingLinked = planActive && isClerkLinkedSubscription(effectiveSubscription);
   const billingOperational =
     billingStatus?.operational ??
     Boolean(
@@ -334,7 +413,13 @@ export default function Settings() {
                   />
                   <BillingBadge
                     tone={billingStatus?.portalReady ? "ok" : "warn"}
-                    text={billingStatus?.portalReady ? "Portal ready" : "Portal setup needed"}
+                    text={
+                      billingStatus?.portalReady
+                        ? billingStatus.portalMode === "external"
+                          ? "External portal ready"
+                          : "Embedded billing ready"
+                        : "Billing management needed"
+                    }
                   />
                   <BillingBadge
                     tone={billingStatus?.webhooksReady ? "ok" : "warn"}
@@ -369,7 +454,7 @@ export default function Settings() {
                   }
                 >
                   {billingLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                  {trialExpired ? "Choose a plan" : planActive ? "Manage billing" : "Upgrade"}
+                  {trialExpired ? "Choose a plan" : planActive && !billingLinked ? "Link billing" : planActive ? "Manage billing" : "Upgrade"}
                   <ArrowUpRight className="w-3.5 h-3.5" />
                 </button>
                 {billingMsg && <InlineStatus tone={billingMsg.tone} text={billingMsg.text} />}
@@ -377,7 +462,37 @@ export default function Settings() {
             </div>
           </Section>
 
-          {/* Organization — Clerk org switcher for B2B billing */}
+          {/* Admin-only launch readiness */}
+          {auth.user.isAdmin && (
+            <Section icon={<KeyRound className="h-5 w-5" />} title="Platform readiness" description="Server-side provider keys and launch checks.">
+              <div className="flex flex-wrap gap-2">
+                <BillingBadge
+                  tone={platformStatus?.providers.openai.configured ? "ok" : "warn"}
+                  text={providerReadinessText("OpenAI", platformStatus?.providers.openai)}
+                />
+                <BillingBadge
+                  tone={platformStatus?.providers.gemini.configured ? "ok" : "warn"}
+                  text={providerReadinessText("Gemini", platformStatus?.providers.gemini)}
+                />
+                <BillingBadge
+                  tone={platformStatus?.secretsEncryption.productionReady ? "ok" : "warn"}
+                  text={platformStatus?.secretsEncryption.productionReady ? "Encryption ready" : "Encryption key needed"}
+                />
+                <BillingBadge
+                  tone={platformStatus?.square.applicationIdConfigured && platformStatus?.square.applicationSecretConfigured ? "ok" : "warn"}
+                  text={platformStatus?.square.applicationIdConfigured && platformStatus?.square.applicationSecretConfigured ? "Square OAuth ready" : "Square OAuth needed"}
+                />
+                <BillingBadge
+                  tone={platformStatus?.databaseConfigured && platformStatus?.jwtSecretConfigured ? "ok" : "warn"}
+                  text={platformStatus?.databaseConfigured && platformStatus?.jwtSecretConfigured ? "Core server ready" : "Server config needed"}
+                />
+              </div>
+              <p className="mt-3 max-w-xl text-[12px] leading-relaxed" style={{ color: "var(--color-vl-ink-muted)" }}>
+                Secret values stay on the server. This page only shows whether each required key is present.
+              </p>
+            </Section>
+          )}
+
           {clerkBillingEnabled && (
             <Section icon={<Building2 className="h-5 w-5" />} title="Organization" description="Billing is managed at the organization level.">
               <SignedIn>
@@ -546,15 +661,6 @@ function capitalize(s: string) {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-const PLAN_MINUTES: Record<string, number> = {
-  trial: 60,
-  pro: 500,
-  business: 2000,
-  // Legacy plan names — backward compat for existing DB rows.
-  starter: 500,
-  professional: 500,
-  premium: 2000,
-};
 
 function UsageCard({ token, plan }: { token: string | null; plan?: string }) {
   const [data, setData] = useState<{
@@ -563,22 +669,36 @@ function UsageCard({ token, plan }: { token: string | null; plan?: string }) {
     recentErrors: { toolName: string; errorMessage: string | null; createdAt: string }[];
   } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!token) return;
+    if (!token) {
+      setLoading(false);
+      setError("Sign in again to load usage.");
+      return;
+    }
     setLoading(true);
+    setError(null);
     fetch("/api/v1/usage/current", {
       headers: { Authorization: `Bearer ${token}` },
     })
-      .then((r) => r.json())
-      .then(setData)
-      .catch(() => {})
+      .then(async (r) => {
+        const payload = await r.json().catch(() => null);
+        if (!r.ok) throw new Error(payload?.error ?? "Usage is unavailable right now.");
+        setData(payload);
+      })
+      .catch((err) => {
+        setData(null);
+        setError(err instanceof Error ? err.message : "Usage is unavailable right now.");
+      })
       .finally(() => setLoading(false));
   }, [token]);
 
-  const limit = PLAN_MINUTES[plan ?? "trial"] ?? 100;
+  const limit = getPlan(plan ?? "trial")?.includedVoiceMinutes ?? getPlan("trial")?.includedVoiceMinutes ?? 60;
   const used = data?.voiceMinutes?.used ?? 0;
-  const pct = Math.min(100, Math.round((used / limit) * 100));
+  const hasFiniteLimit = limit !== -1;
+  const pct = hasFiniteLimit ? Math.min(100, Math.round((used / limit) * 100)) : 0;
+  const limitLabel = hasFiniteLimit ? limit.toLocaleString() : "Unlimited";
 
   return (
     <Section icon={<BarChart3 className="h-5 w-5" />} title="Usage" description="Voice minutes and command activity this period.">
@@ -587,23 +707,31 @@ function UsageCard({ token, plan }: { token: string | null; plan?: string }) {
           <Loader2 className="w-4 h-4 animate-spin" style={{ color: "var(--color-vl-brass2)" }} />
           <span className="text-sm" style={{ color: "var(--color-vl-ink-muted)" }}>Loading usage...</span>
         </div>
+      ) : error ? (
+        <p className="text-sm py-4" style={{ color: "var(--color-vl-coral-deep, #e04323)" }}>
+          {error}
+        </p>
       ) : (
         <div className="space-y-5">
           <div>
             <div className="flex justify-between text-sm mb-1.5">
               <span style={{ color: "var(--color-vl-ink)" }}>Voice minutes</span>
-              <span className="tabular-nums" style={{ color: "var(--color-vl-ink-muted)" }}>{used} / {limit}</span>
+              <span className="tabular-nums" style={{ color: "var(--color-vl-ink-muted)" }}>
+                {used.toLocaleString()} / {limitLabel}
+              </span>
             </div>
-            <div className="h-2.5 rounded-full overflow-hidden" style={{ background: "var(--color-vl-ink-faint, #e5e5e5)" }}>
-              <div
-                className="h-full rounded-full transition-all"
-                style={{
-                  width: `${pct}%`,
-                  background: pct > 80 ? "var(--color-vl-coral-deep, #e04323)" : "var(--color-vl-accent, #ff6b47)",
-                }}
-              />
-            </div>
-            {pct >= 80 && (
+            {hasFiniteLimit && (
+              <div className="h-2.5 rounded-full overflow-hidden" style={{ background: "var(--color-vl-ink-faint, #e5e5e5)" }}>
+                <div
+                  className="h-full rounded-full transition-all"
+                  style={{
+                    width: `${pct}%`,
+                    background: pct > 80 ? "var(--color-vl-coral-deep, #e04323)" : "var(--color-vl-accent, #ff6b47)",
+                  }}
+                />
+              </div>
+            )}
+            {hasFiniteLimit && pct >= 80 && (
               <p className="text-xs mt-1" style={{ color: "var(--color-vl-coral-deep, #e04323)" }}>
                 {pct >= 100 ? "Overage: charges apply beyond your plan limit" : "Approaching plan limit"}
               </p>

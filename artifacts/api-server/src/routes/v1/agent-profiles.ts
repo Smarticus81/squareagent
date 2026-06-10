@@ -18,6 +18,7 @@ import { DEFAULT_CONFIRMATION_POLICY } from "@workspace/voicelab-core/confirmati
 import { planAllowsPipeline } from "@workspace/voicelab-core/pricing";
 import type { VoicePipelineProvider } from "@workspace/voicelab-core/voice-pipeline";
 import { invalidateAgentProfile } from "../../lib/agent-profile-cache";
+import { getVoicePipelineAdapter, readVoicePipelineEnvCredentials } from "../../voice-pipelines";
 
 const router = Router();
 router.use(v1RequireAuth as never, requireDb);
@@ -121,6 +122,34 @@ async function validateConnectedServiceForOrganization(
   return true;
 }
 
+async function validatePipelineAvailable(
+  res: Response,
+  provider: VoicePipelineProvider,
+): Promise<boolean> {
+  const adapter = getVoicePipelineAdapter(provider);
+  const availability = await adapter.availability({
+    credentials: readVoicePipelineEnvCredentials(),
+  });
+  if (
+    availability.status === "needs_configuration" ||
+    availability.status === "request_access" ||
+    availability.status === "unavailable"
+  ) {
+    jsonError(
+      res,
+      503,
+      "pipeline_not_available",
+      availability.reason ?? `The "${provider}" voice engine is not available on this deployment.`,
+      {
+        status: availability.status,
+        missing: availability.missing ?? [],
+      },
+    );
+    return false;
+  }
+  return true;
+}
+
 router.get("/", async (req: Request, res: Response) => {
   const user = userFromReq(req);
   const org = await ensureUserOrganization(user);
@@ -183,6 +212,7 @@ router.post("/", async (req: Request, res: Response) => {
     );
     return;
   }
+  if (!(await validatePipelineAvailable(res, body.voicePipelineProvider as VoicePipelineProvider))) return;
 
   const wakePhrase = body.wakePhrase ?? defaultWakePhraseFor(body.displayName);
   const wakeMode = body.noiseMode === "push_to_talk" ? "tap" : body.wakeMode;
@@ -286,6 +316,7 @@ router.patch("/:id", async (req: Request, res: Response) => {
       );
       return;
     }
+    if (!(await validatePipelineAvailable(res, parsed.data.voicePipelineProvider as VoicePipelineProvider))) return;
   }
   const updates: Record<string, unknown> = { ...parsed.data, updatedAt: new Date() };
   const nextNoiseMode =

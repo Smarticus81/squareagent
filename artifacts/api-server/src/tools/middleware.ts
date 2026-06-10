@@ -17,6 +17,26 @@ const SENSITIVE_KEY_RE = /(password|token|secret|key|credential|authorization|em
 const CONFIRMATION_TOKEN_TTL_MS = 5 * 60 * 1000;
 const DEV_CONFIRMATION_SECRET = "voycelab-dev-confirmation-secret-change-in-production";
 
+function sanitizeToolArgs(args: Record<string, unknown>): Record<string, unknown> {
+  const sanitized: Record<string, unknown> = {};
+  for (const [key, val] of Object.entries(args)) {
+    if (SENSITIVE_KEY_RE.test(key)) {
+      sanitized[key] = "[REDACTED]";
+    } else if (Array.isArray(val)) {
+      sanitized[key] = `array(${val.length})`;
+    } else if (val && typeof val === "object") {
+      sanitized[key] = "object";
+    } else if (typeof val === "string") {
+      sanitized[key] = `string(${val.length})`;
+    } else if (typeof val === "number" || typeof val === "boolean" || val === null) {
+      sanitized[key] = val;
+    } else {
+      sanitized[key] = typeof val;
+    }
+  }
+  return sanitized;
+}
+
 function getConfirmationSecret(): string {
   const secret =
     process.env.CONFIRMATION_TOKEN_SECRET?.trim() ||
@@ -119,20 +139,7 @@ export const errorMiddleware: ToolMiddleware = async (toolName, args, ctx, next)
  * Logging middleware — logs tool invocations with sanitized args.
  */
 export const loggingMiddleware: ToolMiddleware = async (toolName, args, ctx, next) => {
-  const sanitized: Record<string, unknown> = {};
-  for (const [key, val] of Object.entries(args)) {
-    if (SENSITIVE_KEY_RE.test(key)) {
-      sanitized[key] = "[REDACTED]";
-    } else if (Array.isArray(val)) {
-      sanitized[key] = `array(${val.length})`;
-    } else if (val && typeof val === "object") {
-      sanitized[key] = "object";
-    } else if (typeof val === "string" && val.length > 100) {
-      sanitized[key] = val.slice(0, 100) + "...";
-    } else {
-      sanitized[key] = val;
-    }
-  }
+  const sanitized = sanitizeToolArgs(args);
   log.info({ toolName, args: sanitized }, "tool called");
   return next(args, ctx);
 };
@@ -148,10 +155,7 @@ export const auditMiddleware: ToolMiddleware = async (toolName, args, ctx, next)
 
   setImmediate(() => {
     try {
-      const sanitizedArgs: Record<string, unknown> = {};
-      for (const [k, v] of Object.entries(args)) {
-        sanitizedArgs[k] = SENSITIVE_KEY_RE.test(k) ? "[REDACTED]" : v;
-      }
+      const sanitizedArgs = sanitizeToolArgs(args);
 
       const isError = result.result?.startsWith("Tool error:");
       db.insert(toolCallsTable)

@@ -647,7 +647,6 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
     for (const [key, value] of Object.entries(query)) {
       if (value !== undefined && value !== null) wsUrl.searchParams.set(key, String(value));
     }
-    wsUrl.searchParams.set("token", authTokenRef.current);
     if (venueIdRef.current) wsUrl.searchParams.set("venueId", venueIdRef.current);
     wsUrl.searchParams.set("agentProfileId", profileId);
     const voiceConfig = voicePipelineConfigRef.current;
@@ -670,7 +669,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
       if (languageCodes.length > 0) wsUrl.searchParams.set("languageCodes", languageCodes.join(","));
     }
 
-    const ws = new WebSocket(wsUrl);
+    const ws = new WebSocket(wsUrl, ["voycelab-auth", `jwt.${authTokenRef.current}`]);
     wsRef.current = ws;
     setAgentState("connecting");
 

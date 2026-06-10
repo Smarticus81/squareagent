@@ -163,7 +163,7 @@ function Hero({ onStart }: { onStart: () => void }) {
                   <ArrowRight className="w-3 h-3 text-white" />
                 </span>
               </Link>
-              <a href="#demo" className="vl-btn-outline inline-flex items-center gap-2.5">
+              <a href="#voice-demo" className="vl-btn-outline inline-flex items-center gap-2.5">
                 See it in action
                 <span
                   className="w-5 h-5 rounded-full flex items-center justify-center"
@@ -497,7 +497,7 @@ function ConversationSection({ compact = false }: { compact?: boolean }) {
             </p>
 
             <div className="mt-7 flex flex-wrap items-center gap-3">
-              <Link href="/signup" className="vl-btn-primary inline-flex items-center gap-2">
+              <Link href="/book-demo" className="vl-btn-primary inline-flex items-center gap-2">
                 Book a demo
                 <ArrowRight className="w-3.5 h-3.5" />
               </Link>
@@ -1255,7 +1255,7 @@ function FinalCTA({
             </div>
 
             <div className="flex flex-wrap items-center justify-center gap-3">
-              <Link href="/signup" className="vl-btn-outline inline-flex items-center gap-2">
+              <Link href="/book-demo" className="vl-btn-outline inline-flex items-center gap-2">
                 Book a live demo
               </Link>
               <span className="text-[13px]" style={{ color: "var(--color-vl-ink-muted)" }}>

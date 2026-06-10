@@ -20,7 +20,9 @@ import {
 } from "./_helpers";
 import {
   getVoicePipelineAdapter,
+  readVoicePipelineEnvCredentials,
 } from "../../voice-pipelines";
+import { getCachedCredentials } from "../../lib/credential-cache";
 import {
   buildToolsFromSkills,
   buildInstructionsFromSkills,
@@ -97,9 +99,18 @@ router.post("/", async (req: Request, res: Response) => {
     return;
   }
 
-  const provider: VoicePipelineProvider =
-    parsed.data.pipelineOverride ?? (profile.voicePipelineProvider as VoicePipelineProvider);
   const isAdmin = Boolean((req as Request & { isAdmin?: boolean }).isAdmin);
+  const savedProvider = profile.voicePipelineProvider as VoicePipelineProvider;
+  const provider: VoicePipelineProvider = parsed.data.pipelineOverride ?? savedProvider;
+  if (provider !== savedProvider && !isAdmin) {
+    jsonError(
+      res,
+      400,
+      "pipeline_override_forbidden",
+      "This assistant is configured for a different voice engine. Edit the assistant to change engines.",
+    );
+    return;
+  }
   const plan = (req as Request & { subscription?: { plan?: string } }).subscription?.plan ?? "trial";
   if (!isAdmin && !planAllowsPipeline(plan, provider)) {
     jsonError(
@@ -111,10 +122,31 @@ router.post("/", async (req: Request, res: Response) => {
     return;
   }
   const adapter = getVoicePipelineAdapter(provider);
+  const availability = await adapter.availability({
+    credentials: readVoicePipelineEnvCredentials(),
+  });
+  if (
+    availability.status === "needs_configuration" ||
+    availability.status === "request_access" ||
+    availability.status === "unavailable"
+  ) {
+    jsonError(
+      res,
+      503,
+      "pipeline_not_available",
+      availability.reason ?? `The "${provider}" voice engine is not available on this deployment.`,
+      {
+        status: availability.status,
+        missing: availability.missing ?? [],
+      },
+    );
+    return;
+  }
 
   // Infer assistant kind from the connected service. Anything that isn't
   // Square gets the general business persona.
   let assistantKind: "venue" | "general" = "venue";
+  let sessionConnectionId = profile.connectedServiceId ?? "";
   if (profile.connectedServiceId) {
     const [conn] = await db
       .select({ provider: serviceConnectionsTable.provider })
@@ -133,6 +165,30 @@ router.post("/", async (req: Request, res: Response) => {
     if (conn && conn.provider !== "square") assistantKind = "general";
   } else {
     assistantKind = "general";
+  }
+
+  if (assistantKind === "venue") {
+    if (!profile.venueId) {
+      assistantKind = "general";
+    } else {
+      const creds = await getCachedCredentials(
+        user.id,
+        profile.venueId,
+        profile.organizationId,
+        profile.connectedServiceId,
+      );
+      if (creds) {
+        sessionConnectionId = creds.serviceConnectionId ?? sessionConnectionId;
+      } else {
+        assistantKind = "general";
+      }
+    }
+  } else if (!profile.connectedServiceId && profile.venueId) {
+    const creds = await getCachedCredentials(user.id, profile.venueId, profile.organizationId);
+    if (creds) {
+      assistantKind = "venue";
+      sessionConnectionId = creds.serviceConnectionId ?? "";
+    }
   }
 
   const includeGeneralTools =
@@ -154,7 +210,7 @@ router.post("/", async (req: Request, res: Response) => {
     const noiseMode: NoiseMode =
       profile.noiseMode === "loud" || profile.noiseMode === "push_to_talk" ? profile.noiseMode : "standard";
     const session = await adapter.createSession({
-      connectionId: profile.connectedServiceId ?? "",
+      connectionId: sessionConnectionId,
       agentProfileId: profile.id,
       agentDisplayName: profile.displayName,
       userId: String(user.id),

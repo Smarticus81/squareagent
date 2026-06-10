@@ -85,6 +85,17 @@ function summarize(text: string, max = 600): string {
   return collapsed.length > max ? collapsed.slice(0, max) + "…" : collapsed;
 }
 
+function safeGmailError(error: unknown): string {
+  const raw = error instanceof Error ? error.message : String(error ?? "unknown error");
+  return raw
+    .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{12,}/gi, "$1 [redacted]")
+    .replace(/\bya29\.[A-Za-z0-9._~+/=-]+/g, "[google-token]")
+    .replace(/\bAIza[0-9A-Za-z_-]{20,}\b/g, "[google-key]")
+    .replace(/\b[0-9]+-[A-Za-z0-9_-]{24,}\.apps\.googleusercontent\.com\b/g, "[google-client-id]")
+    .replace(/\b[A-Za-z0-9._~+/=-]{48,}\b/g, "[redacted]")
+    .slice(0, 240);
+}
+
 export const definitions: ToolDefinition[] = [
   {
     type: "function",
@@ -204,7 +215,7 @@ async function listInbox(args: Record<string, unknown>, ctx: ToolContext): Promi
     }));
     return { result: JSON.stringify({ query: q, count: items.length, messages: items }) };
   } catch (e: any) {
-    return { result: `list_inbox error: ${String(e?.message ?? e).slice(0, 240)}` };
+    return { result: `list_inbox error: ${safeGmailError(e)}` };
   }
 }
 
@@ -234,7 +245,7 @@ async function readEmail(args: Record<string, unknown>, ctx: ToolContext): Promi
     };
     return { result: JSON.stringify(out) };
   } catch (e: any) {
-    return { result: `read_email error: ${String(e?.message ?? e).slice(0, 240)}` };
+    return { result: `read_email error: ${safeGmailError(e)}` };
   }
 }
 
@@ -250,7 +261,7 @@ async function archiveEmail(args: Record<string, unknown>, ctx: ToolContext): Pr
     });
     return { result: `Archived ${id}.` };
   } catch (e: any) {
-    return { result: `archive_email error: ${String(e?.message ?? e).slice(0, 240)}` };
+    return { result: `archive_email error: ${safeGmailError(e)}` };
   }
 }
 
@@ -266,7 +277,7 @@ async function markEmailRead(args: Record<string, unknown>, ctx: ToolContext): P
     });
     return { result: `Marked ${id} as read.` };
   } catch (e: any) {
-    return { result: `mark_email_read error: ${String(e?.message ?? e).slice(0, 240)}` };
+    return { result: `mark_email_read error: ${safeGmailError(e)}` };
   }
 }
 
@@ -279,7 +290,7 @@ async function trashEmail(args: Record<string, unknown>, ctx: ToolContext): Prom
     await c.gmail.users.messages.trash({ userId: "me", id });
     return { result: `Moved ${id} to trash.` };
   } catch (e: any) {
-    return { result: `trash_email error: ${String(e?.message ?? e).slice(0, 240)}` };
+    return { result: `trash_email error: ${safeGmailError(e)}` };
   }
 }
 
@@ -326,7 +337,7 @@ async function createEmailDraft(args: Record<string, unknown>, ctx: ToolContext)
     });
     return { result: `Draft created (id=${r.data.id ?? "unknown"}) for ${to}.` };
   } catch (e: any) {
-    return { result: `create_email_draft error: ${String(e?.message ?? e).slice(0, 240)}` };
+    return { result: `create_email_draft error: ${safeGmailError(e)}` };
   }
 }
 

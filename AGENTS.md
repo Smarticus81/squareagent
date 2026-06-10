@@ -184,6 +184,8 @@ The marketing site (`voycelab-landing`) uses a warm, hospitality-focused light t
 
 ## Environment Variables
 
-Required: `DATABASE_URL`, `JWT_SECRET`, `OPENAI_API_KEY`, `SQUARE_APPLICATION_ID`, `SQUARE_APPLICATION_SECRET`, `PUBLIC_BASE_URL`, `PORT`, `ENCRYPTION_KEY` (32-byte hex for AES-256-GCM)
+Required: `DATABASE_URL`, `JWT_SECRET`, `SECRETS_ENCRYPTION_KEY` (dedicated 32+ character secret for AES-256-GCM key derivation), `OPENAI_API_KEY`, `GOOGLE_GEMINI_API_KEY`, `SQUARE_APPLICATION_ID`, `SQUARE_APPLICATION_SECRET`, `PUBLIC_BASE_URL`, `PORT`
+
+Provider API keys are resolved through `artifacts/api-server/src/lib/api-keys.ts`. Use canonical names for new deployments: `OPENAI_API_KEY` and `GOOGLE_GEMINI_API_KEY`. Legacy aliases (`AI_INTEGRATIONS_OPENAI_API_KEY`, `GOOGLE_API_KEY`) are accepted only for compatibility.
 
 Optional: `VITE_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, `CLERK_WEBHOOK_SECRET`, `CLERK_PLAN_PRO_ID`, `CLERK_PLAN_BUSINESS_ID`, `SESSION_SECRET`, `LOG_LEVEL`

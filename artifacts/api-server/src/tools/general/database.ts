@@ -17,6 +17,16 @@ const { Client } = pg;
 
 const FORBIDDEN = /\b(insert|update|delete|drop|truncate|alter|create|grant|revoke|copy|vacuum|analyze)\b/i;
 
+function safeToolError(error: unknown, fallback = "request failed"): string {
+  const raw = error instanceof Error ? error.message : typeof error === "string" ? error : "";
+  if (!raw) return fallback;
+  return raw
+    .replace(/postgres(?:ql)?:\/\/[^\s"'<>]+/gi, "[database-url]")
+    .replace(/(?:Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi, "$1 [redacted]")
+    .replace(/\b[A-Za-z0-9+/]{32,}={0,2}\b/g, "[redacted]")
+    .slice(0, 240);
+}
+
 function tenantWhere(userId: number, organizationId?: string | null) {
   return organizationId
     ? or(
@@ -89,7 +99,7 @@ async function queryDatabase(args: Record<string, unknown>, ctx: ToolContext): P
     const preview = JSON.stringify(rows.slice(0, 100), null, 2);
     return { result: `Returned ${rows.length} row(s):\n${preview.slice(0, 6000)}` };
   } catch (e: any) {
-    return { result: `query_database error: ${e.message}` };
+    return { result: `query_database error: ${safeToolError(e)}` };
   } finally {
     try { await client.end(); } catch { /* ignore */ }
   }

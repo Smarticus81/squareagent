@@ -9,6 +9,8 @@ import {
   type ConnectionHealth,
   ConnectedServiceError,
 } from "@workspace/voicelab-core/connected-service";
+import { lookup } from "dns/promises";
+import { isIP } from "net";
 
 /**
  * Generic REST adapter — drives a configured external HTTP service. The
@@ -50,12 +52,99 @@ interface GenericRestAction {
   };
 }
 
+const ALLOW_PRIVATE_REST_TARGETS =
+  process.env.VOYCELAB_ALLOW_PRIVATE_REST_CONNECTOR === "true" ||
+  process.env.NODE_ENV === "development" ||
+  process.env.NODE_ENV === "test";
+
+function isPrivateIp(ip: string): boolean {
+  if (ip === "::1") return true;
+  const normalized = ip.startsWith("::ffff:") ? ip.slice("::ffff:".length) : ip;
+  const version = isIP(normalized);
+  if (version === 4) {
+    const parts = normalized.split(".").map((part) => Number(part));
+    const [a, b] = parts;
+    return (
+      a === 0 ||
+      a === 10 ||
+      a === 127 ||
+      (a === 100 && b >= 64 && b <= 127) ||
+      (a === 169 && b === 254) ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && (b === 0 || b === 168)) ||
+      (a === 198 && (b === 18 || b === 19 || b === 51)) ||
+      (a === 203 && b === 0) ||
+      a >= 224
+    );
+  }
+  if (version === 6) {
+    const lower = normalized.toLowerCase();
+    return (
+      lower === "::" ||
+      lower === "::1" ||
+      lower.startsWith("fc") ||
+      lower.startsWith("fd") ||
+      lower.startsWith("fe80:")
+    );
+  }
+  return false;
+}
+
+async function assertPublicHttpTarget(url: URL): Promise<void> {
+  if (url.protocol !== "https:" && !(ALLOW_PRIVATE_REST_TARGETS && url.protocol === "http:")) {
+    throw new ConnectedServiceError(
+      "generic_rest",
+      "Generic REST targets must use https://. Local http:// targets are allowed only in development or when explicitly enabled.",
+    );
+  }
+
+  if (ALLOW_PRIVATE_REST_TARGETS) return;
+
+  const hostname = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  if (hostname === "localhost" || hostname.endsWith(".localhost")) {
+    throw new ConnectedServiceError("generic_rest", "Generic REST targets cannot point to localhost.");
+  }
+
+  const directIpVersion = isIP(hostname);
+  if (directIpVersion && isPrivateIp(hostname)) {
+    throw new ConnectedServiceError("generic_rest", "Generic REST targets cannot point to private network addresses.");
+  }
+
+  const addresses = await lookup(hostname, { all: true, verbatim: false });
+  if (addresses.length === 0 || addresses.some((entry) => isPrivateIp(entry.address))) {
+    throw new ConnectedServiceError("generic_rest", "Generic REST target DNS resolves to a private network address.");
+  }
+}
+
+async function buildActionUrl(cfg: GenericRestConfig, action: GenericRestAction, vars: Record<string, string> = {}): Promise<string> {
+  const baseUrl = new URL(cfg.baseUrl);
+  if (!action.path.startsWith("/")) {
+    throw new ConnectedServiceError("generic_rest", "Generic REST action paths must start with '/'.");
+  }
+  const path = substitute(action.path, vars);
+  const url = new URL(path, baseUrl);
+  if (url.origin !== baseUrl.origin) {
+    throw new ConnectedServiceError("generic_rest", "Generic REST action paths cannot change host.");
+  }
+  await assertPublicHttpTarget(url);
+  return url.toString();
+}
+
 function readConfig(connection: ServiceConnection): GenericRestConfig {
   const raw = connection.config as unknown as GenericRestConfig | undefined;
   if (!raw || typeof raw.baseUrl !== "string" || !raw.actions) {
     throw new ConnectedServiceError(
       "generic_rest",
       "Generic REST adapter requires baseUrl and actions in connection.config.",
+    );
+  }
+  try {
+    const url = new URL(raw.baseUrl);
+    if (!url.hostname) throw new Error("missing hostname");
+  } catch {
+    throw new ConnectedServiceError(
+      "generic_rest",
+      "Generic REST adapter requires a valid absolute baseUrl in connection.config.",
     );
   }
   return raw;
@@ -121,7 +210,7 @@ export class GenericRestAdapter implements ConnectedServiceAdapter {
       };
     }
     try {
-      const res = await fetch(`${cfg.baseUrl}${action.path}`, {
+      const res = await fetch(await buildActionUrl(cfg, action), {
         method: action.method,
         headers: buildHeaders(connection),
       });
@@ -142,7 +231,7 @@ export class GenericRestAdapter implements ConnectedServiceAdapter {
     const cfg = readConfig(connection);
     const action = cfg.actions.listLocations;
     if (!action) return [];
-    const res = await fetch(`${cfg.baseUrl}${action.path}`, {
+    const res = await fetch(await buildActionUrl(cfg, action), {
       method: action.method,
       headers: buildHeaders(connection),
     });
@@ -163,7 +252,7 @@ export class GenericRestAdapter implements ConnectedServiceAdapter {
     const cfg = readConfig(ctx.connection);
     const action = cfg.actions.getCatalog;
     if (!action) return [];
-    const res = await fetch(`${cfg.baseUrl}${action.path}`, {
+    const res = await fetch(await buildActionUrl(cfg, action), {
       method: action.method,
       headers: buildHeaders(ctx.connection),
     });
@@ -198,8 +287,7 @@ export class GenericRestAdapter implements ConnectedServiceAdapter {
       const q = query.toLowerCase();
       return all.filter((i) => i.name.toLowerCase().includes(q));
     }
-    const path = substitute(action.path, { query: encodeURIComponent(query) });
-    const res = await fetch(`${cfg.baseUrl}${path}`, {
+    const res = await fetch(await buildActionUrl(cfg, action, { query: encodeURIComponent(query) }), {
       method: action.method,
       headers: buildHeaders(ctx.connection),
       body: action.requestTemplate
@@ -237,7 +325,7 @@ export class GenericRestAdapter implements ConnectedServiceAdapter {
           lineItemsJson: JSON.stringify(input.lineItems),
         })
       : JSON.stringify({ locationId: input.locationId, lineItems: input.lineItems });
-    const res = await fetch(`${cfg.baseUrl}${action.path}`, {
+    const res = await fetch(await buildActionUrl(cfg, action), {
       method: action.method,
       headers: buildHeaders(ctx.connection),
       body,

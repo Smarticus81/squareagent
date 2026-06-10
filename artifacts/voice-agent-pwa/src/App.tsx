@@ -17,6 +17,8 @@ function debugAppLog(message: string, ...args: unknown[]): void {
   if (DEBUG_APP_EVENTS) console.log(message, ...args);
 }
 
+const assetUrl = (path: string) => `${import.meta.env.BASE_URL}${path}`.replace(/\/{2,}/g, "/");
+
 /* ── App modes ─────────────────────────────────────────────────── */
 type AppMode = "idle" | "wake_word" | "command" | "shutdown";
 
@@ -134,7 +136,10 @@ export default function App() {
   const wakeEnabled = wakeMode !== "tap" && !pushToTalkRequired;
   const wakeWordAvailable = wakeEnabled && isWakeWordSupported();
 
-  const wakeLockStatus = useWakeLock(mode === "wake_word" || mode === "command");
+  // Venue mode is an always-on surface: keep the display awake whenever the
+  // PWA is online, even before microphone permission has been granted.
+  const keepScreenAwake = mode !== "shutdown";
+  const wakeLockStatus = useWakeLock(keepScreenAwake);
 
   useEffect(() => { modeRef.current = mode; }, [mode]);
 
@@ -506,10 +511,10 @@ export default function App() {
       <div className="brand-strip" aria-label="Connected systems">
         <span className="brand-strip-label">Powered by</span>
         {assistantKind === "venue" && (
-          <img src="/agent/brand/square-logo.png" alt="Square" className="brand-strip-logo" />
+          <img src={assetUrl("brand/square-logo.png")} alt="Square" className="brand-strip-logo" />
         )}
-        <img src="/agent/brand/openai-wordmark.png" alt="OpenAI" className="brand-strip-logo brand-strip-logo-narrow" />
-        <img src="/agent/brand/google-g.png" alt="Google" className="brand-strip-logo brand-strip-logo-narrow" />
+        <img src={assetUrl("brand/openai-wordmark.png")} alt="OpenAI" className="brand-strip-logo brand-strip-logo-narrow" />
+        <img src={assetUrl("brand/google-g.png")} alt="Google" className="brand-strip-logo brand-strip-logo-narrow" />
       </div>
 
       {/* Voice confirmation — visible even when order panel is closed */}
