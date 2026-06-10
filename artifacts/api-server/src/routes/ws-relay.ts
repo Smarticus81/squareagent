@@ -68,7 +68,7 @@ type RelayScope =
     }
   | { ok: false; status: 400 | 403 | 404 };
 
-interface RelayCtx {
+export interface RelayCtx {
   userId: number;
   organizationId: string | null;
   venueId: number | null;
@@ -934,7 +934,7 @@ export function attachWebSocketRelay(server: Server): void {
 
 // -- Gemini Live relay (BidiGenerateContent over WebSocket) ---
 
-function handleGeminiRelay(clientWs: WebSocket, ctx: RelayCtx): void {
+export function handleGeminiRelay(clientWs: WebSocket, ctx: RelayCtx): void {
   const apiKey = readServerApiKey("gemini")?.value ?? "";
   if (!apiKey) {
     clientWs.send(JSON.stringify({ type: "error", error: { message: `${requiredApiKeyEnv("gemini")} not configured` } }));
@@ -995,6 +995,11 @@ function handleGeminiRelay(clientWs: WebSocket, ctx: RelayCtx): void {
   const upstream = new WebSocket(upstreamUrl);
   let upstreamReady = false;
   let setupSent = false;
+  // Gemini Live requires the client to wait for the setupComplete ack before
+  // sending any other message. Forwarding mic audio in the window between
+  // sending setup and receiving the ack can abort the session, so everything
+  // from the client is queued until the ack arrives.
+  let setupAcked = false;
   let pendingFromClient: string[] = [];
   const pendingConfirmationCallIds = new Set<string>();
 
@@ -1037,6 +1042,7 @@ function handleGeminiRelay(clientWs: WebSocket, ctx: RelayCtx): void {
         { scope: "gemini", userId: ctx.userId, modelId, activeTools: relayTools.length },
         "upstream setup complete",
       );
+      setupAcked = true;
       for (const msg of pendingFromClient) upstream.send(msg);
       pendingFromClient = [];
       if (clientWs.readyState === WebSocket.OPEN) {
@@ -1158,24 +1164,27 @@ function handleGeminiRelay(clientWs: WebSocket, ctx: RelayCtx): void {
       }
       if (typeof event.voice === "string") voiceName = event.voice;
 
-      if (upstreamReady && setupSent) {
-        upstream.send(
-          JSON.stringify({
-            clientContent: {
-              turns: [
-                {
-                  role: "user",
-                  parts: [
-                    {
-                      text: `[Updated context]\n${buildInstructions(ctx, catalog, order, assistantKind)}`,
-                    },
-                  ],
-                },
-              ],
-              turnComplete: false,
-            },
-          }),
-        );
+      // Before setup is sent the refreshed catalog/order are picked up by
+      // sendSetup() itself; afterwards the model needs an explicit context
+      // turn. Queue it if the setup ack hasn't arrived yet.
+      if (setupSent) {
+        const contextMessage = JSON.stringify({
+          clientContent: {
+            turns: [
+              {
+                role: "user",
+                parts: [
+                  {
+                    text: `[Updated context]\n${buildInstructions(ctx, catalog, order, assistantKind)}`,
+                  },
+                ],
+              },
+            ],
+            turnComplete: false,
+          },
+        });
+        if (upstreamReady && setupAcked) upstream.send(contextMessage);
+        else pendingFromClient.push(contextMessage);
       }
       return;
     }
@@ -1195,7 +1204,7 @@ function handleGeminiRelay(clientWs: WebSocket, ctx: RelayCtx): void {
     const geminiMessage = geminiClientMessageFromRealtimeEvent(event);
     if (!geminiMessage) return;
 
-    if (upstreamReady && setupSent) upstream.send(geminiMessage);
+    if (upstreamReady && setupSent && setupAcked) upstream.send(geminiMessage);
     else pendingFromClient.push(geminiMessage);
   });
 
