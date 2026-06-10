@@ -127,7 +127,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       >
                         Sign in
                       </Link>
-                      <Link href="/signup" className="inline-block">
+                      <Link href="/book-demo" className="inline-block">
                         <button
                           className="vl-btn-primary text-[13px] inline-flex items-center gap-2"
                           style={{ padding: "0.5rem 1.1rem 0.5rem 1.2rem" }}

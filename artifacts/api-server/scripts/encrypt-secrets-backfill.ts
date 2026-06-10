@@ -5,8 +5,9 @@
  * Usage (from repo root):
  *   pnpm tsx artifacts/api-server/scripts/encrypt-secrets-backfill.ts
  *
- * Reads DATABASE_URL + (SECRETS_ENCRYPTION_KEY || JWT_SECRET) from env. Dry-run
- * by default; pass --apply to actually write.
+ * Reads DATABASE_URL + SECRETS_ENCRYPTION_KEY from env. Dry-run by default;
+ * pass --apply to actually write. ENCRYPTION_KEY is accepted only for legacy
+ * deployments; do not rely on JWT_SECRET for production encryption.
  */
 import { db, externalDbConnectionsTable, emailCredentialsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";

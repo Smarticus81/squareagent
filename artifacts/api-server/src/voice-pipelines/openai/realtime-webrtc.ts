@@ -8,13 +8,14 @@ import type {
   VoicePipelineToolResultContext,
   VoicePipelineInterruptContext,
 } from "@workspace/voicelab-core/voice-pipeline";
+import { readServerApiKey, requireServerApiKey, requiredApiKeyEnv } from "../../lib/api-keys";
 
 const REALTIME_MODEL = process.env.OPENAI_REALTIME_MODEL ?? "gpt-realtime-2";
 const REALTIME_REASONING_EFFORT =
   (process.env.OPENAI_REALTIME_REASONING_EFFORT as "minimal" | "low" | "medium" | "high" | undefined) ?? "low";
 
 function readApiKey(): string {
-  return process.env.OPENAI_API_KEY ?? process.env.AI_INTEGRATIONS_OPENAI_API_KEY ?? "";
+  return readServerApiKey("openai")?.value ?? "";
 }
 
 /**
@@ -51,18 +52,15 @@ export class OpenAiRealtimeWebRtcAdapter implements VoicePipelineAdapter {
     if (!readApiKey()) {
       return {
         status: "needs_configuration",
-        reason: "OPENAI_API_KEY not set on the server.",
-        missing: ["OPENAI_API_KEY"],
+        reason: `${requiredApiKeyEnv("openai")} not set on the server.`,
+        missing: [requiredApiKeyEnv("openai")],
       };
     }
     return { status: "available" };
   }
 
   async createSession(ctx: VoicePipelineSessionContext): Promise<VoicePipelineSession> {
-    const apiKey = readApiKey();
-    if (!apiKey) {
-      throw new Error("OPENAI_API_KEY missing");
-    }
+    const apiKey = requireServerApiKey("openai").value;
     const voice = (ctx.providerOptions.voice as string | undefined) ?? "ash";
     const speed = (ctx.providerOptions.speed as number | undefined) ?? 1.0;
     const session = {

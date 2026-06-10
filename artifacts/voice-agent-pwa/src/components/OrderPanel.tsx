@@ -1,12 +1,12 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
-import { X, MoreVertical, Trash2, Loader, Link, ChevronRight, Sun, Moon, RefreshCw, LogIn, User, MapPin, LogOut, Play, ClipboardCheck, Package, Clock, Mic2 } from "lucide-react";
+import { X, MoreVertical, Trash2, Loader, Link, ChevronRight, Sun, Moon, RefreshCw, LogIn, User, MapPin, LogOut, Play, ClipboardCheck, Package, Clock, Mic2, Settings2 } from "lucide-react";
 import { useOrder, type OrderLineItem } from "@/contexts/OrderContext";
 import { useSquare } from "@/contexts/SquareContext";
 import { OrderCard } from "./OrderCard";
 import { getVoicePrefs, setVoicePref, setSpeedPref, VOICES, SPEEDS } from "@/lib/voice-prefs";
 import { getBaseUrl } from "@/lib/api";
 import { isWakeWordSupported } from "@/hooks/useWakeWord";
-import type { WakeLockStatus } from "@/hooks/useWakeLock";
+import { isScreenWakeLockSupported, type WakeLockStatus } from "@/hooks/useWakeLock";
 import { commandLabel } from "@/lib/command-labels";
 
 interface Props {
@@ -17,6 +17,7 @@ interface Props {
     args: Record<string, unknown>;
     risk_level: string;
     prompt: string;
+    token?: string;
     call_id: string;
   } | null;
   onConfirm?: () => void;
@@ -346,9 +347,9 @@ function voicePipelineLabel(provider?: string): string {
     case "google_gemini_3_1_flash_live": return "Gemini 3.1 Flash Live";
     case "google_gemini_2_5_flash_native_audio": return "Gemini 2.5 Native Audio";
     case "google_gemini_live_native_audio": return "Gemini Live";
-    case "browser_speech_api": return "Browser Speech";
-    case "push_to_talk_text": return "Push to talk";
-    case "text_only": return "Text only";
+    case "browser_speech_api_fallback": return "Browser Speech";
+    case "push_to_talk_text_fallback": return "Push to talk";
+    case "text_only_fallback": return "Text only";
     default: return provider ? provider.replace(/_/g, " ") : "Default voice";
   }
 }
@@ -395,15 +396,21 @@ function screenWakeLabel(status: WakeLockStatus): string {
   }
 }
 
-function screenWakeHint(status: WakeLockStatus, ambientWakeConfigured: boolean, browserWakeSupported: boolean): string {
+function screenWakeHint(status: WakeLockStatus, screenWakeSupported: boolean): string {
   if (status === "active") return "Screen lock is active while the assistant is on.";
-  if (!browserWakeSupported) return "Tap the orb to speak; ambient listening is not available in this browser.";
-  if (!ambientWakeConfigured) return "Tap the orb when you need the assistant.";
+  if (!screenWakeSupported) return "This browser does not support keeping the display awake.";
   switch (status) {
     case "unsupported": return "This browser does not support keeping the screen awake.";
     case "blocked": return "The device denied screen lock. Check battery or browser settings.";
     default: return "Tap the orb to turn the assistant on.";
   }
+}
+
+function assistantEditorUrl(profileId: string): string {
+  const { protocol, hostname, port, origin } = window.location;
+  const isLocalPwa = (hostname === "localhost" || hostname === "127.0.0.1") && port === "8081";
+  const base = isLocalPwa ? `${protocol}//${hostname}:5173` : origin;
+  return `${base}/assistants/edit/${encodeURIComponent(profileId)}`;
 }
 
 function SettingsSheet({ onBack, screenWakeStatus }: { onBack: () => void; screenWakeStatus: WakeLockStatus }) {
@@ -461,10 +468,12 @@ function SettingsSheet({ onBack, screenWakeStatus }: { onBack: () => void; scree
   const isGeminiVoice = selectedProvider?.startsWith("google_gemini_") ?? false;
   const voiceConfig = agentProfile?.voicePipelineConfig ?? {};
   const assistantName = agentProfile?.displayName ?? (assistantKind === "venue" ? "Venue assistant" : "General assistant");
+  const profileId = agentProfile?.id;
   const connectedSystem = assistantKind === "venue"
     ? (isConfigured ? "Square connected" : "Square not connected")
     : "General assistant";
   const browserWakeSupported = isWakeWordSupported();
+  const screenWakeSupported = isScreenWakeLockSupported();
   const pushToTalkRequired = agentProfile?.noiseMode === "push_to_talk";
   const ambientWakeConfigured = wakeMode !== "tap" && !pushToTalkRequired;
   const wakeRuntimeLabel = !ambientWakeConfigured
@@ -567,6 +576,16 @@ function SettingsSheet({ onBack, screenWakeStatus }: { onBack: () => void; scree
             </div>
           </div>
 
+          {profileId && (
+            <button
+              className="settings-edit-action"
+              type="button"
+              onClick={() => window.open(assistantEditorUrl(profileId), "_blank", "noopener,noreferrer")}
+            >
+              <Settings2 size={14} /> Edit assistant
+            </button>
+          )}
+
           <details className="settings-group" open={assistantKind === "venue" && !isConfigured}>
             <summary>
               <span><Link size={14} /> Connected system</span>
@@ -624,7 +643,7 @@ function SettingsSheet({ onBack, screenWakeStatus }: { onBack: () => void; scree
                 <strong>{screenWakeLabel(screenWakeStatus)}</strong>
               </div>
               <p className="settings-muted">
-                {screenWakeHint(screenWakeStatus, ambientWakeConfigured, browserWakeSupported)}
+                {screenWakeHint(screenWakeStatus, screenWakeSupported)}
               </p>
             </div>
           </details>
@@ -680,7 +699,7 @@ function SettingsSheet({ onBack, screenWakeStatus }: { onBack: () => void; scree
                     <span>Language</span>
                     <strong>{languageLabel(voiceConfig.languageCodes)}</strong>
                   </div>
-                  <p className="settings-muted">Configured on this assistant's web app profile.</p>
+                  <p className="settings-muted">Change these from the assistant editor.</p>
                 </>
               )}
             </div>

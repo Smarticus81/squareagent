@@ -137,6 +137,21 @@ export function SquareProvider({ children }: { children: ReactNode }) {
     else localStorage.removeItem(AGENT_PROFILE_KEY);
   }
 
+  async function loadAgentProfile(tok: string, profileId: string): Promise<boolean> {
+    try {
+      const res = await fetch(`${getBaseUrl()}api/v1/agent-profiles/${encodeURIComponent(profileId)}`, {
+        headers: { Authorization: `Bearer ${tok}` },
+      });
+      if (!res.ok) return false;
+      const profile = (await res.json()) as AgentProfileLaunchInfo;
+      applyAgentLaunchInfo({ agentProfile: profile });
+      return true;
+    } catch (e) {
+      console.warn("Failed to refresh assistant profile", e);
+      return false;
+    }
+  }
+
   function clearStoredLaunchSession(message?: string) {
     localStorage.removeItem(AUTH_TOKEN_KEY);
     localStorage.removeItem(VENUE_ID_KEY);
@@ -279,6 +294,8 @@ export function SquareProvider({ children }: { children: ReactNode }) {
           setAuthToken(tok);
           setUserInfo(data.user);
           await loadVenues(tok);
+          const storedAgentProfileId = localStorage.getItem(AGENT_PROFILE_ID_KEY);
+          if (storedAgentProfileId) await loadAgentProfile(tok, storedAgentProfileId);
         } else if (res.status === 401) {
           clearStoredLaunchSession("Session expired. Sign in or relaunch from the dashboard.");
         }
@@ -422,7 +439,11 @@ export function SquareProvider({ children }: { children: ReactNode }) {
     setConnectionError(null);
 
     try {
-      const res = await fetch(`${getBaseUrl()}api/venues/${vid}/credentials`, {
+      const storedAgentProfileId = localStorage.getItem(AGENT_PROFILE_ID_KEY);
+      const profileQuery = storedAgentProfileId
+        ? `?agentProfileId=${encodeURIComponent(storedAgentProfileId)}`
+        : "";
+      const res = await fetch(`${getBaseUrl()}api/venues/${vid}/credentials${profileQuery}`, {
         headers: { Authorization: `Bearer ${tok}` },
       });
 

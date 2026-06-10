@@ -2,14 +2,17 @@
  * OpenAI embedding helper used by the knowledge base tool + ingestion route.
  * Default model: text-embedding-3-small (1536 dims, cheap, plenty of quality).
  */
+import { requireServerApiKey, requiredApiKeyEnv } from "./api-keys";
 
 const EMBEDDING_MODEL = process.env.OPENAI_EMBEDDING_MODEL ?? "text-embedding-3-small";
 const OPENAI_BASE = process.env.OPENAI_API_BASE ?? "https://api.openai.com/v1";
 
 function getApiKey(): string {
-  const key = process.env.OPENAI_API_KEY ?? process.env.AI_INTEGRATIONS_OPENAI_API_KEY ?? "";
-  if (!key) throw new Error("OPENAI_API_KEY is not configured");
-  return key;
+  try {
+    return requireServerApiKey("openai").value;
+  } catch {
+    throw new Error(`${requiredApiKeyEnv("openai")} is not configured`);
+  }
 }
 
 export async function embed(text: string): Promise<number[]> {

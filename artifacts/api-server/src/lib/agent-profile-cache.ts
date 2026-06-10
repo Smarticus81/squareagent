@@ -15,6 +15,7 @@ import { eq } from "drizzle-orm";
 
 export interface CachedAgentProfile {
   organizationId: string;
+  venueId: number | null;
   voicePipelineProvider: string;
   voicePipelineConfig: Record<string, unknown> | null;
   connectedServiceId: string | null;
@@ -35,6 +36,7 @@ export async function getCachedAgentProfile(id: string): Promise<CachedAgentProf
   const [profile] = await db
     .select({
       organizationId: agentProfilesTable.organizationId,
+      venueId: agentProfilesTable.venueId,
       voicePipelineProvider: agentProfilesTable.voicePipelineProvider,
       voicePipelineConfig: agentProfilesTable.voicePipelineConfig,
       connectedServiceId: agentProfilesTable.connectedServiceId,

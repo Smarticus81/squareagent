@@ -31,7 +31,50 @@ const GEMINI_VOICES = [
   { id: "Fenrir", label: "Fenrir", gender: "male" },
 ] as const;
 
-const VOICE_ENGINES = [
+type VoiceEngineId = string;
+
+interface VoiceEngine {
+  id: VoiceEngineId;
+  label: string;
+  description: string;
+  defaultVoice: string;
+  status?: "available" | "needs_configuration" | "request_access" | "experimental" | "unavailable";
+  reason?: string;
+  missing?: string[];
+  sampleVoices?: string[];
+  sampleAvailable?: boolean;
+  capabilities?: VoicePipelineCapabilities;
+}
+
+interface VoicePipelineCapabilities {
+  nativeAudio: boolean;
+  realtimeToolCalling: boolean;
+  bargeIn: boolean;
+  serverVAD: boolean;
+  clientVAD: boolean;
+  turnDetection: boolean;
+  noiseSuppression: boolean;
+  wakeWord: boolean;
+  multilingual: boolean;
+  mobile: boolean;
+  browser: boolean;
+}
+
+interface VoicePipelineApiItem {
+  provider: string;
+  displayName?: string;
+  shortDescription?: string;
+  category?: string;
+  status?: VoiceEngine["status"];
+  reason?: string;
+  missing?: string[];
+  isFallback?: boolean;
+  sampleVoices?: string[];
+  sampleAvailable?: boolean;
+  capabilities?: VoicePipelineCapabilities;
+}
+
+const FALLBACK_VOICE_ENGINES: VoiceEngine[] = [
   {
     id: "openai_realtime_webrtc",
     label: "OpenAI Realtime",
@@ -52,18 +95,29 @@ const VOICE_ENGINES = [
   },
 ] as const;
 
-type VoiceEngineId = (typeof VOICE_ENGINES)[number]["id"];
-
 const SAMPLE_LINE = "Hey, ready when you are. Two ranch waters and a Bud heavy?";
 
-function allowedVoiceEnginesFor(plan: string | null | undefined, isAdmin?: boolean): Set<VoiceEngineId> {
-  if (isAdmin) return new Set(VOICE_ENGINES.map((engine) => engine.id));
-  const allowed = getPlanAllowedPipelines(plan);
-  return new Set(
-    VOICE_ENGINES
-      .filter((engine) => allowed.includes(engine.id))
-      .map((engine) => engine.id),
-  );
+function defaultVoiceForPipeline(provider: string, sampleVoices?: string[]): string {
+  if (provider === "openai_realtime_webrtc" || provider === "openai_realtime_server_ws") {
+    return sampleVoices?.[0] ?? "verse";
+  }
+  if (provider === "google_gemini_3_1_flash_live") return sampleVoices?.[0] ?? "Kore";
+  if (provider.startsWith("google_gemini_")) return sampleVoices?.[0] ?? "Aoede";
+  return sampleVoices?.[0] ?? "verse";
+}
+
+function isSelectableVoicePipeline(provider: string): boolean {
+  return provider === "openai_realtime_webrtc" || provider.startsWith("google_gemini_");
+}
+
+function voiceOptionsForEngine(engine: VoiceEngine | undefined) {
+  const fallback = engine?.id.startsWith("google_gemini_") ? GEMINI_VOICES : VOICES;
+  const sampleVoices = engine?.sampleVoices?.length ? engine.sampleVoices : null;
+  if (!sampleVoices) return fallback;
+  return sampleVoices.map((voiceId) => {
+    const known = fallback.find((voice) => voice.id === voiceId);
+    return known ?? { id: voiceId, label: voiceId, gender: "voice" };
+  });
 }
 
 interface AgentProfile {
@@ -103,6 +157,8 @@ export default function CreateAssistant() {
   const [geminiProactiveAudio, setGeminiProactiveAudio] = useState(true);
   const [geminiAffectiveDialog, setGeminiAffectiveDialog] = useState(false);
   const [personality, setPersonality] = useState("");
+  const [voiceEngines, setVoiceEngines] = useState<VoiceEngine[]>(FALLBACK_VOICE_ENGINES);
+  const [voiceEnginesLoaded, setVoiceEnginesLoaded] = useState(false);
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -163,6 +219,43 @@ export default function CreateAssistant() {
   }, [editId]);
 
   useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = localStorage.getItem("voycelab_token") || "";
+        const res = await fetch("/api/v1/voice-pipelines", {
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = (await res.json()) as { pipelines?: VoicePipelineApiItem[] };
+        const live = (data.pipelines ?? [])
+          .filter((pipeline) => isSelectableVoicePipeline(pipeline.provider) && !pipeline.isFallback)
+          .map((pipeline): VoiceEngine => ({
+            id: pipeline.provider,
+            label: pipeline.displayName ?? pipeline.provider.replace(/_/g, " "),
+            description: pipeline.shortDescription ?? pipeline.reason ?? "Native realtime voice.",
+            defaultVoice: defaultVoiceForPipeline(pipeline.provider, pipeline.sampleVoices),
+            status: pipeline.status,
+            reason: pipeline.reason,
+            missing: pipeline.missing,
+            sampleVoices: pipeline.sampleVoices,
+            sampleAvailable: pipeline.sampleAvailable,
+            capabilities: pipeline.capabilities,
+          }));
+        if (!cancelled && live.length > 0) {
+          setVoiceEngines(live);
+          setVoiceEnginesLoaded(true);
+        }
+      } catch {
+        if (!cancelled) setVoiceEnginesLoaded(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     if (editId) return;
     if (!venueId && venues && venues.length > 0 && kind !== "general") {
       setVenueId(venues[0].id);
@@ -172,9 +265,9 @@ export default function CreateAssistant() {
   useEffect(() => {
     const availableVoices = voicePipelineProvider.startsWith("google_gemini_") ? GEMINI_VOICES : VOICES;
     if (!availableVoices.some((v) => v.id === voice)) {
-      setVoice(VOICE_ENGINES.find((engine) => engine.id === voicePipelineProvider)?.defaultVoice ?? availableVoices[0].id);
+      setVoice(voiceEngines.find((engine) => engine.id === voicePipelineProvider)?.defaultVoice ?? availableVoices[0].id);
     }
-  }, [voicePipelineProvider, voice]);
+  }, [voiceEngines, voicePipelineProvider, voice]);
 
   useEffect(() => {
     if (noiseMode === "push_to_talk" && wakeMode !== "tap") {
@@ -183,22 +276,32 @@ export default function CreateAssistant() {
   }, [noiseMode, wakeMode]);
 
   const allowedVoiceEngines = useMemo(
-    () => allowedVoiceEnginesFor(auth?.subscription?.plan, auth?.isAdmin),
-    [auth?.subscription?.plan, auth?.isAdmin],
+    () => {
+      if (auth?.isAdmin) return new Set(voiceEngines.map((engine) => engine.id));
+      const allowed = getPlanAllowedPipelines(auth?.subscription?.plan) as readonly string[];
+      return new Set(voiceEngines.filter((engine) => allowed.includes(engine.id)).map((engine) => engine.id));
+    },
+    [auth?.subscription?.plan, auth?.isAdmin, voiceEngines],
   );
-  const canUseSelectedEngine = allowedVoiceEngines.has(voicePipelineProvider);
+  const selectedVoiceEngine = voiceEngines.find((engine) => engine.id === voicePipelineProvider);
+  const selectedEngineReady =
+    !voiceEnginesLoaded ||
+    selectedVoiceEngine?.status === undefined ||
+    selectedVoiceEngine.status === "available" ||
+    selectedVoiceEngine.status === "experimental";
+  const canUseSelectedEngine = allowedVoiceEngines.has(voicePipelineProvider) && selectedEngineReady;
 
   useEffect(() => {
     if (allowedVoiceEngines.has(voicePipelineProvider)) return;
-    const fallback = VOICE_ENGINES.find((engine) => allowedVoiceEngines.has(engine.id))?.id ?? "openai_realtime_webrtc";
+    const fallback = voiceEngines.find((engine) => allowedVoiceEngines.has(engine.id))?.id ?? "openai_realtime_webrtc";
     setVoicePipelineProvider(fallback);
-  }, [allowedVoiceEngines, voicePipelineProvider]);
+  }, [allowedVoiceEngines, voiceEngines, voicePipelineProvider]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) return setError("Give your assistant a name.");
     if (!canUseSelectedEngine) {
-      return setError("Choose a voice engine included with your plan, or upgrade to unlock Gemini.");
+      return setError("Choose a voice engine included with your plan and ready on this deployment.");
     }
     if (!auth?.organizationId) {
       return setError(
@@ -290,7 +393,7 @@ export default function CreateAssistant() {
     ? "A general assistant for questions, notes, and connected data. You can connect Square later."
     : "Name it, connect it, pick a voice. Everything else has sane defaults.";
   const submitLabel = editId ? "Save changes" : "Create assistant";
-  const activeVoiceOptions = voicePipelineProvider.startsWith("google_gemini_") ? GEMINI_VOICES : VOICES;
+  const activeVoiceOptions = voiceOptionsForEngine(selectedVoiceEngine);
 
   return (
     <div className="relative flex-1 overflow-hidden bg-vl-cream px-4 pb-20 pt-16 sm:px-6 lg:px-10">
@@ -412,7 +515,7 @@ export default function CreateAssistant() {
           <fieldset>
             <legend className="vl-eyebrow block mb-3">Voice engine</legend>
             <div className="grid gap-2 sm:grid-cols-2">
-              {VOICE_ENGINES.map((engine) => (
+              {voiceEngines.map((engine) => (
                 <VoiceEngineCard
                   key={engine.id}
                   engine={engine}
@@ -428,6 +531,11 @@ export default function CreateAssistant() {
                 <Link href="/pricing" className="underline" style={{ color: "var(--color-vl-brass2)" }}>
                   View plans
                 </Link>
+              </p>
+            )}
+            {!voiceEnginesLoaded && (
+              <p className="mt-2 text-[12px]" style={{ color: "rgba(10,10,11,0.52)" }}>
+                Using built-in engine defaults until server readiness loads.
               </p>
             )}
             <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -597,7 +705,7 @@ export default function CreateAssistant() {
 
           <button
             type="submit"
-            disabled={saving || !name.trim()}
+            disabled={saving || !name.trim() || !canUseSelectedEngine}
             className="vl-btn-primary w-full inline-flex items-center justify-center gap-2 text-[14px] disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {saving ? (
@@ -646,46 +754,63 @@ function VoiceEngineCard({
   locked,
   onSelect,
 }: {
-  engine: (typeof VOICE_ENGINES)[number];
+  engine: VoiceEngine;
   selected: boolean;
   locked: boolean;
   onSelect: () => void;
 }) {
+  const needsConfig = engine.status === "needs_configuration";
+  const unavailable = engine.status === "unavailable" || engine.status === "request_access";
+  const disabled = locked || unavailable || needsConfig;
+  const statusLabel = needsConfig
+    ? "Key needed"
+    : unavailable
+    ? "Unavailable"
+    : engine.status === "available"
+    ? "Ready"
+    : engine.status === "experimental"
+    ? "Preview"
+    : null;
   return (
     <button
       type="button"
-      disabled={locked}
+      disabled={disabled}
       onClick={onSelect}
       className="vl-card p-4 text-left transition-colors"
       style={{
         borderColor: selected
           ? "rgba(124,110,245,0.6)"
-          : locked
+            : disabled
             ? "rgba(10,10,11,0.08)"
             : "rgba(10, 10, 11,0.10)",
         background: selected ? "rgba(124,110,245,0.06)" : "#FFFFFF",
-        opacity: locked ? 0.6 : 1,
-        cursor: locked ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.6 : 1,
+        cursor: disabled ? "not-allowed" : "pointer",
       }}
     >
       <span className="flex items-start justify-between gap-3">
         <span className="text-[14px] font-semibold" style={{ color: "var(--color-vl-ink)" }}>
           {engine.label}
         </span>
-        {locked && (
+        {(locked || statusLabel) && (
           <span
             className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em]"
             style={{
-              color: "rgba(10,10,11,0.52)",
-              background: "rgba(10,10,11,0.06)",
+              color: statusLabel === "Ready" ? "var(--color-vl-success)" : "rgba(10,10,11,0.52)",
+              background: statusLabel === "Ready" ? "rgba(16,185,129,0.10)" : "rgba(10,10,11,0.06)",
             }}
           >
-            <Lock className="h-3 w-3" /> Pro
+            {locked && <Lock className="h-3 w-3" />}
+            {locked ? "Upgrade" : statusLabel}
           </span>
         )}
       </span>
       <span className="mt-1 block text-[12px]" style={{ color: "rgba(10,10,11,0.52)" }}>
-        {locked ? "Upgrade to use this voice engine." : engine.description}
+        {locked
+          ? "Upgrade to use this voice engine."
+          : needsConfig
+          ? `${engine.missing?.[0] ?? "Provider key"} is not configured on this deployment.`
+          : engine.description}
       </span>
     </button>
   );
@@ -771,7 +896,10 @@ function VoiceOption({
     setPlayState("loading");
     try {
       const url = `/api/v1/voice-pipelines/${encodeURIComponent(provider)}/sample?voice=${encodeURIComponent(voiceId)}`;
-      const res = await fetch(url);
+      const token = localStorage.getItem("voycelab_token") || "";
+      const res = await fetch(url, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const blob = await res.blob();
       const objectUrl = URL.createObjectURL(blob);

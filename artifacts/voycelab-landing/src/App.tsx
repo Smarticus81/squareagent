@@ -1,4 +1,4 @@
-import { useLayoutEffect } from "react";
+import { Suspense, lazy, useLayoutEffect } from "react";
 import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ClerkProvider, SignInButton, SignedIn, SignedOut, OrganizationProfile, OrganizationSwitcher } from "@clerk/clerk-react";
@@ -7,17 +7,18 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Layout } from "@/components/layout";
 
-import Landing from "@/pages/landing";
-import Login from "@/pages/login";
-import Signup from "@/pages/signup";
-import Assistants from "@/pages/assistants";
-import CreateAssistant from "@/pages/create-assistant";
-import ConnectedServices from "@/pages/connected-services";
-import Settings from "@/pages/settings";
-import DataSources from "@/pages/data-sources";
-import Pricing from "@/pages/pricing";
-import Onboarding from "@/pages/onboarding";
-import NotFound from "@/pages/not-found";
+const Landing = lazy(() => import("@/pages/landing"));
+const Login = lazy(() => import("@/pages/login"));
+const Signup = lazy(() => import("@/pages/signup"));
+const Assistants = lazy(() => import("@/pages/assistants"));
+const CreateAssistant = lazy(() => import("@/pages/create-assistant"));
+const ConnectedServices = lazy(() => import("@/pages/connected-services"));
+const Settings = lazy(() => import("@/pages/settings"));
+const DataSources = lazy(() => import("@/pages/data-sources"));
+const Pricing = lazy(() => import("@/pages/pricing"));
+const BookDemo = lazy(() => import("@/pages/book-demo"));
+const Onboarding = lazy(() => import("@/pages/onboarding"));
+const NotFound = lazy(() => import("@/pages/not-found"));
 
 const clerkPublishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string | undefined;
 
@@ -51,35 +52,54 @@ const queryClient = new QueryClient({
 function Router() {
   return (
     <Layout>
-      <Switch>
-        <Route path="/" component={Landing} />
-        <Route path="/login" component={Login} />
-        <Route path="/signup" component={Signup} />
-        <Route path="/dashboard">
-          <NavigateReplace to="/assistants" />
-        </Route>
-        <Route path="/account">
-          <NavigateReplace to="/settings" />
-        </Route>
-        <Route path="/plans">
-          <NavigateReplace to="/pricing" />
-        </Route>
-        <Route path="/onboarding" component={Onboarding} />
-        <Route path="/assistants" component={Assistants} />
-        <Route path="/assistants/new" component={CreateAssistant} />
-        <Route path="/assistants/edit/:id" component={CreateAssistant} />
-        <Route path="/services" component={ConnectedServices} />
-        <Route path="/data-sources" component={DataSources} />
-        <Route path="/settings" component={Settings} />
-        <Route path="/billing" component={Billing} />
-        <Route path="/pricing" component={Pricing} />
-        {/* Legacy redirects so existing links still resolve */}
-        <Route path="/agents" component={Assistants} />
-        <Route path="/agents/new" component={CreateAssistant} />
-        <Route path="/agent-setup" component={CreateAssistant} />
-        <Route component={NotFound} />
-      </Switch>
+      <Suspense fallback={<RouteFallback />}>
+        <Switch>
+          <Route path="/" component={Landing} />
+          <Route path="/login" component={Login} />
+          <Route path="/signup" component={Signup} />
+          <Route path="/dashboard">
+            <NavigateReplace to="/assistants" />
+          </Route>
+          <Route path="/account">
+            <NavigateReplace to="/settings" />
+          </Route>
+          <Route path="/plans">
+            <NavigateReplace to="/pricing" />
+          </Route>
+          <Route path="/command">
+            <NavigateReplace to="/assistants" />
+          </Route>
+          <Route path="/console">
+            <NavigateReplace to="/assistants" />
+          </Route>
+          <Route path="/onboarding" component={Onboarding} />
+          <Route path="/assistants" component={Assistants} />
+          <Route path="/assistants/new" component={CreateAssistant} />
+          <Route path="/assistants/edit/:id" component={CreateAssistant} />
+          <Route path="/services" component={ConnectedServices} />
+          <Route path="/data-sources" component={DataSources} />
+          <Route path="/settings" component={Settings} />
+          <Route path="/billing" component={Billing} />
+          <Route path="/pricing" component={Pricing} />
+          <Route path="/book-demo" component={BookDemo} />
+          {/* Legacy redirects so existing links still resolve */}
+          <Route path="/agents" component={Assistants} />
+          <Route path="/agents/new" component={CreateAssistant} />
+          <Route path="/agent-setup" component={CreateAssistant} />
+          <Route component={NotFound} />
+        </Switch>
+      </Suspense>
     </Layout>
+  );
+}
+
+function RouteFallback() {
+  return (
+    <div className="flex-1 px-4 pb-24 pt-24 sm:px-6 lg:px-10">
+      <div className="mx-auto h-1.5 max-w-28 overflow-hidden rounded-full bg-black/10">
+        <div className="h-full w-1/2 animate-pulse rounded-full bg-black" />
+      </div>
+    </div>
   );
 }
 

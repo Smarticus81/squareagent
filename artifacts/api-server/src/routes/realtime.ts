@@ -27,7 +27,7 @@ import {
   listConnectedServiceProviders,
   listVoicePipelineProviders,
 } from "@workspace/voicelab-core";
-import { planAllowsPipeline } from "@workspace/voicelab-core/pricing";
+import { getPlan, planAllowsPipeline } from "@workspace/voicelab-core/pricing";
 import { getNoiseModeBehavior, type NoiseMode } from "@workspace/voicelab-core/noise";
 import { eq, sql, and, gte, isNull, or } from "drizzle-orm";
 import {
@@ -51,6 +51,7 @@ import {
   markDirty,
   removeSession,
 } from "../lib/session-store";
+import { readServerApiKey, requiredApiKeyEnv } from "../lib/api-keys";
 
 const router = Router();
 
@@ -69,6 +70,10 @@ const OPENAI_REALTIME_REASONING_EFFORT =
 // tap-to-interrupt. Set ACOUSTIC_BARGE_IN=1 to opt back in.
 const ACOUSTIC_BARGE_IN_ENABLED = process.env.ACOUSTIC_BARGE_IN === "1";
 
+function includedVoiceMinutesForPlan(planId: string | null | undefined): number {
+  return getPlan(planId ?? "trial")?.includedVoiceMinutes ?? getPlan("trial")?.includedVoiceMinutes ?? 60;
+}
+
 async function currentOrganizationId(req: any): Promise<string | null> {
   const existing = req.organization?.id;
   if (existing) return existing;
@@ -82,6 +87,12 @@ function tenantWhere(table: { organizationId: any; userId: any }, userId: number
     eq(table.organizationId, organizationId),
     and(eq(table.userId, userId), isNull(table.organizationId)),
   );
+}
+
+function parseOptionalVenueId(raw: unknown): number | null | "invalid" {
+  if (raw === undefined || raw === null || raw === "") return null;
+  const value = Number(raw);
+  return Number.isInteger(value) && value > 0 ? value : "invalid";
 }
 
 async function hasGeneralConnectedSystems(userId: number, organizationId: string | null): Promise<boolean> {
@@ -210,13 +221,13 @@ ${voiceEngines}
 Pricing and trial:
 ${planSummary}
 - Yearly billing saves about 17%.
-- The trial is 14 days, no card required, with 60 voice minutes and core POS tools for testing.
+- The trial is 14 days, no card required, with 60 voice minutes and core POS commands for testing.
 - Billing is platform fee plus spoken voice minutes. Idle screens and dashboard work cost nothing.
 - Overage is a soft cap, not a hard stop. Assistants keep working; the overage rate drops on higher tiers.
 - For enterprise needs like SSO, SCIM, IP allowlists, custom audit logs, or dedicated deployments, contact sales@voycelab.com.
 
 Who should use each plan:
-- Trial: any venue that wants to test voice POS with core tools before committing.
+- Trial: any venue that wants to test voice POS with core commands before committing.
 - Pro: multi-venue operators that need every skill including inventory, catalog, customers, payments, team & labor, and Gemini-class voice.
 - Business: hospitality groups and event venues that need unlimited venues and assistants, every voice engine, and dedicated support.
 
@@ -544,7 +555,7 @@ async function handleDemoSession(req: any, res: any) {
     return;
   }
 
-  const apiKey = process.env.OPENAI_API_KEY ?? process.env.AI_INTEGRATIONS_OPENAI_API_KEY ?? "";
+  const apiKey = readServerApiKey("openai")?.value ?? "";
   if (!apiKey) {
     res.status(503).json({ error: "demo_unavailable", detail: "Voice demo is not configured." });
     return;
@@ -670,16 +681,15 @@ router.post("/demo-bar-tools", async (req: any, res: any) => {
 // ── POST /session — Mint ephemeral OpenAI token ───────────────────────────────
 
 router.post("/session", requireAuth as any, requirePlan() as any, async (req: any, res: any) => {
-  const apiKey = process.env.OPENAI_API_KEY ?? process.env.AI_INTEGRATIONS_OPENAI_API_KEY ?? "";
+  const apiKey = readServerApiKey("openai")?.value ?? "";
   if (!apiKey) {
-    res.status(500).json({ error: "OpenAI API key not configured" });
+    res.status(500).json({ error: `${requiredApiKeyEnv("openai")} not configured` });
     return;
   }
 
   const plan = req.subscription?.plan ?? "trial";
-  const PLAN_LIMITS: Record<string, number> = { trial: 60, pro: 500, business: 2000, starter: 500, professional: 500, premium: 2000 };
-  const limit = PLAN_LIMITS[plan] ?? 100;
-  const overageCap = Math.floor(limit * 1.5);
+  const limit = includedVoiceMinutesForPlan(plan);
+  const overageCap = limit === -1 ? Number.POSITIVE_INFINITY : Math.floor(limit * 1.5);
   const organizationId = await currentOrganizationId(req);
 
   try {
@@ -698,7 +708,7 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
         gte(usageEventsTable.occurredAt, periodStart),
       ));
     const used = Number(usage?.total ?? 0);
-    if (used >= overageCap) {
+    if (Number.isFinite(overageCap) && used >= overageCap) {
       res.status(429).json({
         error: "usage_limit_exceeded",
         detail: `You've used ${used} of ${limit} included minutes (${overageCap} overage cap). Upgrade your plan or wait for the next billing cycle.`,
@@ -710,26 +720,23 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
   }
 
   const { voice = "ash", speed = 1.0, catalog = [], order = [], venueId, agentProfileId } = req.body ?? {};
-
-  // Look up credentials server-side if venueId provided
-  let squareToken = "";
-  let squareLocationId = "";
-  if (venueId) {
-    const creds = await getCachedCredentials(req.user.id, Number(venueId), organizationId);
-    if (creds) {
-      squareToken = creds.squareToken;
-      squareLocationId = creds.squareLocationId;
-    }
+  const requestedVenueId = parseOptionalVenueId(venueId);
+  if (requestedVenueId === "invalid") {
+    res.status(400).json({ error: "invalid_venue", detail: "venueId must be a positive integer" });
+    return;
   }
 
   let provider = "openai_realtime_webrtc";
   let providerConfig: Record<string, unknown> = {};
   let assistantKind: "venue" | "general" = "venue";
+  let effectiveVenueId = requestedVenueId;
 
   let noiseMode: NoiseMode = "standard";
 
   let profileDisplayName = "";
   let profilePersonality = "";
+  let profileConnectedServiceId: string | null = null;
+  let profileUsesSquareService = true;
 
   if (agentProfileId) {
     const profile = await getCachedAgentProfile(String(agentProfileId));
@@ -743,10 +750,16 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
     }
     provider = profile.voicePipelineProvider;
     providerConfig = (profile.voicePipelineConfig as Record<string, unknown>) ?? {};
+    if (profile.venueId !== null && requestedVenueId !== null && profile.venueId !== requestedVenueId) {
+      res.status(400).json({ error: "profile_venue_mismatch", detail: "Assistant is not linked to this venue." });
+      return;
+    }
+    if (profile.venueId !== null && requestedVenueId === null) effectiveVenueId = profile.venueId;
     if (profile.noiseMode) noiseMode = profile.noiseMode as NoiseMode;
     profileDisplayName = profile.displayName || "";
     profilePersonality = profile.personality || "";
     if (profile.connectedServiceId) {
+      profileConnectedServiceId = profile.connectedServiceId;
       const [conn] = await db
         .select({ provider: serviceConnectionsTable.provider })
         .from(serviceConnectionsTable)
@@ -761,7 +774,22 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
         res.status(403).json({ error: "connected_service_forbidden" });
         return;
       }
-      if (conn.provider !== "square") assistantKind = "general";
+      if (conn.provider !== "square") {
+        assistantKind = "general";
+        profileUsesSquareService = false;
+      }
+    }
+  }
+
+  // Look up credentials server-side if a venue is in scope. The effective
+  // venue may come from the launch request or from the bound assistant profile.
+  let squareToken = "";
+  let squareLocationId = "";
+  if (effectiveVenueId !== null && profileUsesSquareService) {
+    const creds = await getCachedCredentials(req.user.id, effectiveVenueId, organizationId, profileConnectedServiceId);
+    if (creds) {
+      squareToken = creds.squareToken;
+      squareLocationId = creds.squareLocationId;
     }
   }
 
@@ -797,7 +825,7 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
     return;
   }
 
-  console.log(`[Realtime] Creating session: plan=${plan}, provider=${provider}, skills=[${skillSummary(skills)}], venue=${venueId || "none"}`);
+  console.log(`[Realtime] Creating session: plan=${plan}, provider=${provider}, skills=[${skillSummary(skills)}], venue=${effectiveVenueId || "none"}`);
 
   const sessionConfig = buildRealtimeSessionConfig(
     String(providerConfig.voice ?? voice),
@@ -878,35 +906,24 @@ router.post("/tools", requireAuth as any, requirePlan() as any, async (req: any,
     return;
   }
 
+  const requestedVenueId = parseOptionalVenueId(venueId);
+  if (requestedVenueId === "invalid") {
+    res.status(400).json({ error: "invalid_venue", detail: "venueId must be a positive integer" });
+    return;
+  }
+
   // venueId is optional: general-assistant tools (web/knowledge/email/db) don't
   // need a Square-connected venue. We still try to load credentials when one
   // is provided so venue-mode tools keep working.
   let squareToken = "";
   let squareLocationId = "";
   const organizationId = await currentOrganizationId(req);
-  if (venueId) {
-    const creds = await getCachedCredentials(req.user.id, Number(venueId), organizationId);
-    if (creds) {
-      squareToken = creds.squareToken;
-      squareLocationId = creds.squareLocationId;
-    }
-  }
-
-  // Use a stable fallback so multiple tool calls in one conversation share the same session
-  const sessionId = String(session_id || `rt-${req.user.id}-${venueId ?? "general"}`);
-  const existingSession = getSession(sessionId);
-  const numericVenueId = Number(venueId ?? 0);
-  if (
-    existingSession &&
-    (existingSession.userId !== req.user.id || existingSession.venueId !== numericVenueId)
-  ) {
-    res.status(403).json({ error: "session_forbidden" });
-    return;
-  }
-  const session = getOrCreateSession(sessionId, squareToken, squareLocationId, req.user.id, numericVenueId);
 
   let noiseMode: import("@workspace/voicelab-core/noise").NoiseMode = "standard";
   let profileAllowedTools: string[] | null = null;
+  let profileConnectedServiceId: string | null = null;
+  let profileUsesSquareService = true;
+  let effectiveVenueId = requestedVenueId;
   if (agentProfileId) {
     const profile = await getCachedAgentProfile(String(agentProfileId));
     if (!profile) {
@@ -917,13 +934,57 @@ router.post("/tools", requireAuth as any, requirePlan() as any, async (req: any,
       res.status(403).json({ error: "agent_profile_forbidden" });
       return;
     }
+    if (profile.venueId !== null && requestedVenueId !== null && profile.venueId !== requestedVenueId) {
+      res.status(400).json({ error: "profile_venue_mismatch", detail: "Assistant is not linked to this venue." });
+      return;
+    }
+    if (profile.venueId !== null && requestedVenueId === null) effectiveVenueId = profile.venueId;
     if (profile.noiseMode) {
       noiseMode = profile.noiseMode as typeof noiseMode;
+    }
+    profileConnectedServiceId = profile.connectedServiceId;
+    if (profile.connectedServiceId) {
+      const [conn] = await db
+        .select({ provider: serviceConnectionsTable.provider })
+        .from(serviceConnectionsTable)
+        .where(
+          and(
+            eq(serviceConnectionsTable.id, profile.connectedServiceId),
+            eq(serviceConnectionsTable.organizationId, profile.organizationId),
+          ),
+        )
+        .limit(1);
+      if (!conn) {
+        res.status(403).json({ error: "connected_service_forbidden" });
+        return;
+      }
+      if (conn.provider !== "square") profileUsesSquareService = false;
     }
     if (Array.isArray(profile.allowedTools) && profile.allowedTools.every((name: unknown): name is string => typeof name === "string")) {
       profileAllowedTools = profile.allowedTools;
     }
   }
+
+  if (effectiveVenueId !== null && profileUsesSquareService) {
+    const creds = await getCachedCredentials(req.user.id, effectiveVenueId, organizationId, profileConnectedServiceId);
+    if (creds) {
+      squareToken = creds.squareToken;
+      squareLocationId = creds.squareLocationId;
+    }
+  }
+
+  // Use a stable fallback so multiple tool calls in one conversation share the same session
+  const sessionId = String(session_id || `rt-${req.user.id}-${effectiveVenueId ?? "general"}`);
+  const existingSession = getSession(sessionId);
+  const numericVenueId = effectiveVenueId ?? 0;
+  if (
+    existingSession &&
+    (existingSession.userId !== req.user.id || existingSession.venueId !== numericVenueId)
+  ) {
+    res.status(403).json({ error: "session_forbidden" });
+    return;
+  }
+  const session = getOrCreateSession(sessionId, squareToken, squareLocationId, req.user.id, numericVenueId);
 
   try {
     const squareClient = squareToken ? new SquareClient(squareToken, squareLocationId) : undefined;
@@ -958,7 +1019,7 @@ router.post("/tools", requireAuth as any, requirePlan() as any, async (req: any,
         requestId: sessionId,
         userId: req.user.id,
         organizationId,
-        venueId: Number(venueId),
+        venueId: effectiveVenueId ?? undefined,
         assistantKind,
         noiseMode,
         confirmed: confirmed === true,

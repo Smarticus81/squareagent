@@ -521,6 +521,31 @@ html[data-theme="dark"] .settings-summary > div {
   line-height: 1.25;
   overflow-wrap: anywhere;
 }
+.settings-edit-action {
+  width: 100%;
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  margin: 0 0 10px;
+  border-radius: 999px;
+  border: 1px solid var(--divider);
+  background: rgba(255,255,255,0.58);
+  color: var(--settings-txt);
+  font-family: var(--font);
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.settings-edit-action:hover {
+  border-color: var(--line-strong);
+  background: rgba(99,102,241,0.07);
+  color: var(--brand-strong);
+}
+html[data-theme="dark"] .settings-edit-action {
+  background: rgba(255,255,255,0.035);
+}
 .settings-group {
   border: 1px solid var(--divider);
   border-radius: 14px;

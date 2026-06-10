@@ -604,7 +604,10 @@ function VoiceOption({
     setPlayState("loading");
     try {
       const url = `/api/v1/voice-pipelines/openai_realtime_webrtc/sample?voice=${encodeURIComponent(voiceId)}`;
-      const res = await fetch(url);
+      const token = localStorage.getItem("voycelab_token") || "";
+      const res = await fetch(url, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const blob = await res.blob();
       const objectUrl = URL.createObjectURL(blob);

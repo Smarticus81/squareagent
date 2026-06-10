@@ -6,8 +6,13 @@ import {
 } from "../../voice-pipelines";
 import { recommendVoicePipeline } from "@workspace/voicelab-core/voice-pipeline";
 import { listVoicePipelineProviders } from "@workspace/voicelab-core/voice-pipeline";
+import { readServerApiKey, requiredApiKeyEnv } from "../../lib/api-keys";
+import { requireAuth } from "../auth";
+import { createComponentLogger } from "../../lib/logger";
 
 const router = Router();
+router.use(requireAuth as never);
+const log = createComponentLogger("voice-pipelines");
 
 router.get("/", async (_req: Request, res: Response) => {
   const reports = await getAllPipelineAvailability();
@@ -89,6 +94,23 @@ interface CachedSample {
 }
 const sampleCache = new Map<string, CachedSample>();
 const SAMPLE_TTL_MS = 6 * 60 * 60 * 1000;
+const sampleHits = new Map<string, number[]>();
+const SAMPLE_RATE_WINDOW_MS = 60 * 60 * 1000;
+const SAMPLE_RATE_MAX = 60;
+
+function sampleRateLimitOk(req: Request): boolean {
+  const userId = (req as Request & { user?: { id?: number } }).user?.id;
+  const key = userId ? `user:${userId}` : `ip:${req.ip ?? "unknown"}`;
+  const now = Date.now();
+  const fresh = (sampleHits.get(key) ?? []).filter((t) => now - t < SAMPLE_RATE_WINDOW_MS);
+  if (fresh.length >= SAMPLE_RATE_MAX) {
+    sampleHits.set(key, fresh);
+    return false;
+  }
+  fresh.push(now);
+  sampleHits.set(key, fresh);
+  return true;
+}
 
 function pcm16ToWav(pcm: Buffer, sampleRate: number, channels: number): Buffer {
   const byteRate = sampleRate * channels * 2;
@@ -129,8 +151,8 @@ class OpenAiQuotaError extends Error {
 }
 
 async function synthesizeOpenAISample(voice: string, text: string): Promise<{ bytes: Buffer; contentType: string }> {
-  const apiKey = process.env.OPENAI_API_KEY ?? process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
-  if (!apiKey) throw new Error("OPENAI_API_KEY not configured");
+  const apiKey = readServerApiKey("openai")?.value;
+  if (!apiKey) throw new Error(`${requiredApiKeyEnv("openai")} not configured`);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15000);
   try {
@@ -174,8 +196,8 @@ async function synthesizeOpenAISample(voice: string, text: string): Promise<{ by
 }
 
 async function synthesizeGeminiSample(voice: string, text: string): Promise<{ bytes: Buffer; contentType: string }> {
-  const apiKey = process.env.GOOGLE_GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY;
-  if (!apiKey) throw new Error("GOOGLE_GEMINI_API_KEY not configured");
+  const apiKey = readServerApiKey("gemini")?.value;
+  if (!apiKey) throw new Error(`${requiredApiKeyEnv("gemini")} not configured`);
   const url =
     "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent";
   const controller = new AbortController();
@@ -213,10 +235,10 @@ async function synthesizeGeminiSample(voice: string, text: string): Promise<{ by
         /denied access/i.test(apiMessage);
       if (isPermissionIssue) {
         throw new Error(
-          `Google denied your project access to the Gemini API. Enable billing on the GCP project that owns this API key, or create a new key from a billed AI Studio project. Raw: ${apiMessage}`,
+          "Google denied this project access to Gemini audio previews. Enable billing/API access for the project that owns this key, or create a new key from a billed AI Studio project.",
         );
       }
-      throw new Error(`Gemini TTS HTTP ${res.status}: ${apiMessage}`);
+      throw new Error(`Gemini TTS HTTP ${res.status}`);
     }
     const data = (await res.json()) as {
       candidates?: Array<{
@@ -234,6 +256,15 @@ async function synthesizeGeminiSample(voice: string, text: string): Promise<{ by
 }
 
 router.get("/:provider/sample", async (req: Request, res: Response) => {
+  if (!sampleRateLimitOk(req)) {
+    res.status(429).json({
+      error: {
+        code: "sample_rate_limited",
+        message: "Too many voice previews. Try again later.",
+      },
+    });
+    return;
+  }
   const provider = String(req.params.provider);
   const kind = SAMPLE_PROVIDER_KIND[provider];
   if (!kind) {
@@ -301,12 +332,23 @@ router.get("/:provider/sample", async (req: Request, res: Response) => {
             : e.code === "billing_disabled" ? "openai_billing_disabled"
             : "openai_rate_limited",
           message: friendly,
-          details: { httpStatus: e.status, raw: e.message },
+          details: { httpStatus: e.status },
         },
       });
       return;
     }
-    const message = e instanceof Error ? e.message : "synthesis failed";
+    const provider = String(req.params.provider);
+    log.warn(
+      {
+        provider,
+        reason: e instanceof Error ? e.message : "synthesis failed",
+      },
+      "voice sample synthesis failed",
+    );
+    const message =
+      e instanceof Error && /access to Gemini audio previews/i.test(e.message)
+        ? e.message
+        : "Voice preview could not be generated right now. The assistant can still use the selected voice when the provider is configured.";
     res.status(502).json({ error: { code: "sample_failed", message } });
   }
 });
@@ -334,12 +376,12 @@ async function probeOpenAiStatus(): Promise<OpenAiStatus> {
   if (openAiStatusCache && openAiStatusCache.expiresAt > Date.now()) {
     return openAiStatusCache.snapshot;
   }
-  const apiKey = process.env.OPENAI_API_KEY ?? process.env.AI_INTEGRATIONS_OPENAI_API_KEY ?? "";
+  const apiKey = readServerApiKey("openai")?.value ?? "";
   if (!apiKey) {
     const snapshot: OpenAiStatus = {
       ok: false,
       reason: "missing_key",
-      message: "OPENAI_API_KEY is not set in the server environment.",
+      message: `${requiredApiKeyEnv("openai")} is not set in the server environment.`,
       checkedAt: new Date().toISOString(),
     };
     openAiStatusCache = { snapshot, expiresAt: Date.now() + OPENAI_STATUS_TTL_MS };
@@ -363,14 +405,19 @@ async function probeOpenAiStatus(): Promise<OpenAiStatus> {
     try { parsed = (await res.json()) as { error?: { code?: string; type?: string; message?: string } }; } catch { /* ignore */ }
     const errCode = parsed?.error?.code ?? "";
     const errType = parsed?.error?.type ?? "";
-    const errMsg = parsed?.error?.message ?? `HTTP ${res.status}`;
     const reason: OpenAiStatus["reason"] =
       res.status === 429 && (errCode === "insufficient_quota" || errType === "insufficient_quota")
         ? "insufficient_quota"
         : res.status === 401 || res.status === 403
         ? "billing_disabled"
         : "unknown";
-    const snapshot: OpenAiStatus = { ok: false, reason, message: errMsg, checkedAt: new Date().toISOString() };
+    const message =
+      reason === "insufficient_quota"
+        ? "OpenAI quota is exhausted for the configured project."
+        : reason === "billing_disabled"
+        ? "OpenAI rejected the configured project key. Verify that the key is active and billing is enabled."
+        : `OpenAI status probe failed with HTTP ${res.status}.`;
+    const snapshot: OpenAiStatus = { ok: false, reason, message, checkedAt: new Date().toISOString() };
     // Negative results live for the full TTL so we don't melt the upstream.
     openAiStatusCache = { snapshot, expiresAt: Date.now() + OPENAI_STATUS_TTL_MS };
     return snapshot;
@@ -378,7 +425,7 @@ async function probeOpenAiStatus(): Promise<OpenAiStatus> {
     const snapshot: OpenAiStatus = {
       ok: false,
       reason: "unknown",
-      message: e instanceof Error ? e.message : "probe failed",
+      message: "OpenAI status probe could not complete right now.",
       checkedAt: new Date().toISOString(),
     };
     openAiStatusCache = { snapshot, expiresAt: Date.now() + 30 * 1000 };

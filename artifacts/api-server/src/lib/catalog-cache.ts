@@ -7,6 +7,7 @@
 
 import type { CatalogItem } from "./square-helpers";
 import { SQUARE_BASE, squareHeaders } from "./square-helpers";
+import crypto from "crypto";
 
 interface CachedCatalog {
   items: CatalogItem[];
@@ -17,8 +18,12 @@ const TTL_MS = 5 * 60 * 1000; // 5 minutes
 const cache = new Map<string, CachedCatalog>();
 
 function cacheKey(squareToken: string, locationId: string): string {
-  // Use last 8 chars of token + location for uniqueness without storing full token
-  return `${squareToken.slice(-8)}:${locationId}`;
+  const fingerprint = crypto
+    .createHash("sha256")
+    .update(`${squareToken}:${locationId}`)
+    .digest("hex")
+    .slice(0, 16);
+  return `sqcat-${fingerprint}`;
 }
 
 /**

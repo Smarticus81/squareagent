@@ -15,29 +15,65 @@
  */
 import crypto from "node:crypto";
 
-const explicitKey = process.env.SECRETS_ENCRYPTION_KEY?.trim();
-const legacyExplicitKey = process.env.ENCRYPTION_KEY?.trim();
-const fallbackKey = process.env.JWT_SECRET?.trim();
 const DEV_KEY_SOURCE = "voycelab-default-dev-key-do-not-use-in-prod";
-const KEY_SOURCE = explicitKey || legacyExplicitKey || fallbackKey || DEV_KEY_SOURCE;
+type SecretKeySource = "SECRETS_ENCRYPTION_KEY" | "ENCRYPTION_KEY" | "JWT_SECRET" | "dev_default";
 
-if (process.env.NODE_ENV === "production") {
+function keyStatus() {
+  const explicitKey = process.env.SECRETS_ENCRYPTION_KEY?.trim();
+  const legacyExplicitKey = process.env.ENCRYPTION_KEY?.trim();
+  const fallbackKey = process.env.JWT_SECRET?.trim();
   const productionExplicitKey = explicitKey || legacyExplicitKey;
-  if (!productionExplicitKey || productionExplicitKey.length < 32) {
-    throw new Error(
-      "[secrets] Refusing to start: set SECRETS_ENCRYPTION_KEY or ENCRYPTION_KEY to a dedicated 32+ character random value in production.",
-    );
+  const source: SecretKeySource = explicitKey
+    ? "SECRETS_ENCRYPTION_KEY"
+    : legacyExplicitKey
+    ? "ENCRYPTION_KEY"
+    : fallbackKey
+    ? "JWT_SECRET"
+    : "dev_default";
+
+  return {
+    configured: Boolean(explicitKey || legacyExplicitKey),
+    source,
+    productionReady: Boolean(productionExplicitKey && productionExplicitKey.length >= 32),
+    keySource: productionExplicitKey || fallbackKey || DEV_KEY_SOURCE,
+  };
+}
+
+export function secretsEncryptionStatus(): {
+  configured: boolean;
+  source: "SECRETS_ENCRYPTION_KEY" | "ENCRYPTION_KEY" | "JWT_SECRET" | "dev_default";
+  productionReady: boolean;
+  message?: string;
+} {
+  const status = keyStatus();
+  return {
+    configured: status.configured,
+    source: status.source,
+    productionReady: status.productionReady,
+    message: status.productionReady
+      ? undefined
+      : "Set SECRETS_ENCRYPTION_KEY or ENCRYPTION_KEY to a dedicated 32+ character random value in production.",
+  };
+}
+
+export function assertSecretsEncryptionKey(): void {
+  if (process.env.NODE_ENV !== "production") return;
+  const status = secretsEncryptionStatus();
+  if (!status.productionReady) {
+    throw new Error(`[secrets] Refusing to start: ${status.message}`);
   }
 }
 
-const KEY = crypto.createHmac("sha256", KEY_SOURCE).update("voycelab-secrets-v1").digest();
-
 const PREFIX = "enc:v1:";
+
+function encryptionKey(): Buffer {
+  return crypto.createHmac("sha256", keyStatus().keySource).update("voycelab-secrets-v1").digest();
+}
 
 export function encrypt(plain: string): string {
   if (typeof plain !== "string" || plain.length === 0) return plain;
   const iv = crypto.randomBytes(12);
-  const cipher = crypto.createCipheriv("aes-256-gcm", KEY, iv);
+  const cipher = crypto.createCipheriv("aes-256-gcm", encryptionKey(), iv);
   const ct = Buffer.concat([cipher.update(plain, "utf8"), cipher.final()]);
   const tag = cipher.getAuthTag();
   return `${PREFIX}${iv.toString("base64")}:${ct.toString("base64")}:${tag.toString("base64")}`;
@@ -52,7 +88,7 @@ export function decrypt(stored: string | null | undefined): string {
     const iv = Buffer.from(parts[0], "base64");
     const ct = Buffer.from(parts[1], "base64");
     const tag = Buffer.from(parts[2], "base64");
-    const decipher = crypto.createDecipheriv("aes-256-gcm", KEY, iv);
+    const decipher = crypto.createDecipheriv("aes-256-gcm", encryptionKey(), iv);
     decipher.setAuthTag(tag);
     const pt = Buffer.concat([decipher.update(ct), decipher.final()]);
     return pt.toString("utf8");

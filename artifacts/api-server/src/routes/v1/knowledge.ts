@@ -77,6 +77,17 @@ function tenantWhere(table: { userId: any; organizationId: any }, userId: number
     : eq(table.userId, userId);
 }
 
+function safeIntegrationError(error: unknown, fallback = "The connection check failed. Verify the settings and try again."): string {
+  const raw = error instanceof Error ? error.message : typeof error === "string" ? error : "";
+  if (!raw) return fallback;
+  return raw
+    .replace(/postgres(?:ql)?:\/\/[^\s"'<>]+/gi, "[database-url]")
+    .replace(/(?:Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi, "$1 [redacted]")
+    .replace(/\b(?:re|sk|sq0[a-z]?)[A-Za-z0-9_-]{16,}\b/g, "[redacted]")
+    .replace(/\b[A-Za-z0-9+/]{32,}={0,2}\b/g, "[redacted]")
+    .slice(0, 240);
+}
+
 async function validatePostgresConnection(connectionString: string): Promise<{ ok: true } | { ok: false; error: string }> {
   const client = new Client({
     connectionString,
@@ -93,7 +104,7 @@ async function validatePostgresConnection(connectionString: string): Promise<{ o
   } catch (e) {
     return {
       ok: false,
-      error: e instanceof Error ? e.message.slice(0, 240) : "Could not connect to database",
+      error: safeIntegrationError(e, "Could not connect to database"),
     };
   } finally {
     try { await client.end(); } catch { /* ignore */ }
@@ -130,7 +141,7 @@ router.post("/documents", uploadLimiter, async (req: Request, res: Response): Pr
     try {
       embeddings = await embedBatch(chunks);
     } catch (e: any) {
-      res.status(502).json({ error: "Embedding service failed", detail: e.message });
+      res.status(502).json({ error: "Embedding service failed", detail: safeIntegrationError(e, "Embedding service failed") });
       return;
     }
 
@@ -166,8 +177,8 @@ router.post("/documents", uploadLimiter, async (req: Request, res: Response): Pr
       createdAt: doc.createdAt,
     });
   } catch (e: any) {
-    console.error("[Knowledge] upload error:", e.message);
-    res.status(500).json({ error: e.message });
+    console.error("[Knowledge] upload error:", safeIntegrationError(e, "upload failed"));
+    res.status(500).json({ error: safeIntegrationError(e, "Upload failed") });
   }
 });
 
@@ -455,8 +466,8 @@ router.post(
         createdAt: doc.createdAt,
       });
     } catch (e: any) {
-      console.error("[Knowledge] upload error:", e.message);
-      res.status(500).json({ error: e.message });
+      console.error("[Knowledge] upload error:", safeIntegrationError(e, "upload failed"));
+      res.status(500).json({ error: safeIntegrationError(e, "Upload failed") });
     }
   },
 );

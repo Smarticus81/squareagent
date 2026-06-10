@@ -23,6 +23,20 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return undefined;
+          if (id.includes("@clerk")) return "vendor-clerk";
+          if (id.includes("@tanstack")) return "vendor-query";
+          if (id.includes("framer-motion")) return "vendor-motion";
+          if (id.includes("lucide-react")) return "vendor-icons";
+          if (id.includes("three")) return "vendor-three";
+          if (id.includes("react") || id.includes("react-dom")) return "vendor-react";
+          return "vendor";
+        },
+      },
+    },
   },
   server: {
     port,

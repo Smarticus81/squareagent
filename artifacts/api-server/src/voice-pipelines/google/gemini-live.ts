@@ -14,8 +14,8 @@
  *
  * One adapter class is registered three times with different model IDs:
  *   - google_gemini_3_1_flash_live              -> gemini-3.1-flash-live-preview
- *   - google_gemini_2_5_flash_native_audio      -> gemini-live-2.5-flash-native-audio
- *   - google_gemini_live_native_audio (legacy)  -> gemini-live-2.5-flash-native-audio
+ *   - google_gemini_2_5_flash_native_audio      -> gemini-2.5-flash-native-audio-preview-12-2025
+ *   - google_gemini_live_native_audio (legacy)  -> gemini-2.5-flash-native-audio-preview-12-2025
  */
 
 import type {
@@ -28,6 +28,7 @@ import type {
   VoicePipelineSessionContext,
 } from "@workspace/voicelab-core/voice-pipeline";
 import type { NoiseMode } from "@workspace/voicelab-core/noise";
+import { readServerApiKey, requireServerApiKey, requiredApiKeyEnv } from "../../lib/api-keys";
 
 export interface GeminiLiveAdapterSpec {
   provider: VoicePipelineProvider;
@@ -40,7 +41,7 @@ export interface GeminiLiveAdapterSpec {
 }
 
 function readApiKey(): string {
-  return process.env.GOOGLE_GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY ?? "";
+  return readServerApiKey("gemini")?.value ?? "";
 }
 
 function stringOption(options: Record<string, unknown>, key: string): string | undefined {
@@ -86,7 +87,7 @@ async function probeGeminiAccess(): Promise<ProbeVerdict> {
   if (probeCache && probeCache.expiresAt > Date.now()) return probeCache.verdict;
   const apiKey = readApiKey();
   if (!apiKey) {
-    const verdict: ProbeVerdict = { ok: false, status: 0, reason: "GOOGLE_GEMINI_API_KEY not set" };
+    const verdict: ProbeVerdict = { ok: false, status: 0, reason: `${requiredApiKeyEnv("gemini")} not set` };
     probeCache = { verdict, expiresAt: Date.now() + PROBE_TTL_MS };
     return verdict;
   }
@@ -151,7 +152,10 @@ export class GoogleGeminiLiveAdapter implements VoicePipelineAdapter {
   readonly supportsClientVAD = true;
   readonly supportsTurnDetection = true;
   readonly supportsNoiseSuppression = true;
-  readonly supportsWakeWord = false;
+  // Wake detection is provided by the VoyceLab PWA before the Gemini relay
+  // session starts, so Gemini assistants can use the same configurable wake
+  // phrase flow as OpenAI WebRTC assistants.
+  readonly supportsWakeWord = true;
   readonly supportsMultilingual = true;
   readonly supportsMobile = true;
   readonly supportsBrowser = true;
@@ -172,8 +176,8 @@ export class GoogleGeminiLiveAdapter implements VoicePipelineAdapter {
     if (!readApiKey()) {
       return {
         status: "needs_configuration",
-        reason: "GOOGLE_GEMINI_API_KEY not set on the server.",
-        missing: ["GOOGLE_GEMINI_API_KEY"],
+        reason: `${requiredApiKeyEnv("gemini")} not set on the server.`,
+        missing: [requiredApiKeyEnv("gemini")],
       };
     }
     // Real probe — a key that lists models can still be denied at
@@ -187,9 +191,9 @@ export class GoogleGeminiLiveAdapter implements VoicePipelineAdapter {
       return {
         status: "needs_configuration",
         reason: isPermissionIssue
-          ? `Google denied this project access to the Gemini API. Enable billing on the GCP project tied to the API key, or generate a new key from a billed AI Studio project. Raw error: ${probe.reason}`
-          : `Gemini availability probe failed: ${probe.reason}`,
-        missing: ["GOOGLE_GEMINI_API_KEY"],
+          ? "Google denied this project access to the Gemini API. Enable billing/API access on the project tied to the key, or generate a new key from a billed AI Studio project."
+          : `Gemini availability probe failed with HTTP ${probe.status ?? "unknown"}.`,
+        missing: [requiredApiKeyEnv("gemini")],
       };
     }
     return {
@@ -203,7 +207,7 @@ export class GoogleGeminiLiveAdapter implements VoicePipelineAdapter {
 
   async createSession(ctx: VoicePipelineSessionContext): Promise<VoicePipelineSession> {
     if (!readApiKey()) {
-      throw new Error("GOOGLE_GEMINI_API_KEY missing");
+      requireServerApiKey("gemini");
     }
     const sessionId = `gemini-${ctx.userId}-${Date.now()}`;
     const voiceName = stringOption(ctx.providerOptions, "voiceName") ?? stringOption(ctx.providerOptions, "voice");
@@ -405,7 +409,7 @@ export const GEMINI_LIVE_ENDPOINT = geminiLiveEndpoint("v1beta");
 
 export function buildGeminiLiveUrl(apiVersion: "v1alpha" | "v1beta" = "v1beta"): string {
   const apiKey = readApiKey();
-  if (!apiKey) throw new Error("GOOGLE_GEMINI_API_KEY missing");
+  if (!apiKey) throw new Error(`${requiredApiKeyEnv("gemini")} missing`);
   return `${geminiLiveEndpoint(apiVersion)}?key=${encodeURIComponent(apiKey)}`;
 }
 
@@ -427,14 +431,14 @@ export const GEMINI_LIVE_ADAPTER_SPECS: GeminiLiveAdapterSpec[] = [
     provider: "google_gemini_2_5_flash_native_audio",
     displayName: "Gemini 2.5 Flash Native Audio",
     recommendedFor: ["best_voice_quality", "best_turn_taking", "enterprise_observability"],
-    modelId: "gemini-live-2.5-flash-native-audio",
+    modelId: "gemini-2.5-flash-native-audio-preview-12-2025",
     capabilityProfile: "ga_2_5",
   },
   {
     provider: "google_gemini_live_native_audio",
     displayName: "Gemini Live (legacy alias)",
     recommendedFor: ["best_voice_quality", "best_turn_taking"],
-    modelId: "gemini-live-2.5-flash-native-audio",
+    modelId: "gemini-2.5-flash-native-audio-preview-12-2025",
     capabilityProfile: "ga_2_5",
   },
 ];

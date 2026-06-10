@@ -76,10 +76,15 @@ function billingReadiness() {
     });
 
   const embeddedCheckoutReady = Boolean(CLERK_PUBLISHABLE_KEY);
-  const serverCheckoutReady = planReadiness.some(
+  const serverCheckoutReady = planReadiness.every(
     (plan) => plan.checkoutMonthlyConfigured || plan.checkoutYearlyConfigured,
   );
   const portalReady = Boolean(EXPLICIT_CLERK_BILLING_PORTAL_URL || CLERK_PUBLISHABLE_KEY);
+  const portalMode = EXPLICIT_CLERK_BILLING_PORTAL_URL
+    ? "external"
+    : CLERK_PUBLISHABLE_KEY
+      ? "embedded"
+      : "none";
   const webhooksReady = Boolean(CLERK_WEBHOOK_SECRET);
   const secretKeyConfigured = Boolean(CLERK_SECRET_KEY);
   const operational = Boolean((embeddedCheckoutReady || serverCheckoutReady) && portalReady && webhooksReady && secretKeyConfigured);
@@ -91,6 +96,7 @@ function billingReadiness() {
     embeddedCheckoutReady,
     serverCheckoutReady,
     portalReady,
+    portalMode,
     webhooksReady,
     secretKeyConfigured,
     publishableKeyConfigured: Boolean(CLERK_PUBLISHABLE_KEY),
@@ -474,7 +480,7 @@ router.post("/checkout", requireAuth as any, async (req: Request, res: Response)
   }
 
   res.status(409).json({
-    error: "Clerk checkout is handled by the embedded Clerk PricingTable. Set VITE_CLERK_PUBLISHABLE_KEY on the dashboard app, or configure CLERK_CHECKOUT_*_URL for server redirects.",
+    error: "Clerk checkout is handled by the embedded Clerk PricingTable. Set VITE_CLERK_PUBLISHABLE_KEY for the web app, or configure CLERK_CHECKOUT_*_URL for server redirects.",
   });
 });
 
@@ -493,7 +499,7 @@ router.post("/portal", requireAuth as any, async (req: Request, res: Response): 
     req,
     (req as Request & { subscription?: any }).subscription ?? null,
   );
-  res.json({ url: CLERK_BILLING_PORTAL_URL, provider: "clerk" });
+  res.json({ url: CLERK_BILLING_PORTAL_URL, provider: "clerk", mode: readiness.portalMode });
 });
 
 // ── POST /webhook — Handle Clerk Billing events ───────────────────────────────

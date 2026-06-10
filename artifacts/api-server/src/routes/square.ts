@@ -78,24 +78,6 @@ function squareHeaders(token: string) {
   };
 }
 
-function redactSquareId(id: unknown): string {
-  if (typeof id !== "string" || id.length === 0) return "unknown";
-  if (id.length <= 8) return `${id.slice(0, 2)}...${id.slice(-2)}`;
-  return `${id.slice(0, 4)}...${id.slice(-4)}`;
-}
-
-function squareErrorSummary(errors: unknown): string {
-  if (!Array.isArray(errors) || errors.length === 0) return "unknown_error";
-  return errors
-    .slice(0, 2)
-    .map((err) => {
-      if (!err || typeof err !== "object") return "unknown_error";
-      const e = err as Record<string, unknown>;
-      return [e.category, e.code, e.detail ? "detail_present" : null].filter(Boolean).join(":");
-    })
-    .join(",");
-}
-
 // ── In-memory state stores (TTL: 10 min) ─────────────────────────────────────
 
 interface PendingState {
@@ -321,23 +303,32 @@ function popupHtml(tokenState: string | null, error: string | null): string {
 </html>`;
 }
 
-// All raw-token Square proxy calls require a VoyceLab session. OAuth callback
+// Remaining Square helper routes require a VoyceLab session. OAuth callback
 // routes above stay public because Square redirects to them server-to-server.
 router.use(requireAuth as any);
+
+function legacySquareProxyDisabled(res: Response): void {
+  res.status(410).json({
+    error: "legacy_square_proxy_disabled",
+    message: "Square credentials are server-managed. Use /api/venues routes for catalog, orders, devices, and terminal actions.",
+  });
+}
 
 // ── Square API proxy routes ───────────────────────────────────────────────────
 
 // GET /api/square/locations
 router.get("/locations", async (req: Request, res: Response): Promise<void> => {
   const claimId = typeof req.query.oauth_ts === "string" ? req.query.oauth_ts : "";
+  if (!claimId) {
+    res.status(400).json({ error: "oauth_ts is required" });
+    return;
+  }
   const user = (req as any).user;
   const organizationId =
     (req as any).organization?.id ?? (await ensureUserOrganization(user)).id;
-  const pending = claimId
-    ? peekPendingSquareOAuthToken({ claimId, userId: user.id, organizationId })
-    : null;
-  const token = pending?.token ?? (req.headers["x-square-token"] as string);
-  if (!token) { res.status(401).json({ error: "Missing Square access token" }); return; }
+  const pending = peekPendingSquareOAuthToken({ claimId, userId: user.id, organizationId });
+  const token = pending?.token;
+  if (!token) { res.status(404).json({ error: "Square connection expired. Please connect again." }); return; }
 
   try {
     const response = await fetch(`${SQUARE_BASE}/locations`, {
@@ -365,335 +356,36 @@ router.get("/locations", async (req: Request, res: Response): Promise<void> => {
   }
 });
 
-// GET /api/square/catalog
-router.get("/catalog", async (req: Request, res: Response): Promise<void> => {
-  const token = req.headers["x-square-token"] as string;
-  if (!token) { res.status(401).json({ error: "Missing Square access token" }); return; }
-
-  try {
-    const items: any[] = [];
-    let cursor: string | undefined;
-
-    // Follow pagination cursors so all items load regardless of catalog size
-    do {
-      const url = `${SQUARE_BASE}/catalog/list?types=ITEM&include_deleted_objects=false${cursor ? `&cursor=${cursor}` : ""}`;
-      const response = await fetch(url, { headers: squareHeaders(token) });
-      const data = await response.json() as any;
-
-      if (!response.ok) {
-        res.status(response.status).json({ error: data.errors?.[0]?.detail || "Failed to load catalog" });
-        return;
-      }
-
-      for (const obj of data.objects || []) {
-        if (obj.type !== "ITEM") continue;
-        const itemData = obj.item_data;
-        if (!itemData) continue;
-
-        const variations = itemData.variations || [];
-        if (variations.length === 0) continue;
-
-        if (variations.length === 1) {
-          // Single variation — use item name directly
-          const varData = variations[0].item_variation_data;
-          const price = varData?.price_money ? varData.price_money.amount / 100 : 0;
-          items.push({
-            id: obj.id,
-            variationId: variations[0].id,
-            name: itemData.name,
-            price,
-            category: itemData.category_id,
-            description: itemData.description || "",
-          });
-        } else {
-          // Multiple variations (e.g. Small/Medium/Large) — add each as its own item
-          for (const variation of variations) {
-            const varData = variation.item_variation_data;
-            if (!varData) continue;
-            const price = varData.price_money ? varData.price_money.amount / 100 : 0;
-            const varName = varData.name && varData.name !== "Regular"
-              ? `${itemData.name} (${varData.name})`
-              : itemData.name;
-            items.push({
-              id: obj.id,
-              variationId: variation.id,
-              name: varName,
-              price,
-              category: itemData.category_id,
-              description: itemData.description || "",
-            });
-          }
-        }
-      }
-
-      cursor = data.cursor;
-    } while (cursor);
-
-    console.log(`[Square] Catalog loaded: ${items.length} items`);
-    res.json({ items });
-  } catch (e: any) {
-    res.status(500).json({ error: e.message || "Failed to load catalog" });
-  }
+// Legacy endpoint: catalog now uses authenticated /api/venues/:id/catalog.
+router.get("/catalog", async (_req: Request, res: Response): Promise<void> => {
+  legacySquareProxyDisabled(res);
 });
 
 // GET /api/square/orders/recent — search Square for orders at this location
-router.get("/orders/recent", async (req: Request, res: Response): Promise<void> => {
-  const token = req.headers["x-square-token"] as string;
-  const locationId = req.headers["x-square-location"] as string;
-  if (!token) { res.status(401).json({ error: "Missing token" }); return; }
-  if (!locationId) { res.status(400).json({ error: "Missing location" }); return; }
-
-  try {
-    const response = await fetch(`${SQUARE_BASE}/orders/search`, {
-      method: "POST",
-      headers: squareHeaders(token),
-      body: JSON.stringify({
-        location_ids: [locationId],
-        query: { sort: { sort_field: "CREATED_AT", sort_order: "DESC" } },
-        limit: 10,
-      }),
-    });
-    const data = await response.json() as any;
-    console.log(`[Square] Recent orders search status=${response.status} count=${data.orders?.length ?? 0}`);
-    if (!response.ok) {
-      res.status(response.status).json({ error: data.errors?.[0]?.detail || "Search failed" });
-      return;
-    }
-    res.json({
-      count: data.orders?.length ?? 0,
-      orders: (data.orders || []).map((o: any) => ({
-        id: o.id,
-        state: o.state,
-        source: o.source?.name,
-        total: o.total_money?.amount,
-        created_at: o.created_at,
-        location_id: o.location_id,
-      })),
-    });
-  } catch (e: any) {
-    res.status(500).json({ error: e.message });
-  }
+router.get("/orders/recent", async (_req: Request, res: Response): Promise<void> => {
+  legacySquareProxyDisabled(res);
 });
 
-// POST /api/square/orders
-router.post("/orders", async (req: Request, res: Response): Promise<void> => {
-  const token = req.headers["x-square-token"] as string;
-  const locationId = req.headers["x-square-location"] as string;
-  if (!token) { res.status(401).json({ error: "Missing Square access token" }); return; }
-  if (!locationId) { res.status(400).json({ error: "Missing location ID" }); return; }
-
-  try {
-    const { items } = req.body;
-    if (!items || items.length === 0) { res.status(400).json({ error: "No items provided" }); return; }
-
-    const lineItems = items.map((item: any) => ({
-      quantity: item.quantity.toString(),
-      catalog_object_id: item.variationId || item.catalogItemId,
-      base_price_money: item.variationId ? undefined : {
-        amount: Math.round(item.price * 100),
-        currency: "USD",
-      },
-    }));
-
-    const idempotencyKey = `order-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-
-    // Verify which merchant account this token belongs to before creating the order
-    const merchantRes = await fetch(`${SQUARE_BASE}/merchants/me`, { headers: squareHeaders(token) });
-    const merchantData = await merchantRes.json() as any;
-    const merchant = merchantData.merchant;
-    console.log(`[Square] Token merchant verified merchant=${redactSquareId(merchant?.id)} country=${merchant?.country ?? "unknown"} status=${merchant?.status ?? "unknown"}`);
-
-    console.log(`[Square] Creating order location=${redactSquareId(locationId)} itemCount=${lineItems.length}`);
-
-    const ticketRef = `VOICE-${Date.now()}`;
-    const response = await fetch(`${SQUARE_BASE}/orders`, {
-      method: "POST",
-      headers: squareHeaders(token),
-      body: JSON.stringify({
-        idempotency_key: idempotencyKey,
-        order: {
-          location_id: locationId,
-          reference_id: ticketRef,
-          line_items: lineItems,
-        },
-      }),
-    });
-
-    const data = await response.json() as any;
-    if (!response.ok) {
-      const errMsg = data.errors?.[0]?.detail || "Failed to create order";
-      console.error("[Square] Order failed:", squareErrorSummary(data.errors));
-      res.status(response.status).json({ error: errMsg });
-      return;
-    }
-
-    const orderId = data.order?.id;
-    const orderTotal = data.order?.total_money?.amount ?? 0;
-    console.log(`[Square] Order created order=${redactSquareId(orderId)} state=${data.order?.state ?? "unknown"}`);
-
-    // Create an external payment to mark the order as a completed transaction
-    // so it appears in Square's sales reports and transaction history
-    const paymentRes = await fetch(`${SQUARE_BASE}/payments`, {
-      method: "POST",
-      headers: squareHeaders(token),
-      body: JSON.stringify({
-        idempotency_key: `payment-${orderId}`,
-        source_id: "EXTERNAL",
-        amount_money: { amount: orderTotal, currency: "USD" },
-        order_id: orderId,
-        location_id: locationId,
-        external_details: {
-          type: "OTHER",
-          source: "Pre-paid Event Package",
-        },
-        note: "Voice order — pre-paid event package",
-      }),
-    });
-
-    const paymentData = await paymentRes.json() as any;
-    const paymentError = !paymentRes.ok
-      ? paymentData.errors?.[0]?.detail || "Order created but external payment could not be recorded"
-      : null;
-
-    if (paymentError) {
-      console.warn("[Square] Payment failed (order still created):", squareErrorSummary(paymentData.errors));
-    } else {
-      console.log(`[Square] Payment created payment=${redactSquareId(paymentData.payment?.id)} status=${paymentData.payment?.status ?? "unknown"}`);
-    }
-
-    res.json({
-      success: true,
-      orderId,
-      total: orderTotal / 100,
-      paymentRecorded: !paymentError,
-      paymentId: paymentData.payment?.id,
-      warning: paymentError,
-    });
-  } catch (e: any) {
-    res.status(500).json({ error: e.message || "Failed to create order" });
-  }
+// Legacy endpoint: order creation now uses authenticated /api/venues/:id/orders.
+router.post("/orders", async (_req: Request, res: Response): Promise<void> => {
+  legacySquareProxyDisabled(res);
 });
 
-// ── Square Terminal / Device endpoints ────────────────────────────────────────
+// Legacy Square Terminal / Device endpoints ────────────────────────────────────────
 
 // GET /api/square/devices — list paired Square Terminal devices at the location
-router.get("/devices", async (req: Request, res: Response): Promise<void> => {
-  const token = req.headers["x-square-token"] as string;
-  const locationId = req.headers["x-square-location"] as string;
-  if (!token) { res.status(401).json({ error: "Missing Square access token" }); return; }
-
-  try {
-    // List all devices associated with the merchant
-    const url = new URL(`${SQUARE_BASE}/devices`);
-    if (locationId) {
-      // Filter to devices at this location via query param
-      url.searchParams.set("location_id", locationId);
-    }
-    const response = await fetch(url.toString(), {
-      headers: squareHeaders(token),
-    });
-    const data = await response.json() as any;
-
-    if (!response.ok) {
-      res.status(response.status).json({ error: data.errors?.[0]?.detail || "Failed to list devices" });
-      return;
-    }
-
-    const devices = (data.devices || []).map((dev: any) => ({
-      id: dev.id,
-      name: dev.name || dev.attributes?.name || "Unknown Device",
-      type: dev.attributes?.type || "UNKNOWN",
-      status: dev.status?.category || "UNKNOWN",
-      locationId: dev.location_id,
-      serialNumber: dev.attributes?.serial_number,
-    }));
-
-    const terminals = devices.filter((d: any) => d.type === "TERMINAL");
-    const posDevices = devices.filter((d: any) => d.type !== "TERMINAL");
-    console.log(`[Square] Devices listed: ${devices.length} (${terminals.length} terminals, ${posDevices.length} POS/other)`);
-    res.json({ devices, terminals, posDevices });
-  } catch (e: any) {
-    res.status(500).json({ error: e.message || "Failed to list devices" });
-  }
+router.get("/devices", async (_req: Request, res: Response): Promise<void> => {
+  legacySquareProxyDisabled(res);
 });
 
 // POST /api/square/terminal/checkout — push a checkout to a Terminal device
-router.post("/terminal/checkout", async (req: Request, res: Response): Promise<void> => {
-  const token = req.headers["x-square-token"] as string;
-  const locationId = req.headers["x-square-location"] as string;
-  if (!token) { res.status(401).json({ error: "Missing Square access token" }); return; }
-  if (!locationId) { res.status(400).json({ error: "Missing location ID" }); return; }
-
-  const { deviceId, orderId, amountCents, note } = req.body;
-  if (!deviceId) { res.status(400).json({ error: "deviceId is required" }); return; }
-  if (!amountCents && !orderId) { res.status(400).json({ error: "orderId or amountCents required" }); return; }
-
-  try {
-    const checkoutBody: Record<string, unknown> = {
-      amount_money: { amount: amountCents || 0, currency: "USD" },
-      device_options: {
-        device_id: deviceId,
-        skip_receipt_screen: false,
-        collect_signature: false,
-      },
-      reference_id: `VOICE-TERMINAL-${Date.now()}`,
-      note: note || "Voice order — tap/insert/swipe card",
-    };
-    if (orderId) checkoutBody.order_id = orderId;
-
-    const response = await fetch(`${SQUARE_BASE}/terminals/checkouts`, {
-      method: "POST",
-      headers: squareHeaders(token),
-      body: JSON.stringify({
-        idempotency_key: `terminal-${orderId || Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
-        checkout: checkoutBody,
-      }),
-    });
-    const data = await response.json() as any;
-
-    if (!response.ok) {
-      res.status(response.status).json({ error: data.errors?.[0]?.detail || "Terminal checkout failed" });
-      return;
-    }
-
-    console.log(`[Square] Terminal checkout created checkout=${redactSquareId(data.checkout?.id)} device=${redactSquareId(deviceId)}`);
-    res.json({
-      success: true,
-      checkoutId: data.checkout?.id,
-      status: data.checkout?.status,
-      deviceId,
-    });
-  } catch (e: any) {
-    res.status(500).json({ error: e.message || "Terminal checkout failed" });
-  }
+router.post("/terminal/checkout", async (_req: Request, res: Response): Promise<void> => {
+  legacySquareProxyDisabled(res);
 });
 
 // GET /api/square/terminal/checkout/:id — check status of a terminal checkout
-router.get("/terminal/checkout/:id", async (req: Request, res: Response): Promise<void> => {
-  const token = req.headers["x-square-token"] as string;
-  if (!token) { res.status(401).json({ error: "Missing Square access token" }); return; }
-
-  try {
-    const response = await fetch(`${SQUARE_BASE}/terminals/checkouts/${req.params.id}`, {
-      headers: squareHeaders(token),
-    });
-    const data = await response.json() as any;
-
-    if (!response.ok) {
-      res.status(response.status).json({ error: data.errors?.[0]?.detail || "Failed to get checkout" });
-      return;
-    }
-
-    res.json({
-      checkoutId: data.checkout?.id,
-      status: data.checkout?.status,
-      orderId: data.checkout?.order_id,
-      paymentIds: data.checkout?.payment_ids,
-      amountMoney: data.checkout?.amount_money,
-    });
-  } catch (e: any) {
-    res.status(500).json({ error: e.message || "Failed to get checkout status" });
-  }
+router.get("/terminal/checkout/:id", async (_req: Request, res: Response): Promise<void> => {
+  legacySquareProxyDisabled(res);
 });
 
 export default router;

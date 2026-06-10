@@ -28,6 +28,16 @@ function tenantWhere(userId: number, organizationId?: string | null) {
     : eq(emailCredentialsTable.userId, userId);
 }
 
+function safeMailError(error: unknown, fallback = "mail provider request failed"): string {
+  const raw = error instanceof Error ? error.message : typeof error === "string" ? error : "";
+  if (!raw) return fallback;
+  return raw
+    .replace(/(?:Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi, "$1 [redacted]")
+    .replace(/\b(?:re|ya29|sk)[A-Za-z0-9._-]{16,}\b/g, "[redacted]")
+    .replace(/\b[A-Za-z0-9+/]{32,}={0,2}\b/g, "[redacted]")
+    .slice(0, 240);
+}
+
 function checkSendLimit(userId: number): { allowed: boolean; remaining: number; resetMs: number } {
   const now = Date.now();
   const hourAgo = now - 60 * 60 * 1000;
@@ -105,13 +115,12 @@ async function sendEmail(args: Record<string, unknown>, ctx: ToolContext): Promi
         }),
       });
       if (!res.ok) {
-        const detail = await res.text();
-        return { result: `send_email failed (Resend ${res.status}): ${detail.slice(0, 200)}` };
+        return { result: `send_email failed (Resend ${res.status}): ${safeMailError(await res.text())}` };
       }
       const data = (await res.json()) as { id?: string };
       return { result: `Email sent to ${to} (id=${data.id ?? "unknown"}).` };
     } catch (e: any) {
-      return { result: `send_email error: ${e.message}` };
+      return { result: `send_email error: ${safeMailError(e)}` };
     }
   }
 
@@ -171,7 +180,7 @@ async function sendEmail(args: Record<string, unknown>, ctx: ToolContext): Promi
             "send_email: Gmail authorization expired or was revoked. Reconnect Gmail in the dashboard.",
         };
       }
-      return { result: `send_email error: ${msg.slice(0, 240)}` };
+      return { result: `send_email error: ${safeMailError(msg)}` };
     }
   }
 
@@ -215,7 +224,7 @@ async function sendEmail(args: Record<string, unknown>, ctx: ToolContext): Promi
             "send_email: Gmail rejected the credentials. Make sure 2-Step Verification is on and you generated a 16-character App Password (not your normal Gmail password).",
         };
       }
-      return { result: `send_email error: ${msg.slice(0, 240)}` };
+      return { result: `send_email error: ${safeMailError(msg)}` };
     }
   }
 

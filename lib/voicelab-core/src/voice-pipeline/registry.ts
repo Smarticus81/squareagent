@@ -69,7 +69,7 @@ export const VOICE_PIPELINE_PROVIDERS: Record<
     recommendedFor: ["best_voice_quality", "best_turn_taking", "enterprise_observability"],
     requiredCredentials: ["GOOGLE_GEMINI_API_KEY"],
     notes:
-      "Model gemini-live-2.5-flash-native-audio. Recommended when proactive listening and affective dialogue matter more than the absolute newest preview.",
+      "Model gemini-2.5-flash-native-audio-preview-12-2025. Recommended when proactive listening and affective dialogue matter more than the absolute newest preview.",
   },
   google_gemini_live_native_audio: {
     provider: "google_gemini_live_native_audio",

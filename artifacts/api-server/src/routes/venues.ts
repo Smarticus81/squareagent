@@ -14,7 +14,7 @@ import { db, agentProfilesTable, serviceConnectionsTable, venuesTable } from "@w
 import { eq, and, desc, inArray, isNull, or } from "drizzle-orm";
 import { requireAuth } from "./auth";
 import { ensureUserOrganization } from "./v1/_helpers";
-import { invalidateCredentials } from "../lib/credential-cache";
+import { getCachedCredentials, invalidateCredentials } from "../lib/credential-cache";
 import { encrypt, decrypt } from "../lib/secrets";
 import { claimPendingSquareOAuthToken } from "../lib/square-oauth-claims";
 
@@ -216,7 +216,6 @@ router.get("/", requireAuth as any, async (req: Request, res: Response): Promise
 router.post("/", requireAuth as any, async (req: Request, res: Response): Promise<void> => {
   const user = (req as any).user;
   const {
-    accessToken: rawAccessToken,
     squareOAuthClaim,
     merchantId: rawMerchantId,
     locationId,
@@ -224,7 +223,7 @@ router.post("/", requireAuth as any, async (req: Request, res: Response): Promis
     name,
   } = req.body ?? {};
 
-  if (!rawAccessToken && !squareOAuthClaim) {
+  if (!squareOAuthClaim) {
     res.status(400).json({ error: "squareOAuthClaim is required" });
     return;
   }
@@ -247,7 +246,11 @@ router.post("/", requireAuth as any, async (req: Request, res: Response): Promis
       res.status(404).json({ error: "Square connection expired. Please connect again." });
       return;
     }
-    const accessToken = claimedOAuth?.token ?? String(rawAccessToken);
+    if (!claimedOAuth) {
+      res.status(404).json({ error: "Square connection expired. Please connect again." });
+      return;
+    }
+    const accessToken = claimedOAuth.token;
     const merchantId = claimedOAuth?.merchantId || rawMerchantId;
 
     const [existing] = await db
@@ -412,12 +415,13 @@ router.delete("/:id", requireAuth as any, async (req: Request, res: Response): P
       return;
     }
 
-    // Revoke Square token if present
-    if (venue.squareAccessToken) {
+    // Revoke Square token if present. Prefer service_connections; fall back
+    // through getCachedCredentials so migrated venues are handled too.
+    const creds = await getCachedCredentials(user.id, venueId, organizationId);
+    if (creds?.squareToken) {
       try {
         const appId = process.env.SQUARE_APPLICATION_ID;
         if (appId) {
-          const plainToken = decrypt(venue.squareAccessToken);
           await fetch("https://connect.squareup.com/oauth2/revoke", {
             method: "POST",
             headers: {
@@ -427,7 +431,7 @@ router.delete("/:id", requireAuth as any, async (req: Request, res: Response): P
             },
             body: JSON.stringify({
               client_id: appId,
-              access_token: plainToken,
+              access_token: creds.squareToken,
             }),
           });
         }
@@ -473,7 +477,8 @@ router.get("/:id/credentials", requireAuth as any, async (req: Request, res: Res
       return;
     }
 
-    if (!venue.squareAccessToken || !venue.squareLocationId) {
+    const creds = await getCachedCredentials(user.id, venueId, organizationId);
+    if (!creds) {
       res.status(400).json({ error: "Venue not connected to Square" });
       return;
     }
@@ -512,7 +517,7 @@ router.get("/:id/credentials", requireAuth as any, async (req: Request, res: Res
       : await profileQuery.orderBy(desc(agentProfilesTable.updatedAt)).limit(1);
 
     res.json({
-      locationId: venue.squareLocationId,
+      locationId: creds.squareLocationId,
       locationName: venue.squareLocationName,
       merchantId: venue.squareMerchantId,
       connected: true,
@@ -543,12 +548,18 @@ router.get("/:id/catalog", requireAuth as any, async (req: Request, res: Respons
       .from(venuesTable)
       .where(venueIdTenantWhere(venueId, user.id, organizationId));
 
-    if (!venue || !venue.squareAccessToken) {
+    if (!venue) {
       res.status(404).json({ error: "Venue not found or not connected" });
       return;
     }
 
-    const plainToken = decrypt(venue.squareAccessToken);
+    const creds = await getCachedCredentials(user.id, venueId, organizationId);
+    if (!creds) {
+      res.status(404).json({ error: "Venue not found or not connected" });
+      return;
+    }
+
+    const plainToken = creds.squareToken;
     const items: any[] = [];
     let cursor: string | undefined;
 
@@ -626,7 +637,13 @@ router.post("/:id/orders", requireAuth as any, async (req: Request, res: Respons
       .from(venuesTable)
       .where(venueIdTenantWhere(venueId, user.id, organizationId));
 
-    if (!venue || !venue.squareAccessToken || !venue.squareLocationId) {
+    if (!venue) {
+      res.status(404).json({ error: "Venue not found or not connected" });
+      return;
+    }
+
+    const creds = await getCachedCredentials(user.id, venueId, organizationId);
+    if (!creds) {
       res.status(404).json({ error: "Venue not found or not connected" });
       return;
     }
@@ -637,7 +654,7 @@ router.post("/:id/orders", requireAuth as any, async (req: Request, res: Respons
       return;
     }
 
-    const plainToken = decrypt(venue.squareAccessToken);
+    const plainToken = creds.squareToken;
     const lineItems = items.map((item: any) => ({
       quantity: String(item.quantity ?? 1),
       catalog_object_id: item.variationId || item.catalogItemId,
@@ -653,7 +670,7 @@ router.post("/:id/orders", requireAuth as any, async (req: Request, res: Respons
       body: JSON.stringify({
         idempotency_key: `order-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
         order: {
-          location_id: venue.squareLocationId,
+          location_id: creds.squareLocationId,
           reference_id: `VOICE-${Date.now()}`,
           line_items: lineItems,
         },
@@ -675,7 +692,7 @@ router.post("/:id/orders", requireAuth as any, async (req: Request, res: Respons
         source_id: "EXTERNAL",
         amount_money: { amount: orderTotal, currency: "USD" },
         order_id: orderId,
-        location_id: venue.squareLocationId,
+        location_id: creds.squareLocationId,
         external_details: { type: "OTHER", source: "Pre-paid Event Package" },
         note: "Voice order - pre-paid event package",
       }),

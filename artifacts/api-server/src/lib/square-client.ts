@@ -10,6 +10,7 @@
  */
 
 import { createComponentLogger } from "./logger";
+import crypto from "crypto";
 
 const log = createComponentLogger("square-client");
 
@@ -33,6 +34,10 @@ const CIRCUIT_FAILURE_WINDOW_MS = 60_000;
 const CIRCUIT_HALF_OPEN_MS = 30_000;
 
 const circuits = new Map<string, CircuitState>();
+
+function credentialFingerprint(token: string, locationId: string): string {
+  return crypto.createHash("sha256").update(`${token}:${locationId}`).digest("hex").slice(0, 16);
+}
 
 function getCircuit(key: string): CircuitState {
   let state = circuits.get(key);
@@ -110,8 +115,7 @@ export class SquareClient {
   constructor(token: string, locationId: string) {
     this.token = token;
     this.locationId = locationId;
-    // Use first 8 chars of token as circuit key (safe, non-secret prefix)
-    this.circuitKey = `sq-${token.slice(0, 8)}`;
+    this.circuitKey = `sq-${credentialFingerprint(token, locationId)}`;
   }
 
   private headers(): Record<string, string> {

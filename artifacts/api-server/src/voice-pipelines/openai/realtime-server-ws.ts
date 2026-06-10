@@ -6,9 +6,10 @@ import type {
   VoicePipelineSession,
   VoicePipelineSessionContext,
 } from "@workspace/voicelab-core/voice-pipeline";
+import { readServerApiKey, requiredApiKeyEnv } from "../../lib/api-keys";
 
 function readApiKey(): string {
-  return process.env.OPENAI_API_KEY ?? process.env.AI_INTEGRATIONS_OPENAI_API_KEY ?? "";
+  return readServerApiKey("openai")?.value ?? "";
 }
 
 /**
@@ -36,7 +37,9 @@ export class OpenAiRealtimeServerWsAdapter implements VoicePipelineAdapter {
   readonly supportsClientVAD = true;
   readonly supportsTurnDetection = true;
   readonly supportsNoiseSuppression = false;
-  readonly supportsWakeWord = false;
+  // The relay itself does not do wake detection, but VoyceLab clients can use
+  // the shared PWA/mobile wake layer before opening the server WS session.
+  readonly supportsWakeWord = true;
   readonly supportsMultilingual = true;
   readonly supportsMobile = true;
   readonly supportsBrowser = false;
@@ -49,8 +52,8 @@ export class OpenAiRealtimeServerWsAdapter implements VoicePipelineAdapter {
     if (!readApiKey()) {
       return {
         status: "needs_configuration",
-        reason: "OPENAI_API_KEY not set on the server.",
-        missing: ["OPENAI_API_KEY"],
+        reason: `${requiredApiKeyEnv("openai")} not set on the server.`,
+        missing: [requiredApiKeyEnv("openai")],
       };
     }
     return { status: "available" };

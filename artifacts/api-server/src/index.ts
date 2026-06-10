@@ -3,10 +3,12 @@ import app from "./app";
 import { pool } from "@workspace/db";
 import { assertJwtSecret } from "./routes/auth";
 import { attachWebSocketRelay } from "./routes/ws-relay";
+import { assertSecretsEncryptionKey } from "./lib/secrets";
 
 async function main() {
-  // Fail immediately if JWT_SECRET is not set in production
+  // Fail immediately if production secrets are not configured safely.
   assertJwtSecret();
+  assertSecretsEncryptionKey();
 
   const rawPort = process.env["PORT"];
 
