@@ -382,10 +382,10 @@ export function buildGeminiLiveSetupMessage(opts: GeminiSetupOptions): Record<st
     },
     tools: toolDefinitionsToGeminiTools(opts.tools),
     realtimeInputConfig: geminiRealtimeInputConfig(opts.noiseMode),
-    inputAudioTranscription:
-      opts.inputLanguageCodes && opts.inputLanguageCodes.length > 0
-        ? { languageCodes: opts.inputLanguageCodes }
-        : {},
+    // The Live WebSocket AudioTranscriptionConfig currently has no fields.
+    // Keep languageCodes in VoyceLab config/handshake for future provider
+    // support, but do not send them here or Gemini closes setup as invalid.
+    inputAudioTranscription: {},
     outputAudioTranscription: {},
   };
 
