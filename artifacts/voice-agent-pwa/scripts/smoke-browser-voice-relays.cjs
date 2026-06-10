@@ -119,7 +119,9 @@ async function connectCdp(wsUrl) {
 const initSource = `
 (() => {
   if (!location.href.startsWith(${JSON.stringify(APP_URL)})) return;
-  const selected = new URL(location.href).searchParams.get("voiceSmokeProvider") || "openai";
+  const params = new URL(location.href).searchParams;
+  const selected = params.get("voiceSmokeProvider") || "openai";
+  const launchMode = params.has("voiceSmokeLaunch");
   const state = window.__voiceSmoke = {
     fetches: [],
     websockets: [],
@@ -156,17 +158,37 @@ const initSource = `
   function selectedProfile() {
     return profiles[selected];
   }
+  function profileById(id) {
+    return Object.values(profiles).find((profile) => profile.id === id) || selectedProfile();
+  }
   localStorage.clear();
-  localStorage.setItem("voycelab_token", "smoke-token");
-  localStorage.setItem("voycelab_agent_profile_id", selectedProfile().id);
-  localStorage.setItem("voycelab_agent_profile", JSON.stringify(selectedProfile()));
-  localStorage.setItem("voycelab_wake_phrase", "Hey Bev");
+  if (launchMode) {
+    const staleProfile = selected === "openai" ? profiles.gemini : profiles.openai;
+    localStorage.setItem("voycelab_token", "stale-token");
+    localStorage.setItem("voycelab_agent_profile_id", staleProfile.id);
+    localStorage.setItem("voycelab_agent_profile", JSON.stringify(staleProfile));
+    localStorage.setItem("voycelab_wake_phrase", staleProfile.wakePhrase);
+  } else {
+    localStorage.setItem("voycelab_token", "smoke-token");
+    localStorage.setItem("voycelab_agent_profile_id", selectedProfile().id);
+    localStorage.setItem("voycelab_agent_profile", JSON.stringify(selectedProfile()));
+    localStorage.setItem("voycelab_wake_phrase", "Hey Bev");
+  }
 
   window.fetch = async (input, init = {}) => {
     const url = typeof input === "string" ? input : input.url;
     const method = init.method || "GET";
     state.fetches.push({ url, method, body: init.body || null });
     const profile = selectedProfile();
+    if (url.includes("/api/auth/exchange/redeem")) {
+      return new Response(JSON.stringify({
+        token: "launch-token",
+        agentProfileId: profile.id,
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
     if (url.includes("/api/auth/me")) {
       return new Response(JSON.stringify({ user: { id: 1, email: "smoke@example.com", name: "Smoke" } }), {
         status: 200,
@@ -180,7 +202,8 @@ const initSource = `
       });
     }
     if (url.includes("/api/v1/agent-profiles/")) {
-      return new Response(JSON.stringify(profile), {
+      const id = decodeURIComponent(url.split("/api/v1/agent-profiles/")[1].split("?")[0]);
+      return new Response(JSON.stringify(profileById(id)), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       });
@@ -339,6 +362,17 @@ async function waitFor(cdp, expression, label) {
 
 async function smokeProvider(cdp, provider) {
   await cdp.send("Page.navigate", { url: `${APP_URL}?voiceSmokeProvider=${provider}` });
+  return smokeLoadedProvider(cdp, provider, `${provider} stored profile`);
+}
+
+async function smokeLaunchOverridesStaleProfile(cdp) {
+  await cdp.send("Page.navigate", {
+    url: `${APP_URL}?voiceSmokeProvider=openai&voiceSmokeLaunch=1&code=launch-openai&agentProfileId=profile-openai-relay`,
+  });
+  return smokeLoadedProvider(cdp, "openai", "launch overrides stale profile");
+}
+
+async function smokeLoadedProvider(cdp, provider, label) {
   await waitFor(cdp, "Boolean(document.querySelector('.orb'))", `${provider} orb`);
   const assistantName = provider === "openai" ? "Relay Bev" : "Gemini Bev";
   await waitFor(
@@ -381,7 +415,7 @@ async function smokeProvider(cdp, provider) {
     throw new Error(`${provider}: relay context update was not sent`);
   }
   return {
-    provider,
+    provider: label,
     wsUrl: relayWs.url.replace(/token=[^&]+/, "token=[redacted]"),
     audioSampleRates: state.audioSampleRates,
     mediaRequests: state.mediaRequests.length,
@@ -451,8 +485,9 @@ async function main() {
 
     const openai = await smokeProvider(page, "openai");
     const gemini = await smokeProvider(page, "gemini");
+    const launchOverride = await smokeLaunchOverridesStaleProfile(page);
     console.log("PASS pwa browser voice relay smoke");
-    console.log(JSON.stringify({ openai, gemini }, null, 2));
+    console.log(JSON.stringify({ openai, gemini, launchOverride }, null, 2));
     page.close();
   } finally {
     vite.kill();

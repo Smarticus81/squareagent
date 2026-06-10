@@ -106,6 +106,7 @@ export function SquareProvider({ children }: { children: ReactNode }) {
   const [agentProfileId, setAgentProfileId] = useState<string | null>(localStorage.getItem(AGENT_PROFILE_ID_KEY));
   const [wakePhrase, setWakePhrase] = useState(DEFAULT_WAKE_PHRASE);
   const [wakeMode, setWakeMode] = useState<"ambient" | "tap">("ambient");
+  const initialHasExchangeCodeRef = useRef(new URLSearchParams(window.location.search).has("code"));
 
   function applyVenueConnection(data: any, nextVenueId: string) {
     setLocationId(data.locationId ?? null);
@@ -170,6 +171,23 @@ export function SquareProvider({ children }: { children: ReactNode }) {
     if (message) setConnectionError(message);
   }
 
+  function clearStoredAssistantLaunchState() {
+    localStorage.removeItem(AUTH_TOKEN_KEY);
+    localStorage.removeItem(VENUE_ID_KEY);
+    localStorage.removeItem(WAKE_PHRASE_KEY);
+    localStorage.removeItem(AGENT_PROFILE_KEY);
+    localStorage.removeItem(AGENT_PROFILE_ID_KEY);
+    localStorage.removeItem(LOC_KEY);
+    localStorage.removeItem(TOKEN_KEY);
+    setVenueId(null);
+    setAuthToken(null);
+    setAgentProfile(null);
+    setAgentProfileId(null);
+    setWakePhrase(DEFAULT_WAKE_PHRASE);
+    setWakeMode("ambient");
+    setLocationId(null);
+  }
+
   // Load credentials once on mount:
   // 1. If launched with ?code=EXCHANGE_CODE, redeem it first
   // 2. Otherwise fall back to localStorage
@@ -183,6 +201,7 @@ export function SquareProvider({ children }: { children: ReactNode }) {
       let launch: { venueId?: string; authToken: string; agentProfileId?: string } | null = null;
 
       if (exchangeCode) {
+        clearStoredAssistantLaunchState();
         launch = await redeemExchangeCode(exchangeCode);
         if (launch && urlAgentProfileId && !launch.agentProfileId) {
           launch = { ...launch, agentProfileId: urlAgentProfileId };
@@ -192,6 +211,13 @@ export function SquareProvider({ children }: { children: ReactNode }) {
         url.searchParams.delete("code");
         url.searchParams.delete("agentProfileId");
         window.history.replaceState({}, "", url.toString());
+        if (!launch) {
+          if (!cancelled) {
+            setConnectionError("Launch link expired. Open the assistant from the dashboard.");
+            setCredentialsReady(true);
+          }
+          return;
+        }
       }
 
       if (!exchangeCode && (params.has("token") || params.has("venue"))) {
@@ -204,29 +230,40 @@ export function SquareProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      if (launch?.agentProfileId && !launch.venueId) {
+      let launchedProfile: AgentProfileLaunchInfo | null = null;
+      if (launch?.agentProfileId) {
         try {
           const res = await fetch(`${getBaseUrl()}api/v1/agent-profiles/${encodeURIComponent(launch.agentProfileId)}`, {
             headers: { Authorization: `Bearer ${launch.authToken}` },
           });
           if (!cancelled && res.ok) {
-            const profile = await res.json();
+            const profile = await res.json() as AgentProfileLaunchInfo;
+            launchedProfile = profile;
             setAuthToken(launch.authToken);
-            setAgentProfile(profile);
-            setAgentProfileId(profile.id);
-            setWakePhrase(profile.wakePhrase || DEFAULT_WAKE_PHRASE);
-            setWakeMode(profile.wakeMode === "tap" ? "tap" : "ambient");
             localStorage.setItem(AUTH_TOKEN_KEY, launch.authToken);
-            localStorage.setItem(AGENT_PROFILE_ID_KEY, profile.id);
-            localStorage.setItem(AGENT_PROFILE_KEY, JSON.stringify(profile));
-            localStorage.setItem(WAKE_PHRASE_KEY, profile.wakePhrase || DEFAULT_WAKE_PHRASE);
-            localStorage.removeItem(VENUE_ID_KEY);
-            setVenueId(null);
-            setCredentialsReady(true);
-            return;
+            applyAgentLaunchInfo({ agentProfile: profile });
+          } else if (!cancelled) {
+            setConnectionError("Assistant profile not found. Relaunch it from the dashboard.");
           }
         } catch (e) {
           console.warn("Failed to load assistant profile", e);
+          if (!cancelled) setConnectionError("Failed to load assistant profile. Relaunch it from the dashboard.");
+        }
+        if (!launch.venueId) {
+          if (!cancelled) {
+            localStorage.removeItem(VENUE_ID_KEY);
+            setVenueId(null);
+            setCredentialsReady(true);
+          }
+          return;
+        }
+        if (!launchedProfile) {
+          if (!cancelled) {
+            localStorage.removeItem(VENUE_ID_KEY);
+            setVenueId(null);
+            setCredentialsReady(true);
+          }
+          return;
         }
       }
 
@@ -243,8 +280,12 @@ export function SquareProvider({ children }: { children: ReactNode }) {
             if (data.locationId) {
               // Store auth params for voice agent session auth
               localStorage.setItem(AUTH_TOKEN_KEY, launch.authToken);
-              if (launch.agentProfileId) localStorage.setItem(AGENT_PROFILE_ID_KEY, launch.agentProfileId);
-              applyVenueConnection(data, launch.venueId);
+              applyVenueConnection(
+                launchedProfile && !data.agentProfile
+                  ? { ...data, agentProfile: launchedProfile }
+                  : data,
+                launch.venueId,
+              );
               setAuthToken(launch.authToken);
               setCredentialsReady(true);
               return;
@@ -252,6 +293,18 @@ export function SquareProvider({ children }: { children: ReactNode }) {
           }
         } catch (e) {
           console.warn("Failed to load venue credentials", e);
+        }
+        if (launchedProfile) {
+          localStorage.removeItem(VENUE_ID_KEY);
+          setVenueId(null);
+          setCredentialsReady(true);
+          setConnectionError("Square is not connected for this assistant. The assistant is loaded without POS access.");
+          return;
+        }
+        if (exchangeCode) {
+          setConnectionError("Failed to load assistant launch. Open it again from the dashboard.");
+          setCredentialsReady(true);
+          return;
         }
       }
       // Fallback to localStorage
@@ -282,6 +335,7 @@ export function SquareProvider({ children }: { children: ReactNode }) {
 
   // On mount, restore user session if we have a stored auth token
   useEffect(() => {
+    if (initialHasExchangeCodeRef.current) return;
     const tok = localStorage.getItem(AUTH_TOKEN_KEY);
     if (!tok) return;
     (async () => {
