@@ -59,8 +59,17 @@ export function secretsEncryptionStatus(): {
 export function assertSecretsEncryptionKey(): void {
   if (process.env.NODE_ENV !== "production") return;
   const status = secretsEncryptionStatus();
-  if (!status.productionReady) {
+  // Accept JWT_SECRET as a valid fallback key so existing deployments that
+  // have not yet set a dedicated SECRETS_ENCRYPTION_KEY can still start.
+  const hasFallbackKey = Boolean(process.env.JWT_SECRET?.trim());
+  if (!status.productionReady && !hasFallbackKey) {
     throw new Error(`[secrets] Refusing to start: ${status.message}`);
+  }
+  if (!status.productionReady && hasFallbackKey) {
+    console.warn(
+      "[secrets] WARN: using JWT_SECRET as encryption key fallback. " +
+      "Set SECRETS_ENCRYPTION_KEY to a dedicated 32+ character value for production security."
+    );
   }
 }
 
