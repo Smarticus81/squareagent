@@ -14,6 +14,7 @@
     "check:live-voice-providers": "tsx --env-file=../../.env ./scripts/check-live-voice-providers.ts",
     "check:live-voice-turns": "tsx --env-file=../../.env ./scripts/check-live-voice-turns.ts",
     "smoke:voice-pipelines": "tsx ./scripts/smoke-voice-pipelines.ts",
+    "smoke:gemini-relay": "tsx ./scripts/smoke-gemini-relay.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
