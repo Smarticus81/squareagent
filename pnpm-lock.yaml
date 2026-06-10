@@ -360,6 +360,9 @@ importers:
       '@types/react-dom':
         specifier: 'catalog:'
         version: 19.2.3(@types/react@19.2.14)
+      vitest:
+        specifier: ^2.1.9
+        version: 2.1.9(@types/node@25.3.5)(lightningcss@1.31.1)
 
   lib/voicelab-core:
     dependencies:

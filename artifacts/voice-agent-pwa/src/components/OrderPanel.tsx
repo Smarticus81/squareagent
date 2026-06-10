@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
-import { X, MoreVertical, Trash2, Loader, Link, ChevronRight, Sun, Moon, RefreshCw, LogIn, User, MapPin, LogOut, Play, ClipboardCheck, Package, Clock, Mic2, Settings2 } from "lucide-react";
+import { X, MoreVertical, Trash2, Loader, Link, ChevronRight, Sun, Moon, RefreshCw, LogIn, User, MapPin, LogOut, Play, ClipboardCheck, Package, Clock, Mic2, Settings2, Mail, BookOpen, Database, ExternalLink } from "lucide-react";
 import { useOrder, type OrderLineItem } from "@/contexts/OrderContext";
 import { useSquare } from "@/contexts/SquareContext";
 import { OrderCard } from "./OrderCard";
@@ -12,6 +12,8 @@ import { commandLabel } from "@/lib/command-labels";
 interface Props {
   open: boolean;
   onClose: () => void;
+  /** Which screen the panel opens on. Defaults to the order screen. */
+  initialScreen?: "order" | "settings";
   pendingConfirmation?: {
     tool_name: string;
     args: Record<string, unknown>;
@@ -25,7 +27,7 @@ interface Props {
   screenWakeStatus?: WakeLockStatus;
 }
 
-export function OrderPanel({ open, onClose, pendingConfirmation, onConfirm, onDeny, screenWakeStatus = "off" }: Props) {
+export function OrderPanel({ open, onClose, initialScreen = "order", pendingConfirmation, onConfirm, onDeny, screenWakeStatus = "off" }: Props) {
   if (!open) return null;
   return (
     <>
@@ -34,6 +36,7 @@ export function OrderPanel({ open, onClose, pendingConfirmation, onConfirm, onDe
         <div className="panel-handle" />
         <PanelContent
           onClose={onClose}
+          initialScreen={initialScreen}
           pendingConfirmation={pendingConfirmation}
           onConfirm={onConfirm}
           onDeny={onDeny}
@@ -46,18 +49,20 @@ export function OrderPanel({ open, onClose, pendingConfirmation, onConfirm, onDe
 
 function PanelContent({
   onClose,
+  initialScreen,
   pendingConfirmation,
   onConfirm,
   onDeny,
   screenWakeStatus,
 }: {
   onClose: () => void;
+  initialScreen: "order" | "settings";
   pendingConfirmation?: Props["pendingConfirmation"];
   onConfirm?: () => void;
   onDeny?: () => void;
   screenWakeStatus: WakeLockStatus;
 }) {
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(initialScreen === "settings");
 
   return (
     <>
@@ -406,11 +411,20 @@ function screenWakeHint(status: WakeLockStatus, screenWakeSupported: boolean): s
   }
 }
 
-function assistantEditorUrl(profileId: string): string {
+/**
+ * Resolve a dashboard route. The dashboard and PWA share an origin in
+ * production (dashboard at /, PWA at /agent/); in local dev the dashboard
+ * runs on :5173 next to the PWA's :8081.
+ */
+function dashboardUrl(path: string): string {
   const { protocol, hostname, port, origin } = window.location;
   const isLocalPwa = (hostname === "localhost" || hostname === "127.0.0.1") && port === "8081";
   const base = isLocalPwa ? `${protocol}//${hostname}:5173` : origin;
-  return `${base}/assistants/edit/${encodeURIComponent(profileId)}`;
+  return `${base}${path}`;
+}
+
+function assistantEditorUrl(profileId: string): string {
+  return dashboardUrl(`/assistants/edit/${encodeURIComponent(profileId)}`);
 }
 
 function SettingsSheet({ onBack, screenWakeStatus }: { onBack: () => void; screenWakeStatus: WakeLockStatus }) {
@@ -432,6 +446,24 @@ function SettingsSheet({ onBack, screenWakeStatus }: { onBack: () => void; scree
   const [venueError, setVenueError] = useState<string | null>(null);
 
   const isLoggedIn = !!userInfo;
+
+  // When the user connects Square in the dashboard tab and returns here,
+  // pick up the new credentials without making them hunt for a button.
+  const needsSquareRef = useRef(false);
+  needsSquareRef.current = assistantKind === "venue" && !isConfigured;
+  useEffect(() => {
+    const onFocus = () => {
+      if (needsSquareRef.current && !document.hidden) void refreshCredentials();
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onFocus);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onFocus);
+    };
+    // refreshCredentials is stable enough for this listener's lifetime.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const toggleTheme = () => {
     const next = theme === "dark" ? "light" : "dark";
@@ -588,34 +620,71 @@ function SettingsSheet({ onBack, screenWakeStatus }: { onBack: () => void; scree
 
           <details className="settings-group" open={assistantKind === "venue" && !isConfigured}>
             <summary>
-              <span><Link size={14} /> Connected system</span>
+              <span><Link size={14} /> Connected systems</span>
               <ChevronRight size={14} />
             </summary>
-            {assistantKind === "venue" ? (
-              <div className="settings-group-body">
-                <button
-                  className="settings-row compact"
-                  style={{ cursor: isConfigured ? "pointer" : "default" }}
-                  onClick={() => { if (isConfigured && confirm("Disconnect Square?")) clearCredentials(); }}
-                >
-                  <span className="settings-txt">{isConfigured ? "Square connected" : "Square not connected"}</span>
-                  <span className="status-dot" style={{ background: isConfigured ? "#10B981" : "#A1A1AA" }} />
-                </button>
-                {!isConfigured && (
-                  <div className="settings-action-stack">
-                    {connectionError && <div className="error-text" style={{ fontSize: 12 }}>{connectionError}</div>}
-                    <button className="settings-primary-action" disabled={isReconnecting} onClick={() => refreshCredentials()}>
-                      {isReconnecting ? <Loader size={13} className="spin" /> : <RefreshCw size={13} />}
-                      {isReconnecting ? "Reconnecting..." : "Reconnect Square"}
-                    </button>
-                  </div>
-                )}
+            <div className="settings-group-body">
+              <button
+                className="settings-row compact"
+                style={{ cursor: isConfigured ? "pointer" : "default" }}
+                onClick={() => { if (isConfigured && confirm("Disconnect Square?")) clearCredentials(); }}
+              >
+                <span className="settings-txt" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <Package size={14} /> {isConfigured ? "Square connected" : "Square not connected"}
+                </span>
+                <span className="status-dot" style={{ background: isConfigured ? "#10B981" : "#A1A1AA" }} />
+              </button>
+              {assistantKind === "venue" && !isConfigured && (
+                <div className="settings-action-stack">
+                  {connectionError && <div className="error-text" style={{ fontSize: 12 }}>{connectionError}</div>}
+                  <button
+                    className="settings-primary-action"
+                    onClick={() => window.open(dashboardUrl("/services"), "_blank", "noopener,noreferrer")}
+                  >
+                    <ExternalLink size={13} /> Connect Square
+                  </button>
+                  <button className="settings-secondary-action" disabled={isReconnecting} onClick={() => refreshCredentials()}>
+                    {isReconnecting ? <Loader size={13} className="spin" /> : <RefreshCw size={13} />}
+                    {isReconnecting ? "Checking connection..." : "I already connected — refresh"}
+                  </button>
+                </div>
+              )}
+              {assistantKind === "general" && !isConfigured && isLoggedIn && (
+                <div className="settings-action-stack">
+                  <button
+                    className="settings-primary-action"
+                    onClick={() => window.open(dashboardUrl("/services"), "_blank", "noopener,noreferrer")}
+                  >
+                    <ExternalLink size={13} /> Connect Square
+                  </button>
+                </div>
+              )}
+              <div className="settings-mini-row">
+                <span style={{ display: "flex", alignItems: "center", gap: 7 }}><Mail size={13} /> Email</span>
+                <strong>Manage in dashboard</strong>
               </div>
-            ) : (
-              <div className="settings-group-body">
-                <p className="settings-muted">This assistant uses general business commands and does not require Square.</p>
+              <div className="settings-mini-row">
+                <span style={{ display: "flex", alignItems: "center", gap: 7 }}><BookOpen size={13} /> Knowledge base</span>
+                <strong>Manage in dashboard</strong>
               </div>
-            )}
+              <div className="settings-mini-row">
+                <span style={{ display: "flex", alignItems: "center", gap: 7 }}><Database size={13} /> Database</span>
+                <strong>Manage in dashboard</strong>
+              </div>
+              {(isLoggedIn || isConfigured) && (
+                <div className="settings-action-stack">
+                  <button
+                    className="settings-secondary-action"
+                    onClick={() => window.open(dashboardUrl("/services"), "_blank", "noopener,noreferrer")}
+                  >
+                    <ExternalLink size={13} /> Manage connected systems
+                  </button>
+                </div>
+              )}
+              <p className="settings-muted">
+                Connections you add in the dashboard are picked up here automatically.
+              </p>
+            </div>
           </details>
 
           <details className="settings-group">

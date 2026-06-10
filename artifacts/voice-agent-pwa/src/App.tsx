@@ -126,6 +126,7 @@ export default function App() {
   } = useSquare();
 
   const [panelOpen, setPanelOpen] = useState(false);
+  const [panelScreen, setPanelScreen] = useState<"order" | "settings">("order");
   const [mode, setMode] = useState<AppMode>("idle");
   const [micPermissionGranted, setMicPermissionGranted] = useState(false);
   const [micError, setMicError] = useState<string | null>(null);
@@ -219,6 +220,7 @@ export default function App() {
           if (orderRef.current?.items.length) {
             soundSubmit();
             markVoiceOrderSubmitted();
+            setPanelScreen("order");
             setPanelOpen(true);
           }
           break;
@@ -323,9 +325,20 @@ export default function App() {
     if (kind) applyVoiceTermination(kind);
   }, [partialTranscript, mode, applyVoiceTermination]);
 
+  const openPanel = useCallback((screen: "order" | "settings") => {
+    setPanelScreen(screen);
+    setPanelOpen(true);
+  }, []);
+
   // ── Rail tap / initial activation ─────────────────────────────
   async function handleRailTap() {
     debugAppLog("[App] rail tap", { mode, micGranted: micPermissionGranted, agentState });
+    if (!sqAuthToken) {
+      // Not signed in — voice sessions can't start. Send the user to the
+      // sign-in sheet instead of surfacing a connection error.
+      openPanel("settings");
+      return;
+    }
     if (mode === "idle" || mode === "shutdown") {
       if (!micPermissionGranted) {
         if (!navigator.mediaDevices?.getUserMedia) {
@@ -383,7 +396,7 @@ export default function App() {
     <div className="app">
       {/* ── Top bar ──────────────────────────────────────────── */}
       <div className="top-bar">
-        <button className="hamburger" onClick={() => setPanelOpen(true)} aria-label="Open menu">
+        <button className="hamburger" onClick={() => openPanel(sqAuthToken ? "order" : "settings")} aria-label="Open menu">
           <Menu size={18} />
         </button>
         <div className="brand-row">
@@ -421,11 +434,11 @@ export default function App() {
             </g>
           </svg>
           <span className="brand-text" style={{ color: "var(--logo-text)" }}>
-            Voyce<span style={{ fontWeight: 500, opacity: 0.92 }}>Lab</span>
+            Voycelab
           </span>
         </div>
         {orderCount > 0 && assistantKind === "venue" ? (
-          <button className="order-badge" onClick={() => setPanelOpen(true)} aria-label={`${orderCount} items in order`}>
+          <button className="order-badge" onClick={() => openPanel("order")} aria-label={`${orderCount} items in order`}>
             <span className="order-badge-num">{orderCount}</span>
           </button>
         ) : <div style={{ width: 22 }} />}
@@ -449,23 +462,33 @@ export default function App() {
             <div className="welcome">
               <span className="welcome-eyebrow">VoyceLab · Live</span>
               <h1 className="welcome-title">
-                {assistantKind === "general"
-                  ? <>Your venue assistant <em>is ready</em>.</>
-                  : <>Your venue, <em>on voice</em>.</>}
+                {!sqAuthToken
+                  ? <>Your venue, <em>on voice</em>.</>
+                  : assistantKind === "general"
+                    ? <>Your venue assistant <em>is ready</em>.</>
+                    : <>Your venue, <em>on voice</em>.</>}
               </h1>
               <p className="welcome-sub">
-                {assistantKind === "general"
-                  ? "Tap the orb and speak. I can handle email, look things up, and answer questions. Connect Square in settings to unlock POS commands."
-                  : "Tap the orb and speak — I’ll handle orders, inventory and reports across your connected systems."}
+                {!sqAuthToken
+                  ? "Sign in to connect your venue and start talking — orders, inventory and reports, hands-free."
+                  : assistantKind === "general"
+                    ? "Tap the orb and speak. I can handle email, look things up, and answer questions. Connect Square in settings to unlock POS commands."
+                    : "Tap the orb and speak — I’ll handle orders, inventory and reports across your connected systems."}
               </p>
-              <div className="suggestion-row">
-                {(assistantKind === "general"
-                  ? ["Check my inbox", "What's in the knowledge base?", "Search for suppliers"]
-                  : ["What sold today?", "Open orders", "Low stock report"]
-                ).map((s) => (
-                  <button key={s} className="suggestion-chip" onClick={handleRailTap}>{s}</button>
-                ))}
-              </div>
+              {!sqAuthToken ? (
+                <div className="suggestion-row">
+                  <button className="welcome-signin" onClick={() => openPanel("settings")}>Sign in to get started</button>
+                </div>
+              ) : (
+                <div className="suggestion-row">
+                  {(assistantKind === "general"
+                    ? ["Check my inbox", "What's in the knowledge base?", "Search for suppliers"]
+                    : ["What sold today?", "Open orders", "Low stock report"]
+                  ).map((s) => (
+                    <button key={s} className="suggestion-chip" onClick={handleRailTap}>{s}</button>
+                  ))}
+                </div>
+              )}
             </div>
           )}
           {msgs.map((m, i) => (
@@ -582,6 +605,7 @@ export default function App() {
       {/* Panel */}
       <OrderPanel
         open={panelOpen}
+        initialScreen={panelScreen}
         onClose={() => setPanelOpen(false)}
         pendingConfirmation={pendingConfirmation}
         onConfirm={confirmPending}
