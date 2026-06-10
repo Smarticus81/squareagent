@@ -14,7 +14,8 @@
     "./order-core": "./src/order-context-core.ts"
   },
   "scripts": {
-    "typecheck": "tsc --build"
+    "typecheck": "tsc --build",
+    "test": "vitest run"
   },
   "peerDependencies": {
     "react": ">=18",
@@ -23,6 +24,7 @@
   "devDependencies": {
     "@types/node": "catalog:",
     "@types/react": "catalog:",
-    "@types/react-dom": "catalog:"
+    "@types/react-dom": "catalog:",
+    "vitest": "^2.1.9"
   }
 }
