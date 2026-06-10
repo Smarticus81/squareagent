@@ -722,6 +722,7 @@ export function attachWebSocketRelay(server: Server): void {
       const sessionConfig = {
         type: "session.update",
         session: {
+          type: "realtime",
           instructions: buildInstructions(ctx, catalog, order, assistantKind),
           tools: relayTools,
           tool_choice: "auto",
