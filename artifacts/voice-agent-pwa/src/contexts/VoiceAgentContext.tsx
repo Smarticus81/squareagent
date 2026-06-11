@@ -79,6 +79,7 @@ function clearStoredLaunchSession() {
   localStorage.removeItem("voycelab_token");
   localStorage.removeItem("voycelab_venue_id");
   localStorage.removeItem("voycelab_wake_phrase");
+  localStorage.removeItem("voycelab_wake_mode");
   localStorage.removeItem("voycelab_agent_profile");
   localStorage.removeItem("voycelab_agent_profile_id");
   localStorage.removeItem("square_access_token");

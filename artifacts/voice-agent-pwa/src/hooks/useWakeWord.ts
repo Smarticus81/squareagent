@@ -51,7 +51,7 @@ export function useWakeWord({
   wakeWords = WAKE_WORDS,
   stopPhrases = STOP_PHRASES,
   shutdownPhrases = SHUTDOWN_PHRASES,
-  confidenceThreshold = 0.4,
+  confidenceThreshold = 0.5,
   onWakeWordDetected,
   onStopDetected,
   onShutdownDetected,
@@ -140,8 +140,10 @@ export function useWakeWord({
         const result = event.results[i];
         const transcripts: string[] = [];
         for (let j = 0; j < result.length; j++) {
-          // Apply confidence threshold
-          if (result[j].confidence >= confidenceThreshold || result[j].confidence === 0) {
+          // Interim results are intentionally accepted immediately so the
+          // wake phrase can fire quickly; final alternatives still honor the
+          // low confidence threshold.
+          if (!result.isFinal || result[j].confidence >= confidenceThreshold || result[j].confidence === 0) {
             transcripts.push(result[j].transcript.toLowerCase().trim());
           }
         }
@@ -209,7 +211,7 @@ export function useWakeWord({
       if (!activeRef.current) return;
       setIsListening(false);
       recRef.current = null;
-      scheduleRetry(250);
+      scheduleRetry(120);
     };
 
     try {
@@ -217,7 +219,7 @@ export function useWakeWord({
     } catch (e) {
       console.warn("[WakeWord] start() threw:", e);
       recRef.current = null;
-      scheduleRetry(500);
+      scheduleRetry(250);
     }
   }, [confidenceThreshold, stop, cleanupRec, scheduleRetry]);
 

@@ -495,6 +495,7 @@ router.get("/:id/credentials", requireAuth as any, async (req: Request, res: Res
         displayName: agentProfilesTable.displayName,
         wakePhrase: agentProfilesTable.wakePhrase,
         wakeMode: agentProfilesTable.wakeMode,
+        noiseMode: agentProfilesTable.noiseMode,
         voicePipelineProvider: agentProfilesTable.voicePipelineProvider,
         voicePipelineConfig: agentProfilesTable.voicePipelineConfig,
       })
