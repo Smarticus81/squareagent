@@ -261,11 +261,43 @@ export default function App() {
 
   const { isListening: wakeWordListening, startWakeWord, stopWakeWord } = useWakeWord({
     wakeWords,
-    confidenceThreshold: 0.4,
+    confidenceThreshold: 0.5,
     onWakeWordDetected,
     onStopDetected,
     onShutdownDetected,
   });
+
+  useEffect(() => {
+    let cancelled = false;
+    const permissions = navigator.permissions;
+    if (!permissions?.query) return;
+    permissions
+      .query({ name: "microphone" as PermissionName })
+      .then((status) => {
+        const sync = () => {
+          if (!cancelled) setMicPermissionGranted(status.state === "granted");
+        };
+        sync();
+        status.onchange = sync;
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  // If the app opens with a valid session and ambient wake is available, move
+  // straight into wake mode. Browsers that need mic permission will prompt or
+  // fall back to the existing tap flow.
+  useEffect(() => {
+    if (mode === "idle" && sqAuthToken && wakeWordAvailable) {
+      setMode("wake_word");
+    }
+  }, [mode, sqAuthToken, wakeWordAvailable]);
+
+  useEffect(() => {
+    if (mode === "wake_word" && !wakeWordAvailable) {
+      setMode("idle");
+    }
+  }, [mode, wakeWordAvailable]);
 
   // When agent disconnects naturally or via response, return to wake listening (unless fully shut down)
   useEffect(() => {

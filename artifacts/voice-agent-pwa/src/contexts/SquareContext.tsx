@@ -58,6 +58,7 @@ interface SquareContextType {
   agentProfileId: string | null;
   wakePhrase: string;
   wakeMode: "ambient" | "tap";
+  updateWakeSettings: (wakePhrase: string, wakeMode: "ambient" | "tap") => Promise<string | null>;
   /**
    * 'venue' = POS-attached assistant (Square credentials loaded, order/menu UI active).
    * 'general' = no POS connection (web/email/knowledge tools only).
@@ -88,9 +89,18 @@ const LOC_KEY = "square_location_id";
 const AUTH_TOKEN_KEY = "voycelab_token";
 const VENUE_ID_KEY = "voycelab_venue_id";
 const WAKE_PHRASE_KEY = "voycelab_wake_phrase";
+const WAKE_MODE_KEY = "voycelab_wake_mode";
 const AGENT_PROFILE_KEY = "voycelab_agent_profile";
 const AGENT_PROFILE_ID_KEY = "voycelab_agent_profile_id";
 const DEFAULT_WAKE_PHRASE = "Hey Voyce";
+
+function normalizeWakePhrase(value: unknown): string {
+  return typeof value === "string" && value.trim() ? value.trim() : DEFAULT_WAKE_PHRASE;
+}
+
+function normalizeWakeMode(value: unknown): "ambient" | "tap" {
+  return value === "tap" ? "tap" : "ambient";
+}
 
 /** Redeem a one-time exchange code to get token + venueId. */
 async function redeemExchangeCode(code: string): Promise<{ venueId?: string; authToken: string; agentProfileId?: string } | null> {
@@ -144,22 +154,67 @@ export function SquareProvider({ children }: { children: ReactNode }) {
 
   function applyAgentLaunchInfo(data: any) {
     const profile = data.agentProfile as AgentProfileLaunchInfo | null | undefined;
+    const storedWakePhrase = localStorage.getItem(WAKE_PHRASE_KEY);
+    const storedWakeMode = localStorage.getItem(WAKE_MODE_KEY);
     const nextWakePhrase =
       typeof profile?.wakePhrase === "string" && profile.wakePhrase.trim()
         ? profile.wakePhrase.trim()
         : typeof data.wakePhrase === "string" && data.wakePhrase.trim()
           ? data.wakePhrase.trim()
-          : DEFAULT_WAKE_PHRASE;
+          : storedWakePhrase?.trim()
+            ? storedWakePhrase.trim()
+            : DEFAULT_WAKE_PHRASE;
+    const nextWakeMode = normalizeWakeMode(profile?.wakeMode ?? data.wakeMode ?? storedWakeMode);
 
     setAgentProfile(profile ?? null);
     setAgentProfileId(profile?.id ?? null);
     setWakePhrase(nextWakePhrase);
-    setWakeMode(profile?.wakeMode === "tap" ? "tap" : "ambient");
+    setWakeMode(nextWakeMode);
     localStorage.setItem(WAKE_PHRASE_KEY, nextWakePhrase);
+    localStorage.setItem(WAKE_MODE_KEY, nextWakeMode);
     if (profile?.id) localStorage.setItem(AGENT_PROFILE_ID_KEY, profile.id);
     else localStorage.removeItem(AGENT_PROFILE_ID_KEY);
     if (profile) localStorage.setItem(AGENT_PROFILE_KEY, JSON.stringify(profile));
     else localStorage.removeItem(AGENT_PROFILE_KEY);
+  }
+
+  async function updateWakeSettings(nextPhrase: string, nextMode: "ambient" | "tap"): Promise<string | null> {
+    const normalizedPhrase = normalizeWakePhrase(nextPhrase);
+    const normalizedMode = normalizeWakeMode(nextMode);
+    const previousProfile = agentProfile;
+    const nextProfile = previousProfile
+      ? { ...previousProfile, wakePhrase: normalizedPhrase, wakeMode: normalizedMode }
+      : null;
+
+    setWakePhrase(normalizedPhrase);
+    setWakeMode(normalizedMode);
+    if (nextProfile) setAgentProfile(nextProfile);
+    localStorage.setItem(WAKE_PHRASE_KEY, normalizedPhrase);
+    localStorage.setItem(WAKE_MODE_KEY, normalizedMode);
+    if (nextProfile) localStorage.setItem(AGENT_PROFILE_KEY, JSON.stringify(nextProfile));
+
+    const profileId = nextProfile?.id ?? agentProfileId ?? localStorage.getItem(AGENT_PROFILE_ID_KEY);
+    const tok = authToken || localStorage.getItem(AUTH_TOKEN_KEY);
+    if (!profileId || !tok) return null;
+
+    try {
+      const res = await fetch(`${getBaseUrl()}api/v1/agent-profiles/${encodeURIComponent(profileId)}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${tok}`,
+        },
+        body: JSON.stringify({ wakePhrase: normalizedPhrase, wakeMode: normalizedMode }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        return (data as any).error?.message || (data as any).error || "Saved on this device, but could not update the assistant.";
+      }
+      applyAgentLaunchInfo({ agentProfile: (data as any).profile ?? data });
+      return null;
+    } catch (e: any) {
+      return e?.message || "Saved on this device, but could not update the assistant.";
+    }
   }
 
   async function loadAgentProfile(tok: string, profileId: string): Promise<boolean> {
@@ -181,6 +236,7 @@ export function SquareProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem(AUTH_TOKEN_KEY);
     localStorage.removeItem(VENUE_ID_KEY);
     localStorage.removeItem(WAKE_PHRASE_KEY);
+    localStorage.removeItem(WAKE_MODE_KEY);
     localStorage.removeItem(AGENT_PROFILE_KEY);
     localStorage.removeItem(AGENT_PROFILE_ID_KEY);
     clearCredentials();
@@ -199,6 +255,7 @@ export function SquareProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem(AUTH_TOKEN_KEY);
     localStorage.removeItem(VENUE_ID_KEY);
     localStorage.removeItem(WAKE_PHRASE_KEY);
+    localStorage.removeItem(WAKE_MODE_KEY);
     localStorage.removeItem(AGENT_PROFILE_KEY);
     localStorage.removeItem(AGENT_PROFILE_ID_KEY);
     localStorage.removeItem(LOC_KEY);
@@ -446,8 +503,10 @@ export function SquareProvider({ children }: { children: ReactNode }) {
         if (locId) setLocationId(locId);
         localStorage.removeItem(TOKEN_KEY);
         const storedWakePhrase = localStorage.getItem(WAKE_PHRASE_KEY);
+        const storedWakeMode = localStorage.getItem(WAKE_MODE_KEY);
         const storedAgentProfileId = localStorage.getItem(AGENT_PROFILE_ID_KEY);
         if (storedWakePhrase) setWakePhrase(storedWakePhrase);
+        if (storedWakeMode) setWakeMode(normalizeWakeMode(storedWakeMode));
         if (storedAgentProfileId) setAgentProfileId(storedAgentProfileId);
         const storedProfile = localStorage.getItem(AGENT_PROFILE_KEY);
         if (storedProfile) {
@@ -455,7 +514,7 @@ export function SquareProvider({ children }: { children: ReactNode }) {
             const parsedProfile = JSON.parse(storedProfile) as AgentProfileLaunchInfo;
             setAgentProfile(parsedProfile);
             setWakePhrase(parsedProfile.wakePhrase?.trim() || storedWakePhrase || DEFAULT_WAKE_PHRASE);
-            setWakeMode(parsedProfile.wakeMode === "tap" ? "tap" : "ambient");
+            setWakeMode(normalizeWakeMode(parsedProfile.wakeMode ?? storedWakeMode));
           } catch {
             localStorage.removeItem(AGENT_PROFILE_KEY);
           }
@@ -577,6 +636,7 @@ export function SquareProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem(AUTH_TOKEN_KEY);
     localStorage.removeItem(VENUE_ID_KEY);
     localStorage.removeItem(WAKE_PHRASE_KEY);
+    localStorage.removeItem(WAKE_MODE_KEY);
     localStorage.removeItem(AGENT_PROFILE_KEY);
     localStorage.removeItem(AGENT_PROFILE_ID_KEY);
     setAuthToken(null);
@@ -782,6 +842,7 @@ export function SquareProvider({ children }: { children: ReactNode }) {
       locationId, venueId, authToken, catalogItems, isConfigured,
       isLoadingCatalog, catalogError, connectionError, isConnectingSquare, isReconnecting,
       userInfo, venues, pendingSquareLocations, agentProfile, agentProfileId, wakePhrase, wakeMode, assistantKind,
+      updateWakeSettings,
       login, signup, logout, connectSquare, selectSquareLocation, selectVenue,
       clearCredentials, refreshCredentials,
       loadCatalog, searchCatalog,

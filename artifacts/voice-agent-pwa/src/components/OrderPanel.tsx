@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
-import { X, MoreVertical, Trash2, Loader, Link, ChevronRight, Sun, Moon, RefreshCw, LogIn, User, MapPin, LogOut, Play, ClipboardCheck, Package, Clock, Mic2, Settings2, Mail, BookOpen, Database, ExternalLink } from "lucide-react";
+import { X, MoreVertical, Trash2, Loader, Link, ChevronRight, Sun, Moon, RefreshCw, LogIn, User, MapPin, LogOut, Play, ClipboardCheck, Package, Clock, Mic2, Settings2, Mail, BookOpen, Database, ExternalLink, Check } from "lucide-react";
 import { useOrder, type OrderLineItem } from "@/contexts/OrderContext";
 import { useSquare } from "@/contexts/SquareContext";
 import { OrderCard } from "./OrderCard";
@@ -432,7 +432,7 @@ function SettingsSheet({ onBack, screenWakeStatus }: { onBack: () => void; scree
     isConfigured, clearCredentials, connectionError, isReconnecting, refreshCredentials,
     isConnectingSquare, userInfo, venues, pendingSquareLocations,
     login, signup, logout, connectSquare, selectSquareLocation, selectVenue, loadCatalog,
-    agentProfile, assistantKind, wakePhrase, wakeMode,
+    agentProfile, assistantKind, wakePhrase, wakeMode, updateWakeSettings,
   } = useSquare();
 
   const [prefs, setPrefs] = useState(getVoicePrefs);
@@ -445,8 +445,18 @@ function SettingsSheet({ onBack, screenWakeStatus }: { onBack: () => void; scree
   const [authError, setAuthError] = useState<string | null>(null);
   const [venueLoading, setVenueLoading] = useState(false);
   const [venueError, setVenueError] = useState<string | null>(null);
+  const [localWakePhrase, setLocalWakePhrase] = useState(wakePhrase || "Hey Voyce");
+  const [localWakeMode, setLocalWakeMode] = useState<"ambient" | "tap">(wakeMode);
+  const [activationSaving, setActivationSaving] = useState(false);
+  const [activationError, setActivationError] = useState<string | null>(null);
+  const [activationSaved, setActivationSaved] = useState(false);
 
   const isLoggedIn = !!userInfo;
+
+  useEffect(() => {
+    setLocalWakePhrase(wakePhrase || "Hey Voyce");
+    setLocalWakeMode(wakeMode);
+  }, [wakePhrase, wakeMode]);
 
   // When the user connects Square in the dashboard tab and returns here,
   // pick up the new credentials without making them hunt for a button.
@@ -515,6 +525,25 @@ function SettingsSheet({ onBack, screenWakeStatus }: { onBack: () => void; scree
     }
   }
 
+  async function handleSaveActivation() {
+    const trimmed = localWakePhrase.trim();
+    if (!trimmed) {
+      setActivationError("Wake phrase is required.");
+      setActivationSaved(false);
+      return;
+    }
+    setActivationSaving(true);
+    setActivationError(null);
+    setActivationSaved(false);
+    try {
+      const err = await updateWakeSettings(trimmed, pushToTalkRequired ? "tap" : localWakeMode);
+      if (err) setActivationError(err);
+      else setActivationSaved(true);
+    } finally {
+      setActivationSaving(false);
+    }
+  }
+
   const selectedProvider = agentProfile?.voicePipelineProvider;
   const isGeminiVoice = selectedProvider?.startsWith("google_gemini_") ?? false;
   const voiceConfig = agentProfile?.voicePipelineConfig ?? {};
@@ -526,6 +555,7 @@ function SettingsSheet({ onBack, screenWakeStatus }: { onBack: () => void; scree
   const browserWakeSupported = isWakeWordSupported();
   const screenWakeSupported = isScreenWakeLockSupported();
   const pushToTalkRequired = agentProfile?.noiseMode === "push_to_talk";
+  const effectiveLocalWakeMode = pushToTalkRequired ? "tap" : localWakeMode;
   const ambientWakeConfigured = wakeMode !== "tap" && !pushToTalkRequired;
   const wakeRuntimeLabel = !ambientWakeConfigured
     ? "Tap to speak"
@@ -537,6 +567,12 @@ function SettingsSheet({ onBack, screenWakeStatus }: { onBack: () => void; scree
     : browserWakeSupported
       ? "Wake phrase"
       : "Wake phrase unavailable";
+
+  useEffect(() => {
+    if (pushToTalkRequired && localWakeMode !== "tap") {
+      setLocalWakeMode("tap");
+    }
+  }, [localWakeMode, pushToTalkRequired]);
 
   return (
     <div className="settings-sheet">
@@ -735,16 +771,47 @@ function SettingsSheet({ onBack, screenWakeStatus }: { onBack: () => void; scree
               <ChevronRight size={14} />
             </summary>
             <div className="settings-group-body">
+              <label className="settings-mini-label" htmlFor="wake-phrase-input">Wake phrase</label>
+              <input
+                id="wake-phrase-input"
+                className="auth-input"
+                value={localWakePhrase}
+                onChange={(e) => { setLocalWakePhrase(e.target.value); setActivationSaved(false); }}
+                placeholder="Hey Voyce"
+                maxLength={60}
+              />
+              <div className="speed-row" style={{ marginTop: 10 }}>
+                <button
+                  type="button"
+                  className={`speed-chip${effectiveLocalWakeMode === "ambient" ? " active" : ""}`}
+                  disabled={pushToTalkRequired}
+                  onClick={() => { setLocalWakeMode("ambient"); setActivationSaved(false); }}
+                >
+                  Wake phrase
+                </button>
+                <button
+                  type="button"
+                  className={`speed-chip${effectiveLocalWakeMode === "tap" ? " active" : ""}`}
+                  onClick={() => { setLocalWakeMode("tap"); setActivationSaved(false); }}
+                >
+                  Tap only
+                </button>
+              </div>
+              <button
+                className="settings-primary-action"
+                type="button"
+                disabled={activationSaving || (localWakePhrase.trim() === wakePhrase && effectiveLocalWakeMode === wakeMode)}
+                onClick={handleSaveActivation}
+              >
+                {activationSaving ? <Loader size={13} className="spin" /> : <Check size={13} />}
+                {activationSaving ? "Saving..." : "Save activation"}
+              </button>
+              {activationError && <div className="error-text" style={{ fontSize: 12 }}>{activationError}</div>}
+              {activationSaved && <p className="settings-muted">Saved. The assistant will listen for this phrase on this device.</p>}
               <div className="settings-mini-row">
-                <span>Mode</span>
+                <span>Current mode</span>
                 <strong>{wakeDetailLabel}</strong>
               </div>
-              {ambientWakeConfigured && (
-                <div className="settings-mini-row">
-                  <span>Phrase</span>
-                  <strong>{wakePhrase || "Hey assistant"}</strong>
-                </div>
-              )}
               <div className="settings-mini-row">
                 <span>Room behavior</span>
                 <strong>{noiseModeLabel(agentProfile?.noiseMode)}</strong>
