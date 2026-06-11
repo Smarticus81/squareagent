@@ -7,7 +7,7 @@ import { OrderPanel } from "@/components/OrderPanel";
 import { VoiceOrb } from "@/components/VoiceOrb";
 import { useWakeWord, isWakeWordSupported } from "@/hooks/useWakeWord";
 import { useWakeLock } from "@/hooks/useWakeLock";
-import { soundWake, soundChime, soundItemAdd, soundSubmit, soundError, soundSleep } from "@/lib/sounds";
+import { soundWake, soundItemAdd, soundSubmit, soundError, soundSleep } from "@/lib/sounds";
 import { matchTermination } from "@/lib/voice-termination";
 import { commandLabel } from "@/lib/command-labels";
 
@@ -101,7 +101,7 @@ function RailWaveform({ active }: { active: boolean }) {
 export default function App() {
   const {
     agentState, isConnected, conversation, partialTranscript, error, remoteStream,
-    pendingConfirmation, connect, disconnect, setToolHandler, interrupt,
+    pendingConfirmation, connect, prewarm, activate, releaseStandby, disconnect, setToolHandler, interrupt,
     setCatalog, setCurrentOrder, setAuthParams,
     confirmPending, denyPending,
   } = useVoiceAgent();
@@ -233,12 +233,13 @@ export default function App() {
 
   // ── Wake word handlers ──────────────────────────────────────────
   const onWakeWordDetected = useCallback(() => {
-    debugAppLog("[App] Wake word detected - entering command mode");
+    debugAppLog("[App] Wake word detected - activating session");
+    // Instant local cue; the assistant's spoken greeting follows from the
+    // pre-warmed session, so skip the old delayed chime to avoid overlap.
     soundWake();
-    setTimeout(() => soundChime(), 280);
     setMode("command");
-    connect();
-  }, [connect]);
+    void activate({ greet: true });
+  }, [activate]);
 
   const onStopDetected = useCallback(() => {
     debugAppLog("[App] Terminating phrase - back to wake word mode");
@@ -282,15 +283,27 @@ export default function App() {
     if (agentState === "error") soundError();
   }, [agentState]);
 
-  // Start/stop wake word based on mode
+  // Start/stop wake word based on mode. The short delay lets the previous
+  // session's mic tracks release; the hook's own retry loop covers stragglers.
   useEffect(() => {
     if (mode === "wake_word" && wakeWordAvailable) {
-      const timer = setTimeout(() => startWakeWord(), 600);
+      const timer = setTimeout(() => startWakeWord(), 250);
       return () => clearTimeout(timer);
     } else {
       stopWakeWord();
     }
   }, [mode, wakeWordAvailable, startWakeWord, stopWakeWord]);
+
+  // Keep a pre-connected standby voice session while waiting for the wake word
+  // so activation (and the spoken greeting) starts in milliseconds, not after
+  // a full token-mint + WebRTC handshake. Dropped when leaving wake mode.
+  useEffect(() => {
+    if (mode === "wake_word") {
+      const timer = setTimeout(() => { void prewarm(); }, 150);
+      return () => clearTimeout(timer);
+    }
+    if (mode === "idle" || mode === "shutdown") releaseStandby();
+  }, [mode, prewarm, releaseStandby]);
 
   const applyVoiceTermination = useCallback(
     (kind: "soft" | "hard") => {
@@ -374,7 +387,9 @@ export default function App() {
       stopWakeWord();
       soundWake();
       setMode("command");
-      connect();
+      // Tap means the user is about to speak — consume the warm standby
+      // session without the spoken greeting so the mic opens instantly.
+      void activate({ greet: false });
     } else if (mode === "command") {
       if (agentState === "speaking") {
         interrupt();

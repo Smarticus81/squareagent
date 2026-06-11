@@ -47,6 +47,12 @@ interface VoiceAgentContextType {
   remoteStream: MediaStream | null;
   pendingConfirmation: PendingConfirmation | null;
   connect: () => Promise<void>;
+  /** Pre-connect a mic-gated, unmetered standby session (wake-word mode). */
+  prewarm: () => Promise<void>;
+  /** Promote the standby session to live (optionally with a spoken greeting), or cold-connect. */
+  activate: (opts?: { greet?: boolean }) => Promise<void>;
+  /** Tear down an unused standby session (leaving wake-word mode). */
+  releaseStandby: () => void;
   disconnect: () => Promise<void>;
   clearConversation: () => void;
   setToolHandler: (h: CommandHandler) => void;
@@ -82,6 +88,16 @@ function clearStoredLaunchSession() {
 // A short tail lets the speaker's acoustic decay die out before the mic
 // re-opens, so the agent's final syllable can't re-trigger the VAD.
 const MIC_REOPEN_TAIL_MS = 250;
+// Hot-standby: while the app sits in wake-word mode we keep a pre-connected,
+// mic-gated Realtime session warm so wake-word activation (and the spoken
+// greeting) starts in milliseconds instead of paying the token-mint + WebRTC
+// handshake. Recycle it periodically so it never hits OpenAI's session age
+// limit and its instructions stay fresh. No voice minutes are metered while
+// in standby — heartbeats only start at activation.
+const STANDBY_MAX_AGE_MS = 8 * 60_000;
+// Fallback only — the server returns the authoritative greeting instruction.
+const DEFAULT_GREETING_INSTRUCTIONS =
+  "The user just summoned you with your wake phrase. Immediately say one short, warm greeting (under eight words), then stop speaking and wait for their request.";
 const GEMINI_PROVIDER_PREFIX = "google_gemini_";
 const OPENAI_SERVER_WS_PROVIDER = "openai_realtime_server_ws";
 const GEMINI_INPUT_SAMPLE_RATE = 16000;
@@ -165,8 +181,24 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
   const sessionIdRef = useRef("");
   const sessionStartTsRef = useRef<number>(0);
   const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Hot-standby session state (pre-connected while in wake-word mode).
+  const standbyRef = useRef(false);            // connection is warm but mic-gated + unmetered
+  const wantStandbyRef = useRef(false);        // app wants a standby kept warm (wake-word mode)
+  const prewarmingRef = useRef(false);         // prewarm handshake in flight
+  const activatingStandbyRef = useRef(false);  // real mic attachment in flight
+  const standbySessionCreatedRef = useRef(false);
+  const pendingActivationRef = useRef<{ greet: boolean } | null>(null);
+  const greetingRef = useRef("");              // server-built greeting instruction
+  const standbyExpireTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const standbyRecycleRef = useRef<() => void>(() => {});
+  const closeTransportRef = useRef<() => void>(() => {});
+  const connectInternalRef = useRef<(standby: boolean) => Promise<void>>(async () => {});
   // Local mic track + duplex state for half-duplex gating during playback.
   const micTrackRef = useRef<MediaStreamTrack | null>(null);
+  const standbyAudioCtxRef = useRef<AudioContext | null>(null);
+  const standbyOscillatorRef = useRef<OscillatorNode | null>(null);
+  const standbyTrackRef = useRef<MediaStreamTrack | null>(null);
+  const realtimeAudioSenderRef = useRef<RTCRtpSender | null>(null);
   const fullDuplexRef = useRef(false);
   const micReopenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Server-relayed native audio providers (Gemini Live) use WebSocket PCM
@@ -258,6 +290,48 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
     cancelMicReopen();
     setMicEnabled(true);
   }, [cancelMicReopen, setMicEnabled]);
+
+  const stopStandbyAudio = useCallback(() => {
+    try { standbyOscillatorRef.current?.stop(); } catch {}
+    try { standbyOscillatorRef.current?.disconnect(); } catch {}
+    try { standbyTrackRef.current?.stop(); } catch {}
+    try { void standbyAudioCtxRef.current?.close(); } catch {}
+    standbyOscillatorRef.current = null;
+    standbyTrackRef.current = null;
+    standbyAudioCtxRef.current = null;
+  }, []);
+
+  const createStandbyAudioTrack = useCallback(() => {
+    stopStandbyAudio();
+    const ctx = new AudioContext();
+    const destination = ctx.createMediaStreamDestination();
+    const gain = ctx.createGain();
+    const oscillator = ctx.createOscillator();
+    gain.gain.value = 0;
+    oscillator.connect(gain);
+    gain.connect(destination);
+    oscillator.start();
+    standbyAudioCtxRef.current = ctx;
+    standbyOscillatorRef.current = oscillator;
+    standbyTrackRef.current = destination.stream.getAudioTracks()[0] ?? null;
+    return standbyTrackRef.current;
+  }, [stopStandbyAudio]);
+
+  const openLiveMic = useCallback(async () => {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
+    });
+    const track = stream.getAudioTracks()[0];
+    if (!track) {
+      stream.getTracks().forEach((t) => t.stop());
+      throw new Error("No microphone audio track available");
+    }
+    return { stream, track };
+  }, []);
 
   // ── Send context update to OpenAI via data channel ──────────────────────────
   // Server is authoritative for persona/instructions. Client only pushes
@@ -400,6 +474,87 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // ── Standby / activation helpers ────────────────────────────────────────────
+
+  const startHeartbeat = useCallback(() => {
+    if (heartbeatIntervalRef.current) clearInterval(heartbeatIntervalRef.current);
+    heartbeatIntervalRef.current = setInterval(() => {
+      if (!sessionIdRef.current || !sessionStartTsRef.current) return;
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (authTokenRef.current) headers["Authorization"] = `Bearer ${authTokenRef.current}`;
+      fetch(`${getBaseUrl()}api/realtime/session/${sessionIdRef.current}/heartbeat`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          elapsedMs: Date.now() - sessionStartTsRef.current,
+          venueId: venueIdRef.current || undefined,
+          provider: voicePipelineProviderRef.current || "openai_realtime_webrtc",
+          agentProfileId: agentProfileIdRef.current || undefined,
+        }),
+      }).catch(() => {});
+    }, 60_000);
+  }, []);
+
+  /** Fire the spoken wake greeting. Instruction text is server-built. */
+  const sendGreeting = useCallback(() => {
+    const dc = dcRef.current;
+    if (dc?.readyState !== "open") return;
+    dc.send(JSON.stringify({
+      type: "response.create",
+      response: { instructions: greetingRef.current || DEFAULT_GREETING_INSTRUCTIONS },
+    }));
+  }, []);
+
+  const clearStandbyExpire = useCallback(() => {
+    if (standbyExpireTimerRef.current) {
+      clearTimeout(standbyExpireTimerRef.current);
+      standbyExpireTimerRef.current = null;
+    }
+  }, []);
+
+  const scheduleStandbyExpire = useCallback(() => {
+    clearStandbyExpire();
+    standbyExpireTimerRef.current = setTimeout(() => {
+      standbyExpireTimerRef.current = null;
+      standbyRecycleRef.current();
+    }, STANDBY_MAX_AGE_MS);
+  }, [clearStandbyExpire]);
+
+  /** Promote the warm standby connection to a live, metered session. */
+  const finishActivation = useCallback(async (greet: boolean) => {
+    if (activatingStandbyRef.current) return;
+    activatingStandbyRef.current = true;
+    try {
+      debugVoiceLog("[WebRTC] Standby session activated");
+      setError(null);
+
+      const { track } = await openLiveMic();
+      const sender = realtimeAudioSenderRef.current;
+      if (!sender) throw new Error("Standby audio sender is unavailable");
+      await sender.replaceTrack(track);
+      stopStandbyAudio();
+      micTrackRef.current = track;
+
+      standbyRef.current = false;
+      pendingActivationRef.current = null;
+      clearStandbyExpire();
+      sessionStartTsRef.current = Date.now();
+      startHeartbeat();
+      setMicEnabled(true);
+      agentStateRef.current = "listening";
+      setAgentState("listening");
+      if (greet) sendGreeting();
+    } catch (e: any) {
+      console.warn("[WebRTC] Standby activation failed:", e?.message ?? e);
+      pendingActivationRef.current = null;
+      standbyRef.current = false;
+      closeTransportRef.current();
+      await connectInternalRef.current(false);
+    } finally {
+      activatingStandbyRef.current = false;
+    }
+  }, [clearStandbyExpire, openLiveMic, sendGreeting, setMicEnabled, startHeartbeat, stopStandbyAudio]);
+
   // ── Data channel event handler ──────────────────────────────────────────────
 
   const scheduleWsPlaybackDone = useCallback(() => {
@@ -445,11 +600,22 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
         break;
       }
 
-      case "session.created":
-        setAs("listening");
+      case "session.created": {
         if (!sessionIdRef.current) sessionIdRef.current = String((event.session as any)?.id ?? Date.now());
         sendContextUpdate();
+        if (standbyRef.current) {
+          standbySessionCreatedRef.current = true;
+          // Warm standby — stay silent and unmetered. If the wake word fired
+          // mid-handshake, finish the activation now.
+          if (pendingActivationRef.current) void finishActivation(pendingActivationRef.current.greet);
+          break;
+        }
+        setAs("listening");
+        const pending = pendingActivationRef.current;
+        pendingActivationRef.current = null;
+        if (pending?.greet) sendGreeting();
         break;
+      }
 
       case "session.updated":
         // Ack — no action needed
@@ -527,6 +693,12 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
 
       case "error": {
         const err = (event.error as Record<string, unknown>)?.message ?? event.message ?? "Realtime error";
+        if (standbyRef.current) {
+          // Idle standby errors never surface to the user; activation falls
+          // back to a cold connect if the session is actually dead.
+          console.warn("[WebRTC] Standby session error:", err);
+          break;
+        }
         console.error("[WebRTC]", err);
         // Don't leave the user muted if playback errored out mid-response.
         reopenMicNow();
@@ -535,7 +707,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
         break;
       }
     }
-  }, [addMessage, sendContextUpdate, executeToolViaServer, gateMicForPlayback, reopenMic, reopenMicNow, scheduleWsPlaybackDone]);
+  }, [addMessage, sendContextUpdate, executeToolViaServer, gateMicForPlayback, reopenMic, reopenMicNow, scheduleWsPlaybackDone, finishActivation, sendGreeting]);
 
   const cleanupWsAudio = useCallback(() => {
     if (wsPlaybackDoneTimerRef.current) {
@@ -556,6 +728,42 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
     wsPlaybackTimeRef.current = 0;
     setRemoteStream(null);
   }, []);
+
+  /** Tear down all transport resources (WebRTC, WS, audio) without touching usage metering. */
+  const closeTransport = useCallback(() => {
+    if (heartbeatIntervalRef.current) {
+      clearInterval(heartbeatIntervalRef.current);
+      heartbeatIntervalRef.current = null;
+    }
+    cancelMicReopen();
+    isRunning.current = false;
+
+    pcRef.current?.getSenders().forEach((sender) => sender.track?.stop());
+    micTrackRef.current = null;
+    realtimeAudioSenderRef.current = null;
+    standbySessionCreatedRef.current = false;
+    stopStandbyAudio();
+
+    dcRef.current?.close();
+    dcRef.current = null;
+
+    wsRef.current?.close();
+    wsRef.current = null;
+    cleanupWsAudio();
+
+    pcRef.current?.close();
+    pcRef.current = null;
+
+    if (audioElRef.current) {
+      audioElRef.current.srcObject = null;
+      audioElRef.current.remove();
+      audioElRef.current = null;
+    }
+
+    setRemoteStream(null);
+  }, [cancelMicReopen, cleanupWsAudio, stopStandbyAudio]);
+
+  closeTransportRef.current = closeTransport;
 
   const playWsAudioDelta = useCallback((base64Pcm: string) => {
     let ctx = wsOutputCtxRef.current;
@@ -700,22 +908,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
             affectiveDialog: voiceConfig.affectiveDialog,
             thinkingLevel: voiceConfig.thinkingLevel,
           }));
-          if (heartbeatIntervalRef.current) clearInterval(heartbeatIntervalRef.current);
-          heartbeatIntervalRef.current = setInterval(() => {
-            if (!sessionIdRef.current || !sessionStartTsRef.current) return;
-            const headers: Record<string, string> = { "Content-Type": "application/json" };
-            if (authTokenRef.current) headers["Authorization"] = `Bearer ${authTokenRef.current}`;
-            fetch(`${getBaseUrl()}api/realtime/session/${sessionIdRef.current}/heartbeat`, {
-              method: "POST",
-              headers,
-              body: JSON.stringify({
-                elapsedMs: Date.now() - sessionStartTsRef.current,
-                venueId: venueIdRef.current || undefined,
-                provider: voicePipelineProviderRef.current || "openai_realtime_webrtc",
-                agentProfileId: agentProfileIdRef.current || undefined,
-              }),
-            }).catch(() => {});
-          }, 60_000);
+          startHeartbeat();
           resolve();
         } catch (e) {
           reject(e);
@@ -755,21 +948,24 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
       setError("Voice relay connection failed");
       setAgentState("error");
     };
-  }, [cleanupWsAudio, gateMicForPlayback, handleDcEvent, playWsAudioDelta, reopenMicNow, startWsMicStreaming]);
+  }, [cleanupWsAudio, gateMicForPlayback, handleDcEvent, playWsAudioDelta, reopenMicNow, startWsMicStreaming, startHeartbeat]);
 
   // ── Connect via WebRTC ─────────────────────────────────────────────────────
+  // standby=true establishes a warm, mic-gated, unmetered connection (wake-word
+  // mode). standby=false is a normal live connect.
 
-  const connect = useCallback(async () => {
+  const connectInternal = useCallback(async (standby: boolean) => {
     if (isRunning.current) return;
-    setError(null);
+    if (!standby) setError(null);
 
     if (!authTokenRef.current) {
+      if (standby) { standbyRef.current = false; return; }
       setError("Sign in from the VoyceLab dashboard to start your assistant.");
       setAgentState("error");
       return;
     }
 
-    setAgentState("connecting");
+    if (!standby) setAgentState("connecting");
 
     const { voice, speed } = getVoicePrefs();
     const baseUrl = getBaseUrl();
@@ -779,6 +975,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
         voicePipelineProviderRef.current.startsWith(GEMINI_PROVIDER_PREFIX) ||
         voicePipelineProviderRef.current === OPENAI_SERVER_WS_PROVIDER
       ) {
+        if (standby) { standbyRef.current = false; return; }
         await connectRelaySession(voice, speed, baseUrl);
         return;
       }
@@ -819,6 +1016,10 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
       if (sessionData.id) sessionIdRef.current = String(sessionData.id);
       // Server decides duplex behavior per noise mode. Default = half-duplex.
       fullDuplexRef.current = Boolean(sessionData?.voicelab?.bargeIn);
+      // Server-authoritative wake greeting (fired via response.create on activation).
+      greetingRef.current = typeof sessionData.greeting === "string" && sessionData.greeting
+        ? sessionData.greeting
+        : DEFAULT_GREETING_INSTRUCTIONS;
       const ephemeralKey = sessionData.client_secret?.value;
       if (!ephemeralKey) throw new Error("No ephemeral key in session response");
 
@@ -846,17 +1047,18 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
         setRemoteStream(e.streams[0] ?? null);
       };
 
-      // 4. Add local mic track. Keep a handle to the audio track so we can
-      // half-duplex-gate it during agent playback (see gateMicForPlayback).
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-      });
-      micTrackRef.current = stream.getAudioTracks()[0] ?? null;
-      stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+      // 4. Add the outgoing audio track. Live sessions use the real mic.
+      // Standby sessions use generated silence so Web Speech can keep owning
+      // the microphone for wake-word detection; activation swaps in the mic.
+      if (standby) {
+        const silentTrack = createStandbyAudioTrack();
+        if (!silentTrack) throw new Error("Could not create standby audio track");
+        realtimeAudioSenderRef.current = pc.addTrack(silentTrack, new MediaStream([silentTrack]));
+      } else {
+        const { stream, track } = await openLiveMic();
+        micTrackRef.current = track;
+        realtimeAudioSenderRef.current = pc.addTrack(track, stream);
+      }
 
       // 5. Create data channel for events
       const dc = pc.createDataChannel("oai-events");
@@ -865,34 +1067,28 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
       dc.onopen = () => {
         debugVoiceLog("[WebRTC] Data channel open");
         isRunning.current = true;
-        sessionStartTsRef.current = Date.now();
-
-        if (heartbeatIntervalRef.current) clearInterval(heartbeatIntervalRef.current);
-        heartbeatIntervalRef.current = setInterval(() => {
-          if (!sessionIdRef.current || !sessionStartTsRef.current) return;
-          const baseUrl = getBaseUrl();
-          const headers: Record<string, string> = { "Content-Type": "application/json" };
-          if (authTokenRef.current) headers["Authorization"] = `Bearer ${authTokenRef.current}`;
-          fetch(`${baseUrl}api/realtime/session/${sessionIdRef.current}/heartbeat`, {
-            method: "POST",
-            headers,
-            body: JSON.stringify({
-              elapsedMs: Date.now() - sessionStartTsRef.current,
-              venueId: venueIdRef.current || undefined,
-              provider: voicePipelineProviderRef.current || "openai_realtime_webrtc",
-              agentProfileId: agentProfileIdRef.current || undefined,
-            }),
-          }).catch(() => {});
-        }, 60_000);
+        if (standbyRef.current) {
+          // Warm standby: no metering until activation; recycle before the
+          // session hits OpenAI's age limit so it's always fresh.
+          scheduleStandbyExpire();
+        } else {
+          sessionStartTsRef.current = Date.now();
+          startHeartbeat();
+        }
       };
 
       dc.onmessage = (e) => handleDcEvent(e.data);
 
       dc.onclose = () => {
         debugVoiceLog("[WebRTC] Data channel closed");
+        const wasStandby = standbyRef.current;
         if (isRunning.current) {
           isRunning.current = false;
-          setAgentState((prev) => (prev === "error" ? "error" : "disconnected"));
+          if (!wasStandby) setAgentState((prev) => (prev === "error" ? "error" : "disconnected"));
+        }
+        if (wasStandby) {
+          // OpenAI dropped the idle standby session — recycle it quietly.
+          setTimeout(() => standbyRecycleRef.current(), 500);
         }
       };
 
@@ -918,15 +1114,25 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
       const answerSdp = await sdpRes.text();
       await pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
 
-      debugVoiceLog("[WebRTC] Connection established");
+      debugVoiceLog(standby ? "[WebRTC] Standby connection established" : "[WebRTC] Connection established");
     } catch (e: any) {
-      console.error("[WebRTC] Connect error:", e.message);
-      setError(e.message);
-      setAgentState("error");
+      if (standby) {
+        // Silent failure — the wake orb stays up; activation falls back to a
+        // cold connect if the user speaks the wake word anyway.
+        console.warn("[WebRTC] Standby connect failed:", e.message);
+        standbyRef.current = false;
+      } else {
+        console.error("[WebRTC] Connect error:", e.message);
+        setError(e.message);
+        setAgentState("error");
+        pendingActivationRef.current = null;
+      }
       // Cleanup on failure
       cancelMicReopen();
       pcRef.current?.getSenders().forEach((sender) => sender.track?.stop());
       micTrackRef.current = null;
+      realtimeAudioSenderRef.current = null;
+      stopStandbyAudio();
       pcRef.current?.close();
       pcRef.current = null;
       dcRef.current = null;
@@ -936,7 +1142,9 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
         audioElRef.current = null;
       }
     }
-  }, [handleDcEvent, cancelMicReopen, connectRelaySession]);
+  }, [handleDcEvent, cancelMicReopen, connectRelaySession, createStandbyAudioTrack, openLiveMic, scheduleStandbyExpire, startHeartbeat, stopStandbyAudio]);
+
+  connectInternalRef.current = connectInternal;
 
   // ── Disconnect ─────────────────────────────────────────────────────────────
 
@@ -959,42 +1167,115 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const disconnect = useCallback(async () => {
-    if (heartbeatIntervalRef.current) {
-      clearInterval(heartbeatIntervalRef.current);
-      heartbeatIntervalRef.current = null;
-    }
-    cancelMicReopen();
+    wantStandbyRef.current = false;
+    standbyRef.current = false;
+    pendingActivationRef.current = null;
+    clearStandbyExpire();
 
     sendSessionEnd();
 
-    isRunning.current = false;
     agentStateRef.current = "disconnected";
     sessionStartTsRef.current = 0;
 
-    pcRef.current?.getSenders().forEach((sender) => {
-      sender.track?.stop();
-    });
-    micTrackRef.current = null;
+    closeTransport();
+    setAgentState("disconnected");
+  }, [sendSessionEnd, clearStandbyExpire, closeTransport]);
 
-    dcRef.current?.close();
-    dcRef.current = null;
+  // ── Standby lifecycle (wake-word mode) ──────────────────────────────────────
 
-    wsRef.current?.close();
-    wsRef.current = null;
-    cleanupWsAudio();
+  /** Pre-connect a warm, mic-gated, unmetered session so wake-word activation is near-instant. */
+  const prewarm = useCallback(async () => {
+    if (!authTokenRef.current) return;
+    // Only the browser-direct OpenAI WebRTC pipeline supports hot standby.
+    if (voicePipelineProviderRef.current.startsWith(GEMINI_PROVIDER_PREFIX)) return;
+    if (isRunning.current || pcRef.current || prewarmingRef.current) return;
+    wantStandbyRef.current = true;
+    prewarmingRef.current = true;
+    standbyRef.current = true;
+    standbySessionCreatedRef.current = false;
+    debugVoiceLog("[WebRTC] Pre-warming standby session...");
+    try {
+      await connectInternal(true);
+    } finally {
+      prewarmingRef.current = false;
+      if (!pcRef.current) {
+        standbyRef.current = false;
+        // The wake word may have fired while the failed prewarm was in flight —
+        // don't leave the user hanging; fall back to a cold connect.
+        if (pendingActivationRef.current) void connectInternal(false);
+      }
+    }
+  }, [connectInternal]);
 
-    pcRef.current?.close();
-    pcRef.current = null;
+  /** Promote the standby session to live (wake word / tap), or cold-connect if none. */
+  const activate = useCallback(async (opts?: { greet?: boolean }) => {
+    const greet = opts?.greet ?? true;
+    wantStandbyRef.current = false;
+    if (isRunning.current && !standbyRef.current) return; // already live
 
-    if (audioElRef.current) {
-      audioElRef.current.srcObject = null;
-      audioElRef.current.remove();
-      audioElRef.current = null;
+    if (standbyRef.current && dcRef.current?.readyState === "open" && standbySessionCreatedRef.current) {
+      await finishActivation(greet);
+      return;
     }
 
-    setRemoteStream(null);
-    setAgentState("disconnected");
-  }, [sendSessionEnd, cancelMicReopen, cleanupWsAudio]);
+    pendingActivationRef.current = { greet };
+
+    if (standbyRef.current || prewarmingRef.current) {
+      // Prewarm handshake still in flight — session.created finishes the
+      // activation. Safety net: if the handshake silently died, cold-connect.
+      agentStateRef.current = "connecting";
+      setAgentState("connecting");
+      setTimeout(() => {
+        if (pendingActivationRef.current && !pcRef.current && !prewarmingRef.current && !isRunning.current) {
+          standbyRef.current = false;
+          void connectInternal(false);
+        }
+      }, 1500);
+      return;
+    }
+
+    await connectInternal(false);
+  }, [finishActivation, connectInternal]);
+
+  /** Drop an unused standby session (leaving wake-word mode). Nothing was metered. */
+  const releaseStandby = useCallback(() => {
+    wantStandbyRef.current = false;
+    if (!standbyRef.current) return;
+    debugVoiceLog("[WebRTC] Releasing standby session");
+    standbyRef.current = false;
+    pendingActivationRef.current = null;
+    clearStandbyExpire();
+    closeTransport();
+    agentStateRef.current = "disconnected";
+    sessionStartTsRef.current = 0;
+  }, [clearStandbyExpire, closeTransport]);
+
+  // Recycle a stale/dropped standby connection and re-warm if still wanted.
+  // Kept in a ref so the dc.onclose handler and the expiry timer (created
+  // inside connectInternal, defined earlier) can reach it without a cycle.
+  standbyRecycleRef.current = () => {
+    if (isRunning.current && !standbyRef.current) return; // live session — leave it alone
+    clearStandbyExpire();
+    closeTransport();
+    standbyRef.current = false;
+    if (pendingActivationRef.current) {
+      // The wake word landed just as the standby died — cold-connect now so
+      // the user isn't left talking to a dead session.
+      void connectInternal(false);
+      return;
+    }
+    if (wantStandbyRef.current) void prewarm();
+  };
+
+  const connect = useCallback(async () => {
+    // A tap while a standby session is warming/warm should consume it rather
+    // than no-op against isRunning (which would leave the mic gated).
+    if (standbyRef.current || prewarmingRef.current) {
+      await activate({ greet: false });
+      return;
+    }
+    await connectInternal(false);
+  }, [activate, connectInternal]);
 
   const interrupt = useCallback(() => {
     const dc = dcRef.current;
@@ -1115,7 +1396,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
   return (
     <VoiceAgentContext.Provider value={{
       agentState, isConnected, conversation, partialTranscript, error, remoteStream,
-      pendingConfirmation, connect, disconnect, clearConversation, setToolHandler, interrupt,
+      pendingConfirmation, connect, prewarm, activate, releaseStandby, disconnect, clearConversation, setToolHandler, interrupt,
       setCatalog, setCurrentOrder, setAuthParams,
       confirmPending, denyPending,
     }}>

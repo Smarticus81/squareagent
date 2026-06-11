@@ -22,6 +22,19 @@ interface AgentProfileLaunchInfo {
   noiseMode?: string;
 }
 
+interface VenueInfo {
+  id: number;
+  name: string;
+  squareLocationId?: string | null;
+  squareLocationName?: string | null;
+  serviceConnectionStatus?: string | null;
+}
+
+interface SquareLocationOption {
+  id: string;
+  name: string;
+  address?: string;
+}
 
 interface SquareContextType {
   locationId: string | null;
@@ -32,11 +45,14 @@ interface SquareContextType {
   isLoadingCatalog: boolean;
   catalogError: string | null;
   connectionError: string | null;
+  isConnectingSquare: boolean;
   isReconnecting: boolean;
   /** VoyceLab account info after login */
   userInfo: { id: number; email: string; name: string } | null;
   /** Venues available to the logged-in user */
-  venues: { id: number; name: string; squareLocationName?: string }[];
+  venues: VenueInfo[];
+  /** Square locations awaiting selection after OAuth. */
+  pendingSquareLocations: SquareLocationOption[];
   /** Assistant settings loaded with the selected venue. */
   agentProfile: AgentProfileLaunchInfo | null;
   agentProfileId: string | null;
@@ -53,6 +69,10 @@ interface SquareContextType {
   signup: (name: string, email: string, password: string) => Promise<string | null>;
   /** Logout and clear all stored credentials */
   logout: () => Promise<void>;
+  /** Start Square OAuth from the PWA. */
+  connectSquare: () => Promise<string | null>;
+  /** Save a Square location returned by OAuth as a venue. */
+  selectSquareLocation: (location: SquareLocationOption) => Promise<string | null>;
   /** Select a venue and load its Square credentials */
   selectVenue: (venueId: number) => Promise<string | null>;
   clearCredentials: () => void;
@@ -96,12 +116,16 @@ export function SquareProvider({ children }: { children: ReactNode }) {
   const [isLoadingCatalog, setIsLoadingCatalog] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [isConnectingSquare, setIsConnectingSquare] = useState(false);
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [credentialsReady, setCredentialsReady] = useState(false);
   const [venueId, setVenueId] = useState<string | null>(localStorage.getItem(VENUE_ID_KEY));
   const [authToken, setAuthToken] = useState<string | null>(localStorage.getItem(AUTH_TOKEN_KEY));
   const [userInfo, setUserInfo] = useState<{ id: number; email: string; name: string } | null>(null);
-  const [venues, setVenues] = useState<{ id: number; name: string; squareLocationName?: string }[]>([]);
+  const [venues, setVenues] = useState<VenueInfo[]>([]);
+  const [pendingSquareLocations, setPendingSquareLocations] = useState<SquareLocationOption[]>([]);
+  const [squareOAuthClaim, setSquareOAuthClaim] = useState<string | null>(null);
+  const [oauthMerchantId, setOauthMerchantId] = useState<string | null>(null);
   const [agentProfile, setAgentProfile] = useState<AgentProfileLaunchInfo | null>(null);
   const [agentProfileId, setAgentProfileId] = useState<string | null>(localStorage.getItem(AGENT_PROFILE_ID_KEY));
   const [wakePhrase, setWakePhrase] = useState(DEFAULT_WAKE_PHRASE);
@@ -188,6 +212,76 @@ export function SquareProvider({ children }: { children: ReactNode }) {
     setLocationId(null);
   }
 
+  async function claimSquareOAuth(oauthTs: string, tok: string): Promise<{
+    tokenState: string;
+    merchantId: string | null;
+    locations: SquareLocationOption[];
+  }> {
+    const tokenRes = await fetch(`${getBaseUrl()}api/square/oauth/token?ts=${encodeURIComponent(oauthTs)}`, {
+      headers: { Authorization: `Bearer ${tok}` },
+    });
+    const tokenData = await tokenRes.json().catch(() => ({}));
+    if (!tokenRes.ok) {
+      throw new Error((tokenData as any).error || "Failed to verify Square connection");
+    }
+
+    const tokenState = String((tokenData as any).tokenState || oauthTs);
+    const merchantId = typeof (tokenData as any).merchantId === "string" ? (tokenData as any).merchantId : null;
+    setSquareOAuthClaim(tokenState);
+    setOauthMerchantId(merchantId);
+
+    const locationsRes = await fetch(`${getBaseUrl()}api/square/locations?oauth_ts=${encodeURIComponent(tokenState)}`, {
+      headers: { Authorization: `Bearer ${tok}` },
+    });
+    const locationsData = await locationsRes.json().catch(() => ({}));
+    if (!locationsRes.ok) {
+      throw new Error((locationsData as any).error || "Failed to load Square locations");
+    }
+    return {
+      tokenState,
+      merchantId,
+      locations: Array.isArray((locationsData as any).locations) ? (locationsData as any).locations : [],
+    };
+  }
+
+  async function saveSquareVenue(
+    tok: string,
+    squareOAuthClaimValue: string,
+    merchantId: string | null,
+    location: SquareLocationOption,
+  ): Promise<string | null> {
+    const res = await fetch(`${getBaseUrl()}api/venues`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${tok}`,
+      },
+      body: JSON.stringify({
+        squareOAuthClaim: squareOAuthClaimValue,
+        merchantId: merchantId || undefined,
+        locationId: location.id,
+        locationName: location.name,
+        name: location.name,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return (data as any).error || "Failed to save Square location";
+
+    localStorage.setItem(AUTH_TOKEN_KEY, tok);
+    setAuthToken(tok);
+    await loadVenues(tok);
+    const savedVenueId = (data as any).venue?.id;
+    if (savedVenueId) {
+      const selectError = await selectVenue(Number(savedVenueId));
+      if (selectError) return selectError;
+    }
+    setSquareOAuthClaim(null);
+    setOauthMerchantId(null);
+    setPendingSquareLocations([]);
+    setConnectionError(null);
+    return null;
+  }
+
   // Load credentials once on mount:
   // 1. If launched with ?code=EXCHANGE_CODE, redeem it first
   // 2. Otherwise fall back to localStorage
@@ -196,9 +290,45 @@ export function SquareProvider({ children }: { children: ReactNode }) {
     (async () => {
       const params = new URLSearchParams(window.location.search);
       const exchangeCode = params.get("code");
+      const oauthTs = params.get("oauth_ts");
+      const oauthError = params.get("oauth_error");
       const urlAgentProfileId = params.get("agentProfileId") ?? undefined;
 
       let launch: { venueId?: string; authToken: string; agentProfileId?: string } | null = null;
+
+      if (oauthTs || oauthError) {
+        const url = new URL(window.location.href);
+        url.searchParams.delete("oauth_ts");
+        url.searchParams.delete("oauth_error");
+        window.history.replaceState({}, "", url.toString());
+
+        if (oauthError) {
+          setConnectionError(`Square authorization failed: ${oauthError}`);
+        } else if (oauthTs) {
+          const tok = localStorage.getItem(AUTH_TOKEN_KEY);
+          if (!tok) {
+            setConnectionError("Sign in before connecting Square.");
+          } else {
+            setIsConnectingSquare(true);
+            try {
+              const { tokenState, merchantId, locations } = await claimSquareOAuth(oauthTs, tok);
+              if (!cancelled) {
+                if (locations.length === 1) {
+                  const err = await saveSquareVenue(tok, tokenState, merchantId, locations[0]);
+                  if (err) setConnectionError(err);
+                } else {
+                  setPendingSquareLocations(locations);
+                  if (locations.length === 0) setConnectionError("No Square locations were found for this account.");
+                }
+              }
+            } catch (e: any) {
+              if (!cancelled) setConnectionError(e?.message || "Failed to connect Square");
+            } finally {
+              if (!cancelled) setIsConnectingSquare(false);
+            }
+          }
+        }
+      }
 
       if (exchangeCode) {
         clearStoredAssistantLaunchState();
@@ -242,6 +372,9 @@ export function SquareProvider({ children }: { children: ReactNode }) {
             setAuthToken(launch.authToken);
             localStorage.setItem(AUTH_TOKEN_KEY, launch.authToken);
             applyAgentLaunchInfo({ agentProfile: profile });
+            if (!launch.venueId && profile.venueId) {
+              launch = { ...launch, venueId: String(profile.venueId) };
+            }
           } else if (!cancelled) {
             setConnectionError("Assistant profile not found. Relaunch it from the dashboard.");
           }
@@ -363,20 +496,31 @@ export function SquareProvider({ children }: { children: ReactNode }) {
     if (venueId && authToken) loadCatalog();
   }, [credentialsReady, locationId, venueId, authToken]);
 
+  useEffect(() => {
+    if (!credentialsReady || !authToken || venueId || pendingSquareLocations.length > 0) return;
+    const connectedVenues = venues.filter((v) => v.squareLocationId);
+    if (connectedVenues.length === 1) {
+      void selectVenue(connectedVenues[0].id);
+    }
+  }, [credentialsReady, authToken, venueId, venues, pendingSquareLocations.length]);
+
   // ── VoyceLab Account Auth ────────────────────────────────────────────────────
 
-  async function loadVenues(tok: string): Promise<void> {
+  async function loadVenues(tok: string): Promise<VenueInfo[]> {
     try {
       const res = await fetch(`${getBaseUrl()}api/venues`, {
         headers: { Authorization: `Bearer ${tok}` },
       });
       if (res.ok) {
         const data = await res.json();
-        setVenues(data.venues ?? []);
+        const nextVenues = Array.isArray(data.venues) ? data.venues as VenueInfo[] : [];
+        setVenues(nextVenues);
+        return nextVenues;
       }
     } catch (e) {
       console.warn("Failed to load venues", e);
     }
+    return [];
   }
 
   async function login(email: string, password: string): Promise<string | null> {
@@ -442,6 +586,49 @@ export function SquareProvider({ children }: { children: ReactNode }) {
     setAgentProfileId(null);
     setWakePhrase(DEFAULT_WAKE_PHRASE);
     setWakeMode("ambient");
+  }
+
+  async function connectSquare(): Promise<string | null> {
+    const tok = authToken || localStorage.getItem(AUTH_TOKEN_KEY);
+    if (!tok) return "Sign in before connecting Square.";
+
+    setIsConnectingSquare(true);
+    setConnectionError(null);
+    try {
+      const returnUrl = window.location.pathname || "/";
+      const params = new URLSearchParams({
+        mode: "redirect",
+        handoff: "json",
+        return_url: returnUrl,
+      });
+      const res = await fetch(`${getBaseUrl()}api/square/oauth/authorize?${params}`, {
+        headers: { Authorization: `Bearer ${tok}` },
+      });
+      const data = await res.json().catch(() => ({}));
+      const url = typeof (data as any).url === "string" ? (data as any).url : "";
+      if (!res.ok || !url) return (data as any).error || "Could not start Square authorization";
+      window.location.href = url;
+      return null;
+    } catch (e: any) {
+      return e?.message || "Could not start Square authorization";
+    } finally {
+      setIsConnectingSquare(false);
+    }
+  }
+
+  async function selectSquareLocation(location: SquareLocationOption): Promise<string | null> {
+    const tok = authToken || localStorage.getItem(AUTH_TOKEN_KEY);
+    const claim = squareOAuthClaim;
+    if (!tok) return "Sign in before connecting Square.";
+    if (!claim) return "Square connection expired. Please connect again.";
+
+    setIsConnectingSquare(true);
+    setConnectionError(null);
+    try {
+      return await saveSquareVenue(tok, claim, oauthMerchantId, location);
+    } finally {
+      setIsConnectingSquare(false);
+    }
   }
 
   async function selectVenue(vid: number): Promise<string | null> {
@@ -593,8 +780,9 @@ export function SquareProvider({ children }: { children: ReactNode }) {
   return (
     <SquareContext.Provider value={{
       locationId, venueId, authToken, catalogItems, isConfigured,
-      isLoadingCatalog, catalogError, connectionError, isReconnecting,
-      userInfo, venues, agentProfile, agentProfileId, wakePhrase, wakeMode, assistantKind, login, signup, logout, selectVenue,
+      isLoadingCatalog, catalogError, connectionError, isConnectingSquare, isReconnecting,
+      userInfo, venues, pendingSquareLocations, agentProfile, agentProfileId, wakePhrase, wakeMode, assistantKind,
+      login, signup, logout, connectSquare, selectSquareLocation, selectVenue,
       clearCredentials, refreshCredentials,
       loadCatalog, searchCatalog,
     }}>
