@@ -868,10 +868,16 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
     // default is half-duplex mic gating during playback with tap-to-interrupt.
     const behavior = getNoiseModeBehavior(noiseMode);
     const acousticBargeIn = ACOUSTIC_BARGE_IN_ENABLED && behavior.bargeInEnabled;
+    // Server-authoritative wake greeting: the client fires this verbatim as
+    // response.create instructions the moment the wake word lands, so the
+    // assistant speaks first with minimal time-to-first-token.
+    const greetingPersona = profileDisplayName ? ` You are ${profileDisplayName}.` : "";
+    const greeting = `The user just summoned you with your wake phrase.${greetingPersona} Immediately say one short, warm greeting — under eight words, e.g. "Hey! What can I do for you?". Do not list capabilities or mention commands. Then stop speaking and wait for their request.`;
     res.json({
       id: data.session?.id ?? "",
       client_secret: { value: data.value, expires_at: data.expires_at },
       instructions: sessionConfig.instructions,
+      greeting,
       assistantKind,
       voicelab: {
         noiseMode,
@@ -918,7 +924,6 @@ router.post("/tools", requireAuth as any, requirePlan() as any, async (req: any,
   let squareToken = "";
   let squareLocationId = "";
   const organizationId = await currentOrganizationId(req);
-
   let noiseMode: import("@workspace/voicelab-core/noise").NoiseMode = "standard";
   let profileAllowedTools: string[] | null = null;
   let profileConnectedServiceId: string | null = null;

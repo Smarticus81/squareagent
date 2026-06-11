@@ -430,7 +430,8 @@ function assistantEditorUrl(profileId: string): string {
 function SettingsSheet({ onBack, screenWakeStatus }: { onBack: () => void; screenWakeStatus: WakeLockStatus }) {
   const {
     isConfigured, clearCredentials, connectionError, isReconnecting, refreshCredentials,
-    userInfo, venues, login, signup, logout, selectVenue, loadCatalog,
+    isConnectingSquare, userInfo, venues, pendingSquareLocations,
+    login, signup, logout, connectSquare, selectSquareLocation, selectVenue, loadCatalog,
     agentProfile, assistantKind, wakePhrase, wakeMode,
   } = useSquare();
 
@@ -496,6 +497,24 @@ function SettingsSheet({ onBack, screenWakeStatus }: { onBack: () => void; scree
     } finally { setVenueLoading(false); }
   }
 
+  async function handleConnectSquare() {
+    setVenueError(null);
+    const err = await connectSquare();
+    if (err) setVenueError(err);
+  }
+
+  async function handleSelectSquareLocation(location: { id: string; name: string; address?: string }) {
+    setVenueError(null);
+    setVenueLoading(true);
+    try {
+      const err = await selectSquareLocation(location);
+      if (err) setVenueError(err);
+      else await loadCatalog();
+    } finally {
+      setVenueLoading(false);
+    }
+  }
+
   const selectedProvider = agentProfile?.voicePipelineProvider;
   const isGeminiVoice = selectedProvider?.startsWith("google_gemini_") ?? false;
   const voiceConfig = agentProfile?.voicePipelineConfig ?? {};
@@ -550,10 +569,25 @@ function SettingsSheet({ onBack, screenWakeStatus }: { onBack: () => void; scree
             {authMode === "login" ? "Don't have an account? Sign up" : "Already have an account? Sign in"}
           </button>
         </div>
-      ) : isLoggedIn && !isConfigured && assistantKind !== "general" ? (
+      ) : isLoggedIn && !isConfigured ? (
         <div className="auth-section">
-          <div className="auth-title">Select your venue</div>
-          {venues.length > 0 ? (
+          <div className="auth-title">
+            {pendingSquareLocations.length > 0 ? "Choose Square location" : "Connect Square"}
+          </div>
+          {pendingSquareLocations.length > 0 ? (
+            <div className="venue-list">
+              {pendingSquareLocations.map((loc) => (
+                <button key={loc.id} className="venue-row" onClick={() => handleSelectSquareLocation(loc)} disabled={venueLoading || isConnectingSquare}>
+                  <MapPin size={15} />
+                  <div style={{ flex: 1, textAlign: "left" }}>
+                    <div className="venue-name">{loc.name}</div>
+                    {loc.address && <div className="venue-sub">{loc.address}</div>}
+                  </div>
+                  <ChevronRight size={15} />
+                </button>
+              ))}
+            </div>
+          ) : venues.length > 0 ? (
             <div className="venue-list">
               {venues.map((v) => (
                 <button key={v.id} className="venue-row" onClick={() => handleSelectVenue(v.id)} disabled={venueLoading}>
@@ -567,9 +601,17 @@ function SettingsSheet({ onBack, screenWakeStatus }: { onBack: () => void; scree
               ))}
             </div>
           ) : (
-            <div className="venue-empty"><MapPin size={22} /><span>No venues found</span></div>
+            <div className="venue-empty"><MapPin size={22} /><span>No Square venues connected</span></div>
           )}
           {venueError && <div className="auth-error">{venueError}</div>}
+          {connectionError && <div className="auth-error">{connectionError}</div>}
+          <button className="auth-btn" onClick={handleConnectSquare} disabled={isConnectingSquare || venueLoading}>
+            {isConnectingSquare ? <Loader size={16} className="spin" /> : <Link size={16} />}
+            {isConnectingSquare ? "Connecting..." : "Connect Square"}
+          </button>
+          <button className="auth-switch" onClick={() => { window.location.href = `${getBaseUrl()}services`; }}>
+            Manage all integrations
+          </button>
           <button className="auth-logout" onClick={logout}><LogOut size={14} /> Sign out</button>
         </div>
       ) : (
