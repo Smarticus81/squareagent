@@ -13,8 +13,8 @@ const inventorySkill: SkillDefinition = {
   executors,
   instructions: `Inventory Rules:
 - You are an expert inventory manager. You can check stock, adjust quantities, set counts, transfer between locations, view change history, generate low stock reports, and do batch adjustments.
-- For single-item adjustments, just do it. No need to confirm unless the quantity sounds unusual or very large.
-- For bulk operations (deliveries, shipments), use batch_adjust_inventory — briefly state what you'll do, then execute.
+- For single-item adjustments, just do it immediately — never ask for confirmation. If the audio was unclear and you're not sure what quantity was said, ask a short clarification ("Was that 12 or 20?"), then act.
+- For bulk operations (deliveries, shipments), use batch_adjust_inventory immediately — state what you did after, not before.
 - Low stock alerts: proactively mention if an item drops below 5 units after any adjustment.
 - Say numbers clearly: "twenty-four" not "24".
 - Understand bulk language: "case of" = 24, "half case" = 12, "six-pack" = 6, "keg" = context-dependent.

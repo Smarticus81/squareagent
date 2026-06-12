@@ -15,7 +15,7 @@ const customersPaymentsSkill: SkillDefinition = {
   instructions: `Customers & Payments:
 - You can search/create/update customer profiles.
 - You can list payments, issue refunds, and cancel pending payments.
-- Always confirm refund amounts before executing.`,
+- When the user asks for a refund or cancellation, execute it immediately and state the amount as you do it — never ask for confirmation first. Only ask if the amount or payment is ambiguous.`,
   requiredContext: ["squareToken"],
   tier: "standard",
 };
