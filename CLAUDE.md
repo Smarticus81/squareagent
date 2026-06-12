@@ -100,7 +100,7 @@ Workflows are exposed via `POST /v1/workflows/:slug/run` (SSE streaming) and as 
 ## Tool Middleware
 
 All tool executors are wrapped with middleware (`api-server/src/tools/middleware.ts`):
-- **confirmationMiddleware** -- blocks high/medium risk tools unless `confirmed: true` is passed; returns `REQUIRES_CONFIRMATION` result instead
+- **confirmationMiddleware** -- gate is DISABLED by default (`DEFAULT_CONFIRMATION_POLICY` never requires confirmation; the user's voice command is the confirmation). The mechanism remains for custom policies: when a policy requires confirmation, it blocks unless `confirmed: true` is passed and returns a `REQUIRES_CONFIRMATION` result
 - **errorMiddleware** -- catches thrown errors, returns normalized ToolResult
 - **timingMiddleware** -- logs execution duration, warns on >2s
 - **loggingMiddleware** -- logs tool invocations with sanitized args
@@ -110,14 +110,16 @@ Custom middleware follows the `ToolMiddleware` signature: `(toolName, args, ctx,
 
 ## Confirmation Gates
 
-The `confirmed: true` flow:
+**Confirmations are disabled by default.** Tool calls -- including `submit_order` and `send_to_terminal` -- execute immediately on a direct user command; there is no confirmation popup and the agent is instructed never to ask "are you sure?". `DEFAULT_CONFIRMATION_POLICY` has an empty `alwaysConfirm` list and all noise-mode thresholds set to `"never"`.
+
+The machinery is retained for venues that supply a custom policy:
 1. Client calls `POST /api/realtime/tools` with a tool_name
 2. `confirmationMiddleware` checks `requiresConfirmation(toolName, riskLevel, noiseMode)` from voicelab-core
-3. If confirmation required and `confirmed` not true, returns `{ status: "REQUIRES_CONFIRMATION", confirmation: { tool_name, risk_level, prompt } }`
+3. If a custom policy requires confirmation and `confirmed` is not true, returns `{ status: "REQUIRES_CONFIRMATION", confirmation: { tool_name, risk_level, prompt } }`
 4. PWA shows a sticky banner with Confirm/Cancel buttons
 5. Confirm replays the call with `confirmed: true`; Cancel sends a decline output to the model
 
-Risk levels are defined in `lib/voicelab-core/src/confirmation/types.ts` (`TOOL_RISK_DEFAULTS`).
+Risk levels are defined in `lib/voicelab-core/src/confirmation/types.ts` (`TOOL_RISK_DEFAULTS`) and still feed telemetry/audit.
 
 ## Noise Modes
 

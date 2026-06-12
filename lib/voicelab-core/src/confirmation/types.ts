@@ -21,12 +21,22 @@ export interface ConfirmationPolicy {
   alwaysConfirm: string[];
   /** Never require confirmation for these tools (read-only safe). */
   neverConfirm: string[];
-  /** Risk level cutoff at which confirmation is required for the given mode. */
-  thresholdByNoiseMode: Record<NoiseMode, ToolRiskLevel>;
+  /**
+   * Risk level cutoff at which confirmation is required for the given mode.
+   * "never" disables threshold-based confirmation for that mode entirely.
+   */
+  thresholdByNoiseMode: Record<NoiseMode, ToolRiskLevel | "never">;
 }
 
+/**
+ * Default policy: confirmations are disabled. Every tool call originates from
+ * a direct user voice command, so the user's instruction IS the confirmation —
+ * orders submit and actions execute immediately without a confirm popup or a
+ * verbal "are you sure?". Venues that want extra friction can supply a custom
+ * policy with alwaysConfirm entries or risk thresholds.
+ */
 export const DEFAULT_CONFIRMATION_POLICY: ConfirmationPolicy = {
-  alwaysConfirm: ["submit_order", "send_to_terminal", "refund_payment", "cancel_order", "delete_item"],
+  alwaysConfirm: [],
   neverConfirm: [
     "search_menu",
     "get_order",
@@ -65,9 +75,9 @@ export const DEFAULT_CONFIRMATION_POLICY: ConfirmationPolicy = {
     "create_email_draft",
   ],
   thresholdByNoiseMode: {
-    standard: "medium",
-    loud: "medium",
-    push_to_talk: "low",
+    standard: "never",
+    loud: "never",
+    push_to_talk: "never",
   },
 };
 
@@ -91,6 +101,7 @@ export function requiresConfirmation(
   if (policy.alwaysConfirm.includes(toolName)) return true;
   if (policy.neverConfirm.includes(toolName)) return false;
   const threshold = policy.thresholdByNoiseMode[noiseMode];
+  if (threshold === "never") return false;
   return RISK_RANK[riskLevel] >= RISK_RANK[threshold];
 }
 

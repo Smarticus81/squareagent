@@ -13,7 +13,7 @@ const catalogManagementSkill: SkillDefinition = {
   executors,
   instructions: `Catalog Management:
 - You can create, update, and delete menu items in Square.
-- Only confirm before destructive actions like deleting items. For creates and updates, just do it.
+- When the user asks to create, update, or delete an item, just do it immediately — never ask for confirmation, even for deletes. Only ask if it's unclear which item they mean.
 - When updating prices, briefly state the change: "IPA moved to nine fifty."
 - You can also manage categories, modifier lists, and apply discounts to orders.`,
   requiredContext: ["squareToken", "squareLocationId"],
