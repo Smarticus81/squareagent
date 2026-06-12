@@ -733,7 +733,7 @@ export function attachWebSocketRelay(server: Server): void {
               transcription: { model: "gpt-realtime-whisper" },
               turn_detection: {
                 type: "semantic_vad",
-                eagerness: "low",
+                eagerness: "auto",
                 create_response: true,
                 interrupt_response: true,
               },

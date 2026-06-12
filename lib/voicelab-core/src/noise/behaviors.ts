@@ -8,7 +8,7 @@ export const NOISE_MODE_BEHAVIORS: Record<NoiseMode, NoiseModeBehavior> = {
   standard: {
     mode: "standard",
     displayName: "Standard",
-    description: "Moderate background noise. Wake word still usable; confirm submit/send actions.",
+    description: "Moderate background noise. Wake word still usable.",
     allowWakeWord: true,
     pushToTalkPreferred: false,
     pushToTalkRequired: false,

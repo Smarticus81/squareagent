@@ -31,6 +31,49 @@ export const HARD_SHUTDOWN_PHRASES: readonly string[] = [
   "stop the mic",
 ];
 
+/**
+ * Phrases that terminate only when they make up the ENTIRE utterance
+ * (after stripping politeness fillers like "ok" / "please" / "thanks").
+ * "stop" mid-command ("stop adding that") must NOT end the session, but a
+ * bare "Stop" or "ok stop" should drop back to wake-word listening.
+ */
+export const STANDALONE_SOFT_PHRASES: readonly string[] = [
+  "stop",
+  "stop now",
+];
+
+const STANDALONE_FILLERS = new Set([
+  "ok",
+  "okay",
+  "alright",
+  "all",
+  "right",
+  "please",
+  "thanks",
+  "thank",
+  "you",
+  "now",
+  "hey",
+  "um",
+  "uh",
+  "yeah",
+]);
+
+function coreTokens(normalized: string): string[] {
+  const tokens = normalized.split(/[^a-z0-9']+/).filter(Boolean);
+  let start = 0;
+  let end = tokens.length;
+  while (start < end && STANDALONE_FILLERS.has(tokens[start])) start++;
+  while (end > start && STANDALONE_FILLERS.has(tokens[end - 1])) end--;
+  return tokens.slice(start, end);
+}
+
+/** True when the utterance is exactly the phrase, ignoring surrounding fillers. */
+export function matchesStandalonePhrase(text: string, phrase: string): boolean {
+  const core = coreTokens(normalizeVoiceUtterance(text)).join(" ");
+  return core.length > 0 && core === normalizeVoiceUtterance(phrase);
+}
+
 export const SOFT_BACK_TO_WAKE_PHRASES: readonly string[] = [
   "that's all for now",
   "thats all for now",
@@ -82,6 +125,9 @@ export function matchTermination(
   if (HARD_SHUTDOWN_PHRASES.some((p) => phraseInText(t, p))) return "hard";
   const atEnd = !!opts.partial;
   if (SOFT_BACK_TO_WAKE_PHRASES.some((p) => phraseInText(t, p, { atEnd }))) return "soft";
+  // Standalone phrases require the whole utterance, so they're safe to match
+  // on both partial and final transcripts.
+  if (STANDALONE_SOFT_PHRASES.some((p) => matchesStandalonePhrase(t, p))) return "soft";
   return null;
 }
 
