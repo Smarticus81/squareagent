@@ -123,13 +123,12 @@ Risk levels are defined in `lib/voicelab-core/src/confirmation/types.ts` (`TOOL_
 
 ## Noise Modes
 
-Each agent profile has a `noiseMode` (quiet_room, restaurant, bar, nightclub, event_venue, manual_push_to_talk). This maps to OpenAI Realtime turn_detection settings via `buildRealtimeSessionConfig`:
-- quiet_room: semantic_vad, eagerness high, interrupt enabled
-- restaurant: semantic_vad, eagerness auto, interrupt enabled
-- bar: server_vad, threshold 0.55, silence 700ms
-- nightclub: server_vad, threshold 0.75, silence 1200ms, no interrupt, push-to-talk
-- event_venue: server_vad, threshold 0.7, push-to-talk preferred
-- manual_push_to_talk: turn_detection null
+Each agent profile has a `noiseMode` (collapsed to 3 modes: standard, loud, push_to_talk). This maps to OpenAI Realtime turn_detection settings via `buildRealtimeSessionConfig`:
+- standard: semantic_vad, eagerness auto (tuned for low latency between commands)
+- loud: server_vad, threshold 0.6, silence 600ms
+- push_to_talk: turn_detection null
+
+Realtime sessions default `reasoning.effort` to "minimal" for the fastest first-audio latency (override with `OPENAI_REALTIME_REASONING_EFFORT`). Prompts instruct the agent to call tools silently and bridge lookup time with speculative talk instead of announcing "one sec, checking now".
 
 Noise behaviors are defined in `lib/voicelab-core/src/noise/behaviors.ts`.
 

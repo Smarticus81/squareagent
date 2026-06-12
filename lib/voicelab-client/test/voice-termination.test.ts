@@ -66,6 +66,30 @@ describe("matchTermination", () => {
     expect(matchTermination("the shutdowns were rough")).toBeNull();
     expect(matchTermination("goodbyes are hard")).toBeNull();
   });
+
+  it("treats a standalone 'stop' as soft termination", () => {
+    expect(matchTermination("stop")).toBe("soft");
+    expect(matchTermination("Stop.")).toBe("soft");
+    expect(matchTermination("ok stop")).toBe("soft");
+    expect(matchTermination("okay stop please")).toBe("soft");
+    expect(matchTermination("stop now")).toBe("soft");
+    expect(matchTermination("alright stop, thanks")).toBe("soft");
+  });
+
+  it("does not treat 'stop' inside a command as termination", () => {
+    expect(matchTermination("stop adding that beer")).toBeNull();
+    expect(matchTermination("don't stop the order")).toBeNull();
+    expect(matchTermination("add two non-stop IPAs")).toBeNull();
+  });
+
+  it("matches standalone 'stop' on partial transcripts too", () => {
+    expect(matchTermination("stop", { partial: true })).toBe("soft");
+    expect(matchTermination("stop adding that", { partial: true })).toBeNull();
+  });
+
+  it("still treats 'stop listening' as hard shutdown, not soft", () => {
+    expect(matchTermination("stop listening")).toBe("hard");
+  });
 });
 
 describe("phraseInText", () => {
