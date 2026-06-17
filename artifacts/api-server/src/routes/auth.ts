@@ -24,14 +24,11 @@ const SESSION_DAYS = 30;
 /**
  * Platform admin emails — never-expiring trial, every pipeline unlocked,
  * every skill tier on, no plan gating. Configurable via ADMIN_EMAILS env
- * (comma-separated). Compared case-insensitively. Production has no default.
+ * (comma-separated). Compared case-insensitively.
  */
 const FAR_FUTURE = new Date("9999-12-31T23:59:59Z");
-const DEFAULT_DEV_ADMIN_EMAIL = "tmusoni@thinkertons.com";
-const ADMIN_EMAILS = (
-  process.env.ADMIN_EMAILS ??
-  (process.env.NODE_ENV === "production" ? "" : DEFAULT_DEV_ADMIN_EMAIL)
-)
+const DEFAULT_ADMIN_EMAIL = "tmusoni@thinkertons.com";
+const ADMIN_EMAILS = (process.env.ADMIN_EMAILS ?? DEFAULT_ADMIN_EMAIL)
   .split(",")
   .map((s) => s.trim().toLowerCase())
   .filter(Boolean);
@@ -56,6 +53,7 @@ export function isAdminEmail(email: string | null | undefined): boolean {
 export function buildAdminSubscription(userId: number): {
   id: number;
   userId: number;
+  organizationId: string | null;
   clerkSubscriptionId: string | null;
   plan: string;
   status: string;
@@ -68,8 +66,9 @@ export function buildAdminSubscription(userId: number): {
   return {
     id: -1,
     userId,
+    organizationId: null,
     clerkSubscriptionId: null,
-    plan: "business",
+    plan: "admin",
     status: "active",
     trialEndsAt: null,
     currentPeriodEnd: FAR_FUTURE,
@@ -98,7 +97,7 @@ async function ensureAdminSubscription(userId: number): Promise<SubscriptionRow 
         .insert(subscriptionsTable)
         .values({
           userId,
-          plan: "business",
+          plan: "admin",
           status: "active",
           trialEndsAt: null,
           currentPeriodEnd: FAR_FUTURE,
@@ -107,7 +106,7 @@ async function ensureAdminSubscription(userId: number): Promise<SubscriptionRow 
       return (inserted as SubscriptionRow) ?? (buildAdminSubscription(userId) as SubscriptionRow);
     }
     const needsUpdate =
-      existing.plan !== "business" ||
+      existing.plan !== "admin" ||
       existing.status !== "active" ||
       existing.trialEndsAt !== null ||
       !existing.currentPeriodEnd ||
@@ -116,7 +115,7 @@ async function ensureAdminSubscription(userId: number): Promise<SubscriptionRow 
       const [updated] = await db
         .update(subscriptionsTable)
         .set({
-          plan: "business",
+          plan: "admin",
           status: "active",
           trialEndsAt: null,
           currentPeriodEnd: FAR_FUTURE,
@@ -443,13 +442,13 @@ router.post("/signup", async (req: Request, res: Response): Promise<void> => {
 
     const isAdmin = isAdminEmail(user.email);
     const trialEndsAt = isAdmin ? null : new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
-    await db.insert(subscriptionsTable).values({
+    const [subscription] = await db.insert(subscriptionsTable).values({
       userId: user.id,
-      plan: isAdmin ? "business" : "trial",
+      plan: isAdmin ? "admin" : "trial",
       status: isAdmin ? "active" : "trialing",
       trialEndsAt,
       currentPeriodEnd: isAdmin ? FAR_FUTURE : null,
-    });
+    }).returning();
 
     const sessionId = crypto.randomUUID();
     const expiresAt = new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000);
@@ -467,6 +466,7 @@ router.post("/signup", async (req: Request, res: Response): Promise<void> => {
     res.json({
       token,
       user: { id: user.id, email: user.email, name: user.name, isAdmin },
+      subscription: subscription ?? (isAdmin ? buildAdminSubscription(user.id) : null),
       organizationId,
       trialEndsAt,
       isAdmin,
@@ -498,9 +498,11 @@ router.post("/login", async (req: Request, res: Response): Promise<void> => {
     const token = signToken(user.id, sessionId);
 
     const isAdmin = isAdminEmail(user.email);
-    if (isAdmin) await ensureAdminSubscription(user.id);
-    let subscription =
-      ((req as Request & { subscription?: SubscriptionRow | null }).subscription ?? null) as SubscriptionRow | null;
+    let subscription: SubscriptionRow | null = isAdmin ? await ensureAdminSubscription(user.id) : null;
+    if (!subscription && !isAdmin) {
+      [subscription] = await db.select().from(subscriptionsTable).where(eq(subscriptionsTable.userId, user.id));
+    }
+    if (!subscription && isAdmin) subscription = buildAdminSubscription(user.id) as SubscriptionRow;
 
     let organizationId =
       ((req as Request & { organization?: { id?: string | null } }).organization?.id ?? null) as string | null;

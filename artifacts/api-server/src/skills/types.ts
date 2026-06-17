@@ -40,6 +40,7 @@ export interface SkillDefinition {
  */
 export const PLAN_TIERS: Record<string, SkillTier[]> = {
   trial:          ["core"],
+  admin:          ["core", "standard", "premium"],
   pro:            ["core", "standard", "premium"],
   business:       ["core", "standard", "premium"],
   // Legacy plan names — kept for backward compatibility with existing DB rows.

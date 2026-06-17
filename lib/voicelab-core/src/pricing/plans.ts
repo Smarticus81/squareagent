@@ -188,6 +188,7 @@ export function getPlan(id: string): PlanDefinition | undefined {
 
 /** Returns the resolved skill tiers for a plan. Falls back to business tiers for unknown ids. */
 export function getPlanSkillTiers(planId: string | null | undefined): SkillTier[] {
+  if (planId === "admin") return ["core", "standard", "premium"];
   if (!planId) return ["core", "standard", "premium"];
   const plan = getPlan(planId);
   if (plan) return plan.skillTiers;
@@ -201,6 +202,7 @@ export function getPlanSkillTiers(planId: string | null | undefined): SkillTier[
 export function getPlanAllowedPipelines(
   planId: string | null | undefined,
 ): VoicePipelineProvider[] {
+  if (planId === "admin") return PIPELINES_PAID;
   if (!planId) return PIPELINES_PAID;
   const plan = getPlan(planId);
   if (plan) return plan.allowedPipelines;

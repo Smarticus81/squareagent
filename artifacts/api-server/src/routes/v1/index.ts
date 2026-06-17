@@ -6,6 +6,7 @@ import realtimeSessionsRouter from "./realtime-sessions";
 import knowledgeRouter from "./knowledge";
 import usageRouter from "./usage";
 import workflowsRouter from "./workflows";
+import adminRouter from "./admin";
 
 const router = Router();
 
@@ -16,5 +17,6 @@ router.use("/realtime/sessions", realtimeSessionsRouter);
 router.use("/knowledge", knowledgeRouter);
 router.use("/usage", usageRouter);
 router.use("/workflows", workflowsRouter);
+router.use("/admin", adminRouter);
 
 export default router;
