@@ -59,6 +59,20 @@ const CLERK_PLAN_SLUG_MAP: Record<string, PlanId> = {
   premium: "business",
 };
 
+/**
+ * A config value is only "real" when it is present and not a left-in
+ * placeholder (e.g. `whsec_...`, `cplan_...`). This keeps the Settings
+ * readiness badges honest instead of reporting placeholders as configured.
+ */
+function isRealConfig(value: string | undefined | null): boolean {
+  const v = (value ?? "").trim();
+  if (!v) return false;
+  if (v.includes("...")) return false;
+  return true;
+}
+
+const WEBHOOK_SECRET_READY = isRealConfig(CLERK_WEBHOOK_SECRET);
+
 function billingReadiness() {
   const planReadiness = PLANS
     .filter((plan): plan is typeof plan & { id: Exclude<PlanId, "trial"> } => plan.id !== "trial")
@@ -69,9 +83,9 @@ function billingReadiness() {
       return {
         id: plan.id,
         name: plan.name,
-        clerkPlanIdConfigured: Boolean(process.env[env]),
-        checkoutMonthlyConfigured: Boolean(process.env[monthlyEnv]),
-        checkoutYearlyConfigured: Boolean(process.env[yearlyEnv]),
+        clerkPlanIdConfigured: isRealConfig(process.env[env]),
+        checkoutMonthlyConfigured: isRealConfig(process.env[monthlyEnv]),
+        checkoutYearlyConfigured: isRealConfig(process.env[yearlyEnv]),
       };
     });
 
@@ -79,13 +93,13 @@ function billingReadiness() {
   const serverCheckoutReady = planReadiness.every(
     (plan) => plan.checkoutMonthlyConfigured || plan.checkoutYearlyConfigured,
   );
-  const portalReady = Boolean(EXPLICIT_CLERK_BILLING_PORTAL_URL || CLERK_PUBLISHABLE_KEY);
-  const portalMode = EXPLICIT_CLERK_BILLING_PORTAL_URL
+  const portalReady = Boolean(isRealConfig(EXPLICIT_CLERK_BILLING_PORTAL_URL) || CLERK_PUBLISHABLE_KEY);
+  const portalMode = isRealConfig(EXPLICIT_CLERK_BILLING_PORTAL_URL)
     ? "external"
     : CLERK_PUBLISHABLE_KEY
       ? "embedded"
       : "none";
-  const webhooksReady = Boolean(CLERK_WEBHOOK_SECRET);
+  const webhooksReady = WEBHOOK_SECRET_READY;
   const secretKeyConfigured = Boolean(CLERK_SECRET_KEY);
   const operational = Boolean((embeddedCheckoutReady || serverCheckoutReady) && portalReady && webhooksReady && secretKeyConfigured);
 
@@ -100,7 +114,7 @@ function billingReadiness() {
     webhooksReady,
     secretKeyConfigured,
     publishableKeyConfigured: Boolean(CLERK_PUBLISHABLE_KEY),
-    explicitPortalConfigured: Boolean(EXPLICIT_CLERK_BILLING_PORTAL_URL),
+    explicitPortalConfigured: isRealConfig(EXPLICIT_CLERK_BILLING_PORTAL_URL),
     plans: planReadiness,
   };
 }
@@ -111,9 +125,12 @@ router.get("/plans", (_req: Request, res: Response) => {
   res.json({
     plans: PLANS.map((p) => {
       const planKey = p.id === "trial" ? null : (p.id as Exclude<PlanId, "trial">);
-      const clerkPlanId = planKey ? process.env[CLERK_PLAN_ENV[planKey]] ?? null : null;
-      const clerkCheckoutMonthlyUrl = planKey ? process.env[CLERK_CHECKOUT_URL_ENV[planKey].monthly] ?? null : null;
-      const clerkCheckoutYearlyUrl = planKey ? process.env[CLERK_CHECKOUT_URL_ENV[planKey].yearly] ?? null : null;
+      const rawClerkPlanId = planKey ? process.env[CLERK_PLAN_ENV[planKey]] ?? null : null;
+      const rawCheckoutMonthly = planKey ? process.env[CLERK_CHECKOUT_URL_ENV[planKey].monthly] ?? null : null;
+      const rawCheckoutYearly = planKey ? process.env[CLERK_CHECKOUT_URL_ENV[planKey].yearly] ?? null : null;
+      const clerkPlanId = isRealConfig(rawClerkPlanId) ? rawClerkPlanId : null;
+      const clerkCheckoutMonthlyUrl = isRealConfig(rawCheckoutMonthly) ? rawCheckoutMonthly : null;
+      const clerkCheckoutYearlyUrl = isRealConfig(rawCheckoutYearly) ? rawCheckoutYearly : null;
       return {
         id: p.id,
         name: p.name,
@@ -277,7 +294,16 @@ async function syncOrgSubscription(
 async function resolveClerkOrgId(clerkOrgId: string): Promise<string | null> {
   if (!clerkOrgId) return null;
 
-  // First check if we have an org with this exact ID (Clerk org IDs may match)
+  // Primary path: the local org stores the Clerk org id it was linked to.
+  const [linked] = await db
+    .select({ id: organizationsTable.id })
+    .from(organizationsTable)
+    .where(eq(organizationsTable.clerkOrgId, clerkOrgId))
+    .limit(1);
+
+  if (linked) return linked.id;
+
+  // Back-compat: some early orgs may have stored the Clerk id as the PK.
   const [org] = await db
     .select({ id: organizationsTable.id })
     .from(organizationsTable)
@@ -505,7 +531,7 @@ router.post("/portal", requireAuth as any, async (req: Request, res: Response): 
 // ── POST /webhook — Handle Clerk Billing events ───────────────────────────────
 
 router.post("/webhook", async (req: Request, res: Response): Promise<void> => {
-  if (!CLERK_WEBHOOK_SECRET) {
+  if (!WEBHOOK_SECRET_READY) {
     res.status(503).json({ error: "CLERK_WEBHOOK_SECRET not configured" });
     return;
   }

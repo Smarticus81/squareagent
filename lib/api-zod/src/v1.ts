@@ -5,16 +5,6 @@ import { z } from "zod";
  * provider-agnostic endpoints.
  */
 
-// ── Common ────────────────────────────────────────────────────────────────────
-
-export const ErrorResponse = z.object({
-  error: z.object({
-    code: z.string(),
-    message: z.string(),
-    details: z.record(z.unknown()).optional(),
-  }),
-});
-
 // ── Connected service providers ───────────────────────────────────────────────
 
 export const ConnectedServiceProvider = z.enum([
@@ -30,48 +20,6 @@ export const ConnectedServiceProvider = z.enum([
   "mock",
 ]);
 
-export const ConnectedServiceAvailabilityStatus = z.enum([
-  "available",
-  "needs_configuration",
-  "request_access",
-  "unavailable",
-]);
-
-export const ConnectedServiceProviderMetadata = z.object({
-  provider: ConnectedServiceProvider,
-  displayName: z.string(),
-  description: z.string(),
-  status: ConnectedServiceAvailabilityStatus,
-  capabilities: z.array(z.string()),
-  notes: z.string().optional(),
-  requestAccessUrl: z.string().optional(),
-});
-
-export const ListProvidersResponse = z.object({
-  providers: z.array(ConnectedServiceProviderMetadata),
-});
-
-// ── Service connections ───────────────────────────────────────────────────────
-
-export const CreateServiceConnectionRequest = z.object({
-  organizationId: z.string().uuid(),
-  venueId: z.number().int().positive().optional(),
-  provider: ConnectedServiceProvider,
-  credentials: z.record(z.unknown()).default({}),
-  config: z.record(z.unknown()).default({}),
-});
-
-export const ServiceConnectionResponse = z.object({
-  id: z.string(),
-  organizationId: z.string(),
-  venueId: z.string(),
-  provider: ConnectedServiceProvider,
-  status: ConnectedServiceAvailabilityStatus,
-  config: z.record(z.unknown()),
-  createdAt: z.string(),
-  updatedAt: z.string(),
-});
-
 // ── Voice pipelines ───────────────────────────────────────────────────────────
 
 export const VoicePipelineProvider = z.enum([
@@ -84,32 +32,6 @@ export const VoicePipelineProvider = z.enum([
   "push_to_talk_text_fallback",
   "text_only_fallback",
 ]);
-
-export const VoicePipelineCategory = z.enum([
-  "native_realtime_speech_to_speech",
-  "browser_or_manual_fallback",
-]);
-
-export const VoicePipelineAvailabilityStatus = z.enum([
-  "available",
-  "needs_configuration",
-  "request_access",
-  "experimental",
-  "unavailable",
-]);
-
-export const VoicePipelineAvailabilityReport = z.object({
-  provider: VoicePipelineProvider,
-  displayName: z.string(),
-  category: z.string(),
-  status: VoicePipelineAvailabilityStatus,
-  reason: z.string().optional(),
-  missing: z.array(z.string()).optional(),
-});
-
-export const ListVoicePipelinesResponse = z.object({
-  pipelines: z.array(VoicePipelineAvailabilityReport),
-});
 
 export const NoiseMode = z.enum([
   "standard",
@@ -171,49 +93,12 @@ export const CreateAgentProfileRequest = z.object({
 
 export const UpdateAgentProfileRequest = CreateAgentProfileRequest.partial();
 
-export const AgentProfileResponse = z.object({
-  id: z.string(),
-  organizationId: z.string(),
-  venueId: z.number().nullable(),
-  connectedServiceId: z.string().nullable(),
-  displayName: z.string(),
-  wakePhrase: z.string(),
-  wakeMode: z.enum(["ambient", "tap"]),
-  voicePipelineProvider: VoicePipelineProvider,
-  voicePipelineConfig: z.record(z.unknown()),
-  noiseMode: NoiseMode,
-  allowedTools: z.array(z.string()),
-  confirmationPolicy: z.record(z.unknown()),
-  personality: z.string(),
-  isDefault: z.boolean(),
-  createdAt: z.string(),
-  updatedAt: z.string(),
-});
-
 // ── Realtime sessions ─────────────────────────────────────────────────────────
 
 export const CreateRealtimeSessionRequest = z.object({
   agentProfileId: z.string().uuid(),
   /** Override the profile's pipeline for testing/debugging. */
   pipelineOverride: VoicePipelineProvider.optional(),
-});
-
-export const RealtimeSessionResponse = z.object({
-  sessionId: z.string(),
-  provider: VoicePipelineProvider,
-  agentDisplayName: z.string(),
-  noiseMode: NoiseMode,
-  clientHandshake: z.object({
-    kind: z.enum(["ephemeral_token", "signed_url", "ws_relay", "config_only", "noop"]),
-    expiresAt: z.string().optional(),
-    payload: z.record(z.unknown()),
-  }).optional(),
-  capabilities: z.object({
-    nativeAudio: z.boolean(),
-    realtimeToolCalling: z.boolean(),
-    bargeIn: z.boolean(),
-    serverVAD: z.boolean(),
-  }),
 });
 
 // ── Tool calls ────────────────────────────────────────────────────────────────
@@ -227,34 +112,6 @@ export const ExecuteToolCallRequest = z.object({
   confirmation: z
     .object({ token: z.string(), confirmedAt: z.string() })
     .optional(),
-});
-
-export const ExecuteToolCallResponse = z.object({
-  status: z.enum(["succeeded", "needs_confirmation", "failed", "denied"]),
-  result: z.string().optional(),
-  command: z.record(z.unknown()).nullable().optional(),
-  confirmation: z
-    .object({
-      gateId: z.string(),
-      prompt: z.string(),
-      riskLevel: z.enum(["low", "medium", "high", "destructive"]),
-    })
-    .optional(),
-  toolCallId: z.string().optional(),
-});
-
-// ── Integration health ───────────────────────────────────────────────────────
-
-export const IntegrationHealthResponse = z.object({
-  connections: z.array(
-    z.object({
-      id: z.string(),
-      provider: ConnectedServiceProvider,
-      status: z.enum(["healthy", "degraded", "down", "unauthorized"]),
-      message: z.string().optional(),
-      checkedAt: z.string(),
-    }),
-  ),
 });
 
 export type CreateAgentProfileBody = z.infer<typeof CreateAgentProfileRequest>;

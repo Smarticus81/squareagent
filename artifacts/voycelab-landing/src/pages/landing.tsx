@@ -132,9 +132,9 @@ function Hero({ onStart }: { onStart: () => void }) {
               variants={fadeUp}
               className="vl-display mt-5 text-[clamp(2.75rem,6.4vw,4.6rem)]"
             >
-              Run your bar without
+              Free yourself, by giving 
               <br />
-              leaving the <em>floor.</em>
+          your venue a <em>VOYCE.</em>
             </motion.h1>
 
             <motion.p

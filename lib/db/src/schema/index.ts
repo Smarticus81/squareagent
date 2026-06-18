@@ -21,9 +21,13 @@ export const usersTable = pgTable("users", {
   email: text("email").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
   name: text("name").notNull(),
+  /** Clerk user id this account is linked to (for Clerk Billing identity). */
+  clerkUserId: text("clerk_user_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
+}, (table) => [
+  index("users_clerk_user_idx").on(table.clerkUserId),
+]);
 
 export const insertUserSchema = createInsertSchema(usersTable).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -37,10 +41,13 @@ export const organizationsTable = pgTable("organizations", {
   id: uuid("id").defaultRandom().primaryKey(),
   name: text("name").notNull(),
   ownerUserId: integer("owner_user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  /** Clerk organization id this tenant is linked to (for Clerk B2B Billing). */
+  clerkOrgId: text("clerk_org_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (table) => [
   index("organizations_owner_idx").on(table.ownerUserId),
+  index("organizations_clerk_org_idx").on(table.clerkOrgId),
 ]);
 
 export type Organization = typeof organizationsTable.$inferSelect;

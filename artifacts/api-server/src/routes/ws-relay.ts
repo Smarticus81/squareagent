@@ -338,7 +338,7 @@ function checkPlan(subscription: any, isAdmin: boolean): string | null {
 }
 
 function effectiveRelayPlan(subscription: any, isAdmin: boolean): string {
-  if (isAdmin) return "business";
+  if (isAdmin) return "admin";
   return typeof subscription?.plan === "string" && subscription.plan ? subscription.plan : "trial";
 }
 

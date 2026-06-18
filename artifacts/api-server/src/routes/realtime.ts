@@ -72,6 +72,7 @@ const OPENAI_REALTIME_REASONING_EFFORT =
 const ACOUSTIC_BARGE_IN_ENABLED = process.env.ACOUSTIC_BARGE_IN === "1";
 
 function includedVoiceMinutesForPlan(planId: string | null | undefined): number {
+  if (planId === "admin") return -1;
   return getPlan(planId ?? "trial")?.includedVoiceMinutes ?? getPlan("trial")?.includedVoiceMinutes ?? 60;
 }
 
@@ -698,27 +699,29 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
   const organizationId = await currentOrganizationId(req);
 
   try {
-    const periodStart = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-    const [usage] = await db
-      .select({ total: sql<number>`coalesce(sum(${usageEventsTable.quantity}), 0)` })
-      .from(usageEventsTable)
-      .where(and(
-        organizationId
-          ? or(
-              eq(usageEventsTable.organizationId, organizationId),
-              and(eq(usageEventsTable.userId, req.user.id), isNull(usageEventsTable.organizationId)),
-            )
-          : eq(usageEventsTable.userId, req.user.id),
-        eq(usageEventsTable.kind, "voice_minutes"),
-        gte(usageEventsTable.occurredAt, periodStart),
-      ));
-    const used = Number(usage?.total ?? 0);
-    if (Number.isFinite(overageCap) && used >= overageCap) {
-      res.status(429).json({
-        error: "usage_limit_exceeded",
-        detail: `You've used ${used} of ${limit} included minutes (${overageCap} overage cap). Upgrade your plan or wait for the next billing cycle.`,
-      });
-      return;
+    if (!req.isAdmin) {
+      const periodStart = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      const [usage] = await db
+        .select({ total: sql<number>`coalesce(sum(${usageEventsTable.quantity}), 0)` })
+        .from(usageEventsTable)
+        .where(and(
+          organizationId
+            ? or(
+                eq(usageEventsTable.organizationId, organizationId),
+                and(eq(usageEventsTable.userId, req.user.id), isNull(usageEventsTable.organizationId)),
+              )
+            : eq(usageEventsTable.userId, req.user.id),
+          eq(usageEventsTable.kind, "voice_minutes"),
+          gte(usageEventsTable.occurredAt, periodStart),
+        ));
+      const used = Number(usage?.total ?? 0);
+      if (Number.isFinite(overageCap) && used >= overageCap) {
+        res.status(429).json({
+          error: "usage_limit_exceeded",
+          detail: `You've used ${used} of ${limit} included minutes (${overageCap} overage cap). Upgrade your plan or wait for the next billing cycle.`,
+        });
+        return;
+      }
     }
   } catch {
     // non-critical — allow session to proceed if usage check fails

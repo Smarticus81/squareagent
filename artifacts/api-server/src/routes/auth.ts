@@ -10,9 +10,9 @@ import { Router, Request, Response } from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
-import { db, usersTable, sessionsTable, subscriptionsTable, exchangeCodesTable, organizationMembershipsTable, venuesTable, agentProfilesTable } from "@workspace/db";
+import { db, usersTable, sessionsTable, subscriptionsTable, exchangeCodesTable, organizationMembershipsTable, organizationsTable, venuesTable, agentProfilesTable } from "@workspace/db";
 import { and, eq, isNull, lt, or } from "drizzle-orm";
-import { checkClerkOrgPlan } from "../lib/clerk-billing";
+import { checkClerkOrgPlan, isClerkConfigured, ensureClerkIdentity, createClerkSignInToken } from "../lib/clerk-billing";
 import { decrypt, encrypt } from "../lib/secrets";
 
 const router = Router();
@@ -24,14 +24,11 @@ const SESSION_DAYS = 30;
 /**
  * Platform admin emails — never-expiring trial, every pipeline unlocked,
  * every skill tier on, no plan gating. Configurable via ADMIN_EMAILS env
- * (comma-separated). Compared case-insensitively. Production has no default.
+ * (comma-separated). Compared case-insensitively.
  */
 const FAR_FUTURE = new Date("9999-12-31T23:59:59Z");
-const DEFAULT_DEV_ADMIN_EMAIL = "tmusoni@thinkertons.com";
-const ADMIN_EMAILS = (
-  process.env.ADMIN_EMAILS ??
-  (process.env.NODE_ENV === "production" ? "" : DEFAULT_DEV_ADMIN_EMAIL)
-)
+const DEFAULT_ADMIN_EMAIL = "tmusoni@thinkertons.com";
+const ADMIN_EMAILS = (process.env.ADMIN_EMAILS ?? DEFAULT_ADMIN_EMAIL)
   .split(",")
   .map((s) => s.trim().toLowerCase())
   .filter(Boolean);
@@ -56,6 +53,7 @@ export function isAdminEmail(email: string | null | undefined): boolean {
 export function buildAdminSubscription(userId: number): {
   id: number;
   userId: number;
+  organizationId: string | null;
   clerkSubscriptionId: string | null;
   plan: string;
   status: string;
@@ -68,8 +66,9 @@ export function buildAdminSubscription(userId: number): {
   return {
     id: -1,
     userId,
+    organizationId: null,
     clerkSubscriptionId: null,
-    plan: "business",
+    plan: "admin",
     status: "active",
     trialEndsAt: null,
     currentPeriodEnd: FAR_FUTURE,
@@ -98,7 +97,7 @@ async function ensureAdminSubscription(userId: number): Promise<SubscriptionRow 
         .insert(subscriptionsTable)
         .values({
           userId,
-          plan: "business",
+          plan: "admin",
           status: "active",
           trialEndsAt: null,
           currentPeriodEnd: FAR_FUTURE,
@@ -107,7 +106,7 @@ async function ensureAdminSubscription(userId: number): Promise<SubscriptionRow 
       return (inserted as SubscriptionRow) ?? (buildAdminSubscription(userId) as SubscriptionRow);
     }
     const needsUpdate =
-      existing.plan !== "business" ||
+      existing.plan !== "admin" ||
       existing.status !== "active" ||
       existing.trialEndsAt !== null ||
       !existing.currentPeriodEnd ||
@@ -116,7 +115,7 @@ async function ensureAdminSubscription(userId: number): Promise<SubscriptionRow 
       const [updated] = await db
         .update(subscriptionsTable)
         .set({
-          plan: "business",
+          plan: "admin",
           status: "active",
           trialEndsAt: null,
           currentPeriodEnd: FAR_FUTURE,
@@ -443,13 +442,13 @@ router.post("/signup", async (req: Request, res: Response): Promise<void> => {
 
     const isAdmin = isAdminEmail(user.email);
     const trialEndsAt = isAdmin ? null : new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
-    await db.insert(subscriptionsTable).values({
+    const [subscription] = await db.insert(subscriptionsTable).values({
       userId: user.id,
-      plan: isAdmin ? "business" : "trial",
+      plan: isAdmin ? "admin" : "trial",
       status: isAdmin ? "active" : "trialing",
       trialEndsAt,
       currentPeriodEnd: isAdmin ? FAR_FUTURE : null,
-    });
+    }).returning();
 
     const sessionId = crypto.randomUUID();
     const expiresAt = new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000);
@@ -467,6 +466,7 @@ router.post("/signup", async (req: Request, res: Response): Promise<void> => {
     res.json({
       token,
       user: { id: user.id, email: user.email, name: user.name, isAdmin },
+      subscription: subscription ?? (isAdmin ? buildAdminSubscription(user.id) : null),
       organizationId,
       trialEndsAt,
       isAdmin,
@@ -498,9 +498,11 @@ router.post("/login", async (req: Request, res: Response): Promise<void> => {
     const token = signToken(user.id, sessionId);
 
     const isAdmin = isAdminEmail(user.email);
-    if (isAdmin) await ensureAdminSubscription(user.id);
-    let subscription =
-      ((req as Request & { subscription?: SubscriptionRow | null }).subscription ?? null) as SubscriptionRow | null;
+    let subscription: SubscriptionRow | null = isAdmin ? await ensureAdminSubscription(user.id) : null;
+    if (!subscription && !isAdmin) {
+      [subscription] = await db.select().from(subscriptionsTable).where(eq(subscriptionsTable.userId, user.id));
+    }
+    if (!subscription && isAdmin) subscription = buildAdminSubscription(user.id) as SubscriptionRow;
 
     let organizationId =
       ((req as Request & { organization?: { id?: string | null } }).organization?.id ?? null) as string | null;
@@ -561,6 +563,48 @@ router.get("/me", requireAuth as any, async (req: Request, res: Response): Promi
   } catch (e: any) {
     console.error("[Auth] Current user lookup error:", e.message);
     res.status(503).json({ error: "Auth service unavailable" });
+  }
+});
+
+// POST /api/auth/clerk-link
+// Mirrors the logged-in VoyceLab account into Clerk (user + organization) and
+// returns a one-time sign-in token so the browser can silently establish a
+// Clerk session with an active org. This is what lets Clerk Billing checkout,
+// the billing portal, and webhook plan-sync work for a VoyceLab-authenticated
+// user without a second login.
+router.post("/clerk-link", requireAuth as any, async (req: Request, res: Response): Promise<void> => {
+  if (!ensureAuthStore(res)) return;
+  if (!isClerkConfigured()) {
+    res.status(503).json({ error: "Clerk billing is not configured." });
+    return;
+  }
+
+  const user = (req as any).user as typeof usersTable.$inferSelect;
+
+  try {
+    const { ensureUserOrganization } = await import("./v1/_helpers");
+    const { id: organizationId } = await ensureUserOrganization(user);
+    const [org] = await db.select().from(organizationsTable).where(eq(organizationsTable.id, organizationId));
+    if (!org) { res.status(500).json({ error: "Organization unavailable" }); return; }
+
+    const identity = await ensureClerkIdentity(user, org);
+    if (!identity) { res.status(503).json({ error: "Could not link Clerk billing identity." }); return; }
+
+    const signInToken = await createClerkSignInToken(identity.clerkUserId);
+    if (!signInToken) { res.status(503).json({ error: "Could not create Clerk sign-in token." }); return; }
+
+    // Refresh cached auth so subsequent requests observe the linked clerk ids.
+    invalidateAuthCacheForUser(user.id);
+
+    res.json({
+      signInToken,
+      clerkUserId: identity.clerkUserId,
+      clerkOrgId: identity.clerkOrgId,
+      organizationId,
+    });
+  } catch (e: any) {
+    console.error("[Auth] clerk-link error:", e.message);
+    res.status(500).json({ error: "Could not link Clerk billing." });
   }
 });
 

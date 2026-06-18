@@ -38,6 +38,7 @@ export interface ConfirmationPolicy {
 export const DEFAULT_CONFIRMATION_POLICY: ConfirmationPolicy = {
   alwaysConfirm: [],
   neverConfirm: [
+    // Reads — always safe
     "search_menu",
     "get_order",
     "list_orders",
@@ -61,7 +62,25 @@ export const DEFAULT_CONFIRMATION_POLICY: ConfirmationPolicy = {
     "get_inventory_changes",
     "get_item_details",
     "get_order_details",
-    // General assistant — read-only
+    // Routine reversible writes — never interrupt the flow
+    "add_item",
+    "remove_item",
+    "clear_order",
+    "apply_discount",
+    "create_item",
+    "update_item",
+    "create_category",
+    "adjust_inventory",
+    "set_inventory",
+    "transfer_inventory",
+    "batch_adjust_inventory",
+    "create_customer",
+    "update_customer",
+    "clock_in",
+    "clock_out",
+    "archive_email",
+    "trash_email",
+    // General assistant — read-only / draft
     "list_inbox",
     "search_email",
     "read_email",
@@ -74,6 +93,9 @@ export const DEFAULT_CONFIRMATION_POLICY: ConfirmationPolicy = {
     "list_database_connections",
     "create_email_draft",
   ],
+  // Risk-based fallback for any tool not explicitly listed above. Disabled by
+  // default ("never") — the spoken command is itself the confirmation, so no
+  // tool interrupts the voice flow regardless of room noise.
   thresholdByNoiseMode: {
     standard: "never",
     loud: "never",

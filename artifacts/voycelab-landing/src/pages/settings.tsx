@@ -1,8 +1,8 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
-import { SignedIn, SignedOut, SignInButton, OrganizationSwitcher } from "@clerk/clerk-react";
-import { ArrowLeft, ArrowRight, ArrowUpRight, BarChart3, Building2, CheckCircle2, CreditCard, KeyRound, Loader2, Lock, UserRound } from "lucide-react";
+import { SignedIn, SignedOut, OrganizationSwitcher } from "@clerk/clerk-react";
+import { ArrowLeft, ArrowRight, ArrowUpRight, BarChart3, Building2, CheckCircle2, CreditCard, KeyRound, Loader2, Lock, ShieldCheck, UserRound, UsersRound } from "lucide-react";
 import { getClerkSessionToken } from "@/lib/clerk-session";
 import { getPlan } from "@workspace/voicelab-core/pricing";
 
@@ -50,6 +50,39 @@ type ProviderKeyStatus = {
   usingAlias?: boolean;
 };
 
+type AdminOverview = {
+  windowDays: number;
+  roles: { role: string; label: string; permissions: string[] }[];
+  totals: {
+    users: number;
+    organizations: number;
+    venues: number;
+    assistants: number;
+    voiceMinutes: number;
+    toolCalls: number;
+    failedToolCalls: number;
+  };
+  pipelines: { provider: string; displayName: string; status: string; reason?: string | null; missing?: string[] }[];
+  topTools: { toolName: string; count: number }[];
+  recentErrors: { userId: number | null; email: string | null; toolName: string; errorMessage: string | null; createdAt: string }[];
+  users: AdminUserAccess[];
+};
+
+type AdminUserAccess = {
+  id: number;
+  email: string;
+  name: string;
+  isPlatformAdmin: boolean;
+  organization: { id: string; name: string | null; role: string } | null;
+  subscription: { plan: string; status: string; trialEndsAt?: string | null; currentPeriodEnd?: string | null } | null;
+  usage: {
+    voiceMinutes: number;
+    toolCalls: number;
+    failedToolCalls: number;
+    lastActivityAt: string | null;
+  };
+};
+
 const isClerkLinkedSubscription = (subscription: BillingSubscription | null | undefined) =>
   Boolean(subscription?.clerkSubscriptionId) || subscription?.billingSource === "clerk_claims";
 
@@ -74,6 +107,7 @@ export default function Settings() {
   const [, setLocation] = useLocation();
   const { data: auth, isLoading, refetch } = useAuth();
   const clerkBillingEnabled = Boolean(import.meta.env.VITE_CLERK_PUBLISHABLE_KEY);
+  const [settingsTab, setSettingsTab] = useState<"account" | "admin">("account");
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -145,6 +179,10 @@ export default function Settings() {
     })().catch(() => {});
   }, [auth?.user?.isAdmin]);
 
+  useEffect(() => {
+    if (!auth?.user?.isAdmin && settingsTab === "admin") setSettingsTab("account");
+  }, [auth?.user?.isAdmin, settingsTab]);
+
   if (isLoading) {
     return (
       <div className="flex-1 flex items-center justify-center">
@@ -211,6 +249,10 @@ export default function Settings() {
 
   const handleManageBilling = async () => {
     setBillingMsg(null);
+    if (auth?.user?.isAdmin) {
+      setBillingMsg({ tone: "ok", text: "Platform admin access is already unlimited." });
+      return;
+    }
     const subscription = (billingStatus?.subscription ?? auth?.subscription ?? null) as BillingSubscription | null;
     const status = subscription?.status;
 
@@ -283,7 +325,6 @@ export default function Settings() {
   const trialActive = status === "trialing" && (!trialEndsAt || trialEndsAt > new Date());
   const trialExpired = status === "trialing" && trialEndsAt && trialEndsAt < new Date();
   const planActive = status === "active";
-  const billingVerifiedByClerk = effectiveSubscription?.billingSource === "clerk_claims";
   const billingLinked = planActive && isClerkLinkedSubscription(effectiveSubscription);
   const billingOperational =
     billingStatus?.operational ??
@@ -317,9 +358,45 @@ export default function Settings() {
           Sign-in, usage, and billing for your organization.
         </p>
 
+        {auth.user.isAdmin && (
+          <div className="mt-8 inline-flex rounded-xl border bg-white/60 p-1" role="tablist" aria-label="Account sections" style={{ borderColor: "rgba(10,10,11,0.10)" }}>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={settingsTab === "account"}
+              onClick={() => setSettingsTab("account")}
+              className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-[13px] font-medium transition-colors"
+              style={{
+                color: settingsTab === "account" ? "var(--color-vl-ink)" : "var(--color-vl-ink-muted)",
+                background: settingsTab === "account" ? "#fff" : "transparent",
+              }}
+            >
+              <UserRound className="h-4 w-4" />
+              Account
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={settingsTab === "admin"}
+              onClick={() => setSettingsTab("admin")}
+              className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-[13px] font-medium transition-colors"
+              style={{
+                color: settingsTab === "admin" ? "var(--color-vl-ink)" : "var(--color-vl-ink-muted)",
+                background: settingsTab === "admin" ? "#fff" : "transparent",
+              }}
+            >
+              <ShieldCheck className="h-4 w-4" />
+              Admin
+            </button>
+          </div>
+        )}
+
+        {settingsTab === "admin" && auth.user.isAdmin ? (
+          <AdminConsole token={localStorage.getItem("voycelab_token")} />
+        ) : (
         <div className="mt-10 space-y-4">
           {/* Usage */}
-          <UsageCard token={localStorage.getItem("voycelab_token")} plan={plan} />
+          <UsageCard token={localStorage.getItem("voycelab_token")} plan={plan} isAdmin={auth.user.isAdmin} />
 
           {/* Profile */}
           <Section icon={<UserRound className="h-5 w-5" />} title="Profile" description="Your name and email.">
@@ -387,7 +464,9 @@ export default function Settings() {
             <div className="flex items-start justify-between gap-6 flex-wrap">
               <div>
                 <p className="text-[15px] font-medium" style={{ color: "var(--color-vl-ink)" }}>
-                  {planActive
+                  {auth.user.isAdmin
+                    ? "Platform admin - Unlimited"
+                    : planActive
                     ? `${capitalize(plan)} · Active`
                     : trialActive
                     ? `Free trial · ${capitalize(plan)}`
@@ -396,49 +475,56 @@ export default function Settings() {
                     : capitalize(status)}
                 </p>
                 <p className="text-[12.5px] mt-1" style={{ color: "var(--color-vl-ink-muted)" }}>
-                  {planActive
+                  {auth.user.isAdmin
+                    ? "All assistants, commands, and voice engines are unlocked without billing."
+                    : planActive
                     ? currentPeriodEnd
-                      ? `Your organization's plan renews ${currentPeriodEnd.toLocaleDateString()} via Clerk Billing.`
-                      : "Your organization's plan renews automatically via Clerk Billing."
+                      ? `Your organization's plan renews ${currentPeriodEnd.toLocaleDateString()} via secure checkout.`
+                      : "Your organization's plan renews automatically via secure checkout."
                     : trialActive && trialEndsAt
                     ? `${daysLeft} days left · Ends ${trialEndsAt.toLocaleDateString()}`
                     : trialExpired
                     ? "Upgrade your organization to keep using your assistant."
                     : "Pick a plan to get started."}
                 </p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <BillingBadge
-                    tone={billingStatus?.configured ? "ok" : "warn"}
-                    text={billingStatus?.configured ? "Checkout linked" : "Checkout setup needed"}
-                  />
-                  <BillingBadge
-                    tone={billingStatus?.portalReady ? "ok" : "warn"}
-                    text={
-                      billingStatus?.portalReady
-                        ? billingStatus.portalMode === "external"
-                          ? "External portal ready"
-                          : "Embedded billing ready"
-                        : "Billing management needed"
-                    }
-                  />
-                  <BillingBadge
-                    tone={billingStatus?.webhooksReady ? "ok" : "warn"}
-                    text={billingStatus?.webhooksReady ? "Webhook active" : "Webhook setup needed"}
-                  />
-                  <BillingBadge
-                    tone={billingStatus?.secretKeyConfigured ? "ok" : "warn"}
-                    text={billingStatus?.secretKeyConfigured ? "Server sync ready" : "Server sync needed"}
-                  />
-                  {planActive && (
+                {planActive && (
+                  <div className="mt-3 flex flex-wrap gap-2">
                     <BillingBadge
                       tone={billingLinked ? "ok" : "warn"}
-                      text={billingVerifiedByClerk ? "Clerk plan verified" : billingLinked ? "Subscription synced" : "Plan active locally"}
+                      text={billingLinked ? "Subscription synced" : "Finishing sync…"}
                     />
-                  )}
-                </div>
-                {billingStatus && !billingOperational && (
+                  </div>
+                )}
+                {/* Setup diagnostics are internal — surface them to platform admins only. */}
+                {auth.user.isAdmin && billingStatus && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <BillingBadge
+                      tone={billingStatus.configured ? "ok" : "warn"}
+                      text={billingStatus.configured ? "Checkout linked" : "Checkout setup needed"}
+                    />
+                    <BillingBadge
+                      tone={billingStatus.portalReady ? "ok" : "warn"}
+                      text={
+                        billingStatus.portalReady
+                          ? billingStatus.portalMode === "external"
+                            ? "External portal ready"
+                            : "Embedded billing ready"
+                          : "Billing management needed"
+                      }
+                    />
+                    <BillingBadge
+                      tone={billingStatus.webhooksReady ? "ok" : "warn"}
+                      text={billingStatus.webhooksReady ? "Webhook active" : "Webhook setup needed"}
+                    />
+                    <BillingBadge
+                      tone={billingStatus.secretKeyConfigured ? "ok" : "warn"}
+                      text={billingStatus.secretKeyConfigured ? "Server sync ready" : "Server sync needed"}
+                    />
+                  </div>
+                )}
+                {auth.user.isAdmin && billingStatus && !billingOperational && (
                   <p className="mt-2 max-w-xl text-[12px] leading-relaxed" style={{ color: "var(--color-vl-ink-muted)" }}>
-                    Finish Clerk Billing configuration before launch so checkout, the billing portal, webhook sync, and server-side organization matching all work from one account page.
+                    Finish billing configuration before launch so checkout, the billing portal, webhook sync, and server-side organization matching all work from one account page.
                   </p>
                 )}
               </div>
@@ -454,8 +540,8 @@ export default function Settings() {
                   }
                 >
                   {billingLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                  {trialExpired ? "Choose a plan" : planActive && !billingLinked ? "Link billing" : planActive ? "Manage billing" : "Upgrade"}
-                  <ArrowUpRight className="w-3.5 h-3.5" />
+                  {auth.user.isAdmin ? "Admin access" : trialExpired ? "Choose a plan" : planActive && !billingLinked ? "Link billing" : planActive ? "Manage billing" : "Upgrade"}
+                  {!auth.user.isAdmin && <ArrowUpRight className="w-3.5 h-3.5" />}
                 </button>
                 {billingMsg && <InlineStatus tone={billingMsg.tone} text={billingMsg.text} />}
               </div>
@@ -508,18 +594,15 @@ export default function Settings() {
                 </div>
               </SignedIn>
               <SignedOut>
-                <div className="flex items-center gap-3">
-                  <p className="text-[13px]" style={{ color: "var(--color-vl-ink-muted)" }}>
-                    Sign in with Clerk to manage your organization's billing.
-                  </p>
-                  <SignInButton mode="modal">
-                    <button className="vl-btn-ghost text-[13px]">Sign in</button>
-                  </SignInButton>
+                <div className="flex items-center gap-2 text-[13px]" style={{ color: "var(--color-vl-ink-muted)" }}>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Preparing your organization billing…
                 </div>
               </SignedOut>
             </Section>
           )}
         </div>
+        )}
 
         {/* Post-settings nudge back to the work */}
         <div className="mt-12">
@@ -661,8 +744,260 @@ function capitalize(s: string) {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
+function AdminConsole({ token }: { token: string | null }) {
+  const [data, setData] = useState<AdminOverview | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [savingId, setSavingId] = useState<number | null>(null);
+  const [drafts, setDrafts] = useState<Record<number, { plan: string; status: string; role: string }>>({});
 
-function UsageCard({ token, plan }: { token: string | null; plan?: string }) {
+  const load = async () => {
+    if (!token) {
+      setError("Sign in again to load admin controls.");
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/v1/admin/overview", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const payload = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(payload?.error?.message ?? "Admin overview is unavailable.");
+      setData(payload as AdminOverview);
+      const nextDrafts: Record<number, { plan: string; status: string; role: string }> = {};
+      for (const user of (payload as AdminOverview).users) {
+        nextDrafts[user.id] = {
+          plan: user.subscription?.plan ?? "trial",
+          status: user.subscription?.status ?? "trialing",
+          role: user.organization?.role ?? "owner",
+        };
+      }
+      setDrafts(nextDrafts);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Admin overview is unavailable.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void load();
+  }, [token]);
+
+  const updateDraft = (userId: number, key: "plan" | "status" | "role", value: string) => {
+    setDrafts((current) => ({
+      ...current,
+      [userId]: {
+        plan: current[userId]?.plan ?? "trial",
+        status: current[userId]?.status ?? "trialing",
+        role: current[userId]?.role ?? "owner",
+        [key]: value,
+      },
+    }));
+  };
+
+  const saveAccess = async (user: AdminUserAccess) => {
+    if (!token) return;
+    setSavingId(user.id);
+    setError(null);
+    try {
+      const draft = drafts[user.id] ?? {
+        plan: user.subscription?.plan ?? "trial",
+        status: user.subscription?.status ?? "trialing",
+        role: user.organization?.role ?? "owner",
+      };
+      const res = await fetch(`/api/v1/admin/users/${user.id}/access`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          plan: draft.plan,
+          status: draft.status,
+          role: draft.role,
+          organizationId: user.organization?.id ?? undefined,
+        }),
+      });
+      const payload = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(payload?.error?.message ?? "Could not update access.");
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not update access.");
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="mt-10 flex items-center gap-2">
+        <Loader2 className="h-4 w-4 animate-spin" style={{ color: "var(--color-vl-brass2)" }} />
+        <span className="text-[13px]" style={{ color: "var(--color-vl-ink-muted)" }}>Loading admin console...</span>
+      </div>
+    );
+  }
+
+  if (error && !data) {
+    return (
+      <div className="mt-10">
+        <Section icon={<ShieldCheck className="h-5 w-5" />} title="Admin" description="Platform controls.">
+          <div className="flex items-center justify-between gap-4">
+            <p className="text-[13px]" style={{ color: "var(--color-vl-danger)" }}>{error}</p>
+            <button type="button" className="vl-btn-ghost text-[13px]" onClick={() => void load()}>Retry</button>
+          </div>
+        </Section>
+      </div>
+    );
+  }
+
+  if (!data) return null;
+
+  return (
+    <div className="mt-10 space-y-4">
+      {error && (
+        <p className="text-[13px]" style={{ color: "var(--color-vl-danger)" }}>{error}</p>
+      )}
+
+      <Section icon={<BarChart3 className="h-5 w-5" />} title="Telemetry" description={`Last ${data.windowDays} days across all profiles.`}>
+        <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          <AdminMetric label="Users" value={data.totals.users} />
+          <AdminMetric label="Venues" value={data.totals.venues} />
+          <AdminMetric label="Assistants" value={data.totals.assistants} />
+          <AdminMetric label="Voice min" value={data.totals.voiceMinutes} />
+          <AdminMetric label="Commands" value={data.totals.toolCalls} />
+          <AdminMetric label="Failures" value={data.totals.failedToolCalls} tone={data.totals.failedToolCalls > 0 ? "warn" : "ok"} />
+        </div>
+        {data.topTools.length > 0 && (
+          <div className="mt-5">
+            <p className="vl-eyebrow mb-2">Top commands</p>
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {data.topTools.map((tool) => (
+                <div key={tool.toolName} className="flex justify-between rounded-lg border bg-white/60 px-3 py-2 text-[12px]" style={{ borderColor: "rgba(10,10,11,0.10)" }}>
+                  <span style={{ color: "var(--color-vl-ink)" }}>{tool.toolName.replace(/_/g, " ")}</span>
+                  <span className="tabular-nums" style={{ color: "var(--color-vl-ink-muted)" }}>{tool.count}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </Section>
+
+      <Section icon={<KeyRound className="h-5 w-5" />} title="Pipeline Access" description="Admin access can select every deployed voice engine without upgrading.">
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {data.pipelines.map((pipeline) => (
+            <div key={pipeline.provider} className="rounded-lg border bg-white/60 p-3" style={{ borderColor: "rgba(10,10,11,0.10)" }}>
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-[13px] font-medium" style={{ color: "var(--color-vl-ink)" }}>{pipeline.displayName}</p>
+                <BillingBadge tone={pipeline.status === "available" || pipeline.status === "experimental" ? "ok" : "warn"} text={pipeline.status.replace(/_/g, " ")} />
+              </div>
+              {pipeline.reason && (
+                <p className="mt-2 text-[11.5px] leading-relaxed" style={{ color: "var(--color-vl-ink-muted)" }}>{pipeline.reason}</p>
+              )}
+            </div>
+          ))}
+        </div>
+      </Section>
+
+      <Section icon={<ShieldCheck className="h-5 w-5" />} title="Roles" description="Role definitions used for organization access.">
+        <div className="grid gap-2 md:grid-cols-2">
+          {data.roles.map((role) => (
+            <div key={role.role} className="rounded-lg border bg-white/60 p-3" style={{ borderColor: "rgba(10,10,11,0.10)" }}>
+              <p className="text-[13px] font-semibold" style={{ color: "var(--color-vl-ink)" }}>{role.label}</p>
+              <p className="mt-1 text-[12px]" style={{ color: "var(--color-vl-ink-muted)" }}>{role.permissions.join(", ")}</p>
+            </div>
+          ))}
+        </div>
+      </Section>
+
+      <Section icon={<UsersRound className="h-5 w-5" />} title="User Access" description="Adjust plans, account status, and organization roles.">
+        <div className="space-y-3">
+          {data.users.map((user) => {
+            const draft = drafts[user.id] ?? {
+              plan: user.subscription?.plan ?? "trial",
+              status: user.subscription?.status ?? "trialing",
+              role: user.organization?.role ?? "owner",
+            };
+            return (
+              <div key={user.id} className="rounded-lg border bg-white/60 p-4" style={{ borderColor: "rgba(10,10,11,0.10)" }}>
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-[14px] font-semibold" style={{ color: "var(--color-vl-ink)" }}>{user.name || user.email}</p>
+                      {user.isPlatformAdmin && <BillingBadge tone="ok" text="Platform admin" />}
+                    </div>
+                    <p className="mt-1 text-[12px]" style={{ color: "var(--color-vl-ink-muted)" }}>{user.email}</p>
+                    <p className="mt-1 text-[12px]" style={{ color: "var(--color-vl-ink-muted)" }}>
+                      {user.organization?.name ?? "Workspace"} · {user.usage.voiceMinutes.toLocaleString()} min · {user.usage.toolCalls.toLocaleString()} commands · {user.usage.failedToolCalls.toLocaleString()} failures
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="vl-btn-primary inline-flex items-center gap-2 text-[12px] disabled:opacity-50"
+                    disabled={savingId === user.id}
+                    onClick={() => void saveAccess(user)}
+                  >
+                    {savingId === user.id && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                    Save
+                  </button>
+                </div>
+                <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                  <AdminSelect label="Plan" value={draft.plan} options={["trial", "pro", "business", "admin"]} onChange={(value) => updateDraft(user.id, "plan", value)} />
+                  <AdminSelect label="Status" value={draft.status} options={["trialing", "active", "past_due", "canceled", "inactive"]} onChange={(value) => updateDraft(user.id, "status", value)} />
+                  <AdminSelect label="Role" value={draft.role} options={["owner", "admin", "manager", "operator"]} onChange={(value) => updateDraft(user.id, "role", value)} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </Section>
+
+      {data.recentErrors.length > 0 && (
+        <Section icon={<BarChart3 className="h-5 w-5" />} title="Recent Errors" description="Latest failed command executions.">
+          <div className="space-y-2">
+            {data.recentErrors.slice(0, 8).map((err, index) => (
+              <div key={`${err.createdAt}-${index}`} className="rounded-lg border bg-white/60 px-3 py-2 text-[12px]" style={{ borderColor: "rgba(10,10,11,0.10)", color: "var(--color-vl-ink-muted)" }}>
+                <span style={{ color: "var(--color-vl-ink)" }}>{err.email ?? "Unknown user"}</span>
+                {" · "}
+                {err.toolName.replace(/_/g, " ")}
+                {" · "}
+                {err.errorMessage ?? "unknown error"}
+              </div>
+            ))}
+          </div>
+        </Section>
+      )}
+    </div>
+  );
+}
+
+function AdminMetric({ label, value, tone = "ok" }: { label: string; value: number; tone?: "ok" | "warn" }) {
+  return (
+    <div className="rounded-lg border bg-white/60 p-3" style={{ borderColor: "rgba(10,10,11,0.10)" }}>
+      <p className="text-[11px] uppercase tracking-[0.14em]" style={{ color: "var(--color-vl-ink-faint)" }}>{label}</p>
+      <p className="mt-1 text-[22px] font-semibold tabular-nums" style={{ color: tone === "warn" ? "var(--color-vl-danger)" : "var(--color-vl-ink)" }}>
+        {value.toLocaleString()}
+      </p>
+    </div>
+  );
+}
+
+function AdminSelect({ label, value, options, onChange }: { label: string; value: string; options: string[]; onChange: (value: string) => void }) {
+  return (
+    <Field label={label}>
+      <select value={value} onChange={(event) => onChange(event.target.value)} className="vl-compact-input">
+        {options.map((option) => (
+          <option key={option} value={option}>{capitalize(option.replace(/_/g, " "))}</option>
+        ))}
+      </select>
+    </Field>
+  );
+}
+
+
+function UsageCard({ token, plan, isAdmin = false }: { token: string | null; plan?: string; isAdmin?: boolean }) {
   const [data, setData] = useState<{
     voiceMinutes: { used: number };
     topTools: { toolName: string; count: number }[];
@@ -694,7 +1029,9 @@ function UsageCard({ token, plan }: { token: string | null; plan?: string }) {
       .finally(() => setLoading(false));
   }, [token]);
 
-  const limit = getPlan(plan ?? "trial")?.includedVoiceMinutes ?? getPlan("trial")?.includedVoiceMinutes ?? 60;
+  const limit = isAdmin || plan === "admin"
+    ? -1
+    : getPlan(plan ?? "trial")?.includedVoiceMinutes ?? getPlan("trial")?.includedVoiceMinutes ?? 60;
   const used = data?.voiceMinutes?.used ?? 0;
   const hasFiniteLimit = limit !== -1;
   const pct = hasFiniteLimit ? Math.min(100, Math.round((used / limit) * 100)) : 0;

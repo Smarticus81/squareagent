@@ -118,8 +118,3 @@ export function listConnectedServiceProviders(): ConnectedServiceProviderMetadat
   return Object.values(CONNECTED_SERVICE_PROVIDERS);
 }
 
-export function getConnectedServiceProviderMetadata(
-  provider: ConnectedServiceProvider,
-): ConnectedServiceProviderMetadata {
-  return CONNECTED_SERVICE_PROVIDERS[provider];
-}

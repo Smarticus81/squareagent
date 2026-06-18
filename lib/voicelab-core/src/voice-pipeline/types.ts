@@ -147,15 +147,3 @@ export interface VoicePipelineAdapter {
   closeSession(ctx: VoicePipelineCloseContext): Promise<void>;
 }
 
-export class VoicePipelineUnavailableError extends Error {
-  readonly provider: VoicePipelineProvider;
-  readonly availability: VoicePipelineAvailability;
-  constructor(provider: VoicePipelineProvider, availability: VoicePipelineAvailability) {
-    super(
-      `Voice pipeline "${provider}" is not available: ${availability.reason ?? availability.status}`,
-    );
-    this.name = "VoicePipelineUnavailableError";
-    this.provider = provider;
-    this.availability = availability;
-  }
-}

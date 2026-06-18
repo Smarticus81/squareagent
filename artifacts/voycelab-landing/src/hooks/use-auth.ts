@@ -112,6 +112,7 @@ export function useLogin() {
         user: data.user,
         subscription: data.subscription ?? null,
         organizationId: data.organizationId ?? null,
+        isAdmin: data.isAdmin ?? data.user.isAdmin ?? false,
       });
     },
   });
@@ -140,6 +141,7 @@ export function useSignup() {
         user: data.user,
         subscription: data.subscription ?? null,
         organizationId: data.organizationId ?? null,
+        isAdmin: data.isAdmin ?? data.user.isAdmin ?? false,
       });
     },
   });

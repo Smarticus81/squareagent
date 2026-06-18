@@ -288,11 +288,11 @@ export default function CreateAssistant() {
 
   const allowedVoiceEngines = useMemo(
     () => {
-      if (auth?.isAdmin) return new Set(voiceEngines.map((engine) => engine.id));
+      if (auth?.isAdmin || auth?.user?.isAdmin) return new Set(voiceEngines.map((engine) => engine.id));
       const allowed = getPlanAllowedPipelines(auth?.subscription?.plan) as readonly string[];
       return new Set(voiceEngines.filter((engine) => allowed.includes(engine.id)).map((engine) => engine.id));
     },
-    [auth?.subscription?.plan, auth?.isAdmin, voiceEngines],
+    [auth?.subscription?.plan, auth?.isAdmin, auth?.user?.isAdmin, voiceEngines],
   );
   const selectedVoiceEngine = voiceEngines.find((engine) => engine.id === voicePipelineProvider);
   const selectedEngineReady =
@@ -536,7 +536,7 @@ export default function CreateAssistant() {
                 />
               ))}
             </div>
-            {!auth?.isAdmin && !allowedVoiceEngines.has("google_gemini_3_1_flash_live") && (
+            {!auth?.isAdmin && !auth?.user?.isAdmin && !allowedVoiceEngines.has("google_gemini_3_1_flash_live") && (
               <p className="mt-2 text-[12px]" style={{ color: "rgba(10,10,11,0.52)" }}>
                 Gemini voices unlock on Pro and Business.{" "}
                 <Link href="/pricing" className="underline" style={{ color: "var(--color-vl-brass2)" }}>

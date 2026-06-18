@@ -20,11 +20,8 @@ import type { VoicePipelineProvider } from "../voice-pipeline/types";
 
 export type PlanId = "trial" | "pro" | "business";
 
-/** Legacy plan ids that may still exist in the database. */
-export type LegacyPlanId = "starter" | "professional" | "premium" | "enterprise";
-
 /** Map legacy plan names to the new plan they should resolve to. */
-export const LEGACY_PLAN_MAP: Record<string, PlanId> = {
+const LEGACY_PLAN_MAP: Record<string, PlanId> = {
   starter: "pro",
   professional: "pro",
   premium: "business",
@@ -172,7 +169,7 @@ export const PLANS: PlanDefinition[] = [
 ];
 
 /** Resolve a plan id, mapping legacy names to their new equivalents. */
-export function resolvePlanId(id: string | null | undefined): PlanId {
+function resolvePlanId(id: string | null | undefined): PlanId {
   if (!id) return "trial";
   const direct = PLANS.find((p) => p.id === id);
   if (direct) return direct.id;
@@ -188,6 +185,7 @@ export function getPlan(id: string): PlanDefinition | undefined {
 
 /** Returns the resolved skill tiers for a plan. Falls back to business tiers for unknown ids. */
 export function getPlanSkillTiers(planId: string | null | undefined): SkillTier[] {
+  if (planId === "admin") return ["core", "standard", "premium"];
   if (!planId) return ["core", "standard", "premium"];
   const plan = getPlan(planId);
   if (plan) return plan.skillTiers;
@@ -201,6 +199,7 @@ export function getPlanSkillTiers(planId: string | null | undefined): SkillTier[
 export function getPlanAllowedPipelines(
   planId: string | null | undefined,
 ): VoicePipelineProvider[] {
+  if (planId === "admin") return PIPELINES_PAID;
   if (!planId) return PIPELINES_PAID;
   const plan = getPlan(planId);
   if (plan) return plan.allowedPipelines;
