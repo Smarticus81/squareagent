@@ -20,11 +20,8 @@ import type { VoicePipelineProvider } from "../voice-pipeline/types";
 
 export type PlanId = "trial" | "pro" | "business";
 
-/** Legacy plan ids that may still exist in the database. */
-export type LegacyPlanId = "starter" | "professional" | "premium" | "enterprise";
-
 /** Map legacy plan names to the new plan they should resolve to. */
-export const LEGACY_PLAN_MAP: Record<string, PlanId> = {
+const LEGACY_PLAN_MAP: Record<string, PlanId> = {
   starter: "pro",
   professional: "pro",
   premium: "business",
@@ -172,7 +169,7 @@ export const PLANS: PlanDefinition[] = [
 ];
 
 /** Resolve a plan id, mapping legacy names to their new equivalents. */
-export function resolvePlanId(id: string | null | undefined): PlanId {
+function resolvePlanId(id: string | null | undefined): PlanId {
   if (!id) return "trial";
   const direct = PLANS.find((p) => p.id === id);
   if (direct) return direct.id;

@@ -125,8 +125,3 @@ export function getVoicePipelineProviderMetadata(
   return VOICE_PIPELINE_PROVIDERS[provider];
 }
 
-export function listVoicePipelineProvidersByCategory(
-  category: VoicePipelineCategory,
-): VoicePipelineProviderMetadata[] {
-  return listVoicePipelineProviders().filter((p) => p.category === category);
-}

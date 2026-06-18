@@ -6,7 +6,6 @@ import {
 import {
   VOICE_PIPELINE_PROVIDERS,
   listVoicePipelineProviders,
-  listVoicePipelineProvidersByCategory,
 } from "../src/voice-pipeline/registry";
 import { defaultWakePhraseFor } from "../src/agent-profile/types";
 
@@ -40,19 +39,6 @@ describe("voice-pipeline registry", () => {
   it("lists 8 voice pipeline providers across all categories", () => {
     const list = listVoicePipelineProviders();
     expect(list.length).toBe(8);
-  });
-
-  it("filters by category", () => {
-    const native = listVoicePipelineProvidersByCategory("native_realtime_speech_to_speech");
-    expect(native.map((p) => p.provider)).toEqual(
-      expect.arrayContaining([
-        "openai_realtime_webrtc",
-        "openai_realtime_server_ws",
-        "google_gemini_3_1_flash_live",
-        "google_gemini_2_5_flash_native_audio",
-        "google_gemini_live_native_audio",
-      ]),
-    );
   });
 
   it("marks fallbacks correctly", () => {
