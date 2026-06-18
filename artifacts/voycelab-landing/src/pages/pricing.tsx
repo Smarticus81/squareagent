@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
-import { PricingTable, SignInButton, SignedIn, SignedOut } from "@clerk/clerk-react";
-import { ArrowRight, Check, Loader2, Sparkles } from "lucide-react";
+import { PricingTable, SignedIn, SignedOut } from "@clerk/clerk-react";
+import { ArrowRight, Check, Loader2, Lock, Sparkles } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { withClerkBillingHeader } from "@/lib/clerk-session";
 
@@ -164,14 +164,14 @@ export default function Pricing() {
                   Subscribe with Clerk Billing.
                 </h2>
                 <p className="mt-2 max-w-2xl text-[13px] leading-relaxed" style={{ color: "var(--color-vl-ink-muted)" }}>
-                  Clerk manages checkout, payment methods, invoices, and plan changes. Use the same email as your VoyceLab account so your plan syncs automatically.
+                  Clerk manages checkout, payment methods, invoices, and plan changes. Your VoyceLab account is linked automatically, so the plan you choose here activates instantly across your workspace.
                 </p>
               </div>
-              <SignedOut>
-                <SignInButton mode="modal">
-                  <button className="vl-btn-primary text-[13px]">Sign in for checkout</button>
-                </SignInButton>
-              </SignedOut>
+              {!auth?.user && (
+                <Link href="/signup" className="vl-btn-primary text-[13px] inline-flex items-center gap-2">
+                  Start free trial <ArrowRight className="w-3.5 h-3.5" />
+                </Link>
+              )}
             </div>
             {selectedCheckoutPlan && (
               <div
@@ -188,11 +188,28 @@ export default function Pricing() {
             )}
             <SignedIn>
               <PricingTable for="organization" />
+              <div className="mt-4 flex items-center gap-2 text-[12px]" style={{ color: "var(--color-vl-ink-faint)" }}>
+                <Lock className="h-3.5 w-3.5" />
+                Payments are processed securely by Stripe. Cancel or change your plan anytime.
+              </div>
             </SignedIn>
             <SignedOut>
-              <div className="rounded-2xl border border-black/10 bg-white/55 p-6 text-[13px]" style={{ color: "var(--color-vl-ink-muted)" }}>
-                Sign in with Clerk to view live subscription checkout.
-              </div>
+              {auth?.user ? (
+                <div className="flex items-center gap-3 rounded-2xl border border-black/10 bg-white/55 p-6 text-[13px]" style={{ color: "var(--color-vl-ink-muted)" }}>
+                  <Loader2 className="h-4 w-4 animate-spin" style={{ color: "var(--color-vl-brass2)" }} />
+                  Preparing your secure checkout…
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-black/10 bg-white/55 p-6 text-[13px]" style={{ color: "var(--color-vl-ink-muted)" }}>
+                  <p>Log in or start a free trial to subscribe — your plan links to your workspace automatically.</p>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <Link href="/signup" className="vl-btn-primary text-[13px] inline-flex items-center gap-2">
+                      Start free trial <ArrowRight className="w-3.5 h-3.5" />
+                    </Link>
+                    <Link href="/login" className="vl-btn-ghost text-[13px]">Log in</Link>
+                  </div>
+                </div>
+              )}
             </SignedOut>
           </section>
         )}

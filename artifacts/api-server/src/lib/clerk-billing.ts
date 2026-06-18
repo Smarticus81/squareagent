@@ -9,9 +9,19 @@
 
 import { clerkMiddleware, getAuth, clerkClient as defaultClerkClient } from "@clerk/express";
 import type { Request, Response, NextFunction } from "express";
+import { db, usersTable, organizationsTable, type User, type Organization } from "@workspace/db";
+import { eq } from "drizzle-orm";
+import { createComponentLogger } from "./logger";
+
+const log = createComponentLogger("clerk-billing");
 
 const CLERK_SECRET_KEY = process.env.CLERK_SECRET_KEY ?? "";
 const CLERK_PUBLISHABLE_KEY = process.env.VITE_CLERK_PUBLISHABLE_KEY ?? "";
+
+/** Clerk is usable for billing identity only when both keys are present. */
+export function isClerkConfigured(): boolean {
+  return Boolean(CLERK_SECRET_KEY && CLERK_PUBLISHABLE_KEY);
+}
 
 /**
  * Express middleware that silently attaches Clerk auth to requests.
@@ -121,6 +131,133 @@ export function checkClerkOrgFeature(req: Request, feature: string): boolean {
   const billing = getClerkBillingAuth(req);
   if (!billing?.orgId) return false;
   return billing.has({ feature });
+}
+
+// ── Clerk identity provisioning ───────────────────────────────────────────────
+// Clerk Billing (B2B) requires the buyer to be a Clerk user inside an active
+// Clerk organization. VoyceLab owns its own login, so we transparently mirror
+// each VoyceLab account into Clerk (user + organization) and hand the browser a
+// one-time sign-in token so it can establish the Clerk session silently. This
+// is what makes "Upgrade" / billing portal / webhook plan-sync actually work
+// for a normally-logged-in VoyceLab user.
+
+export interface ClerkIdentity {
+  clerkUserId: string;
+  clerkOrgId: string;
+}
+
+function unwrapList<T>(value: unknown): T[] {
+  if (Array.isArray(value)) return value as T[];
+  if (value && typeof value === "object" && Array.isArray((value as { data?: unknown }).data)) {
+    return (value as { data: T[] }).data;
+  }
+  return [];
+}
+
+async function findOrCreateClerkUser(user: User): Promise<string> {
+  if (user.clerkUserId) return user.clerkUserId;
+
+  const email = user.email.toLowerCase().trim();
+  let clerkUserId: string | null = null;
+
+  try {
+    const list = await defaultClerkClient.users.getUserList({ emailAddress: [email] });
+    const existing = unwrapList<{ id: string }>(list);
+    if (existing.length > 0) clerkUserId = existing[0].id;
+  } catch (e) {
+    log.warn({ err: e instanceof Error ? e.message : String(e) }, "clerk user lookup failed");
+  }
+
+  if (!clerkUserId) {
+    const parts = (user.name ?? "").trim().split(/\s+/).filter(Boolean);
+    const firstName = parts.shift();
+    const lastName = parts.join(" ");
+    const created = await defaultClerkClient.users.createUser({
+      emailAddress: [email],
+      firstName: firstName || undefined,
+      lastName: lastName || undefined,
+      skipPasswordRequirement: true,
+      skipPasswordChecks: true,
+      externalId: String(user.id),
+    });
+    clerkUserId = created.id;
+  }
+
+  await db
+    .update(usersTable)
+    .set({ clerkUserId, updatedAt: new Date() })
+    .where(eq(usersTable.id, user.id));
+
+  return clerkUserId;
+}
+
+async function ensureClerkOrgMembership(clerkOrgId: string, clerkUserId: string): Promise<void> {
+  try {
+    await defaultClerkClient.organizations.createOrganizationMembership({
+      organizationId: clerkOrgId,
+      userId: clerkUserId,
+      role: "org:admin",
+    });
+  } catch {
+    // Already a member, or membership cannot be added — safe to ignore.
+  }
+}
+
+async function findOrCreateClerkOrg(org: Organization, clerkUserId: string): Promise<string> {
+  if (org.clerkOrgId) {
+    await ensureClerkOrgMembership(org.clerkOrgId, clerkUserId);
+    return org.clerkOrgId;
+  }
+
+  const created = await defaultClerkClient.organizations.createOrganization({
+    name: org.name,
+    createdBy: clerkUserId,
+  });
+
+  await db
+    .update(organizationsTable)
+    .set({ clerkOrgId: created.id, updatedAt: new Date() })
+    .where(eq(organizationsTable.id, org.id));
+
+  return created.id;
+}
+
+/**
+ * Ensure the VoyceLab user + organization are mirrored into Clerk. Persists the
+ * resulting Clerk ids so webhook plan-sync can resolve the org reliably.
+ * Returns null when Clerk is not configured.
+ */
+export async function ensureClerkIdentity(user: User, org: Organization): Promise<ClerkIdentity | null> {
+  if (!isClerkConfigured() || !db) return null;
+  try {
+    const clerkUserId = await findOrCreateClerkUser(user);
+    const clerkOrgId = await findOrCreateClerkOrg(org, clerkUserId);
+    return { clerkUserId, clerkOrgId };
+  } catch (e) {
+    log.error({ err: e instanceof Error ? e.message : String(e) }, "ensureClerkIdentity failed");
+    return null;
+  }
+}
+
+/**
+ * Mint a one-time Clerk sign-in token (ticket) so the browser can sign the user
+ * into Clerk without a second credential prompt.
+ */
+export async function createClerkSignInToken(
+  clerkUserId: string,
+  expiresInSeconds = 600,
+): Promise<string | null> {
+  if (!isClerkConfigured()) return null;
+  try {
+    const res = await defaultClerkClient.signInTokens.createSignInToken({
+      userId: clerkUserId,
+      expiresInSeconds,
+    });
+    return res?.token ?? null;
+  } catch (e) {
+    log.error({ err: e instanceof Error ? e.message : String(e) }, "createSignInToken failed");
+    return null;
+  }
 }
 
 export { defaultClerkClient as clerkClient };

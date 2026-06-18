@@ -10,9 +10,9 @@ import { Router, Request, Response } from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
-import { db, usersTable, sessionsTable, subscriptionsTable, exchangeCodesTable, organizationMembershipsTable, venuesTable, agentProfilesTable } from "@workspace/db";
+import { db, usersTable, sessionsTable, subscriptionsTable, exchangeCodesTable, organizationMembershipsTable, organizationsTable, venuesTable, agentProfilesTable } from "@workspace/db";
 import { and, eq, isNull, lt, or } from "drizzle-orm";
-import { checkClerkOrgPlan } from "../lib/clerk-billing";
+import { checkClerkOrgPlan, isClerkConfigured, ensureClerkIdentity, createClerkSignInToken } from "../lib/clerk-billing";
 import { decrypt, encrypt } from "../lib/secrets";
 
 const router = Router();
@@ -563,6 +563,48 @@ router.get("/me", requireAuth as any, async (req: Request, res: Response): Promi
   } catch (e: any) {
     console.error("[Auth] Current user lookup error:", e.message);
     res.status(503).json({ error: "Auth service unavailable" });
+  }
+});
+
+// POST /api/auth/clerk-link
+// Mirrors the logged-in VoyceLab account into Clerk (user + organization) and
+// returns a one-time sign-in token so the browser can silently establish a
+// Clerk session with an active org. This is what lets Clerk Billing checkout,
+// the billing portal, and webhook plan-sync work for a VoyceLab-authenticated
+// user without a second login.
+router.post("/clerk-link", requireAuth as any, async (req: Request, res: Response): Promise<void> => {
+  if (!ensureAuthStore(res)) return;
+  if (!isClerkConfigured()) {
+    res.status(503).json({ error: "Clerk billing is not configured." });
+    return;
+  }
+
+  const user = (req as any).user as typeof usersTable.$inferSelect;
+
+  try {
+    const { ensureUserOrganization } = await import("./v1/_helpers");
+    const { id: organizationId } = await ensureUserOrganization(user);
+    const [org] = await db.select().from(organizationsTable).where(eq(organizationsTable.id, organizationId));
+    if (!org) { res.status(500).json({ error: "Organization unavailable" }); return; }
+
+    const identity = await ensureClerkIdentity(user, org);
+    if (!identity) { res.status(503).json({ error: "Could not link Clerk billing identity." }); return; }
+
+    const signInToken = await createClerkSignInToken(identity.clerkUserId);
+    if (!signInToken) { res.status(503).json({ error: "Could not create Clerk sign-in token." }); return; }
+
+    // Refresh cached auth so subsequent requests observe the linked clerk ids.
+    invalidateAuthCacheForUser(user.id);
+
+    res.json({
+      signInToken,
+      clerkUserId: identity.clerkUserId,
+      clerkOrgId: identity.clerkOrgId,
+      organizationId,
+    });
+  } catch (e: any) {
+    console.error("[Auth] clerk-link error:", e.message);
+    res.status(500).json({ error: "Could not link Clerk billing." });
   }
 });
 

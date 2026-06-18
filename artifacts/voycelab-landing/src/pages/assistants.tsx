@@ -67,6 +67,14 @@ export default function Assistants() {
               Create one assistant per venue. Each voice carries its connected service, room behavior, wake phrase, and approval rules.
             </p>
           </div>
+          {list.length > 0 && (
+            <button
+              onClick={() => setLocation("/assistants/new")}
+              className="vl-btn-primary inline-flex items-center gap-2"
+            >
+              <Plus className="h-4 w-4" /> Create assistant
+            </button>
+          )}
         </div>
 
         {venuesError && (

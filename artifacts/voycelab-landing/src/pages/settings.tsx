@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
-import { SignedIn, SignedOut, SignInButton, OrganizationSwitcher } from "@clerk/clerk-react";
+import { SignedIn, SignedOut, OrganizationSwitcher } from "@clerk/clerk-react";
 import { ArrowLeft, ArrowRight, ArrowUpRight, BarChart3, Building2, CheckCircle2, CreditCard, KeyRound, Loader2, Lock, ShieldCheck, UserRound, UsersRound } from "lucide-react";
 import { getClerkSessionToken } from "@/lib/clerk-session";
 import { getPlan } from "@workspace/voicelab-core/pricing";
@@ -325,7 +325,6 @@ export default function Settings() {
   const trialActive = status === "trialing" && (!trialEndsAt || trialEndsAt > new Date());
   const trialExpired = status === "trialing" && trialEndsAt && trialEndsAt < new Date();
   const planActive = status === "active";
-  const billingVerifiedByClerk = effectiveSubscription?.billingSource === "clerk_claims";
   const billingLinked = planActive && isClerkLinkedSubscription(effectiveSubscription);
   const billingOperational =
     billingStatus?.operational ??
@@ -480,47 +479,52 @@ export default function Settings() {
                     ? "All assistants, commands, and voice engines are unlocked without billing."
                     : planActive
                     ? currentPeriodEnd
-                      ? `Your organization's plan renews ${currentPeriodEnd.toLocaleDateString()} via Clerk Billing.`
-                      : "Your organization's plan renews automatically via Clerk Billing."
+                      ? `Your organization's plan renews ${currentPeriodEnd.toLocaleDateString()} via secure checkout.`
+                      : "Your organization's plan renews automatically via secure checkout."
                     : trialActive && trialEndsAt
                     ? `${daysLeft} days left · Ends ${trialEndsAt.toLocaleDateString()}`
                     : trialExpired
                     ? "Upgrade your organization to keep using your assistant."
                     : "Pick a plan to get started."}
                 </p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <BillingBadge
-                    tone={billingStatus?.configured ? "ok" : "warn"}
-                    text={billingStatus?.configured ? "Checkout linked" : "Checkout setup needed"}
-                  />
-                  <BillingBadge
-                    tone={billingStatus?.portalReady ? "ok" : "warn"}
-                    text={
-                      billingStatus?.portalReady
-                        ? billingStatus.portalMode === "external"
-                          ? "External portal ready"
-                          : "Embedded billing ready"
-                        : "Billing management needed"
-                    }
-                  />
-                  <BillingBadge
-                    tone={billingStatus?.webhooksReady ? "ok" : "warn"}
-                    text={billingStatus?.webhooksReady ? "Webhook active" : "Webhook setup needed"}
-                  />
-                  <BillingBadge
-                    tone={billingStatus?.secretKeyConfigured ? "ok" : "warn"}
-                    text={billingStatus?.secretKeyConfigured ? "Server sync ready" : "Server sync needed"}
-                  />
-                  {planActive && (
+                {planActive && (
+                  <div className="mt-3 flex flex-wrap gap-2">
                     <BillingBadge
                       tone={billingLinked ? "ok" : "warn"}
-                      text={billingVerifiedByClerk ? "Clerk plan verified" : billingLinked ? "Subscription synced" : "Plan active locally"}
+                      text={billingLinked ? "Subscription synced" : "Finishing sync…"}
                     />
-                  )}
-                </div>
-                {billingStatus && !billingOperational && (
+                  </div>
+                )}
+                {/* Setup diagnostics are internal — surface them to platform admins only. */}
+                {auth.user.isAdmin && billingStatus && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <BillingBadge
+                      tone={billingStatus.configured ? "ok" : "warn"}
+                      text={billingStatus.configured ? "Checkout linked" : "Checkout setup needed"}
+                    />
+                    <BillingBadge
+                      tone={billingStatus.portalReady ? "ok" : "warn"}
+                      text={
+                        billingStatus.portalReady
+                          ? billingStatus.portalMode === "external"
+                            ? "External portal ready"
+                            : "Embedded billing ready"
+                          : "Billing management needed"
+                      }
+                    />
+                    <BillingBadge
+                      tone={billingStatus.webhooksReady ? "ok" : "warn"}
+                      text={billingStatus.webhooksReady ? "Webhook active" : "Webhook setup needed"}
+                    />
+                    <BillingBadge
+                      tone={billingStatus.secretKeyConfigured ? "ok" : "warn"}
+                      text={billingStatus.secretKeyConfigured ? "Server sync ready" : "Server sync needed"}
+                    />
+                  </div>
+                )}
+                {auth.user.isAdmin && billingStatus && !billingOperational && (
                   <p className="mt-2 max-w-xl text-[12px] leading-relaxed" style={{ color: "var(--color-vl-ink-muted)" }}>
-                    Finish Clerk Billing configuration before launch so checkout, the billing portal, webhook sync, and server-side organization matching all work from one account page.
+                    Finish billing configuration before launch so checkout, the billing portal, webhook sync, and server-side organization matching all work from one account page.
                   </p>
                 )}
               </div>
@@ -590,13 +594,9 @@ export default function Settings() {
                 </div>
               </SignedIn>
               <SignedOut>
-                <div className="flex items-center gap-3">
-                  <p className="text-[13px]" style={{ color: "var(--color-vl-ink-muted)" }}>
-                    Sign in with Clerk to manage your organization's billing.
-                  </p>
-                  <SignInButton mode="modal">
-                    <button className="vl-btn-ghost text-[13px]">Sign in</button>
-                  </SignInButton>
+                <div className="flex items-center gap-2 text-[13px]" style={{ color: "var(--color-vl-ink-muted)" }}>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Preparing your organization billing…
                 </div>
               </SignedOut>
             </Section>

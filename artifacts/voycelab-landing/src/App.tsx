@@ -1,11 +1,12 @@
 import { Suspense, lazy, useLayoutEffect } from "react";
 import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { ClerkProvider, SignInButton, SignedIn, SignedOut, OrganizationProfile, OrganizationSwitcher } from "@clerk/clerk-react";
+import { ClerkProvider, SignedIn, SignedOut, OrganizationProfile, OrganizationSwitcher } from "@clerk/clerk-react";
 import { ThemeProvider } from "next-themes";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Layout } from "@/components/layout";
+import { ClerkIdentityBridge } from "@/components/clerk-identity-bridge";
 
 const Landing = lazy(() => import("@/pages/landing"));
 const Login = lazy(() => import("@/pages/login"));
@@ -130,20 +131,35 @@ function Billing() {
           <OrganizationProfile routing="path" path="/billing" />
         </SignedIn>
         <SignedOut>
-          <div className="vl-panel p-8">
-            <p className="vl-eyebrow">Billing</p>
-            <h1 className="vl-display mt-3 text-[36px]" style={{ color: "var(--color-vl-ink)" }}>
-              Sign in to manage billing.
-            </h1>
-            <p className="mt-2 text-[14px]" style={{ color: "var(--color-vl-ink-muted)" }}>
-              Billing is managed at the organization level. Sign in to view and manage your organization's subscription.
-            </p>
-            <SignInButton mode="modal">
-              <button className="vl-btn-primary mt-6 text-[14px]">Sign in with Clerk</button>
-            </SignInButton>
-          </div>
+          <BillingSignedOut />
         </SignedOut>
       </div>
+    </div>
+  );
+}
+
+function BillingSignedOut() {
+  const hasToken = typeof window !== "undefined" && Boolean(localStorage.getItem("voycelab_token"));
+  if (hasToken) {
+    return (
+      <div className="vl-panel flex items-center gap-3 p-8">
+        <span className="h-4 w-4 animate-spin rounded-full border-2 border-black/15 border-t-black/60" />
+        <p className="text-[14px]" style={{ color: "var(--color-vl-ink-muted)" }}>
+          Preparing your organization's billing…
+        </p>
+      </div>
+    );
+  }
+  return (
+    <div className="vl-panel p-8">
+      <p className="vl-eyebrow">Billing</p>
+      <h1 className="vl-display mt-3 text-[36px]" style={{ color: "var(--color-vl-ink)" }}>
+        Log in to manage billing.
+      </h1>
+      <p className="mt-2 text-[14px]" style={{ color: "var(--color-vl-ink-muted)" }}>
+        Billing lives at the organization level. Log in to your VoyceLab account to view and manage your subscription.
+      </p>
+      <a href="/login" className="vl-btn-primary mt-6 inline-flex text-[14px]">Log in</a>
     </div>
   );
 }
@@ -153,6 +169,7 @@ function AppContent() {
     <ThemeProvider attribute="class" defaultTheme="dark" forcedTheme="dark" disableTransitionOnChange>
       <QueryClientProvider client={queryClient}>
         <TooltipProvider>
+          {clerkPublishableKey && <ClerkIdentityBridge />}
           <WouterRouter base={import.meta.env.BASE_URL?.replace(/\/$/, "") || ""}>
             <Router />
           </WouterRouter>
