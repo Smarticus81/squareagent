@@ -57,10 +57,11 @@ const router = Router();
 
 const OPENAI_REALTIME_MODEL = process.env.OPENAI_REALTIME_MODEL ?? "gpt-realtime-2";
 // gpt-realtime-2 — GA speech-to-speech model with reasoning support.
-// We default reasoning.effort to "low" per the Realtime prompting guide:
-// strong production trade-off between latency and reasoning quality.
+// We default reasoning.effort to "minimal" for the lowest first-audio
+// latency; bump via OPENAI_REALTIME_REASONING_EFFORT if tool-call quality
+// ever needs the extra thinking time.
 const OPENAI_REALTIME_REASONING_EFFORT =
-  (process.env.OPENAI_REALTIME_REASONING_EFFORT as "minimal" | "low" | "medium" | "high" | undefined) ?? "low";
+  (process.env.OPENAI_REALTIME_REASONING_EFFORT as "minimal" | "low" | "medium" | "high" | undefined) ?? "minimal";
 
 // Master switch for acoustic (full-duplex) barge-in. Off by default because
 // browser echo cancellation does not reliably suppress the agent's own voice
@@ -285,16 +286,17 @@ function buildDemoRealtimeSessionConfig(voice: string, speed: number) {
         format: { type: "audio/pcm" as const, rate: 24000 as const },
         transcription: { model: "gpt-realtime-whisper" },
         // semantic_vad uses a model to detect natural turn ends rather than
-        // a fixed silence timer. eagerness="low" waits longer before
-        // committing the turn so users can pause mid-sentence without being
-        // cut off (the previous server_vad with 180ms silence was clipping
-        // every breath). See OpenAI Realtime prompting guide.
+        // a fixed silence timer. eagerness="auto" commits the turn as soon
+        // as the model judges the user finished — "low" added a long silence
+        // tail that made every exchange feel laggy, while semantic detection
+        // still tolerates mid-sentence pauses far better than the old
+        // server_vad 180ms timer that clipped every breath.
         // interrupt_response follows ACOUSTIC_BARGE_IN_ENABLED: off by default
         // so the agent's own audio on speaker / Bluetooth can't truncate the
         // reply. The demo client half-duplex-gates the mic during playback.
         turn_detection: {
           type: "semantic_vad" as const,
-          eagerness: "low" as const,
+          eagerness: "auto" as const,
           create_response: true,
           interrupt_response: ACOUSTIC_BARGE_IN_ENABLED,
         },
@@ -316,9 +318,12 @@ function buildTurnDetection(noiseMode: NoiseMode): Record<string, unknown> | nul
       // Bluetooth no longer truncates the response — the client half-duplex
       // gates the mic during playback and offers tap-to-interrupt instead.
       // See VoiceAgentContext "mic gating".
+      // eagerness="auto" lets semantic detection commit the turn the moment
+      // the user sounds finished — "low" waited out a long silence tail and
+      // made back-to-back commands feel laggy.
       return {
         type: "semantic_vad",
-        eagerness: "low",
+        eagerness: "auto",
         create_response: true,
         interrupt_response: ACOUSTIC_BARGE_IN_ENABLED,
       };
@@ -327,7 +332,7 @@ function buildTurnDetection(noiseMode: NoiseMode): Record<string, unknown> | nul
         type: "server_vad",
         threshold: 0.6,
         prefix_padding_ms: 400,
-        silence_duration_ms: 800,
+        silence_duration_ms: 600,
         create_response: true,
         interrupt_response: ACOUSTIC_BARGE_IN_ENABLED,
       };
@@ -601,7 +606,7 @@ async function handleDemoSession(req: any, res: any) {
             transcription: { model: "gpt-realtime-whisper" },
             turn_detection: {
               type: "semantic_vad" as const,
-              eagerness: "low" as const,
+              eagerness: "auto" as const,
               create_response: true,
               interrupt_response: true,
             },

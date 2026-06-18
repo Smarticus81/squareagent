@@ -12,7 +12,7 @@ import { readServerApiKey, requireServerApiKey, requiredApiKeyEnv } from "../../
 
 const REALTIME_MODEL = process.env.OPENAI_REALTIME_MODEL ?? "gpt-realtime-2";
 const REALTIME_REASONING_EFFORT =
-  (process.env.OPENAI_REALTIME_REASONING_EFFORT as "minimal" | "low" | "medium" | "high" | undefined) ?? "low";
+  (process.env.OPENAI_REALTIME_REASONING_EFFORT as "minimal" | "low" | "medium" | "high" | undefined) ?? "minimal";
 
 function readApiKey(): string {
   return readServerApiKey("openai")?.value ?? "";
@@ -77,7 +77,7 @@ export class OpenAiRealtimeWebRtcAdapter implements VoicePipelineAdapter {
           transcription: { model: "whisper-1" },
           turn_detection: {
             type: "semantic_vad" as const,
-            eagerness: "low" as const,
+            eagerness: "auto" as const,
             create_response: true,
             interrupt_response: true,
           },

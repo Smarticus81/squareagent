@@ -21,22 +21,22 @@ export interface ConfirmationPolicy {
   alwaysConfirm: string[];
   /** Never require confirmation for these tools (read-only safe). */
   neverConfirm: string[];
-  /** Risk level cutoff at which confirmation is required for the given mode. */
-  thresholdByNoiseMode: Record<NoiseMode, ToolRiskLevel>;
+  /**
+   * Risk level cutoff at which confirmation is required for the given mode.
+   * "never" disables threshold-based confirmation for that mode entirely.
+   */
+  thresholdByNoiseMode: Record<NoiseMode, ToolRiskLevel | "never">;
 }
 
+/**
+ * Default policy: confirmations are disabled. Every tool call originates from
+ * a direct user voice command, so the user's instruction IS the confirmation —
+ * orders submit and actions execute immediately without a confirm popup or a
+ * verbal "are you sure?". Venues that want extra friction can supply a custom
+ * policy with alwaysConfirm entries or risk thresholds.
+ */
 export const DEFAULT_CONFIRMATION_POLICY: ConfirmationPolicy = {
-  // Only genuinely irreversible / money-moving / externally-visible actions
-  // interrupt the conversation for explicit confirmation. Everything else runs
-  // immediately to keep the voice flow fast and natural.
-  alwaysConfirm: [
-    "submit_order",
-    "send_to_terminal",
-    "refund_payment",
-    "cancel_payment",
-    "delete_item",
-    "send_email",
-  ],
+  alwaysConfirm: [],
   neverConfirm: [
     // Reads — always safe
     "search_menu",
@@ -93,12 +93,13 @@ export const DEFAULT_CONFIRMATION_POLICY: ConfirmationPolicy = {
     "list_database_connections",
     "create_email_draft",
   ],
-  // Risk-based fallback for any tool not explicitly listed above. Only the
-  // truly destructive tier ever prompts, regardless of room noise.
+  // Risk-based fallback for any tool not explicitly listed above. Disabled by
+  // default ("never") — the spoken command is itself the confirmation, so no
+  // tool interrupts the voice flow regardless of room noise.
   thresholdByNoiseMode: {
-    standard: "destructive",
-    loud: "destructive",
-    push_to_talk: "destructive",
+    standard: "never",
+    loud: "never",
+    push_to_talk: "never",
   },
 };
 
@@ -122,6 +123,7 @@ export function requiresConfirmation(
   if (policy.alwaysConfirm.includes(toolName)) return true;
   if (policy.neverConfirm.includes(toolName)) return false;
   const threshold = policy.thresholdByNoiseMode[noiseMode];
+  if (threshold === "never") return false;
   return RISK_RANK[riskLevel] >= RISK_RANK[threshold];
 }
 
