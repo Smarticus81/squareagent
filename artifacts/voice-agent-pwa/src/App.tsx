@@ -102,7 +102,7 @@ export default function App() {
   const {
     agentState, isConnected, conversation, partialTranscript, error, remoteStream,
     pendingConfirmation, connect, prewarm, activate, releaseStandby, disconnect, setToolHandler, interrupt,
-    setCatalog, setCurrentOrder, setAuthParams,
+    setCatalog, setCurrentOrder, setAuthParams, setOrderHandlingMode,
     confirmPending, denyPending,
   } = useVoiceAgent();
 
@@ -122,6 +122,8 @@ export default function App() {
     agentProfileId,
     wakePhrase,
     wakeMode,
+    orderHandlingMode,
+    updateOrderHandlingMode,
     assistantKind,
   } = useSquare();
 
@@ -180,6 +182,12 @@ export default function App() {
       agentProfile?.voicePipelineConfig,
     );
   }, [sqVenueId, sqAuthToken, agentProfileId, agentProfile, setAuthParams]);
+
+  // Keep the voice agent's live order-handling override in sync with the
+  // assistant's configured mode so submitted orders settle correctly.
+  useEffect(() => {
+    setOrderHandlingMode(orderHandlingMode);
+  }, [orderHandlingMode, setOrderHandlingMode]);
 
   // Push current order to voice agent
   useEffect(() => {

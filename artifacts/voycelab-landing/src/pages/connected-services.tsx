@@ -12,7 +12,6 @@ import {
   ArrowLeft,
   ArrowRight,
   CheckCircle2,
-  ChevronDown,
   Database,
   FileText,
   Loader2,
@@ -106,7 +105,7 @@ function providerStatusTone(provider?: ConnectedServiceProviderInfo | null): "ok
   return provider?.isImplemented && provider.status === "available" ? "ok" : "warn";
 }
 
-// ── Section wrapper (collapsible <details>) ──────────────────────────────────
+// ── Integration card + modal wrapper ─────────────────────────────────────────
 
 function IntegrationSection({
   icon,
@@ -114,7 +113,6 @@ function IntegrationSection({
   iconColor,
   title,
   subtitle,
-  defaultOpen,
   children,
 }: {
   icon: React.ReactNode;
@@ -122,31 +120,190 @@ function IntegrationSection({
   iconColor: string;
   title: string;
   subtitle: string;
-  defaultOpen?: boolean;
   children: React.ReactNode;
 }) {
+  const [open, setOpen] = useState(false);
+
   return (
-    <details open={defaultOpen} className="group mb-8">
-      <summary className="mb-4 flex cursor-pointer items-center gap-3 list-none [&::-webkit-details-marker]:hidden">
-        <div
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
-          style={{
-            background: iconBg,
-            border: "1px solid rgba(10,10,11,0.08)",
-            color: iconColor,
-          }}
-        >
-          {icon}
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="group flex aspect-square min-h-[218px] flex-col justify-between overflow-hidden rounded-[28px] border bg-white/72 p-4 text-left shadow-sm transition hover:-translate-y-1 hover:bg-white hover:shadow-lg"
+        style={{ borderColor: "rgba(10,10,11,0.07)" }}
+      >
+        <IntegrationArt title={title} icon={icon} iconBg={iconBg} iconColor={iconColor} />
+
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-[0.16em]" style={{ color: "var(--color-vl-ink-faint)" }}>
+            Integration
+          </p>
+          <h2 className="mt-2 text-[19px] font-bold leading-tight" style={{ color: "var(--color-vl-ink)" }}>
+            {title}
+          </h2>
+          <p className="mt-1.5 line-clamp-2 text-[12px] leading-relaxed" style={{ color: "rgba(10,10,11,0.58)" }}>
+            {subtitle}
+          </p>
         </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-[15px] font-semibold" style={{ color: "var(--color-vl-ink)" }}>{title}</p>
-          <p className="text-[12px]" style={{ color: "rgba(10,10,11,0.52)" }}>{subtitle}</p>
+
+        <span className="inline-flex items-center gap-2 text-[11.5px] font-bold" style={{ color: "var(--color-vl-coral-deep)" }}>
+          Configure
+          <ArrowRight className="h-3.5 w-3.5 transition group-hover:translate-x-0.5" />
+        </span>
+      </button>
+
+      {open && (
+        <div className="fixed inset-0 z-80 flex items-center justify-center px-4 py-8">
+          <button
+            type="button"
+            aria-label={`Close ${title}`}
+            className="absolute inset-0 bg-slate-950/35 backdrop-blur-sm"
+            onClick={() => setOpen(false)}
+          />
+          <section
+            role="dialog"
+            aria-modal="true"
+            className="relative flex max-h-[88vh] w-full max-w-[1060px] flex-col overflow-hidden rounded-[28px] border bg-white shadow-2xl"
+            style={{ borderColor: "rgba(10,10,11,0.10)" }}
+          >
+            <div className="grid gap-5 border-b p-6 lg:grid-cols-[220px_minmax(0,1fr)_auto]" style={{ borderColor: "rgba(10,10,11,0.08)" }}>
+              <IntegrationArt title={title} icon={icon} iconBg={iconBg} iconColor={iconColor} compact />
+              <div className="flex min-w-0 items-start gap-4">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-bold uppercase tracking-[0.16em]" style={{ color: "var(--color-vl-ink-faint)" }}>
+                    Configure integration
+                  </p>
+                  <h2 className="mt-1 text-[28px] font-bold leading-tight" style={{ color: "var(--color-vl-ink)" }}>
+                    {title}
+                  </h2>
+                  <p className="mt-1 max-w-140 text-[13px] leading-relaxed" style={{ color: "var(--color-vl-ink-muted)" }}>
+                    {subtitle}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border bg-white/80 text-slate-500 transition hover:bg-white hover:text-slate-900"
+                style={{ borderColor: "rgba(10,10,11,0.10)" }}
+                onClick={() => setOpen(false)}
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="vl-scroll overflow-y-auto p-6">
+              {children}
+            </div>
+          </section>
         </div>
-        <ChevronDown className="h-4 w-4 shrink-0 transition-transform group-open:rotate-180" style={{ color: "rgba(10,10,11,0.35)" }} />
-      </summary>
-      {children}
-    </details>
+      )}
+    </>
   );
+}
+
+function IntegrationArt({
+  title,
+  icon,
+  iconBg,
+  iconColor,
+  compact = false,
+}: {
+  title: string;
+  icon: React.ReactNode;
+  iconBg: string;
+  iconColor: string;
+  compact?: boolean;
+}) {
+  const palette = getIntegrationPalette(title);
+  const blocks = title.includes("Square")
+    ? [80, 54, 68, 42, 86]
+    : title.includes("Knowledge")
+      ? [48, 78, 58, 88, 62]
+      : title.includes("Email")
+        ? [54, 46, 88, 64, 74]
+        : [78, 64, 42, 86, 58];
+
+  return (
+    <div
+      className={`relative w-full overflow-hidden rounded-[22px] border shadow-inner ${compact ? "h-[120px]" : "h-[96px]"}`}
+      style={{
+        borderColor: palette.border,
+        background: `linear-gradient(135deg, ${palette.start}, ${palette.mid} 52%, ${palette.end})`,
+      }}
+    >
+      <div className="absolute -right-8 -top-12 h-32 w-32 rounded-[36%] blur-2xl" style={{ background: palette.glow }} />
+      <div className="absolute -bottom-12 -left-10 h-32 w-32 rounded-[40%] blur-2xl" style={{ background: palette.soft }} />
+      <div className="absolute inset-x-4 bottom-4 flex h-14 items-end gap-1.5">
+        {blocks.map((height, index) => (
+          <span
+            key={`${title}-${height}-${index}`}
+            className="w-full rounded-md shadow-sm"
+            style={{
+              height: `${height}%`,
+              background: index % 2 === 0 ? palette.line : palette.lineAlt,
+              opacity: 0.88,
+            }}
+          />
+        ))}
+      </div>
+      <div
+        className="absolute left-4 top-4 grid h-12 w-12 place-items-center rounded-[18px] border shadow-lg backdrop-blur"
+        style={{ borderColor: "rgba(255,255,255,0.55)", background: iconBg, color: iconColor }}
+      >
+        {icon}
+      </div>
+      <div className="absolute right-4 top-4 h-3 w-12 rounded-md" style={{ background: palette.line, opacity: 0.75 }} />
+      <div className="absolute right-4 top-9 h-3 w-8 rounded-md" style={{ background: palette.lineAlt, opacity: 0.65 }} />
+    </div>
+  );
+}
+
+function getIntegrationPalette(title: string) {
+  if (title.includes("Square")) {
+    return {
+      start: "rgba(47,158,100,0.22)",
+      mid: "rgba(79,184,255,0.18)",
+      end: "rgba(255,255,255,0.88)",
+      glow: "rgba(47,158,100,0.42)",
+      soft: "rgba(79,184,255,0.30)",
+      line: "rgba(47,158,100,0.78)",
+      lineAlt: "rgba(14,27,44,0.70)",
+      border: "rgba(47,158,100,0.18)",
+    };
+  }
+  if (title.includes("Knowledge")) {
+    return {
+      start: "rgba(124,110,245,0.22)",
+      mid: "rgba(255,107,71,0.16)",
+      end: "rgba(255,255,255,0.88)",
+      glow: "rgba(124,110,245,0.40)",
+      soft: "rgba(255,107,71,0.28)",
+      line: "rgba(124,110,245,0.78)",
+      lineAlt: "rgba(255,107,71,0.68)",
+      border: "rgba(124,110,245,0.18)",
+    };
+  }
+  if (title.includes("Email")) {
+    return {
+      start: "rgba(255,107,71,0.20)",
+      mid: "rgba(255,185,90,0.18)",
+      end: "rgba(255,255,255,0.88)",
+      glow: "rgba(255,107,71,0.40)",
+      soft: "rgba(255,185,90,0.30)",
+      line: "rgba(255,107,71,0.74)",
+      lineAlt: "rgba(14,27,44,0.68)",
+      border: "rgba(255,107,71,0.18)",
+    };
+  }
+  return {
+    start: "rgba(79,184,255,0.20)",
+    mid: "rgba(124,110,245,0.18)",
+    end: "rgba(255,255,255,0.88)",
+    glow: "rgba(79,184,255,0.38)",
+    soft: "rgba(124,110,245,0.30)",
+    line: "rgba(79,184,255,0.76)",
+    lineAlt: "rgba(124,110,245,0.72)",
+    border: "rgba(79,184,255,0.18)",
+  };
 }
 // ── Main page ────────────────────────────────────────────────────────────────
 
@@ -270,7 +427,7 @@ export default function ConnectedServices() {
 
   if (isLoading || (venuesLoading && !venuesError)) {
     return (
-      <div className="flex-1 flex items-center justify-center">
+      <div className="vl-page-shell flex flex-1 items-center justify-center">
         <Loader2 className="w-5 h-5 animate-spin" style={{ color: "var(--color-vl-brass2)" }} />
       </div>
     );
@@ -283,8 +440,8 @@ export default function ConnectedServices() {
   const squareReady = !squareProvider || (squareProvider.isImplemented && squareProvider.status === "available");
 
   return (
-    <div className="flex-1 pt-20 sm:pt-24 pb-16">
-      <div className="w-full max-w-240 mx-auto px-4 sm:px-6 lg:px-10">
+    <div className="vl-page-shell flex-1 pb-16 pt-20 sm:pt-24">
+      <div className="mx-auto w-full max-w-[1320px] px-4 sm:px-6 lg:px-10">
         <Link
           href="/assistants"
           className="inline-flex items-center gap-1.5 text-[12px] mb-5 transition-colors"
@@ -293,20 +450,42 @@ export default function ConnectedServices() {
           <ArrowLeft className="w-3.5 h-3.5" /> Assistants
         </Link>
 
-        <div className="mb-10">
-          <p className="vl-eyebrow">Integrations</p>
-          <h1
-            className="text-[28px] md:text-[34px] font-semibold tracking-tight mt-2"
-            style={{ color: "var(--color-vl-ink)" }}
-          >
-            Connected systems
-          </h1>
-          <p className="mt-2 text-[14px] leading-relaxed max-w-xl" style={{ color: "rgba(10,10,11,0.62)" }}>
-            Your assistant can only act on systems you connect here. Start with Square for live POS actions, then add knowledge and data sources to expand what it can do.
-          </p>
-          <div className="mt-4 flex flex-wrap gap-2">
+        <div className="vl-panel mb-8 overflow-hidden p-6 md:p-8">
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-end">
+            <div>
+              <p className="vl-eyebrow">Integrations</p>
+              <h1
+                className="vl-display mt-3 text-[38px] md:text-[54px]"
+                style={{ color: "var(--color-vl-ink)" }}
+              >
+                Connected systems
+              </h1>
+              <p className="mt-4 max-w-2xl text-[15px] leading-relaxed" style={{ color: "rgba(10,10,11,0.62)" }}>
+                Connect the live systems your assistants can act on. Square powers POS actions; knowledge, email, and databases expand what the assistant can answer and coordinate.
+              </p>
+            </div>
+            <div className="rounded-3xl border bg-white/70 p-4 shadow-sm" style={{ borderColor: "rgba(10,10,11,0.07)" }}>
+              <p className="text-[11px] font-bold uppercase tracking-[0.16em]" style={{ color: "var(--color-vl-ink-faint)" }}>
+                Current status
+              </p>
+              <div className="mt-3 flex items-center gap-3">
+                <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600">
+                  <Store className="h-5 w-5" />
+                </span>
+                <div className="min-w-0">
+                  <p className="truncate text-[14px] font-bold" style={{ color: "var(--color-vl-ink)" }}>
+                    Square adapter
+                  </p>
+                  <p className="mt-0.5 text-[12px]" style={{ color: "var(--color-vl-ink-muted)" }}>
+                    {providerStatusText(squareProvider)}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="mt-5 flex flex-wrap gap-2">
             <span
-              className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-semibold"
+              className="inline-flex items-center gap-1.5 rounded-xl border px-3 py-1 text-[11px] font-semibold"
               style={{
                 color: providerStatusTone(squareProvider) === "ok" ? "var(--color-vl-success)" : "rgba(138,99,24,0.95)",
                 borderColor: providerStatusTone(squareProvider) === "ok" ? "rgba(47,158,100,0.22)" : "rgba(138,99,24,0.22)",
@@ -351,15 +530,15 @@ export default function ConnectedServices() {
           </div>
         )}
 
-        {/* ── 1. Square POS ──────────────────────────────────────── */}
-        <IntegrationSection
-          icon={<Store className="h-4.5 w-4.5" />}
-          iconBg="linear-gradient(135deg, #FFFFFF, var(--color-vl-coral-tint))"
-          iconColor="var(--color-vl-coral-deep)"
-          title="Square POS"
-          subtitle="Menu, orders, inventory, reporting, terminals"
-          defaultOpen
-        >
+        <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
+          {/* ── 1. Square POS ──────────────────────────────────────── */}
+          <IntegrationSection
+            icon={<Store className="h-4.5 w-4.5" />}
+            iconBg="linear-gradient(135deg, #FFFFFF, var(--color-vl-coral-tint))"
+            iconColor="var(--color-vl-coral-deep)"
+            title="Square POS"
+            subtitle="Menu, orders, inventory, reporting, terminals"
+          >
           <div className="flex justify-end mb-3">
             {hasVenues && (
               <button
@@ -375,7 +554,7 @@ export default function ConnectedServices() {
           </div>
 
           <div
-            className="rounded-2xl border bg-white overflow-hidden"
+            className="overflow-hidden rounded-3xl border bg-white/82"
             style={{ borderColor: "rgba(10,10,11,0.08)", boxShadow: "0 1px 2px rgba(10,10,11,0.04), 0 8px 24px -12px rgba(10,10,11,0.08)" }}
           >
             {!hasVenues ? (
@@ -408,7 +587,7 @@ export default function ConnectedServices() {
                         {v.squareLocationName ?? v.name ?? `Venue ${v.id}`}
                       </span>
                       <span
-                        className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10.5px] font-semibold tracking-wide uppercase"
+                        className="inline-flex items-center gap-1 rounded-lg border px-2 py-0.5 text-[10.5px] font-semibold tracking-wide uppercase"
                         style={{
                           color: "var(--color-vl-success)",
                           borderColor: "rgba(47,158,100,0.20)",
@@ -428,7 +607,7 @@ export default function ConnectedServices() {
                   <button
                     onClick={() => deleteVenue.mutate(v.id)}
                     disabled={deleteVenue.isPending}
-                    className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-semibold transition-colors disabled:opacity-60"
+                    className="inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-[12px] font-semibold transition-colors disabled:opacity-60"
                     style={{
                       color: "var(--color-vl-danger)",
                       background: "rgba(215, 64, 46, 0.06)",
@@ -455,40 +634,41 @@ export default function ConnectedServices() {
               </button>
             </div>
           )}
-        </IntegrationSection>
+          </IntegrationSection>
 
-        {/* ── 2. Knowledge Base ───────────────────────────────────── */}
-        <IntegrationSection
-          icon={<FileText className="h-4.5 w-4.5" />}
-          iconBg="linear-gradient(135deg, #FFFFFF, rgba(199,210,254,0.4))"
-          iconColor="var(--color-vl-accent)"
-          title="Knowledge Base"
-          subtitle="Upload documents the assistant can search and quote from"
-        >
-          <KnowledgeSection />
-        </IntegrationSection>
+          {/* ── 2. Knowledge Base ───────────────────────────────────── */}
+          <IntegrationSection
+            icon={<FileText className="h-4.5 w-4.5" />}
+            iconBg="linear-gradient(135deg, #FFFFFF, rgba(199,210,254,0.4))"
+            iconColor="var(--color-vl-accent)"
+            title="Knowledge Base"
+            subtitle="Upload documents the assistant can search and quote from"
+          >
+            <KnowledgeSection />
+          </IntegrationSection>
 
-        {/* ── 3. Email ────────────────────────────────────────────── */}
-        <IntegrationSection
-          icon={<Mail className="h-4.5 w-4.5" />}
-          iconBg="linear-gradient(135deg, #FFFFFF, rgba(253,224,71,0.2))"
-          iconColor="var(--color-vl-accent)"
-          title="Email"
-          subtitle="Gmail sign-in or Resend for outbound mail"
-        >
-          <EmailSection />
-        </IntegrationSection>
+          {/* ── 3. Email ────────────────────────────────────────────── */}
+          <IntegrationSection
+            icon={<Mail className="h-4.5 w-4.5" />}
+            iconBg="linear-gradient(135deg, #FFFFFF, rgba(253,224,71,0.2))"
+            iconColor="var(--color-vl-accent)"
+            title="Email"
+            subtitle="Gmail sign-in or Resend for outbound mail"
+          >
+            <EmailSection />
+          </IntegrationSection>
 
-        {/* ── 4. Database ─────────────────────────────────────────── */}
-        <IntegrationSection
-          icon={<Database className="h-4.5 w-4.5" />}
-          iconBg="linear-gradient(135deg, #FFFFFF, rgba(167,243,208,0.3))"
-          iconColor="var(--color-vl-accent)"
-          title="Database"
-          subtitle="Read-only Postgres connection for database commands"
-        >
-          <DatabaseSection />
-        </IntegrationSection>
+          {/* ── 4. Database ─────────────────────────────────────────── */}
+          <IntegrationSection
+            icon={<Database className="h-4.5 w-4.5" />}
+            iconBg="linear-gradient(135deg, #FFFFFF, rgba(167,243,208,0.3))"
+            iconColor="var(--color-vl-accent)"
+            title="Database"
+            subtitle="Read-only Postgres connection for database commands"
+          >
+            <DatabaseSection />
+          </IntegrationSection>
+        </div>
 
       </div>
 
@@ -496,7 +676,7 @@ export default function ConnectedServices() {
       {showLocationPicker && locations.length > 0 && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(10,10,11,0.36)] p-4 backdrop-blur-sm">
           <div
-            className="w-full max-w-md rounded-2xl border bg-white p-6 md:p-7"
+            className="w-full max-w-md rounded-3xl border bg-white/94 p-6 md:p-7"
             style={{ borderColor: "rgba(10,10,11,0.10)", boxShadow: "0 24px 48px -12px rgba(10,10,11,0.25)" }}
           >
             <div className="mb-5 flex items-start justify-between gap-4">
@@ -515,7 +695,7 @@ export default function ConnectedServices() {
                   setSquareOAuthClaim(null);
                   setLocations([]);
                 }}
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition-colors"
                 style={{
                   color: "rgba(10,10,11,0.45)",
                   background: "rgba(10, 10, 11,0.04)",
@@ -525,7 +705,7 @@ export default function ConnectedServices() {
                 <X className="w-3.5 h-3.5" />
               </button>
             </div>
-            <div className="max-h-80 space-y-2 overflow-y-auto pr-1">
+            <div className="vl-scroll max-h-80 space-y-2 overflow-y-auto pr-2">
               {locations.map((loc) => (
                 <button
                   key={loc.id}
@@ -644,7 +824,7 @@ function KnowledgeSection() {
 
   return (
     <div
-      className="rounded-2xl border bg-white p-6"
+      className="rounded-3xl border bg-white/82 p-6"
       style={{ borderColor: "rgba(10,10,11,0.08)", boxShadow: "0 1px 2px rgba(10,10,11,0.04), 0 8px 24px -12px rgba(10,10,11,0.08)" }}
     >
       <p className="text-[14px] mb-6" style={{ color: "rgba(10,10,11,0.62)" }}>
@@ -659,14 +839,14 @@ function KnowledgeSection() {
             placeholder="Title"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            className="w-full bg-white border border-black/12 rounded-lg px-3 py-2 text-sm text-(--color-vl-ink) placeholder:text-black/35"
+            className="w-full rounded-2xl border border-black/12 bg-white/72 px-3 py-2 text-sm text-(--color-vl-ink) placeholder:text-black/35"
           />
           <textarea
             placeholder="Paste text here..."
             value={text}
             onChange={(e) => setText(e.target.value)}
             rows={6}
-            className="w-full bg-white border border-black/12 rounded-lg px-3 py-2 text-sm text-(--color-vl-ink) placeholder:text-black/35 resize-y"
+            className="w-full resize-y rounded-2xl border border-black/12 bg-white/72 px-3 py-2 text-sm text-(--color-vl-ink) placeholder:text-black/35"
           />
           <button
             type="submit"
@@ -677,7 +857,7 @@ function KnowledgeSection() {
           </button>
         </form>
 
-        <label className="flex flex-col items-center justify-center border-2 border-dashed border-black/12 rounded-lg p-6 cursor-pointer hover:border-black/25 bg-(--color-vl-cream)/50">
+        <label className="flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-black/12 bg-white/56 p-6 transition hover:border-black/25 hover:bg-white/76">
           <Upload className="w-6 h-6 mb-2" style={{ color: "var(--color-vl-accent)" }} />
           <div className="text-sm" style={{ color: "var(--color-vl-ink)" }}>Upload a file</div>
           <div className="text-xs mt-1" style={{ color: "rgba(10,10,11,0.52)" }}>PDF, DOCX, TXT, MD, HTML - up to 10 MB</div>
@@ -848,7 +1028,7 @@ function EmailSection() {
 
   return (
     <div
-      className="rounded-2xl border bg-white p-6"
+      className="rounded-3xl border bg-white/82 p-6"
       style={{ borderColor: "rgba(10,10,11,0.08)", boxShadow: "0 1px 2px rgba(10,10,11,0.04), 0 8px 24px -12px rgba(10,10,11,0.08)" }}
     >
       <p className="text-[14px] mb-4" style={{ color: "rgba(10,10,11,0.62)" }}>
@@ -865,7 +1045,7 @@ function EmailSection() {
               role="tab"
               aria-selected={provider === "gmail_oauth"}
               onClick={() => setProvider("gmail_oauth")}
-              className={`px-3 py-1.5 text-sm rounded-full border transition ${provider === "gmail_oauth" ? "bg-(--color-vl-ink) text-white border-transparent" : "border-black/12 text-(--color-vl-ink)"}`}
+              className={`rounded-xl border px-3 py-1.5 text-sm transition ${provider === "gmail_oauth" ? "bg-(--color-vl-ink) text-white border-transparent" : "border-black/12 text-(--color-vl-ink)"}`}
             >
               Gmail
             </button>
@@ -874,7 +1054,7 @@ function EmailSection() {
               role="tab"
               aria-selected={provider === "resend"}
               onClick={() => setProvider("resend")}
-              className={`px-3 py-1.5 text-sm rounded-full border transition ${provider === "resend" ? "bg-(--color-vl-ink) text-white border-transparent" : "border-black/12 text-(--color-vl-ink)"}`}
+              className={`rounded-xl border px-3 py-1.5 text-sm transition ${provider === "resend" ? "bg-(--color-vl-ink) text-white border-transparent" : "border-black/12 text-(--color-vl-ink)"}`}
             >
               Resend
             </button>
@@ -897,7 +1077,7 @@ function EmailSection() {
                 placeholder="From name (optional, e.g. Acme Bar)"
                 value={fromName}
                 onChange={(e) => setFromName(e.target.value)}
-                className="w-full bg-white border border-black/12 rounded-lg px-3 py-2 text-sm text-(--color-vl-ink) placeholder:text-black/35"
+                className="w-full rounded-2xl border border-black/12 bg-white/72 px-3 py-2 text-sm text-(--color-vl-ink) placeholder:text-black/35"
               />
 
               <div className="flex gap-3">
@@ -932,7 +1112,7 @@ function EmailSection() {
                   placeholder="From address (e.g. ops@yourdomain.com)"
                   value={fromAddress}
                   onChange={(e) => setFromAddress(e.target.value)}
-                  className="bg-white border border-black/12 rounded-lg px-3 py-2 text-sm text-(--color-vl-ink) placeholder:text-black/35"
+                  className="rounded-2xl border border-black/12 bg-white/72 px-3 py-2 text-sm text-(--color-vl-ink) placeholder:text-black/35"
                   required
                 />
                 <input
@@ -940,7 +1120,7 @@ function EmailSection() {
                   placeholder="From name (optional)"
                   value={fromName}
                   onChange={(e) => setFromName(e.target.value)}
-                  className="bg-white border border-black/12 rounded-lg px-3 py-2 text-sm text-(--color-vl-ink) placeholder:text-black/35"
+                  className="rounded-2xl border border-black/12 bg-white/72 px-3 py-2 text-sm text-(--color-vl-ink) placeholder:text-black/35"
                 />
               </div>
               <input
@@ -948,7 +1128,7 @@ function EmailSection() {
                 placeholder={isResendConnected ? "Resend key (leave blank to keep current)" : "Resend key (re_...)"}
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
-                className="w-full bg-white border border-black/12 rounded-lg px-3 py-2 text-sm font-mono text-(--color-vl-ink) placeholder:text-black/35"
+                className="w-full rounded-2xl border border-black/12 bg-white/72 px-3 py-2 text-sm font-mono text-(--color-vl-ink) placeholder:text-black/35"
                 autoComplete="new-password"
               />
               <div className="flex gap-3">
@@ -1045,7 +1225,7 @@ function DatabaseSection() {
 
   return (
     <div
-      className="rounded-2xl border bg-white p-6"
+      className="rounded-3xl border bg-white/82 p-6"
       style={{ borderColor: "rgba(10,10,11,0.08)", boxShadow: "0 1px 2px rgba(10,10,11,0.04), 0 8px 24px -12px rgba(10,10,11,0.08)" }}
     >
       <p className="text-[14px] mb-2" style={{ color: "rgba(10,10,11,0.62)" }}>
@@ -1066,14 +1246,14 @@ function DatabaseSection() {
             placeholder="Label (e.g. analytics)"
             value={label}
             onChange={(e) => setLabel(e.target.value)}
-            className="bg-white border border-black/12 rounded-lg px-3 py-2 text-sm text-(--color-vl-ink) placeholder:text-black/35"
+            className="rounded-2xl border border-black/12 bg-white/72 px-3 py-2 text-sm text-(--color-vl-ink) placeholder:text-black/35"
           />
           <input
             type="text"
             placeholder="postgres://user:pass@host:5432/db"
             value={connectionString}
             onChange={(e) => setConnectionString(e.target.value)}
-            className="md:col-span-2 bg-white border border-black/12 rounded-lg px-3 py-2 text-sm font-mono text-(--color-vl-ink) placeholder:text-black/35"
+            className="rounded-2xl border border-black/12 bg-white/72 px-3 py-2 text-sm font-mono text-(--color-vl-ink) placeholder:text-black/35 md:col-span-2"
           />
         </div>
         <textarea
@@ -1081,7 +1261,7 @@ function DatabaseSection() {
           value={schemaHint}
           onChange={(e) => setSchemaHint(e.target.value)}
           rows={3}
-          className="w-full bg-white border border-black/12 rounded-lg px-3 py-2 text-sm text-(--color-vl-ink) placeholder:text-black/35 resize-y"
+          className="w-full resize-y rounded-2xl border border-black/12 bg-white/72 px-3 py-2 text-sm text-(--color-vl-ink) placeholder:text-black/35"
         />
         <button
           type="submit"

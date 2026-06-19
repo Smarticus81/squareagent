@@ -7,8 +7,8 @@
 /* ──────────────────────────────────────────────────────────────
    VoyceLab — Modern SaaS aesthetic (Chatbase-inspired)
    ──────────────────────────────────────────────────────────────
-   White paper. Near-black ink. Soft pastel gradient washes.
-   Clean Inter typography. Black pill CTAs. Minimal, refined.
+  White paper. Near-black ink. Soft pastel gradient washes.
+   Clean Inter typography. Rounded-square controls. Minimal, refined.
    ────────────────────────────────────────────────────────────── */
 
 @theme inline {
@@ -167,15 +167,46 @@
   body {
     @apply font-sans antialiased;
     background-color: #FFFFFF;
-    /* Soft pastel hero wash — pink top-left, violet right, mint bottom */
+    /* Soft waveform wash and paper texture across product pages. */
     background-image:
       radial-gradient(ellipse 70% 50% at 10% 0%, rgba(251, 207, 232, 0.45), transparent 60%),
       radial-gradient(ellipse 60% 45% at 95% 8%, rgba(199, 210, 254, 0.55), transparent 65%),
       radial-gradient(ellipse 55% 40% at 90% 100%, rgba(167, 243, 208, 0.30), transparent 70%),
-      radial-gradient(ellipse 50% 40% at 5% 95%, rgba(253, 230, 138, 0.22), transparent 70%);
+      radial-gradient(ellipse 50% 40% at 5% 95%, rgba(253, 230, 138, 0.22), transparent 70%),
+      linear-gradient(135deg, rgba(10, 10, 11, 0.026) 1px, transparent 1px),
+      linear-gradient(45deg, rgba(99, 102, 241, 0.018) 1px, transparent 1px);
+    background-size: auto, auto, auto, auto, 24px 24px, 32px 32px;
     background-attachment: fixed;
     text-rendering: optimizeLegibility;
     font-feature-settings: "ss01", "cv11";
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(99, 102, 241, 0.34) rgba(10, 10, 11, 0.045);
+  }
+
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(245, 247, 255, 0.72));
+    border-radius: 14px;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background:
+      linear-gradient(180deg, rgba(99, 102, 241, 0.42), rgba(236, 72, 153, 0.28));
+    border: 3px solid rgba(255, 255, 255, 0.72);
+    border-radius: 14px;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background:
+      linear-gradient(180deg, rgba(79, 70, 229, 0.56), rgba(236, 72, 153, 0.40));
   }
 
   h1, h2, h3, h4, h5, h6 {
@@ -260,7 +291,10 @@
   }
 
   .vl-card {
-    background: #FFFFFF;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(255, 255, 255, 0.82)),
+      radial-gradient(circle at 10% 0%, rgba(236, 72, 153, 0.055), transparent 34%),
+      radial-gradient(circle at 92% 12%, rgba(99, 102, 241, 0.065), transparent 36%);
     border: 1px solid rgba(10, 10, 11, 0.07);
     border-radius: 16px;
     box-shadow:
@@ -287,10 +321,15 @@
   }
 
   .vl-panel {
-    background: #FFFFFF;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.78)),
+      radial-gradient(circle at 0% 0%, rgba(99, 102, 241, 0.045), transparent 32%),
+      radial-gradient(circle at 100% 100%, rgba(16, 185, 129, 0.04), transparent 34%);
     border: 1px solid rgba(10, 10, 11, 0.07);
     border-radius: 16px;
-    box-shadow: 0 1px 2px rgba(10, 10, 11, 0.03);
+    box-shadow:
+      0 1px 2px rgba(10, 10, 11, 0.03),
+      0 18px 48px -38px rgba(10, 10, 11, 0.36);
   }
 
   .vl-panel-coral {
@@ -311,7 +350,7 @@
 
   /* ── Buttons ────────────────────────────────────────────────── */
 
-  /* Primary — solid black pill (chatbase signature) */
+  /* Primary — solid black rounded-square control */
   .vl-btn-primary,
   .vl-btn-coral,
   .vl-btn-blue {
@@ -320,7 +359,7 @@
     font-family: var(--font-sans);
     font-weight: 500;
     font-size: 14px;
-    border-radius: 999px;
+    border-radius: 16px;
     padding: 0.72rem 1.4rem;
     transition: transform .15s ease, box-shadow .15s ease, background .15s ease;
     box-shadow:
@@ -358,7 +397,7 @@
     font-family: var(--font-sans);
     font-weight: 500;
     font-size: 14px;
-    border-radius: 999px;
+    border-radius: 16px;
     padding: 0.72rem 1.4rem;
     border: 1px solid rgba(10, 10, 11, 0.14);
     transition: background .2s ease, border-color .2s ease, box-shadow .2s ease;
@@ -376,7 +415,7 @@
     background: transparent;
     color: var(--color-vl-ink);
     border: 1px solid transparent;
-    border-radius: 999px;
+    border-radius: 16px;
     padding: 0.72rem 1.4rem;
     font-weight: 500;
     font-size: 14px;
@@ -394,7 +433,7 @@
     align-items: center;
     gap: 0.4rem;
     padding: 0.32rem 0.7rem;
-    border-radius: 9999px;
+    border-radius: 12px;
     font-size: 12px;
     font-weight: 500;
     letter-spacing: -0.005em;
@@ -408,7 +447,7 @@
     align-items: center;
     gap: 0.4rem;
     padding: 0.28rem 0.7rem;
-    border-radius: 9999px;
+    border-radius: 12px;
     font-size: 12px;
     font-weight: 500;
     color: var(--color-vl-ink-soft);
@@ -417,13 +456,13 @@
     box-shadow: 0 1px 2px rgba(10, 10, 11, 0.03);
   }
 
-  /* Indigo accent pill — used for hero callouts */
+  /* Indigo accent chip — used for hero callouts */
   .vl-chip-coral {
     display: inline-flex;
     align-items: center;
     gap: 0.4rem;
     padding: 0.32rem 0.75rem;
-    border-radius: 9999px;
+    border-radius: 12px;
     font-size: 12px;
     font-weight: 500;
     color: var(--color-vl-accent-deep);
@@ -452,6 +491,40 @@
   }
 
   /* ── Layout helpers ─────────────────────────────────────────── */
+
+  .vl-page-shell,
+  .vl-auth-shell {
+    position: relative;
+    background-color: #FFFFFF;
+    background-image:
+      radial-gradient(ellipse 70% 48% at 8% 0%, rgba(251, 207, 232, 0.34), transparent 62%),
+      radial-gradient(ellipse 64% 42% at 96% 6%, rgba(199, 210, 254, 0.38), transparent 66%),
+      radial-gradient(ellipse 54% 38% at 92% 100%, rgba(167, 243, 208, 0.22), transparent 70%),
+      radial-gradient(ellipse 48% 35% at 3% 92%, rgba(253, 230, 138, 0.15), transparent 70%),
+      linear-gradient(135deg, rgba(10, 10, 11, 0.026) 1px, transparent 1px),
+      linear-gradient(45deg, rgba(99, 102, 241, 0.018) 1px, transparent 1px);
+    background-size: auto, auto, auto, auto, 24px 24px, 32px 32px;
+  }
+
+  .vl-page-shell::before,
+  .vl-auth-shell::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.38;
+    background-image:
+      linear-gradient(90deg, transparent 0%, rgba(99, 102, 241, 0.055) 18%, transparent 36%),
+      linear-gradient(90deg, transparent 14%, rgba(236, 72, 153, 0.045) 32%, transparent 50%),
+      linear-gradient(90deg, transparent 48%, rgba(16, 185, 129, 0.04) 66%, transparent 84%);
+    background-size: 260px 100%, 340px 100%, 420px 100%;
+    mask-image: linear-gradient(to bottom, transparent, #000 12%, #000 82%, transparent);
+  }
+
+  .vl-page-shell > *,
+  .vl-auth-shell > * {
+    position: relative;
+  }
 
   .vl-landing {
     background: transparent;
@@ -525,6 +598,15 @@
       linear-gradient(rgba(10, 10, 11, 0.04) 1px, transparent 1px),
       linear-gradient(90deg, rgba(10, 10, 11, 0.04) 1px, transparent 1px);
     background-size: 32px 32px;
+  }
+
+  .vl-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(99, 102, 241, 0.34) rgba(10, 10, 11, 0.04);
+  }
+
+  .vl-scroll::-webkit-scrollbar {
+    width: 8px;
   }
 
   /* Gradient text utility */

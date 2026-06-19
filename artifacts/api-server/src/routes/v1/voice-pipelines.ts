@@ -62,7 +62,6 @@ const SAMPLE_VOICE_OPTIONS: Record<string, string[]> = {
   openai_realtime_server_ws: ["ash", "alloy", "ballad", "coral", "sage", "verse"],
   google_gemini_3_1_flash_live: ["Kore", "Aoede", "Puck", "Charon", "Leda", "Fenrir"],
   google_gemini_2_5_flash_native_audio: ["Aoede", "Kore", "Puck", "Zephyr", "Charon", "Leda"],
-  google_gemini_live_native_audio: ["Aoede", "Kore", "Puck", "Zephyr"],
 };
 
 const SAMPLE_DEFAULT_VOICE: Record<string, string> = {
@@ -70,7 +69,6 @@ const SAMPLE_DEFAULT_VOICE: Record<string, string> = {
   openai_realtime_server_ws: "ash",
   google_gemini_3_1_flash_live: "Kore",
   google_gemini_2_5_flash_native_audio: "Aoede",
-  google_gemini_live_native_audio: "Aoede",
 };
 
 // Provider kind for the sample renderer. Native realtime providers have
@@ -80,7 +78,6 @@ const SAMPLE_PROVIDER_KIND: Record<string, "openai" | "gemini"> = {
   openai_realtime_server_ws: "openai",
   google_gemini_3_1_flash_live: "gemini",
   google_gemini_2_5_flash_native_audio: "gemini",
-  google_gemini_live_native_audio: "gemini",
 };
 
 // Voice label -> OpenAI voice fallback for synthesis (currently unused

@@ -12,10 +12,9 @@
  * itself lives in routes/ws-relay.ts so it can share auth, plan checks,
  * and Square credential lookup with the OpenAI relay.
  *
- * One adapter class is registered three times with different model IDs:
+ * One adapter class is registered twice with different model IDs:
  *   - google_gemini_3_1_flash_live              -> gemini-3.1-flash-live-preview
  *   - google_gemini_2_5_flash_native_audio      -> gemini-2.5-flash-native-audio-preview-12-2025
- *   - google_gemini_live_native_audio (legacy)  -> gemini-2.5-flash-native-audio-preview-12-2025
  */
 
 import type {
@@ -435,13 +434,6 @@ export const GEMINI_LIVE_ADAPTER_SPECS: GeminiLiveAdapterSpec[] = [
     provider: "google_gemini_2_5_flash_native_audio",
     displayName: "Gemini 2.5 Flash Native Audio",
     recommendedFor: ["best_voice_quality", "best_turn_taking", "enterprise_observability"],
-    modelId: "gemini-2.5-flash-native-audio-preview-12-2025",
-    capabilityProfile: "ga_2_5",
-  },
-  {
-    provider: "google_gemini_live_native_audio",
-    displayName: "Gemini Live (legacy alias)",
-    recommendedFor: ["best_voice_quality", "best_turn_taking"],
     modelId: "gemini-2.5-flash-native-audio-preview-12-2025",
     capabilityProfile: "ga_2_5",
   },

@@ -50,6 +50,11 @@ const baseContext: VoicePipelineSessionContext = {
 };
 
 async function main(): Promise<void> {
+  assert.deepEqual(
+    GEMINI_LIVE_ADAPTER_SPECS.map((spec) => spec.provider),
+    ["google_gemini_3_1_flash_live", "google_gemini_2_5_flash_native_audio"],
+  );
+
   const openAiRelay = new OpenAiRealtimeServerWsAdapter();
   assert.equal(openAiRelay.supportsBrowser, true);
   const openAiSession = await openAiRelay.createSession(baseContext);
@@ -148,6 +153,9 @@ async function main(): Promise<void> {
     "utf8",
   );
   assert.match(assistantWizard, /id:\s*"openai_realtime_server_ws"/);
+  assert.match(assistantWizard, /id:\s*"google_gemini_3_1_flash_live"/);
+  assert.match(assistantWizard, /id:\s*"google_gemini_2_5_flash_native_audio"/);
+  assert.equal(assistantWizard.includes(["google", "gemini", "live", "native", "audio"].join("_")), false);
   assert.match(assistantWizard, /provider === "openai_realtime_server_ws"/);
 }
 

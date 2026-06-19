@@ -15,6 +15,7 @@ import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { getAllPipelineAvailability } from "../../voice-pipelines";
 import { invalidateAuthCacheForUser, isAdminEmail } from "../auth";
 import { ensureUserOrganization, jsonError, requireDb, v1RequireAuth } from "./_helpers";
+import { getPlan } from "@workspace/voicelab-core/pricing";
 
 const router = Router();
 
@@ -89,6 +90,46 @@ function parseWindowDays(raw: unknown): number {
   const value = Number(raw ?? 30);
   if (!Number.isFinite(value)) return 30;
   return Math.min(365, Math.max(1, Math.floor(value)));
+}
+
+type UsageRisk = "ok" | "watch" | "over_included" | "near_cap" | "blocked";
+
+function usageLimitForPlan(planId: string | null | undefined): number {
+  if (planId === "admin") return -1;
+  return getPlan(planId ?? "trial")?.includedVoiceMinutes ?? getPlan("trial")?.includedVoiceMinutes ?? 60;
+}
+
+function buildUsageLimitSnapshot(planId: string | null | undefined, used: number) {
+  const included = usageLimitForPlan(planId);
+  const unlimited = included === -1;
+  const hardCap = unlimited ? -1 : Math.floor(included * 1.5);
+  const includedPercent = unlimited || included <= 0 ? 0 : Math.round((used / included) * 100);
+  const hardCapPercent = unlimited || hardCap <= 0 ? 0 : Math.round((used / hardCap) * 100);
+  const overIncluded = !unlimited && used > included;
+  const blocked = !unlimited && used >= hardCap;
+  const nearCap = !unlimited && !blocked && used >= hardCap * 0.9;
+  const watch = !unlimited && !overIncluded && used >= included * 0.8;
+  const risk: UsageRisk = blocked
+    ? "blocked"
+    : nearCap
+    ? "near_cap"
+    : overIncluded
+    ? "over_included"
+    : watch
+    ? "watch"
+    : "ok";
+
+  return {
+    includedMinutes: included,
+    hardCapMinutes: hardCap,
+    includedPercent,
+    hardCapPercent,
+    overIncluded,
+    overIncludedMinutes: overIncluded ? Math.max(0, used - included) : 0,
+    remainingIncludedMinutes: unlimited ? -1 : Math.max(0, included - used),
+    remainingToHardCapMinutes: unlimited ? -1 : Math.max(0, hardCap - used),
+    risk,
+  };
 }
 
 function isRole(value: unknown): value is Role {
@@ -300,6 +341,9 @@ router.get("/overview", async (req: Request, res: Response) => {
       users: (users as UserRow[]).map((user: UserRow) => {
         const membership = membershipByUser.get(user.id);
         const subscription = subscriptionByUser.get(user.id);
+        const voiceMinutes = voiceMap.get(user.id) ?? 0;
+        const usagePlan = isAdminEmail(user.email) ? "admin" : subscription?.plan ?? "trial";
+        const usageLimits = buildUsageLimitSnapshot(usagePlan, voiceMinutes);
         return {
           id: user.id,
           email: user.email,
@@ -322,10 +366,11 @@ router.get("/overview", async (req: Request, res: Response) => {
               }
             : null,
           usage: {
-            voiceMinutes: voiceMap.get(user.id) ?? 0,
+            voiceMinutes,
             toolCalls: toolsMap.get(user.id) ?? 0,
             failedToolCalls: failuresMap.get(user.id) ?? 0,
             lastActivityAt: lastActivityMap.get(user.id) ?? null,
+            ...usageLimits,
           },
         };
       }),

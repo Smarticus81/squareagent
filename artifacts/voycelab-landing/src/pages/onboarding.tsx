@@ -255,7 +255,7 @@ export default function Onboarding() {
 
   if (authLoading) {
     return (
-      <div className="flex-1 flex items-center justify-center">
+      <div className="vl-page-shell flex flex-1 items-center justify-center">
         <Loader2
           className="w-5 h-5 animate-spin"
           style={{ color: "var(--color-vl-brass2)" }}
@@ -265,19 +265,19 @@ export default function Onboarding() {
   }
 
   return (
-    <div className="relative flex-1 overflow-hidden px-4 pb-20 pt-16 sm:px-6 lg:px-10">
+    <div className="vl-page-shell relative flex-1 overflow-hidden px-4 pb-20 pt-16 sm:px-6 lg:px-10">
       {/* Background blobs */}
       <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
         <div
-          className="absolute left-[-12%] top-[-18%] h-95 w-140 rounded-full blur-3xl"
+          className="absolute left-[-12%] top-[-18%] h-95 w-140 rounded-[42%] blur-3xl"
           style={{ background: "rgba(251, 207, 232, 0.42)" }}
         />
         <div
-          className="absolute right-[-14%] top-[5%] h-120 w-150 rounded-full blur-3xl"
+          className="absolute right-[-14%] top-[5%] h-120 w-150 rounded-[42%] blur-3xl"
           style={{ background: "rgba(199, 210, 254, 0.30)" }}
         />
         <div
-          className="absolute bottom-[-18%] right-[12%] h-105 w-170 rounded-full blur-3xl"
+          className="absolute bottom-[-18%] right-[12%] h-105 w-170 rounded-[42%] blur-3xl"
           style={{ background: "rgba(167, 243, 208, 0.23)" }}
         />
       </div>
@@ -292,7 +292,7 @@ export default function Onboarding() {
                 onClick={() => {
                   if (n < step) setStep(n);
                 }}
-                className="w-8 h-8 rounded-full flex items-center justify-center text-[12px] font-semibold transition-all"
+                className="flex h-8 w-8 items-center justify-center rounded-xl text-[12px] font-semibold transition-all"
                 style={{
                   background:
                     n < step
@@ -663,7 +663,7 @@ function VoiceOption({
     >
       {selected && (
         <span
-          className="absolute top-2 right-2 w-5 h-5 rounded-full flex items-center justify-center"
+          className="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-lg"
           style={{ background: "var(--color-vl-coral)" }}
         >
           <Check className="w-3 h-3 text-white" />
@@ -685,7 +685,7 @@ function VoiceOption({
         type="button"
         onClick={toggleSample}
         disabled={playState === "loading"}
-        className="mt-1 inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] transition-colors"
+        className="mt-1 inline-flex items-center gap-1.5 rounded-xl border px-3 py-1 text-[11px] transition-colors"
         style={{
           borderColor: isPlaying
             ? "rgba(124,110,245,0.6)"

@@ -71,17 +71,6 @@ export const VOICE_PIPELINE_PROVIDERS: Record<
     notes:
       "Model gemini-2.5-flash-native-audio-preview-12-2025. Recommended when proactive listening and affective dialogue matter more than the absolute newest preview.",
   },
-  google_gemini_live_native_audio: {
-    provider: "google_gemini_live_native_audio",
-    category: "native_realtime_speech_to_speech",
-    displayName: "Gemini Live (legacy alias)",
-    shortDescription:
-      "Legacy alias retained for backward compatibility. New profiles should pick Gemini 3.1 Flash Live or Gemini 2.5 Flash Native Audio.",
-    recommendedFor: ["best_voice_quality", "best_turn_taking"],
-    requiredCredentials: ["GOOGLE_GEMINI_API_KEY"],
-    notes: "Routes through the same adapter as Gemini 2.5 Flash Native Audio.",
-  },
-
   // -- Fallbacks ---
   browser_speech_api_fallback: {
     provider: "browser_speech_api_fallback",

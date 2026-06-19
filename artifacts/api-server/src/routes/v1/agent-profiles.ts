@@ -34,6 +34,7 @@ interface AgentProfileRow {
   voicePipelineProvider: string;
   voicePipelineConfig: Record<string, unknown>;
   noiseMode: string;
+  orderHandlingMode: string;
   allowedTools: string[];
   confirmationPolicy: Record<string, unknown>;
   personality: string;
@@ -54,6 +55,7 @@ function rowToResponse(row: AgentProfileRow): Record<string, unknown> {
     voicePipelineProvider: row.voicePipelineProvider,
     voicePipelineConfig: row.voicePipelineConfig,
     noiseMode: row.noiseMode,
+    orderHandlingMode: row.orderHandlingMode ?? "auto_complete",
     allowedTools: row.allowedTools,
     confirmationPolicy: row.confirmationPolicy,
     personality: row.personality,
@@ -229,6 +231,7 @@ router.post("/", async (req: Request, res: Response) => {
       voicePipelineProvider: body.voicePipelineProvider,
       voicePipelineConfig: body.voicePipelineConfig,
       noiseMode: body.noiseMode,
+      orderHandlingMode: body.orderHandlingMode,
       allowedTools: body.allowedTools,
       confirmationPolicy:
         Object.keys(body.confirmationPolicy).length > 0

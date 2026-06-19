@@ -16,7 +16,7 @@ export default function BookDemo() {
   const hasBookingUrl = /^https?:\/\//i.test(bookingUrl);
 
   return (
-    <div className="relative flex-1 overflow-hidden bg-vl-cream px-4 pb-24 pt-16 sm:px-6 lg:px-10">
+    <div className="vl-page-shell relative flex-1 overflow-hidden px-4 pb-24 pt-16 sm:px-6 lg:px-10">
       <div className="mx-auto w-full max-w-240">
         <Link
           href="/"
@@ -69,7 +69,7 @@ export default function BookDemo() {
               <iframe
                 title="Book a VoyceLab demo"
                 src={bookingUrl}
-                className="h-[680px] w-full rounded-xl border-0 bg-white"
+                className="h-[680px] w-full rounded-2xl border-0 bg-white/85"
                 loading="lazy"
                 referrerPolicy="strict-origin-when-cross-origin"
               />

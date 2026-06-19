@@ -134,6 +134,10 @@ export const agentProfilesTable = pgTable("agent_profiles", {
   voicePipelineProvider: text("voice_pipeline_provider").notNull(),
   voicePipelineConfig: jsonb("voice_pipeline_config").notNull().default({}),
   noiseMode: text("noise_mode").notNull().default("standard"),
+  // How submitted orders settle in Square:
+  //  - "auto_complete": record payment immediately (order COMPLETED)
+  //  - "hold_for_review": leave the order OPEN on the POS for end-of-day review
+  orderHandlingMode: text("order_handling_mode").notNull().default("auto_complete"),
   allowedTools: jsonb("allowed_tools").notNull().default([]), // string[]
   confirmationPolicy: jsonb("confirmation_policy").notNull().default({}),
   personality: text("personality").notNull().default(""),
@@ -182,6 +186,22 @@ export const sessionsTable = pgTable("sessions", {
 ]);
 
 export type Session = typeof sessionsTable.$inferSelect;
+
+// ── Password Reset Tokens ─────────────────────────────────────────────────────
+
+export const passwordResetTokensTable = pgTable("password_reset_tokens", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  tokenHash: text("token_hash").notNull().unique(),
+  expiresAt: timestamp("expires_at").notNull(),
+  usedAt: timestamp("used_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("password_reset_tokens_user_idx").on(table.userId),
+  index("password_reset_tokens_expires_idx").on(table.expiresAt),
+]);
+
+export type PasswordResetToken = typeof passwordResetTokensTable.$inferSelect;
 
 // ── Exchange Codes ────────────────────────────────────────────────────────────
 

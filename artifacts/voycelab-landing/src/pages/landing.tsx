@@ -55,7 +55,7 @@ export default function Landing() {
   };
 
   return (
-    <div className="vl-landing">
+    <div className="vl-landing vl-page-shell">
       <Hero onStart={startAssistant} />
     </div>
   );
@@ -159,14 +159,14 @@ function Hero({ onStart }: { onStart: () => void }) {
             >
               <Link href="/signup" className="vl-btn-primary inline-flex items-center gap-2.5">
                 Start free trial
-                <span className="w-5 h-5 rounded-full bg-white/25 flex items-center justify-center">
+                <span className="flex h-5 w-5 items-center justify-center rounded-md bg-white/25">
                   <ArrowRight className="w-3 h-3 text-white" />
                 </span>
               </Link>
               <a href="#voice-demo" className="vl-btn-outline inline-flex items-center gap-2.5">
                 See it in action
                 <span
-                  className="w-5 h-5 rounded-full flex items-center justify-center"
+                  className="flex h-5 w-5 items-center justify-center rounded-md"
                   style={{ background: "rgba(10, 10, 11,0.08)" }}
                 >
                   <Play className="w-2.5 h-2.5" style={{ color: "var(--color-vl-ink)" }} />
@@ -325,7 +325,7 @@ function FloatingAssistantCard({
   return (
     <div className={className}>
       <div
-        className="relative rounded-full pl-2 pr-4 py-2 flex items-center gap-2.5 max-w-75"
+        className="relative flex max-w-75 items-center gap-2.5 rounded-2xl py-2 pl-2 pr-4"
         style={{
           background: "rgba(255,255,255,0.72)",
           backdropFilter: "blur(20px) saturate(1.4)",
@@ -336,7 +336,7 @@ function FloatingAssistantCard({
         }}
       >
         <span
-          className="shrink-0 w-7 h-7 rounded-full text-[11px] font-semibold flex items-center justify-center"
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl text-[11px] font-semibold"
           style={{
             background:
               "linear-gradient(135deg, rgba(99,102,241,0.18), rgba(236,72,153,0.18))",
@@ -368,7 +368,7 @@ function FloatingAssistantCard({
           {[0.5, 0.9, 0.6, 1, 0.7].map((h, i) => (
             <span
               key={i}
-              className="w-0.5 rounded-full"
+              className="w-0.5 rounded-sm"
               style={{
                 background: "var(--color-vl-coral)",
                 height: `${h * 100}%`,
@@ -425,7 +425,7 @@ function IntegrationsStrip() {
                 style={{ color: it.color }}
               >
                 <span
-                  className="w-1.5 h-1.5 rounded-full"
+                  className="h-1.5 w-1.5 rounded-[3px]"
                   style={{ background: it.color, opacity: 0.85 }}
                 />
                 {it.name}
@@ -529,7 +529,7 @@ function ConversationSection({ compact = false }: { compact?: boolean }) {
             <div className="flex flex-wrap items-center justify-between gap-4 mb-5">
               <div className="flex items-center gap-3">
                 <div
-                  className="w-11 h-11 rounded-full flex items-center justify-center shrink-0"
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl"
                   style={{
                     background:
                       "linear-gradient(135deg, #FF8A66, #000000)",
@@ -598,7 +598,7 @@ function ConversationSection({ compact = false }: { compact?: boolean }) {
             {/* Transcript */}
             <div
               ref={scrollRef}
-              className={(compact ? "max-h-47.5" : "max-h-[min(340px,50vh)]") + " overflow-y-auto space-y-3 pr-1"}
+              className={(compact ? "max-h-47.5" : "max-h-[min(340px,50vh)]") + " vl-scroll overflow-y-auto space-y-3 pr-2"}
               style={{ scrollbarWidth: "thin" }}
             >
               {!demo.isLive && demo.conversation.length === 0 && (
@@ -611,7 +611,7 @@ function ConversationSection({ compact = false }: { compact?: boolean }) {
               {demo.conversation.map((msg) => (
                 <div key={msg.id} className="flex gap-3">
                   <div
-                    className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 mt-0.5"
+                    className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-xl"
                     style={{
                       background:
                         msg.role === "user"
@@ -646,7 +646,7 @@ function ConversationSection({ compact = false }: { compact?: boolean }) {
               {demo.partialTranscript.trim().length > 0 && (
                 <div className="flex gap-3 opacity-90">
                   <div
-                    className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 mt-0.5"
+                    className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-xl"
                     style={{ background: "linear-gradient(135deg, #FF8A66, #000000)" }}
                   >
                     <Mic className="w-3 h-3 text-white" />
@@ -709,7 +709,7 @@ function DemoStatusWaveform({ state }: { state: DemoWaveState }) {
         return (
           <div
             key={i}
-            className="w-0.75 rounded-full"
+            className="w-0.75 rounded-sm"
             style={{
               background:
                 state === "error"
@@ -799,7 +799,7 @@ function AssistantTour() {
           {items.map((it) => (
             <motion.div key={it.index} variants={childFade} className="vl-card p-7 relative overflow-hidden">
               <div
-                className="absolute -top-12 -right-12 w-40 h-40 rounded-full"
+                className="absolute -right-12 -top-12 h-40 w-40 rounded-[42%]"
                 style={{ background: it.tint, filter: "blur(40px)", opacity: 0.85 }}
                 aria-hidden
               />
@@ -812,7 +812,7 @@ function AssistantTour() {
                     {it.index}
                   </span>
                   <span
-                    className="w-9 h-9 rounded-full flex items-center justify-center"
+                    className="flex h-9 w-9 items-center justify-center rounded-2xl"
                     style={{
                       background: it.tint,
                       color: it.accent,
@@ -932,7 +932,7 @@ function ShiftSection() {
                   style={{ color: "var(--color-vl-ink-muted)" }}
                 >
                   <span
-                    className="w-1.5 h-1.5 rounded-full shrink-0"
+                    className="h-1.5 w-1.5 shrink-0 rounded-[3px]"
                     style={{ background: "rgba(10, 10, 11,0.20)" }}
                   />
                   {step}
@@ -951,7 +951,7 @@ function ShiftSection() {
                   style={{ color: "var(--color-vl-ink)" }}
                 >
                   <span
-                    className="w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center shrink-0 text-white"
+                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded-lg text-[10px] font-bold text-white"
                     style={{
                       background: "linear-gradient(135deg, #FF8A66, #000000)",
                     }}
@@ -1142,7 +1142,7 @@ function VenueOutcomes() {
               }}
             >
               <span
-                className="w-6 h-6 rounded-full flex items-center justify-center shrink-0"
+                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg"
                 style={{ background: "var(--color-vl-sage-soft)" }}
               >
                 <Check className="w-3 h-3" style={{ color: "var(--color-vl-success)" }} />
@@ -1281,7 +1281,7 @@ function FinalCTA({
             <motion.span
               key={q}
               variants={childFade}
-              className="inline-flex items-center gap-2 text-[13px] px-4 py-2 rounded-full"
+              className="inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-[13px]"
               style={{
                 background: "rgba(255,255,255,0.7)",
                 border: "1px solid rgba(10, 10, 11,0.07)",

@@ -66,6 +66,8 @@ interface VoiceAgentContextType {
     voicePipelineProvider?: string,
     voicePipelineConfig?: Record<string, unknown>,
   ) => void;
+  /** Set the live order-handling mode applied to subsequent tool calls. */
+  setOrderHandlingMode: (mode: "auto_complete" | "hold_for_review") => void;
   confirmPending: () => void;
   denyPending: () => void;
 }
@@ -177,6 +179,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
   const agentProfileIdRef = useRef("");
   const voicePipelineProviderRef = useRef("");
   const voicePipelineConfigRef = useRef<Record<string, unknown>>({});
+  const orderHandlingModeRef = useRef<"auto_complete" | "hold_for_review">("auto_complete");
   const isRunning = useRef(false);
   const agentStateRef = useRef<AgentState>("disconnected");
   const sessionIdRef = useRef("");
@@ -214,6 +217,14 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
   const wsPlaybackTimeRef = useRef(0);
   const wsPlaybackDoneTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // ── Response lifecycle guard ─────────────────────────────────────────────────
+  // The Realtime API allows only one in-flight response per conversation. Sending
+  // `response.create` while one is active throws "Conversation already has an
+  // active response in progress". We track the active response and coalesce any
+  // overlapping requests into a single pending one that flushes on response.done.
+  const activeResponseRef = useRef(false);
+  const pendingResponseRef = useRef<Record<string, unknown> | null>(null);
+
   // ── Shared helpers ──────────────────────────────────────────────────────────
 
   const addMessage = useCallback((role: "user" | "agent", content: string) => {
@@ -246,6 +257,11 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
     agentProfileIdRef.current = agentProfileId ?? "";
     voicePipelineProviderRef.current = voicePipelineProvider ?? "";
     voicePipelineConfigRef.current = voicePipelineConfig ?? {};
+  }, []);
+
+  /** Live order-handling override sent with each tool call (auto-complete vs hold-for-review). */
+  const setOrderHandlingMode = useCallback((mode: "auto_complete" | "hold_for_review") => {
+    orderHandlingModeRef.current = mode === "hold_for_review" ? "hold_for_review" : "auto_complete";
   }, []);
 
   // ── Half-duplex mic gating ──────────────────────────────────────────────────
@@ -384,6 +400,45 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // ── Guarded response.create ─────────────────────────────────────────────────
+  // Routes every OpenAI `response.create` through a single-flight guard so we
+  // never collide with an in-progress response. Gemini WS uses a different
+  // tool-response protocol and must not receive `response.create`.
+  const requestResponse = useCallback((response?: Record<string, unknown>) => {
+    const dc = dcRef.current;
+    const ws = wsRef.current;
+    const isGeminiWs =
+      ws?.readyState === WebSocket.OPEN &&
+      voicePipelineProviderRef.current.startsWith(GEMINI_PROVIDER_PREFIX);
+    if (isGeminiWs) return;
+
+    if (activeResponseRef.current) {
+      // Coalesce overlapping requests into one. An instruction-bearing request
+      // (e.g. the greeting) takes precedence over a plain continuation.
+      pendingResponseRef.current = response ?? pendingResponseRef.current ?? {};
+      return;
+    }
+
+    const payload = JSON.stringify(
+      response ? { type: "response.create", response } : { type: "response.create" },
+    );
+    if (dc?.readyState === "open") {
+      dc.send(payload);
+      activeResponseRef.current = true;
+      return;
+    }
+    if (ws?.readyState === WebSocket.OPEN) {
+      ws.send(payload);
+      activeResponseRef.current = true;
+    }
+  }, []);
+
+  /** Clear response-guard state. Called on cancel/teardown so the next turn isn't blocked. */
+  const resetResponseGuard = useCallback(() => {
+    activeResponseRef.current = false;
+    pendingResponseRef.current = null;
+  }, []);
+
   // ── Execute tool via server REST API ────────────────────────────────────────
 
   const executeToolViaServer = useCallback(async (
@@ -403,7 +458,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
             output,
           },
         }));
-        dc.send(JSON.stringify({ type: "response.create" }));
+        requestResponse();
         return true;
       }
       if (ws?.readyState === WebSocket.OPEN) {
@@ -424,7 +479,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
               output,
             },
           }));
-          ws.send(JSON.stringify({ type: "response.create" }));
+          requestResponse();
         }
         return true;
       }
@@ -449,6 +504,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
           order: currentOrderRef.current,
           venueId: venueIdRef.current || undefined,
           agentProfileId: agentProfileIdRef.current || undefined,
+          orderHandlingMode: orderHandlingModeRef.current,
         }),
       });
 
@@ -473,7 +529,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
       console.error(`[WebRTC] Tool exec error:`, e.message);
       sendToolOutput(`Error: ${e.message}`);
     }
-  }, []);
+  }, [requestResponse]);
 
   // ── Standby / activation helpers ────────────────────────────────────────────
 
@@ -500,11 +556,8 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
   const sendGreeting = useCallback(() => {
     const dc = dcRef.current;
     if (dc?.readyState !== "open") return;
-    dc.send(JSON.stringify({
-      type: "response.create",
-      response: { instructions: greetingRef.current || DEFAULT_GREETING_INSTRUCTIONS },
-    }));
-  }, []);
+    requestResponse({ instructions: greetingRef.current || DEFAULT_GREETING_INSTRUCTIONS });
+  }, [requestResponse]);
 
   const clearStandbyExpire = useCallback(() => {
     if (standbyExpireTimerRef.current) {
@@ -631,6 +684,9 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
           if (wsRef.current?.readyState === WebSocket.OPEN) {
             wsRef.current.send(JSON.stringify({ type: "response.cancel" }));
           }
+          // The cancelled response will emit response.done, but drop any queued
+          // continuation now so the barge-in turn starts clean.
+          pendingResponseRef.current = null;
           reopenMicNow();
         }
         setAs("listening");
@@ -666,7 +722,20 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
         setAs("speaking");
         break;
 
-      case "response.done":
+      case "response.created":
+        activeResponseRef.current = true;
+        break;
+
+      case "response.done": {
+        activeResponseRef.current = false;
+        // A continuation was requested while this response was in flight (e.g. a
+        // tool result returned mid-response). Flush it now that the slot is free.
+        if (pendingResponseRef.current) {
+          const queued = pendingResponseRef.current;
+          pendingResponseRef.current = null;
+          requestResponse(Object.keys(queued).length ? queued : undefined);
+          break;
+        }
         if (isRunning.current) {
           const wsCtx = wsOutputCtxRef.current;
           if (
@@ -681,6 +750,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
           setAs("listening");
         }
         break;
+      }
 
       case "response.function_call_arguments.done": {
         const toolName = String(event.name ?? "");
@@ -694,6 +764,20 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
 
       case "error": {
         const err = (event.error as Record<string, unknown>)?.message ?? event.message ?? "Realtime error";
+        const errCode = String((event.error as Record<string, unknown>)?.code ?? "");
+        const errText = String(err);
+        // Benign race: we tried to create a response while one was already
+        // active. The guard normally prevents this, but the server can also
+        // auto-create responses. Re-sync our flag and recover silently instead
+        // of tearing the session down with a red error banner.
+        if (
+          errCode === "conversation_already_has_active_response" ||
+          /active response in progress/i.test(errText)
+        ) {
+          activeResponseRef.current = true;
+          console.warn("[WebRTC] Ignored duplicate response.create:", errText);
+          break;
+        }
         if (standbyRef.current) {
           // Idle standby errors never surface to the user; activation falls
           // back to a cold connect if the session is actually dead.
@@ -708,7 +792,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
         break;
       }
     }
-  }, [addMessage, sendContextUpdate, executeToolViaServer, gateMicForPlayback, reopenMic, reopenMicNow, scheduleWsPlaybackDone, finishActivation, sendGreeting]);
+  }, [addMessage, sendContextUpdate, executeToolViaServer, gateMicForPlayback, reopenMic, reopenMicNow, scheduleWsPlaybackDone, finishActivation, sendGreeting, requestResponse]);
 
   const cleanupWsAudio = useCallback(() => {
     if (wsPlaybackDoneTimerRef.current) {
@@ -737,6 +821,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
       heartbeatIntervalRef.current = null;
     }
     cancelMicReopen();
+    resetResponseGuard();
     isRunning.current = false;
 
     pcRef.current?.getSenders().forEach((sender) => sender.track?.stop());
@@ -762,7 +847,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
     }
 
     setRemoteStream(null);
-  }, [cancelMicReopen, cleanupWsAudio, stopStandbyAudio]);
+  }, [cancelMicReopen, cleanupWsAudio, stopStandbyAudio, resetResponseGuard]);
 
   closeTransportRef.current = closeTransport;
 
@@ -1286,6 +1371,9 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: "response.cancel" }));
     }
+    // Drop any queued continuation; the cancelled response emits response.done
+    // which clears the active flag.
+    pendingResponseRef.current = null;
     // Deliberate barge-in: re-open the mic right away so the user can speak.
     reopenMicNow();
   }, [reopenMicNow]);
@@ -1315,10 +1403,9 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
         type: "conversation.item.create",
         item: { type: "function_call_output", call_id: conf.call_id, output },
       });
-      const resume = JSON.stringify({ type: "response.create" });
       if (dc?.readyState === "open") {
         dc.send(payload);
-        dc.send(resume);
+        requestResponse();
         return true;
       }
       if (ws?.readyState === WebSocket.OPEN) {
@@ -1332,7 +1419,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
           }));
         } else {
           ws.send(payload);
-          ws.send(resume);
+          requestResponse();
         }
         return true;
       }
@@ -1355,6 +1442,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
         order: currentOrderRef.current,
         venueId: venueIdRef.current || undefined,
         agentProfileId: agentProfileIdRef.current || undefined,
+        orderHandlingMode: orderHandlingModeRef.current,
       }),
     }).then(r => r.json()).then(data => {
       sendToolOutput(data.result ?? "Confirmed and executed.");
@@ -1362,7 +1450,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
     }).catch(e => {
       sendToolOutput(`Error: ${e.message}`);
     });
-  }, [pendingConfirmation]);
+  }, [pendingConfirmation, requestResponse]);
 
   const denyPending = useCallback(() => {
     const conf = pendingConfirmation;
@@ -1374,10 +1462,9 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
       type: "conversation.item.create",
       item: { type: "function_call_output", call_id: conf.call_id, output: "User declined this action." },
     });
-    const resume = JSON.stringify({ type: "response.create" });
     if (dc?.readyState === "open") {
       dc.send(payload);
-      dc.send(resume);
+      requestResponse();
     } else if (ws?.readyState === WebSocket.OPEN) {
       if (voicePipelineProviderRef.current.startsWith(GEMINI_PROVIDER_PREFIX)) {
         ws.send(JSON.stringify({
@@ -1389,16 +1476,16 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
         }));
       } else {
         ws.send(payload);
-        ws.send(resume);
+        requestResponse();
       }
     }
-  }, [pendingConfirmation]);
+  }, [pendingConfirmation, requestResponse]);
 
   return (
     <VoiceAgentContext.Provider value={{
       agentState, isConnected, conversation, partialTranscript, error, remoteStream,
       pendingConfirmation, connect, prewarm, activate, releaseStandby, disconnect, clearConversation, setToolHandler, interrupt,
-      setCatalog, setCurrentOrder, setAuthParams,
+      setCatalog, setCurrentOrder, setAuthParams, setOrderHandlingMode,
       confirmPending, denyPending,
     }}>
       {children}
