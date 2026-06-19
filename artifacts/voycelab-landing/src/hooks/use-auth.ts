@@ -147,6 +147,36 @@ export function useSignup() {
   });
 }
 
+export function useForgotPassword() {
+  return useMutation({
+    mutationFn: async ({ email }: { email: string }) => {
+      const res = await fetch("/api/auth/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Could not send reset link");
+      return data as { ok: true; message: string };
+    },
+  });
+}
+
+export function useResetPassword() {
+  return useMutation({
+    mutationFn: async ({ token, newPassword }: { token: string; newPassword: string }) => {
+      const res = await fetch("/api/auth/reset-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, newPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Could not reset password");
+      return data as { ok: true };
+    },
+  });
+}
+
 export function useLogout() {
   const queryClient = useQueryClient();
   

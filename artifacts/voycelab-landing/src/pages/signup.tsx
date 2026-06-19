@@ -23,25 +23,26 @@ export default function Signup() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center relative p-6 py-12 overflow-hidden">
+    <div className="vl-auth-shell relative flex min-h-screen items-center justify-center overflow-hidden p-6 py-12">
       <div
         aria-hidden
         className="absolute inset-0 pointer-events-none"
         style={{
           background:
-            "radial-gradient(ellipse 60% 45% at 15% 15%, rgba(251, 207, 232,0.40), transparent 65%), radial-gradient(ellipse 50% 40% at 85% 85%, rgba(167, 243, 208,0.35), transparent 65%), radial-gradient(ellipse 40% 35% at 90% 15%, rgba(199, 210, 254,0.30), transparent 65%)",
+            "radial-gradient(ellipse 60% 45% at 15% 15%, rgba(251, 207, 232,0.30), transparent 65%), radial-gradient(ellipse 50% 40% at 85% 85%, rgba(167, 243, 208,0.26), transparent 65%), radial-gradient(ellipse 40% 35% at 90% 15%, rgba(199, 210, 254,0.25), transparent 65%)",
         }}
       />
 
-      <Link
-        href="/"
-        className="absolute top-6 left-6 flex items-center gap-1.5 text-[13px] font-medium hover:opacity-80 transition-opacity"
-        style={{ color: "var(--color-vl-ink-muted)" }}
-      >
-        <ArrowLeft className="w-3.5 h-3.5" /> Back
-      </Link>
-
       <div className="relative w-full max-w-105">
+        <div className="mb-5 flex justify-start">
+          <Link
+            href="/"
+            className="inline-flex items-center gap-1.5 rounded-2xl border bg-white/70 px-3 py-2 text-[13px] font-semibold shadow-sm backdrop-blur transition hover:bg-white hover:shadow"
+            style={{ color: "var(--color-vl-ink-muted)", borderColor: "rgba(10,10,11,0.08)" }}
+          >
+            <ArrowLeft className="w-3.5 h-3.5" /> Back
+          </Link>
+        </div>
         <div className="flex justify-center mb-8">
           <Logo size="lg" withTagline />
         </div>

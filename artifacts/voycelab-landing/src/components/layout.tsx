@@ -84,7 +84,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     <Link
                       key={`${item.href}-${idx}`}
                       href={item.href}
-                      className="text-[13px] font-medium px-3 py-1.5 rounded-full transition-colors"
+                      className="rounded-xl px-3 py-1.5 text-[13px] font-medium transition-colors"
                       style={{
                         color: active ? "var(--color-vl-coral-deep)" : "rgba(10, 10, 11, 0.62)",
                         background: active ? "var(--color-vl-coral-tint)" : "transparent",
@@ -103,7 +103,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       {!showAppShellNav && (
                         <Link
                           href="/assistants"
-                          className="hidden sm:inline-flex text-[13px] font-medium px-4 py-1.5 rounded-full vl-btn-outline"
+                          className="hidden rounded-xl px-4 py-1.5 text-[13px] font-medium sm:inline-flex vl-btn-outline"
                           style={{ padding: "0.5rem 1.1rem" }}
                         >
                           Open assistants
@@ -111,7 +111,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       )}
                       <button
                         onClick={() => logout.mutate()}
-                        className="text-[13px] font-medium flex items-center gap-1.5 px-3 py-1.5 rounded-full transition-colors"
+                        className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[13px] font-medium transition-colors"
                         style={{ color: "rgba(10, 10, 11, 0.62)" }}
                       >
                         <LogOut className="w-3.5 h-3.5" />
@@ -134,7 +134,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                         >
                           Book a demo
                           <span
-                            className="w-4 h-4 rounded-full bg-white/25 flex items-center justify-center"
+                            className="flex h-4 w-4 items-center justify-center rounded-md bg-white/25"
                           >
                             <ArrowRight className="w-2.5 h-2.5 text-white" />
                           </span>
@@ -144,7 +144,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   ))}
 
                 <button
-                  className="md:hidden w-9 h-9 rounded-full flex items-center justify-center"
+                  className="flex h-9 w-9 items-center justify-center rounded-xl md:hidden"
                   onClick={() => setMobileOpen((s) => !s)}
                   aria-label="Toggle menu"
                   style={{

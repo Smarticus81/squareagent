@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useParams, useSearch } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { useVenues } from "@/hooks/use-venues";
@@ -13,6 +13,7 @@ import {
   Pause,
   Play,
   Volume2,
+  X,
 } from "lucide-react";
 
 const VOICES = [
@@ -387,7 +388,7 @@ export default function CreateAssistant() {
 
   if (authLoading || loadingProfile) {
     return (
-      <div className="flex-1 flex items-center justify-center">
+      <div className="vl-page-shell flex flex-1 items-center justify-center">
         <Loader2
           className="w-5 h-5 animate-spin"
           style={{ color: "var(--color-vl-brass2)" }}
@@ -405,10 +406,14 @@ export default function CreateAssistant() {
     : "Name it, connect it, pick a voice. Everything else has sane defaults.";
   const submitLabel = editId ? "Save changes" : "Create assistant";
   const activeVoiceOptions = voiceOptionsForEngine(selectedVoiceEngine);
+  const selectedVenueName =
+    venues?.find((venue) => venue.id === venueId)?.name ??
+    venues?.find((venue) => venue.id === venueId)?.squareLocationName ??
+    (venueId ? `Venue ${venueId}` : "General assistant");
 
   return (
-    <div className="relative flex-1 overflow-hidden bg-vl-cream px-4 pb-20 pt-16 sm:px-6 lg:px-10">
-      <div className="mx-auto w-full max-w-xl">
+    <div className="vl-page-shell relative flex-1 overflow-hidden px-4 pb-20 pt-16 sm:px-6 lg:px-10">
+      <div className="mx-auto w-full max-w-[1180px]">
         <div className="flex items-center gap-x-5 mb-6 text-[12px]">
           <Link
             href="/assistants"
@@ -419,21 +424,24 @@ export default function CreateAssistant() {
           </Link>
         </div>
 
-        <p className="vl-eyebrow">{editId ? "Edit" : "Create"}</p>
-        <h1
-          className="vl-display mt-3 text-[34px]"
-          style={{ color: "var(--color-vl-ink)" }}
-        >
-          {pageTitle}
-        </h1>
-        <p
-          className="mt-2 text-[14px] leading-relaxed"
-          style={{ color: "var(--color-vl-ink-muted)" }}
-        >
-          {pageSubtitle}
-        </p>
+        <div className="vl-panel overflow-hidden p-6 md:p-8">
+          <p className="vl-eyebrow">{editId ? "Edit" : "Create"}</p>
+          <h1
+            className="vl-display mt-3 text-[38px] md:text-[54px]"
+            style={{ color: "var(--color-vl-ink)" }}
+          >
+            {pageTitle}
+          </h1>
+          <p
+            className="mt-4 max-w-2xl text-[15px] leading-relaxed"
+            style={{ color: "var(--color-vl-ink-muted)" }}
+          >
+            {pageSubtitle}
+          </p>
+        </div>
 
-        <form onSubmit={handleSubmit} className="mt-8 space-y-6">
+        <form onSubmit={handleSubmit} className="mt-6 grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+          <div className="vl-panel space-y-6 p-5 md:p-6">
           {/* ── Name ─────────────────────────────────────────── */}
           <label className="block">
             <span className="vl-eyebrow block mb-1.5">Name</span>
@@ -565,14 +573,8 @@ export default function CreateAssistant() {
           </fieldset>
 
           {/* ── Advanced settings ─────────────────────────────── */}
-          <details className="vl-card">
-            <summary
-              className="cursor-pointer select-none px-5 py-4 text-[13px] font-semibold"
-              style={{ color: "var(--color-vl-ink)" }}
-            >
-              Advanced settings
-            </summary>
-            <div className="space-y-5 px-5 pb-5 pt-2">
+          <AdvancedSettingsCard>
+            <div className="space-y-5">
               <label className="block">
                 <span className="vl-eyebrow block mb-1.5">Noise mode</span>
                 <div className="relative">
@@ -703,32 +705,55 @@ export default function CreateAssistant() {
                 </p>
               </label>
             </div>
-          </details>
+          </AdvancedSettingsCard>
 
-          {error && (
-            <p
-              className="text-[13px]"
-              style={{ color: "var(--color-vl-danger)" }}
-            >
-              {error}
+          </div>
+
+          <aside className="vl-panel sticky top-24 p-5 md:p-6">
+            <p className="text-[11px] font-bold uppercase tracking-[0.16em]" style={{ color: "var(--color-vl-ink-faint)" }}>
+              Configuration summary
             </p>
-          )}
+            <div className="mt-4 grid gap-3">
+              <SummaryRow label="Assistant" value={name.trim() || "Unnamed assistant"} />
+              <SummaryRow label="Connection" value={selectedVenueName} />
+              <SummaryRow label="Voice engine" value={selectedVoiceEngine?.label ?? voicePipelineProvider.replace(/_/g, " ")} />
+              <SummaryRow label="Voice" value={activeVoiceOptions.find((option) => option.id === voice)?.label ?? voice} />
+              <SummaryRow label="Noise mode" value={noiseMode.replace(/_/g, " ")} />
+              <SummaryRow label="Wake mode" value={wakeMode.replace(/_/g, " ")} />
+            </div>
 
-          <button
-            type="submit"
-            disabled={saving || !name.trim() || !canUseSelectedEngine}
-            className="vl-btn-primary w-full inline-flex items-center justify-center gap-2 text-[14px] disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {saving ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" /> Saving...
-              </>
-            ) : (
-              <>
-                <Check className="w-4 h-4" /> {submitLabel}
-              </>
+            {error && (
+              <p
+                className="mt-4 rounded-2xl border px-4 py-3 text-[13px]"
+                style={{
+                  color: "var(--color-vl-danger)",
+                  background: "rgba(215,64,46,0.08)",
+                  borderColor: "rgba(215,64,46,0.18)",
+                }}
+              >
+                {error}
+              </p>
             )}
-          </button>
+
+            <button
+              type="submit"
+              disabled={saving || !name.trim() || !canUseSelectedEngine}
+              className="vl-btn-primary mt-5 inline-flex w-full items-center justify-center gap-2 text-[14px] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {saving ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" /> Saving...
+                </>
+              ) : (
+                <>
+                  <Check className="w-4 h-4" /> {submitLabel}
+                </>
+              )}
+            </button>
+            <p className="mt-3 text-[11.5px] leading-relaxed" style={{ color: "var(--color-vl-ink-muted)" }}>
+              Changes write to the live assistant profile and apply the next time the assistant starts.
+            </p>
+          </aside>
         </form>
       </div>
 
@@ -738,7 +763,7 @@ export default function CreateAssistant() {
           height: 48px;
           padding: 0 16px;
           border-radius: 14px;
-          background: #FFFFFF;
+          background: rgba(255,255,255,0.78);
           border: 1px solid rgba(10, 10, 11,0.12);
           color: var(--color-vl-ink);
           font-size: 15px;
@@ -748,9 +773,134 @@ export default function CreateAssistant() {
         .vl-input::placeholder { color: rgba(10, 10, 11,0.36); }
         .vl-input:focus {
           border-color: var(--color-vl-coral);
+          background: #fff;
           box-shadow: 0 0 0 3px rgba(99, 102, 241,0.14);
         }
       `}</style>
+    </div>
+  );
+}
+
+function SummaryRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl border bg-white/70 px-4 py-3" style={{ borderColor: "rgba(10,10,11,0.06)" }}>
+      <p className="text-[10px] font-bold uppercase tracking-[0.14em]" style={{ color: "var(--color-vl-ink-faint)" }}>
+        {label}
+      </p>
+      <p className="mt-1 truncate text-[13px] font-bold capitalize" title={value} style={{ color: "var(--color-vl-ink)" }}>
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function AdvancedSettingsCard({ children }: { children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="vl-card flex min-h-[220px] flex-col justify-between overflow-hidden p-4 text-left transition hover:-translate-y-0.5 hover:shadow-lg"
+      >
+        <AssistantSetupArt />
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-[0.16em]" style={{ color: "var(--color-vl-ink-faint)" }}>
+            Optional
+          </p>
+          <h2 className="mt-2 text-[20px] font-bold" style={{ color: "var(--color-vl-ink)" }}>
+            Advanced settings
+          </h2>
+          <p className="mt-2 text-[12.5px] leading-relaxed" style={{ color: "var(--color-vl-ink-muted)" }}>
+            Noise behavior, wake phrase, start mode, and personality.
+          </p>
+        </div>
+        <span className="mt-4 text-[12px] font-bold" style={{ color: "var(--color-vl-coral-deep)" }}>
+          Configure
+        </span>
+      </button>
+
+      {open && (
+        <div className="fixed inset-0 z-80 flex items-center justify-center px-4 py-8">
+          <button
+            type="button"
+            aria-label="Close advanced settings"
+            className="absolute inset-0 bg-slate-950/35 backdrop-blur-sm"
+            onClick={() => setOpen(false)}
+          />
+          <section
+            role="dialog"
+            aria-modal="true"
+            className="relative flex max-h-[88vh] w-full max-w-[860px] flex-col overflow-hidden rounded-[28px] border bg-white shadow-2xl"
+            style={{ borderColor: "rgba(10,10,11,0.10)" }}
+          >
+            <div className="grid gap-5 border-b p-6 lg:grid-cols-[220px_minmax(0,1fr)_auto]" style={{ borderColor: "rgba(10,10,11,0.08)" }}>
+              <AssistantSetupArt compact />
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-[0.16em]" style={{ color: "var(--color-vl-ink-faint)" }}>
+                  Assistant setup
+                </p>
+                <h2 className="mt-1 text-[28px] font-bold leading-tight" style={{ color: "var(--color-vl-ink)" }}>
+                  Advanced settings
+                </h2>
+                <p className="mt-1 max-w-130 text-[13px] leading-relaxed" style={{ color: "var(--color-vl-ink-muted)" }}>
+                  Tune how the assistant listens, starts, and speaks.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border bg-white/80 text-slate-500 transition hover:bg-white hover:text-slate-900"
+                style={{ borderColor: "rgba(10,10,11,0.10)" }}
+                onClick={() => setOpen(false)}
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="vl-scroll overflow-y-auto p-6">
+              {children}
+            </div>
+          </section>
+        </div>
+      )}
+    </>
+  );
+}
+
+function AssistantSetupArt({ compact = false }: { compact?: boolean }) {
+  const bars = [42, 76, 58, 90, 64, 82, 50];
+
+  return (
+    <div
+      className={`relative w-full overflow-hidden rounded-[22px] border shadow-inner ${compact ? "h-[120px]" : "h-[98px]"}`}
+      style={{
+        borderColor: "rgba(124,110,245,0.18)",
+        background: "linear-gradient(135deg, rgba(124,110,245,0.22), rgba(255,107,71,0.16) 52%, rgba(255,255,255,0.88))",
+      }}
+    >
+      <div className="absolute -right-8 -top-12 h-32 w-32 rounded-[36%] blur-2xl" style={{ background: "rgba(124,110,245,0.40)" }} />
+      <div className="absolute -bottom-12 -left-10 h-32 w-32 rounded-[40%] blur-2xl" style={{ background: "rgba(255,107,71,0.30)" }} />
+      <div className="absolute inset-x-4 bottom-4 flex h-14 items-end gap-1.5">
+        {bars.map((height, index) => (
+          <span
+            key={`assistant-setup-${index}`}
+            className="w-full rounded-md shadow-sm"
+            style={{
+              height: `${height}%`,
+              background: index % 2 === 0 ? "rgba(124,110,245,0.76)" : "rgba(255,107,71,0.70)",
+              opacity: 0.88,
+            }}
+          />
+        ))}
+      </div>
+      <div
+        className="absolute left-4 top-4 grid h-12 w-12 place-items-center rounded-[18px] border shadow-lg backdrop-blur"
+        style={{ borderColor: "rgba(255,255,255,0.55)", background: "rgba(255,255,255,0.44)", color: "#332B93" }}
+      >
+        <Volume2 className="h-5 w-5" />
+      </div>
+      <div className="absolute right-4 top-4 h-3 w-12 rounded-md bg-[rgba(124,110,245,0.72)]" />
+      <div className="absolute right-4 top-9 h-3 w-8 rounded-md bg-[rgba(255,107,71,0.64)]" />
     </div>
   );
 }
@@ -805,7 +955,7 @@ function VoiceEngineCard({
         </span>
         {(locked || statusLabel) && (
           <span
-            className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em]"
+            className="inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em]"
             style={{
               color: statusLabel === "Ready" ? "var(--color-vl-success)" : "rgba(10,10,11,0.52)",
               background: statusLabel === "Ready" ? "rgba(16,185,129,0.10)" : "rgba(10,10,11,0.06)",
@@ -850,11 +1000,11 @@ function ToggleCard({
       aria-pressed={checked}
     >
       <span
-        className="mt-0.5 inline-flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition-colors"
+          className="mt-0.5 inline-flex h-5 w-9 shrink-0 items-center rounded-xl p-0.5 transition-colors"
         style={{ background: checked ? "var(--color-vl-coral)" : "rgba(10,10,11,0.16)" }}
       >
         <span
-          className="block h-4 w-4 rounded-full bg-white transition-transform"
+          className="block h-4 w-4 rounded-lg bg-white transition-transform"
           style={{ transform: checked ? "translateX(16px)" : "translateX(0)" }}
         />
       </span>
@@ -966,7 +1116,7 @@ function VoiceOption({
     >
       {selected && (
         <span
-          className="absolute top-2 right-2 w-5 h-5 rounded-full flex items-center justify-center"
+          className="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-lg"
           style={{ background: "var(--color-vl-coral)" }}
         >
           <Check className="w-3 h-3 text-white" />
@@ -988,7 +1138,7 @@ function VoiceOption({
         type="button"
         onClick={toggleSample}
         disabled={playState === "loading"}
-        className="mt-1 inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] transition-colors"
+        className="mt-1 inline-flex items-center gap-1.5 rounded-xl border px-3 py-1 text-[11px] transition-colors"
         style={{
           borderColor: isPlaying
             ? "rgba(124,110,245,0.6)"

@@ -183,6 +183,22 @@ export const sessionsTable = pgTable("sessions", {
 
 export type Session = typeof sessionsTable.$inferSelect;
 
+// ── Password Reset Tokens ─────────────────────────────────────────────────────
+
+export const passwordResetTokensTable = pgTable("password_reset_tokens", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  tokenHash: text("token_hash").notNull().unique(),
+  expiresAt: timestamp("expires_at").notNull(),
+  usedAt: timestamp("used_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("password_reset_tokens_user_idx").on(table.userId),
+  index("password_reset_tokens_expires_idx").on(table.expiresAt),
+]);
+
+export type PasswordResetToken = typeof passwordResetTokensTable.$inferSelect;
+
 // ── Exchange Codes ────────────────────────────────────────────────────────────
 
 export const exchangeCodesTable = pgTable("exchange_codes", {

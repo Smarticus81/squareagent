@@ -96,9 +96,9 @@ function Router() {
 
 function RouteFallback() {
   return (
-    <div className="flex-1 px-4 pb-24 pt-24 sm:px-6 lg:px-10">
-      <div className="mx-auto h-1.5 max-w-28 overflow-hidden rounded-full bg-black/10">
-        <div className="h-full w-1/2 animate-pulse rounded-full bg-black" />
+    <div className="vl-page-shell flex-1 px-4 pb-24 pt-24 sm:px-6 lg:px-10">
+      <div className="mx-auto h-1.5 max-w-28 overflow-hidden rounded-lg bg-black/10">
+        <div className="h-full w-1/2 animate-pulse rounded-lg bg-black" />
       </div>
     </div>
   );
@@ -107,7 +107,7 @@ function RouteFallback() {
 function Billing() {
   if (!clerkPublishableKey) {
     return (
-      <div className="flex-1 px-4 pb-24 pt-24 sm:px-6 lg:px-10">
+      <div className="vl-page-shell flex-1 px-4 pb-24 pt-24 sm:px-6 lg:px-10">
         <div className="vl-panel mx-auto max-w-2xl p-8">
           <p className="vl-eyebrow">Billing</p>
           <h1 className="vl-display mt-3 text-[36px]" style={{ color: "var(--color-vl-ink)" }}>
@@ -122,7 +122,7 @@ function Billing() {
   }
 
   return (
-    <div className="flex-1 px-4 pb-24 pt-24 sm:px-6 lg:px-10">
+    <div className="vl-page-shell flex-1 px-4 pb-24 pt-24 sm:px-6 lg:px-10">
       <div className="mx-auto max-w-5xl">
         <SignedIn>
           <div className="mb-6 flex items-center gap-4">
@@ -143,7 +143,7 @@ function BillingSignedOut() {
   if (hasToken) {
     return (
       <div className="vl-panel flex items-center gap-3 p-8">
-        <span className="h-4 w-4 animate-spin rounded-full border-2 border-black/15 border-t-black/60" />
+        <span className="h-4 w-4 animate-spin rounded-lg border-2 border-black/15 border-t-black/60" />
         <p className="text-[14px]" style={{ color: "var(--color-vl-ink-muted)" }}>
           Preparing your organization's billing…
         </p>

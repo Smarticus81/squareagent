@@ -92,6 +92,10 @@ const WAKE_PHRASE_KEY = "voycelab_wake_phrase";
 const WAKE_MODE_KEY = "voycelab_wake_mode";
 const AGENT_PROFILE_KEY = "voycelab_agent_profile";
 const AGENT_PROFILE_ID_KEY = "voycelab_agent_profile_id";
+// Per-tab active assistant. localStorage is shared across every PWA tab, so a
+// second launched assistant would otherwise overwrite the first one's wake
+// settings. sessionStorage keeps each tab pinned to the assistant it launched.
+const ACTIVE_PROFILE_SESSION_KEY = "voycelab_active_agent_profile";
 const DEFAULT_WAKE_PHRASE = "Hey Voyce";
 
 function normalizeWakePhrase(value: unknown): string {
@@ -100,6 +104,31 @@ function normalizeWakePhrase(value: unknown): string {
 
 function normalizeWakeMode(value: unknown): "ambient" | "tap" {
   return value === "tap" ? "tap" : "ambient";
+}
+
+/** Per-assistant cache key so each assistant keeps its own wake settings. */
+function profileCacheKey(id: string): string {
+  return `${AGENT_PROFILE_KEY}:${id}`;
+}
+
+/** Pin the active assistant for this tab (session) and remember it globally. */
+function rememberActiveProfileId(id: string | null): void {
+  if (id) {
+    try { sessionStorage.setItem(ACTIVE_PROFILE_SESSION_KEY, id); } catch { /* private mode */ }
+    localStorage.setItem(AGENT_PROFILE_ID_KEY, id);
+  } else {
+    try { sessionStorage.removeItem(ACTIVE_PROFILE_SESSION_KEY); } catch { /* private mode */ }
+    localStorage.removeItem(AGENT_PROFILE_ID_KEY);
+  }
+}
+
+/** Resolve the active assistant id: per-tab session wins over the shared global. */
+function readActiveProfileId(): string | null {
+  try {
+    const scoped = sessionStorage.getItem(ACTIVE_PROFILE_SESSION_KEY);
+    if (scoped) return scoped;
+  } catch { /* private mode */ }
+  return localStorage.getItem(AGENT_PROFILE_ID_KEY);
 }
 
 /** Redeem a one-time exchange code to get token + venueId. */
@@ -137,7 +166,7 @@ export function SquareProvider({ children }: { children: ReactNode }) {
   const [squareOAuthClaim, setSquareOAuthClaim] = useState<string | null>(null);
   const [oauthMerchantId, setOauthMerchantId] = useState<string | null>(null);
   const [agentProfile, setAgentProfile] = useState<AgentProfileLaunchInfo | null>(null);
-  const [agentProfileId, setAgentProfileId] = useState<string | null>(localStorage.getItem(AGENT_PROFILE_ID_KEY));
+  const [agentProfileId, setAgentProfileId] = useState<string | null>(readActiveProfileId());
   const [wakePhrase, setWakePhrase] = useState(DEFAULT_WAKE_PHRASE);
   const [wakeMode, setWakeMode] = useState<"ambient" | "tap">("ambient");
   const initialHasExchangeCodeRef = useRef(new URLSearchParams(window.location.search).has("code"));
@@ -172,10 +201,15 @@ export function SquareProvider({ children }: { children: ReactNode }) {
     setWakeMode(nextWakeMode);
     localStorage.setItem(WAKE_PHRASE_KEY, nextWakePhrase);
     localStorage.setItem(WAKE_MODE_KEY, nextWakeMode);
-    if (profile?.id) localStorage.setItem(AGENT_PROFILE_ID_KEY, profile.id);
-    else localStorage.removeItem(AGENT_PROFILE_ID_KEY);
-    if (profile) localStorage.setItem(AGENT_PROFILE_KEY, JSON.stringify(profile));
-    else localStorage.removeItem(AGENT_PROFILE_KEY);
+    if (profile?.id) {
+      rememberActiveProfileId(profile.id);
+      // Per-assistant cache keeps each assistant's wake settings independent.
+      localStorage.setItem(profileCacheKey(profile.id), JSON.stringify(profile));
+      localStorage.setItem(AGENT_PROFILE_KEY, JSON.stringify(profile));
+    } else {
+      rememberActiveProfileId(null);
+      localStorage.removeItem(AGENT_PROFILE_KEY);
+    }
   }
 
   async function updateWakeSettings(nextPhrase: string, nextMode: "ambient" | "tap"): Promise<string | null> {
@@ -238,7 +272,7 @@ export function SquareProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem(WAKE_PHRASE_KEY);
     localStorage.removeItem(WAKE_MODE_KEY);
     localStorage.removeItem(AGENT_PROFILE_KEY);
-    localStorage.removeItem(AGENT_PROFILE_ID_KEY);
+    rememberActiveProfileId(null);
     clearCredentials();
     setVenueId(null);
     setAuthToken(null);
@@ -257,7 +291,7 @@ export function SquareProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem(WAKE_PHRASE_KEY);
     localStorage.removeItem(WAKE_MODE_KEY);
     localStorage.removeItem(AGENT_PROFILE_KEY);
-    localStorage.removeItem(AGENT_PROFILE_ID_KEY);
+    rememberActiveProfileId(null);
     localStorage.removeItem(LOC_KEY);
     localStorage.removeItem(TOKEN_KEY);
     setVenueId(null);
@@ -393,10 +427,13 @@ export function SquareProvider({ children }: { children: ReactNode }) {
         if (launch && urlAgentProfileId && !launch.agentProfileId) {
           launch = { ...launch, agentProfileId: urlAgentProfileId };
         }
-        // Always clean the code from URL to prevent stale re-use attempts
+        // Always clean the one-time code from the URL to prevent stale re-use,
+        // but keep agentProfileId so a refresh re-identifies THIS assistant
+        // (localStorage is shared across tabs and can't disambiguate).
         const url = new URL(window.location.href);
         url.searchParams.delete("code");
-        url.searchParams.delete("agentProfileId");
+        if (launch?.agentProfileId) url.searchParams.set("agentProfileId", launch.agentProfileId);
+        else url.searchParams.delete("agentProfileId");
         window.history.replaceState({}, "", url.toString());
         if (!launch) {
           if (!cancelled) {
@@ -497,27 +534,48 @@ export function SquareProvider({ children }: { children: ReactNode }) {
           return;
         }
       }
-      // Fallback to localStorage
+      // Fallback to localStorage. Resolve the assistant from the URL / per-tab
+      // session first so a refresh restores THIS tab's assistant rather than
+      // whichever one most recently wrote the shared global keys.
       if (!cancelled) {
         const locId = localStorage.getItem(LOC_KEY);
         if (locId) setLocationId(locId);
         localStorage.removeItem(TOKEN_KEY);
         const storedWakePhrase = localStorage.getItem(WAKE_PHRASE_KEY);
         const storedWakeMode = localStorage.getItem(WAKE_MODE_KEY);
-        const storedAgentProfileId = localStorage.getItem(AGENT_PROFILE_ID_KEY);
-        if (storedWakePhrase) setWakePhrase(storedWakePhrase);
-        if (storedWakeMode) setWakeMode(normalizeWakeMode(storedWakeMode));
-        if (storedAgentProfileId) setAgentProfileId(storedAgentProfileId);
-        const storedProfile = localStorage.getItem(AGENT_PROFILE_KEY);
-        if (storedProfile) {
+        const activeProfileId = urlAgentProfileId ?? readActiveProfileId();
+        const tok = localStorage.getItem(AUTH_TOKEN_KEY);
+
+        // Paint the cached settings for the active assistant immediately.
+        const cachedProfileRaw = activeProfileId
+          ? localStorage.getItem(profileCacheKey(activeProfileId)) ?? localStorage.getItem(AGENT_PROFILE_KEY)
+          : localStorage.getItem(AGENT_PROFILE_KEY);
+        let painted = false;
+        if (cachedProfileRaw) {
           try {
-            const parsedProfile = JSON.parse(storedProfile) as AgentProfileLaunchInfo;
-            setAgentProfile(parsedProfile);
-            setWakePhrase(parsedProfile.wakePhrase?.trim() || storedWakePhrase || DEFAULT_WAKE_PHRASE);
-            setWakeMode(normalizeWakeMode(parsedProfile.wakeMode ?? storedWakeMode));
+            const parsedProfile = JSON.parse(cachedProfileRaw) as AgentProfileLaunchInfo;
+            if (!activeProfileId || parsedProfile.id === activeProfileId) {
+              setAgentProfile(parsedProfile);
+              setAgentProfileId(parsedProfile.id);
+              setWakePhrase(parsedProfile.wakePhrase?.trim() || storedWakePhrase || DEFAULT_WAKE_PHRASE);
+              setWakeMode(normalizeWakeMode(parsedProfile.wakeMode ?? storedWakeMode));
+              painted = true;
+            }
           } catch {
             localStorage.removeItem(AGENT_PROFILE_KEY);
           }
+        }
+        if (!painted) {
+          if (storedWakePhrase) setWakePhrase(storedWakePhrase);
+          if (storedWakeMode) setWakeMode(normalizeWakeMode(storedWakeMode));
+          if (activeProfileId) setAgentProfileId(activeProfileId);
+        }
+
+        // Re-fetch the authoritative profile by id so the correct wake phrase
+        // always wins, even if the shared cache was stomped by another tab.
+        if (activeProfileId && tok) {
+          rememberActiveProfileId(activeProfileId);
+          await loadAgentProfile(tok, activeProfileId);
         }
         setCredentialsReady(true);
       }
@@ -540,8 +598,9 @@ export function SquareProvider({ children }: { children: ReactNode }) {
           setAuthToken(tok);
           setUserInfo(data.user);
           await loadVenues(tok);
-          const storedAgentProfileId = localStorage.getItem(AGENT_PROFILE_ID_KEY);
-          if (storedAgentProfileId) await loadAgentProfile(tok, storedAgentProfileId);
+          const urlProfileId = new URLSearchParams(window.location.search).get("agentProfileId");
+          const activeProfileId = (urlProfileId && urlProfileId.trim()) || readActiveProfileId();
+          if (activeProfileId) await loadAgentProfile(tok, activeProfileId);
         } else if (res.status === 401) {
           clearStoredLaunchSession("Session expired. Sign in or relaunch from the dashboard.");
         }
@@ -638,7 +697,7 @@ export function SquareProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem(WAKE_PHRASE_KEY);
     localStorage.removeItem(WAKE_MODE_KEY);
     localStorage.removeItem(AGENT_PROFILE_KEY);
-    localStorage.removeItem(AGENT_PROFILE_ID_KEY);
+    rememberActiveProfileId(null);
     setAuthToken(null);
     setUserInfo(null);
     setVenues([]);

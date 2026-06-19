@@ -65,6 +65,14 @@ app.use("/api/auth/signup", rateLimit({
   message: { error: "Too many signup attempts. Please try again later." },
 }));
 
+app.use("/api/auth/forgot-password", rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many reset requests. Try again in a few minutes." },
+}));
+
 // Session minting is the real abuse vector (it calls OpenAI), so keep a tight
 // cap there. Tool calls + heartbeats during an active voice conversation are
 // far more frequent and authenticated — a single busy ordering session can

@@ -432,7 +432,6 @@ async function validateRelayScope(
           geminiModelId = "gemini-3.1-flash-live-preview";
           break;
         case "google_gemini_2_5_flash_native_audio":
-        case "google_gemini_live_native_audio":
           geminiModelId = "gemini-2.5-flash-native-audio-preview-12-2025";
           break;
         default:

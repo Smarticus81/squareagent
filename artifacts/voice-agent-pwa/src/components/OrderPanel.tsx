@@ -351,7 +351,6 @@ function voicePipelineLabel(provider?: string): string {
     case "openai_realtime_server_ws": return "OpenAI Relay";
     case "google_gemini_3_1_flash_live": return "Gemini 3.1 Flash Live";
     case "google_gemini_2_5_flash_native_audio": return "Gemini 2.5 Native Audio";
-    case "google_gemini_live_native_audio": return "Gemini Live";
     case "browser_speech_api_fallback": return "Browser Speech";
     case "push_to_talk_text_fallback": return "Push to talk";
     case "text_only_fallback": return "Text only";

@@ -131,7 +131,7 @@ export default function Pricing() {
     : null;
 
   return (
-    <div className="flex-1 pt-24 pb-24 bg-vl-cream">
+    <div className="vl-page-shell flex-1 pb-24 pt-24">
       <div className="w-full max-w-295 mx-auto px-4 sm:px-6 lg:px-10">
         <p className="vl-eyebrow">Pricing</p>
         <h1 className="vl-display text-[40px] md:text-[56px] mt-3 max-w-3xl" style={{ color: "var(--color-vl-ink)" }}>
@@ -321,7 +321,7 @@ export default function Pricing() {
 function CadenceToggle({ value, onChange }: { value: Cadence; onChange: (v: Cadence) => void }) {
   return (
     <div
-      className="inline-flex rounded-full border p-1"
+      className="inline-flex rounded-2xl border p-1"
       style={{ borderColor: "rgba(10, 10, 11,0.12)", background: "rgba(255,255,255,0.5)" }}
       role="radiogroup"
     >
@@ -333,7 +333,7 @@ function CadenceToggle({ value, onChange }: { value: Cadence; onChange: (v: Cade
             role="radio"
             aria-checked={selected}
             onClick={() => onChange(opt)}
-            className="text-[12px] px-4 py-1.5 rounded-full transition-colors"
+            className="rounded-xl px-4 py-1.5 text-[12px] transition-colors"
             style={{
               background: selected ? "rgba(124,110,245,0.14)" : "transparent",
               color: selected ? "var(--color-vl-ink)" : "var(--color-vl-ink-muted)",
@@ -367,14 +367,15 @@ function PlanCard({
 
   return (
     <article
-      className="vl-panel p-6 flex flex-col"
+      className="vl-panel flex flex-col overflow-hidden p-4"
       style={{
         borderColor: plan.highlighted ? "rgba(124,110,245,0.6)" : undefined,
         boxShadow: plan.highlighted ? "0 0 0 1px rgba(124,110,245,0.4)" : undefined,
       }}
     >
-      <div className="flex items-baseline justify-between gap-3">
-        <h3 className="text-[20px] font-semibold" style={{ color: "var(--color-vl-ink)" }}>
+      <PlanArt plan={plan} />
+      <div className="mt-5 flex items-baseline justify-between gap-3">
+        <h3 className="text-[19px] font-semibold" style={{ color: "var(--color-vl-ink)" }}>
           {plan.name}
         </h3>
         {plan.ribbon && (
@@ -386,7 +387,7 @@ function PlanCard({
           </span>
         )}
       </div>
-      <p className="text-[13px] mt-1.5 leading-snug min-h-9" style={{ color: "var(--color-vl-ink-muted)" }}>
+      <p className="mt-1.5 min-h-9 text-[13px] leading-snug" style={{ color: "var(--color-vl-ink-muted)" }}>
         {plan.tagline}
       </p>
 
@@ -463,6 +464,78 @@ function PlanCard({
         <ArrowRight className="w-3.5 h-3.5" />
       </button>
     </article>
+  );
+}
+
+function PlanArt({ plan }: { plan: PlanResponse }) {
+  const highlighted = plan.highlighted;
+  const isTrial = plan.id === "trial";
+  const bars = highlighted ? [50, 76, 60, 92, 70, 84] : isTrial ? [34, 48, 40, 62, 46, 56] : [42, 64, 52, 78, 58, 72];
+  const palette = highlighted
+    ? {
+        start: "rgba(124,110,245,0.24)",
+        mid: "rgba(79,184,255,0.18)",
+        glow: "rgba(124,110,245,0.42)",
+        soft: "rgba(79,184,255,0.30)",
+        line: "rgba(124,110,245,0.78)",
+        lineAlt: "rgba(79,184,255,0.72)",
+        border: "rgba(124,110,245,0.22)",
+        ink: "#332B93",
+      }
+    : isTrial
+      ? {
+          start: "rgba(47,158,100,0.18)",
+          mid: "rgba(255,255,255,0.86)",
+          glow: "rgba(47,158,100,0.34)",
+          soft: "rgba(255,185,90,0.26)",
+          line: "rgba(47,158,100,0.70)",
+          lineAlt: "rgba(14,27,44,0.62)",
+          border: "rgba(47,158,100,0.16)",
+          ink: "#17633B",
+        }
+      : {
+          start: "rgba(255,107,71,0.18)",
+          mid: "rgba(255,185,90,0.16)",
+          glow: "rgba(255,107,71,0.34)",
+          soft: "rgba(255,185,90,0.26)",
+          line: "rgba(255,107,71,0.72)",
+          lineAlt: "rgba(14,27,44,0.66)",
+          border: "rgba(255,107,71,0.16)",
+          ink: "#8F2F1D",
+        };
+
+  return (
+    <div
+      className="relative h-[104px] overflow-hidden rounded-[22px] border shadow-inner"
+      style={{
+        borderColor: palette.border,
+        background: `linear-gradient(135deg, ${palette.start}, ${palette.mid} 54%, rgba(255,255,255,0.90))`,
+      }}
+    >
+      <div className="absolute -right-8 -top-12 h-32 w-32 rounded-[36%] blur-2xl" style={{ background: palette.glow }} />
+      <div className="absolute -bottom-12 -left-10 h-32 w-32 rounded-[40%] blur-2xl" style={{ background: palette.soft }} />
+      <div className="absolute inset-x-4 bottom-4 flex h-14 items-end gap-1.5">
+        {bars.map((height, index) => (
+          <span
+            key={`${plan.id}-${index}`}
+            className="w-full rounded-md shadow-sm"
+            style={{
+              height: `${height}%`,
+              background: index % 2 === 0 ? palette.line : palette.lineAlt,
+              opacity: 0.86,
+            }}
+          />
+        ))}
+      </div>
+      <div
+        className="absolute left-4 top-4 grid h-12 w-12 place-items-center rounded-[18px] border shadow-lg backdrop-blur"
+        style={{ borderColor: "rgba(255,255,255,0.55)", background: "rgba(255,255,255,0.44)", color: palette.ink }}
+      >
+        <Check className="h-5 w-5" />
+      </div>
+      <div className="absolute right-4 top-4 h-3 w-12 rounded-md" style={{ background: palette.line, opacity: 0.75 }} />
+      <div className="absolute right-4 top-9 h-3 w-8 rounded-md" style={{ background: palette.lineAlt, opacity: 0.65 }} />
+    </div>
   );
 }
 

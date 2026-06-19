@@ -10,8 +10,9 @@ import { Router, Request, Response } from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
-import { db, usersTable, sessionsTable, subscriptionsTable, exchangeCodesTable, organizationMembershipsTable, organizationsTable, venuesTable, agentProfilesTable } from "@workspace/db";
-import { and, eq, isNull, lt, or } from "drizzle-orm";
+import nodemailer from "nodemailer";
+import { db, usersTable, sessionsTable, subscriptionsTable, exchangeCodesTable, organizationMembershipsTable, organizationsTable, venuesTable, agentProfilesTable, passwordResetTokensTable } from "@workspace/db";
+import { and, eq, gte, isNull, lt, or } from "drizzle-orm";
 import { checkClerkOrgPlan, isClerkConfigured, ensureClerkIdentity, createClerkSignInToken } from "../lib/clerk-billing";
 import { decrypt, encrypt } from "../lib/secrets";
 
@@ -20,6 +21,9 @@ const router = Router();
 const DEFAULT_SECRET = "voycelab-dev-secret-change-in-production";
 export const JWT_SECRET = process.env.JWT_SECRET ?? DEFAULT_SECRET;
 const SESSION_DAYS = 30;
+const PASSWORD_RESET_TTL_MS = 30 * 60 * 1000;
+const PASSWORD_RESET_RATE_WINDOW_MS = 15 * 60 * 1000;
+const PASSWORD_RESET_RATE_MAX = 4;
 
 /**
  * Platform admin emails — never-expiring trial, every pipeline unlocked,
@@ -242,6 +246,15 @@ setInterval(() => {
   }
 }, 60_000);
 
+setInterval(async () => {
+  if (!db) return;
+  try {
+    await db.delete(passwordResetTokensTable).where(lt(passwordResetTokensTable.expiresAt, new Date()));
+  } catch (e: any) {
+    console.error("[Auth] Password reset cleanup error:", e.message);
+  }
+}, 10 * 60_000);
+
 /** Fail hard if running in production with the default secret */
 export function assertJwtSecret(): void {
   if (JWT_SECRET === DEFAULT_SECRET && process.env.NODE_ENV === "production") {
@@ -256,6 +269,89 @@ function ensureAuthStore(res: Response): boolean {
     error: "Auth service unavailable. Set DATABASE_URL and initialize the database tables.",
   });
   return false;
+}
+
+function publicBaseUrl(req?: Request): string {
+  const explicit = process.env.PUBLIC_BASE_URL ?? process.env.PUBLIC_API_URL ?? process.env.APP_URL;
+  if (explicit) return explicit.replace(/\/$/, "");
+  if (process.env.RAILWAY_PUBLIC_DOMAIN) return `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`;
+  if (req) return `${req.protocol}://${req.get("host")}`;
+  return "http://localhost:5173";
+}
+
+function hashResetToken(token: string): string {
+  return crypto.createHash("sha256").update(token).digest("hex");
+}
+
+const resetRequestHits = new Map<string, number[]>();
+
+function passwordResetRateLimitOk(key: string): boolean {
+  const now = Date.now();
+  const fresh = (resetRequestHits.get(key) ?? []).filter((hit) => now - hit < PASSWORD_RESET_RATE_WINDOW_MS);
+  if (fresh.length >= PASSWORD_RESET_RATE_MAX) {
+    resetRequestHits.set(key, fresh);
+    return false;
+  }
+  fresh.push(now);
+  resetRequestHits.set(key, fresh);
+  return true;
+}
+
+async function sendPasswordResetEmail(to: string, resetUrl: string): Promise<{ sent: boolean; reason?: string }> {
+  const from =
+    process.env.AUTH_EMAIL_FROM ??
+    process.env.PASSWORD_RESET_FROM_EMAIL ??
+    process.env.MAIL_FROM ??
+    "VoyceLab <no-reply@voycelab.ai>";
+  const subject = "Reset your VoyceLab password";
+  const text = [
+    "Reset your VoyceLab password",
+    "",
+    "Use this secure link to set a new password:",
+    resetUrl,
+    "",
+    "This link expires in 30 minutes. If you did not request it, you can ignore this email.",
+  ].join("\n");
+  const html = `
+    <div style="font-family:Inter,Arial,sans-serif;color:#0E1B2C;line-height:1.55">
+      <h1 style="margin:0 0 12px;font-size:24px">Reset your VoyceLab password</h1>
+      <p>Use this secure link to set a new password. It expires in 30 minutes.</p>
+      <p><a href="${resetUrl}" style="display:inline-block;background:#0E1B2C;color:#fff;text-decoration:none;padding:12px 18px;border-radius:14px;font-weight:700">Reset password</a></p>
+      <p style="font-size:13px;color:#667085">If you did not request this, you can ignore this email.</p>
+    </div>
+  `;
+
+  const resendKey = process.env.AUTH_RESEND_API_KEY ?? process.env.RESEND_API_KEY;
+  if (resendKey) {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${resendKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ from, to: [to], subject, text, html }),
+    });
+    if (!response.ok) return { sent: false, reason: `Resend ${response.status}` };
+    return { sent: true };
+  }
+
+  const smtpHost = process.env.AUTH_SMTP_HOST ?? process.env.SMTP_HOST;
+  const smtpUser = process.env.AUTH_SMTP_USER ?? process.env.SMTP_USER;
+  const smtpPass = process.env.AUTH_SMTP_PASS ?? process.env.SMTP_PASS;
+  if (smtpHost && smtpUser && smtpPass) {
+    const smtpPort = Number(process.env.AUTH_SMTP_PORT ?? process.env.SMTP_PORT ?? 587);
+    const secure = (process.env.AUTH_SMTP_SECURE ?? process.env.SMTP_SECURE) === "true" || smtpPort === 465;
+    const transporter = nodemailer.createTransport({
+      host: smtpHost,
+      port: smtpPort,
+      secure,
+      auth: { user: smtpUser, pass: smtpPass },
+    });
+    await transporter.sendMail({ from, to, subject, text, html });
+    return { sent: true };
+  }
+
+  return { sent: false, reason: "No platform email provider configured" };
 }
 
 function signToken(userId: number, sessionId: string): string {
@@ -522,6 +618,90 @@ router.post("/login", async (req: Request, res: Response): Promise<void> => {
   } catch (e: any) {
     console.error("[Auth] Login error:", e.message);
     res.status(500).json({ error: "Login failed" });
+  }
+});
+
+// POST /api/auth/forgot-password
+router.post("/forgot-password", async (req: Request, res: Response): Promise<void> => {
+  if (!ensureAuthStore(res)) return;
+
+  const email = typeof req.body?.email === "string" ? req.body.email.toLowerCase().trim() : "";
+  if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+    res.status(400).json({ error: "A valid email is required" });
+    return;
+  }
+
+  const rateKey = `${req.ip ?? "unknown"}:${email}`;
+  if (!passwordResetRateLimitOk(rateKey)) {
+    res.status(429).json({ error: "Too many reset requests. Try again in a few minutes." });
+    return;
+  }
+
+  try {
+    const [user] = await db.select().from(usersTable).where(eq(usersTable.email, email));
+    if (user) {
+      const rawToken = crypto.randomBytes(32).toString("base64url");
+      const tokenHash = hashResetToken(rawToken);
+      const expiresAt = new Date(Date.now() + PASSWORD_RESET_TTL_MS);
+      await db.delete(passwordResetTokensTable).where(eq(passwordResetTokensTable.userId, user.id));
+      await db.insert(passwordResetTokensTable).values({ userId: user.id, tokenHash, expiresAt });
+
+      const resetUrl = `${publicBaseUrl(req)}/login?reset=${encodeURIComponent(rawToken)}`;
+      const delivery = await sendPasswordResetEmail(user.email, resetUrl);
+      if (!delivery.sent) {
+        console.error("[Auth] Password reset email not sent:", delivery.reason);
+      }
+    }
+
+    res.json({ ok: true, message: "If that email exists, a reset link has been sent." });
+  } catch (e: any) {
+    console.error("[Auth] Forgot password error:", e.message);
+    res.status(500).json({ error: "Could not start password recovery" });
+  }
+});
+
+// POST /api/auth/reset-password
+router.post("/reset-password", async (req: Request, res: Response): Promise<void> => {
+  if (!ensureAuthStore(res)) return;
+
+  const token = typeof req.body?.token === "string" ? req.body.token.trim() : "";
+  const newPassword = typeof req.body?.newPassword === "string" ? req.body.newPassword : "";
+  if (!token || !newPassword) {
+    res.status(400).json({ error: "token and newPassword are required" });
+    return;
+  }
+  if (newPassword.length < 8) {
+    res.status(400).json({ error: "Password must be at least 8 characters" });
+    return;
+  }
+
+  try {
+    const tokenHash = hashResetToken(token);
+    const [resetToken] = await db
+      .select()
+      .from(passwordResetTokensTable)
+      .where(and(
+        eq(passwordResetTokensTable.tokenHash, tokenHash),
+        isNull(passwordResetTokensTable.usedAt),
+        gte(passwordResetTokensTable.expiresAt, new Date()),
+      ))
+      .limit(1);
+
+    if (!resetToken) {
+      res.status(400).json({ error: "Reset link is invalid or expired" });
+      return;
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+    await db.update(usersTable).set({ passwordHash, updatedAt: new Date() }).where(eq(usersTable.id, resetToken.userId));
+    await db.update(passwordResetTokensTable).set({ usedAt: new Date() }).where(eq(passwordResetTokensTable.id, resetToken.id));
+    await db.delete(sessionsTable).where(eq(sessionsTable.userId, resetToken.userId));
+    invalidateAuthCacheForUser(resetToken.userId);
+
+    res.json({ ok: true });
+  } catch (e: any) {
+    console.error("[Auth] Reset password error:", e.message);
+    res.status(500).json({ error: "Could not reset password" });
   }
 });
 
