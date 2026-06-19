@@ -27,7 +27,7 @@ const SESSION_DAYS = 30;
  * (comma-separated). Compared case-insensitively.
  */
 const FAR_FUTURE = new Date("9999-12-31T23:59:59Z");
-const DEFAULT_ADMIN_EMAIL = "tmusoni@thinkertons.com";
+const DEFAULT_ADMIN_EMAIL = "tmusoni@thinkertons.com,chris_brooks2174@yahoo.com";
 const ADMIN_EMAILS = (process.env.ADMIN_EMAILS ?? DEFAULT_ADMIN_EMAIL)
   .split(",")
   .map((s) => s.trim().toLowerCase())
