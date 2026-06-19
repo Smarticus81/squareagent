@@ -10,7 +10,6 @@ import {
   Building2,
   Check,
   CheckCircle2,
-  Circle,
   CreditCard,
   KeyRound,
   Loader2,
@@ -721,6 +720,44 @@ function Section({
   );
 }
 
+function AdminPanel({
+  icon,
+  title,
+  description,
+  children,
+  right,
+}: {
+  icon: ReactNode;
+  title: string;
+  description?: string;
+  children: ReactNode;
+  right?: ReactNode;
+}) {
+  return (
+    <section className="vl-panel rounded-3xl border p-5 shadow-sm" style={{ borderColor: "rgba(14,27,44,0.06)" }}>
+      <div className="mb-5 flex flex-wrap items-start justify-between gap-4 border-b pb-4" style={{ borderColor: "rgba(14,27,44,0.06)" }}>
+        <div className="flex min-w-0 items-start gap-3.5">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-orange-100 shadow-sm" style={{ background: "var(--color-vl-coral-tint)", color: "var(--color-vl-coral-deep)" }}>
+            {icon}
+          </div>
+          <div className="min-w-0">
+            <h2 className="text-[15px] font-bold leading-snug" style={{ color: "var(--color-vl-ink)" }}>
+              {title}
+            </h2>
+            {description && (
+              <p className="mt-1 max-w-160 text-[12.5px] leading-relaxed" style={{ color: "var(--color-vl-ink-muted)" }}>
+                {description}
+              </p>
+            )}
+          </div>
+        </div>
+        {right}
+      </div>
+      {children}
+    </section>
+  );
+}
+
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <label className="block">
@@ -811,6 +848,8 @@ function AdminConsole({ token }: { token: string | null }) {
   const [savingId, setSavingId] = useState<number | null>(null);
   const [drafts, setDrafts] = useState<Record<number, { plan: string; status: string; role: string }>>({});
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
+  const [actionMsg, setActionMsg] = useState<null | { tone: "ok" | "error"; text: string }>(null);
 
   const load = async () => {
     if (!token) {
@@ -847,6 +886,13 @@ function AdminConsole({ token }: { token: string | null }) {
     void load();
   }, [token]);
 
+  useEffect(() => {
+    if (!data?.users.length) return;
+    if (!selectedUserId || !data.users.some((user) => user.id === selectedUserId)) {
+      setSelectedUserId(data.users[0].id);
+    }
+  }, [data, selectedUserId]);
+
   const updateDraft = (userId: number, key: "plan" | "status" | "role", value: string) => {
     setDrafts((current) => ({
       ...current,
@@ -859,16 +905,16 @@ function AdminConsole({ token }: { token: string | null }) {
     }));
   };
 
-  const saveAccess = async (user: AdminUserAccess) => {
+  const patchAccess = async (
+    user: AdminUserAccess,
+    patch: Partial<{ plan: string; status: string; role: string }>,
+    successText: string,
+  ) => {
     if (!token) return;
     setSavingId(user.id);
     setError(null);
+    setActionMsg(null);
     try {
-      const draft = drafts[user.id] ?? {
-        plan: user.subscription?.plan ?? "trial",
-        status: user.subscription?.status ?? "trialing",
-        role: user.organization?.role ?? "owner",
-      };
       const res = await fetch(`/api/v1/admin/users/${user.id}/access`, {
         method: "PATCH",
         headers: {
@@ -876,20 +922,31 @@ function AdminConsole({ token }: { token: string | null }) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          plan: draft.plan,
-          status: draft.status,
-          role: draft.role,
+          ...patch,
           organizationId: user.organization?.id ?? undefined,
         }),
       });
       const payload = await res.json().catch(() => null);
       if (!res.ok) throw new Error(payload?.error?.message ?? "Could not update access.");
       await load();
+      setSelectedUserId(user.id);
+      setActionMsg({ tone: "ok", text: successText });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not update access.");
+      const message = err instanceof Error ? err.message : "Could not update access.";
+      setError(message);
+      setActionMsg({ tone: "error", text: message });
     } finally {
       setSavingId(null);
     }
+  };
+
+  const saveAccess = async (user: AdminUserAccess) => {
+    const draft = drafts[user.id] ?? {
+      plan: user.subscription?.plan ?? "trial",
+      status: user.subscription?.status ?? "trialing",
+      role: user.organization?.role ?? "owner",
+    };
+    await patchAccess(user, draft, `${user.email} access updated.`);
   };
 
   if (loading) {
@@ -925,6 +982,19 @@ function AdminConsole({ token }: { token: string | null }) {
       user.organization?.name?.toLowerCase().includes(q)
     );
   });
+  const selectedUser =
+    (selectedUserId ? data.users.find((user) => user.id === selectedUserId) : null) ??
+    filteredUsers[0] ??
+    data.users[0] ??
+    null;
+  const selectedDraft = selectedUser
+    ? drafts[selectedUser.id] ?? {
+        plan: selectedUser.subscription?.plan ?? "trial",
+        status: selectedUser.subscription?.status ?? "trialing",
+        role: selectedUser.organization?.role ?? "owner",
+      }
+    : null;
+  const inactiveUsers = data.users.filter((user) => ["inactive", "canceled", "past_due"].includes(user.subscription?.status ?? ""));
 
   return (
     <div className="mt-10 space-y-6">
@@ -935,9 +1005,188 @@ function AdminConsole({ token }: { token: string | null }) {
         </div>
       )}
 
-      {/* Telemetry Panel */}
-      <Section icon={<BarChart3 className="h-5 w-5" />} title="Platform Telemetry" description={`Global platform utilization aggregates over the last ${data.windowDays} days.`}>
-        <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+      <AdminPanel
+        icon={<ShieldCheck className="h-5 w-5" />}
+        title="Platform Control Center"
+        description="Select an account, change plan/status/role, suspend access, or grant production access. Every control below writes to the live admin API."
+        right={
+          <button
+            type="button"
+            className="vl-btn-ghost inline-flex items-center gap-2 text-[12.5px]"
+            onClick={() => void load()}
+            disabled={loading}
+          >
+            {loading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            Refresh
+          </button>
+        }
+      >
+        <div className="grid gap-5 xl:grid-cols-[360px_1fr]">
+          <div className="space-y-3">
+            <div className="relative">
+              <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Find account by name, email, plan, workspace..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="h-12 w-full rounded-2xl border bg-white/70 pl-11 pr-4 text-[13.5px] outline-none transition-all duration-200 focus:border-[#FF6B47]"
+                style={{ borderColor: "rgba(10,10,11,0.12)", color: "var(--color-vl-ink)" }}
+              />
+            </div>
+            <div className="max-h-[420px] space-y-2 overflow-y-auto pr-1">
+              {filteredUsers.map((user) => {
+                const isSelected = selectedUser?.id === user.id;
+                return (
+                  <button
+                    key={user.id}
+                    type="button"
+                    className="w-full rounded-2xl border p-3 text-left transition hover:bg-white hover:shadow-sm"
+                    style={{
+                      borderColor: isSelected ? "rgba(255,107,71,0.34)" : "rgba(10,10,11,0.07)",
+                      background: isSelected ? "rgba(255,107,71,0.08)" : "rgba(255,255,255,0.58)",
+                    }}
+                    onClick={() => setSelectedUserId(user.id)}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-[13px] font-bold" style={{ color: "var(--color-vl-ink)" }}>
+                          {user.name || user.email}
+                        </p>
+                        <p className="mt-0.5 truncate text-[11.5px]" style={{ color: "var(--color-vl-ink-muted)" }}>
+                          {user.email}
+                        </p>
+                      </div>
+                      <span className="shrink-0 rounded-full border bg-white/70 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">
+                        {user.subscription?.status ?? "none"}
+                      </span>
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      <span className="rounded-full bg-white/70 px-2 py-0.5 text-[10.5px] font-semibold text-slate-600">
+                        {user.subscription?.plan ?? "trial"}
+                      </span>
+                      <span className="rounded-full bg-white/70 px-2 py-0.5 text-[10.5px] font-semibold text-slate-600">
+                        {user.organization?.role ?? "no role"}
+                      </span>
+                      {user.isPlatformAdmin && (
+                        <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10.5px] font-bold text-emerald-700">
+                          platform admin
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+              {filteredUsers.length === 0 && (
+                <div className="rounded-2xl border border-dashed bg-white/40 p-6 text-center text-[13px] font-semibold text-slate-500">
+                  No accounts match the current search.
+                </div>
+              )}
+            </div>
+          </div>
+
+          {selectedUser && selectedDraft ? (
+            <div className="rounded-3xl border bg-white/75 p-5 shadow-sm" style={{ borderColor: "rgba(10,10,11,0.07)" }}>
+              <div className="flex flex-wrap items-start justify-between gap-4 border-b pb-4" style={{ borderColor: "rgba(10,10,11,0.06)" }}>
+                <div>
+                  <p className="text-[11px] font-bold uppercase tracking-[0.16em]" style={{ color: "var(--color-vl-ink-faint)" }}>
+                    Selected account
+                  </p>
+                  <h3 className="mt-1 text-[22px] font-bold leading-tight" style={{ color: "var(--color-vl-ink)" }}>
+                    {selectedUser.name || selectedUser.email}
+                  </h3>
+                  <p className="mt-1 text-[13px]" style={{ color: "var(--color-vl-ink-muted)" }}>
+                    {selectedUser.email} · {selectedUser.organization?.name ?? "Workspace"}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <BillingBadge tone={selectedUser.subscription?.status === "active" ? "ok" : "warn"} text={selectedUser.subscription?.status ?? "no subscription"} />
+                  <BillingBadge tone={selectedUser.isPlatformAdmin ? "ok" : "warn"} text={selectedUser.isPlatformAdmin ? "platform admin" : "standard user"} />
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                <AdminStat label="Plan" value={selectedUser.subscription?.plan ?? "trial"} />
+                <AdminStat label="Role" value={selectedUser.organization?.role ?? "none"} />
+                <AdminStat label="Usage" value={`${selectedUser.usage.voiceMinutes.toLocaleString()} min`} />
+              </div>
+
+              <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                <AdminSelect label="Plan" value={selectedDraft.plan} options={["trial", "pro", "business", "admin"]} onChange={(value) => updateDraft(selectedUser.id, "plan", value)} />
+                <AdminSelect label="Status" value={selectedDraft.status} options={["trialing", "active", "past_due", "canceled", "inactive"]} onChange={(value) => updateDraft(selectedUser.id, "status", value)} />
+                <AdminSelect label="Role" value={selectedDraft.role} options={["owner", "admin", "manager", "operator"]} onChange={(value) => updateDraft(selectedUser.id, "role", value)} />
+              </div>
+
+              <div className="mt-5 grid gap-3 lg:grid-cols-2">
+                <AdminActionButton
+                  label="Activate Pro"
+                  description="Set plan to Pro and status to active."
+                  disabled={savingId === selectedUser.id}
+                  onClick={() => void patchAccess(selectedUser, { plan: "pro", status: "active" }, `${selectedUser.email} activated on Pro.`)}
+                />
+                <AdminActionButton
+                  label="Grant Business"
+                  description="Unlock Business plan access."
+                  disabled={savingId === selectedUser.id}
+                  onClick={() => void patchAccess(selectedUser, { plan: "business", status: "active" }, `${selectedUser.email} granted Business access.`)}
+                />
+                <AdminActionButton
+                  label="Grant Admin Plan"
+                  description="Give unlimited admin-plan access."
+                  disabled={savingId === selectedUser.id}
+                  onClick={() => void patchAccess(selectedUser, { plan: "admin", status: "active" }, `${selectedUser.email} granted admin-plan access.`)}
+                />
+                <AdminActionButton
+                  label="Suspend Access"
+                  description="Set status to inactive immediately."
+                  tone="danger"
+                  disabled={savingId === selectedUser.id}
+                  onClick={() => void patchAccess(selectedUser, { status: "inactive" }, `${selectedUser.email} access suspended.`)}
+                />
+              </div>
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                {["owner", "admin", "manager", "operator"].map((role) => (
+                  <button
+                    key={role}
+                    type="button"
+                    className="rounded-full border bg-white/70 px-3 py-1.5 text-[12px] font-bold capitalize text-slate-700 transition hover:border-[#FF6B47] hover:text-[#FF6B47]"
+                    style={{ borderColor: "rgba(10,10,11,0.10)" }}
+                    disabled={savingId === selectedUser.id}
+                    onClick={() => void patchAccess(selectedUser, { role }, `${selectedUser.email} role changed to ${role}.`)}
+                  >
+                    Make {role}
+                  </button>
+                ))}
+              </div>
+
+              <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t pt-4" style={{ borderColor: "rgba(10,10,11,0.06)" }}>
+                <button
+                  type="button"
+                  className="vl-btn-primary inline-flex items-center gap-2 text-[13px]"
+                  disabled={savingId === selectedUser.id}
+                  onClick={() => void saveAccess(selectedUser)}
+                >
+                  {savingId === selectedUser.id && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                  Save Custom Access
+                </button>
+                {actionMsg && <InlineStatus tone={actionMsg.tone} text={actionMsg.text} />}
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-3xl border border-dashed bg-white/40 p-10 text-center text-[13px] font-semibold text-slate-500">
+              Select an account to take action.
+            </div>
+          )}
+        </div>
+      </AdminPanel>
+
+      <AdminPanel
+        icon={<BarChart3 className="h-5 w-5" />}
+        title="Platform Telemetry"
+        description={`Operational context across the last ${data.windowDays} days. ${inactiveUsers.length} accounts require attention.`}
+      >
+        <div className="grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           <AdminMetricCard label="Users" value={data.totals.users} icon={<UsersRound className="h-5 w-5" />} bgColor="bg-blue-50" textColor="text-blue-600 animate-pulse" />
           <AdminMetricCard label="Venues" value={data.totals.venues} icon={<Store className="h-5 w-5" />} bgColor="bg-emerald-50" textColor="text-emerald-600" />
           <AdminMetricCard label="Assistants" value={data.totals.assistants} icon={<Sparkles className="h-5 w-5" />} bgColor="bg-orange-50" textColor="text-orange-500" />
@@ -949,9 +1198,9 @@ function AdminConsole({ token }: { token: string | null }) {
         {data.topTools.length > 0 && (
           <div className="mt-6 border-t pt-5" style={{ borderColor: "rgba(10,10,11,0.05)" }}>
             <p className="text-[11px] uppercase tracking-wider font-bold mb-3.5 text-slate-400">Top Commanded Skills</p>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
               {data.topTools.map((tool) => (
-                <div key={tool.toolName} className="flex items-center justify-between rounded-xl border bg-white/60 px-4 py-3 text-[13px] hover:bg-white hover:shadow-sm transition duration-200" style={{ borderColor: "rgba(10,10,11,0.06)" }}>
+                <div key={tool.toolName} className="flex min-w-0 items-center justify-between gap-3 rounded-full border bg-white/60 px-4 py-2 text-[12.5px] hover:bg-white hover:shadow-sm transition duration-200" style={{ borderColor: "rgba(10,10,11,0.06)" }}>
                   <span className="font-semibold text-slate-700 capitalize">{tool.toolName.replace(/_/g, " ")}</span>
                   <span className="tabular-nums font-bold px-2 py-0.5 bg-slate-100 rounded-md text-[11.5px] text-slate-600">{tool.count}</span>
                 </div>
@@ -959,169 +1208,77 @@ function AdminConsole({ token }: { token: string | null }) {
             </div>
           </div>
         )}
-      </Section>
+      </AdminPanel>
 
-      {/* Pipeline Access */}
-      <Section icon={<KeyRound className="h-5 w-5" />} title="Voice Pipeline Provisioning" description="Real-time WebRTC and server-relayed pipeline availability checks.">
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {data.pipelines.map((pipeline) => {
-            const isLive = pipeline.status === "available" || pipeline.status === "experimental";
-            const isExperimental = pipeline.status === "experimental";
-            return (
-              <div key={pipeline.provider} className="relative overflow-hidden rounded-2xl border bg-white/60 p-5 shadow-sm hover:shadow-md transition duration-300" style={{ borderColor: "rgba(10,10,11,0.06)" }}>
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-[14px] font-bold" style={{ color: "var(--color-vl-ink)" }}>{pipeline.displayName}</p>
-                    <p className="mt-1 text-[11px] font-mono font-semibold uppercase tracking-wider" style={{ color: "var(--color-vl-ink-muted)" }}>{pipeline.provider}</p>
-                  </div>
-                  <span className="relative flex h-3 w-3 mt-1 shrink-0">
-                    {isLive && (
-                      <span className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-75 ${isExperimental ? 'bg-amber-400' : 'bg-emerald-400'}`} />
-                    )}
-                    <span className={`relative inline-flex h-3 w-3 rounded-full ${isLive ? (isExperimental ? 'bg-amber-500' : 'bg-emerald-500') : 'bg-slate-300'}`} />
-                  </span>
-                </div>
-                {pipeline.reason && (
-                  <p className="mt-4 text-[12.5px] leading-relaxed border-t pt-3" style={{ borderColor: "rgba(10,10,11,0.04)", color: "var(--color-vl-ink-muted)" }}>{pipeline.reason}</p>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </Section>
-
-      {/* Role Definitions */}
-      <Section icon={<ShieldCheck className="h-5 w-5" />} title="Security Roles Matrix" description="Standard workspace credential requirements and authorization limits.">
-        <div className="grid gap-3.5 md:grid-cols-2">
-          {data.roles.map((role) => (
-            <div key={role.role} className="flex gap-4 rounded-2xl border bg-white/60 p-4 shadow-sm" style={{ borderColor: "rgba(10,10,11,0.06)" }}>
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-500 shadow-inner">
-                <Lock className="h-4.5 w-4.5" />
-              </div>
-              <div>
-                <p className="text-[14.5px] font-bold" style={{ color: "var(--color-vl-ink)" }}>{role.label}</p>
-                <div className="mt-2.5 flex flex-wrap gap-1.5">
-                  {role.permissions.map((p) => (
-                    <span key={p} className="rounded-lg bg-slate-50 border border-slate-100/80 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
-                      {p.replace(/_/g, " ")}
+      <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+        <AdminPanel
+          icon={<KeyRound className="h-5 w-5" />}
+          title="Voice Pipeline Provisioning"
+          description="Real-time engine availability in one compact operating view."
+          right={<BillingBadge tone="ok" text={`${data.pipelines.length} engines`} />}
+        >
+          <div className="grid max-h-[440px] gap-3 overflow-y-auto pr-1 sm:grid-cols-2">
+            {data.pipelines.map((pipeline) => {
+              const isLive = pipeline.status === "available" || pipeline.status === "experimental";
+              const isExperimental = pipeline.status === "experimental";
+              return (
+                <div key={pipeline.provider} className="relative overflow-hidden rounded-2xl border bg-white/65 p-4 shadow-sm transition hover:bg-white hover:shadow-md" style={{ borderColor: "rgba(10,10,11,0.06)" }}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-[13.5px] font-bold" style={{ color: "var(--color-vl-ink)" }}>{pipeline.displayName}</p>
+                      <p className="mt-1 truncate text-[10px] font-mono font-semibold uppercase tracking-wider" style={{ color: "var(--color-vl-ink-muted)" }}>{pipeline.provider}</p>
+                    </div>
+                    <span className="relative mt-1 flex h-3 w-3 shrink-0">
+                      {isLive && (
+                        <span className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-75 ${isExperimental ? "bg-amber-400" : "bg-emerald-400"}`} />
+                      )}
+                      <span className={`relative inline-flex h-3 w-3 rounded-full ${isLive ? (isExperimental ? "bg-amber-500" : "bg-emerald-500") : "bg-slate-300"}`} />
                     </span>
-                  ))}
+                  </div>
+                  {pipeline.reason && (
+                    <p className="mt-3 line-clamp-3 border-t pt-3 text-[11.5px] leading-relaxed" style={{ borderColor: "rgba(10,10,11,0.04)", color: "var(--color-vl-ink-muted)" }}>{pipeline.reason}</p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </AdminPanel>
+
+        <AdminPanel
+          icon={<ShieldCheck className="h-5 w-5" />}
+          title="Security Roles"
+          description="Permissions collapsed into scan-friendly access cards."
+        >
+          <div className="grid gap-3">
+            {data.roles.map((role) => (
+              <div key={role.role} className="flex gap-3 rounded-2xl border bg-white/65 p-4 shadow-sm" style={{ borderColor: "rgba(10,10,11,0.06)" }}>
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-500 shadow-inner">
+                  <Lock className="h-4 w-4" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[13.5px] font-bold" style={{ color: "var(--color-vl-ink)" }}>{role.label}</p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {role.permissions.map((p) => (
+                      <span key={p} className="rounded-lg border border-slate-100/80 bg-slate-50 px-2 py-0.5 text-[10.5px] font-semibold text-slate-600">
+                        {p.replace(/_/g, " ")}
+                      </span>
+                    ))}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
-      </Section>
-
-      {/* User Access with Live Search */}
-      <Section icon={<UsersRound className="h-5 w-5" />} title="Tenant Management" description="Modify client subscription tiers, organization states and permissions.">
-        <div className="space-y-4">
-          {/* Live Search */}
-          <div className="relative">
-            <Search className="absolute left-4.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Search active accounts by name, email, plan or workspace..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full h-12 pl-11 pr-4 rounded-2xl border bg-white/60 text-[13.5px] outline-none transition-all duration-200 focus:border-[#FF6B47]"
-              style={{ borderColor: "rgba(10,10,11,0.12)", color: "var(--color-vl-ink)" }}
-            />
+            ))}
           </div>
-
-          {filteredUsers.length === 0 ? (
-            <div className="text-center py-10 rounded-2xl border border-dashed bg-white/30" style={{ borderColor: "rgba(10,10,11,0.10)" }}>
-              <p className="text-sm font-semibold" style={{ color: "var(--color-vl-ink-muted)" }}>No accounts match the query.</p>
-            </div>
-          ) : (
-            <div className="space-y-3.5">
-              {filteredUsers.map((user) => {
-                const draft = drafts[user.id] ?? {
-                  plan: user.subscription?.plan ?? "trial",
-                  status: user.subscription?.status ?? "trialing",
-                  role: user.organization?.role ?? "owner",
-                };
-                const initials = (user.name || user.email)
-                  .split(" ")
-                  .map((n) => n[0])
-                  .join("")
-                  .toUpperCase()
-                  .slice(0, 2);
-
-                return (
-                  <div key={user.id} className="rounded-2xl border bg-white/80 p-5 shadow-sm hover:shadow-md transition-all duration-300" style={{ borderColor: "rgba(10,10,11,0.06)" }}>
-                    <div className="flex flex-wrap items-start justify-between gap-4 border-b pb-4 mb-4" style={{ borderColor: "rgba(10,10,11,0.05)" }}>
-                      <div className="flex items-center gap-3.5">
-                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[13.5px] font-bold shadow-sm" style={{ background: "var(--color-vl-coral-tint)", color: "var(--color-vl-coral-deep)" }}>
-                          {initials}
-                        </div>
-                        <div>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <p className="text-[14.5px] font-bold" style={{ color: "var(--color-vl-ink)" }}>{user.name || user.email}</p>
-                            {user.isPlatformAdmin && (
-                              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-100 px-2.5 py-0.5 text-[10px] font-bold text-emerald-700 uppercase tracking-wider">
-                                Platform Admin
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-[12.5px] mt-0.5" style={{ color: "var(--color-vl-ink-muted)" }}>{user.email}</p>
-                          <p className="text-[12px] mt-1" style={{ color: "var(--color-vl-ink-muted)" }}>
-                            Workspace: <span className="font-bold text-slate-700">{user.organization?.name ?? "Workspace"}</span>
-                            {user.usage.lastActivityAt && (
-                              <span className="ml-2.5 px-2 py-0.5 bg-slate-100 rounded text-[11px] font-semibold text-slate-500">
-                                Active: {new Date(user.usage.lastActivityAt).toLocaleDateString()}
-                              </span>
-                            )}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-4.5">
-                        <div className="text-right hidden sm:block">
-                          <div className="flex gap-4 text-[12px] font-semibold" style={{ color: "var(--color-vl-ink-muted)" }}>
-                            <div>
-                              <span className="block text-right text-[15px] font-bold" style={{ color: "var(--color-vl-ink)" }}>{user.usage.voiceMinutes.toLocaleString()}</span>
-                              minutes
-                            </div>
-                            <div>
-                              <span className="block text-right text-[15px] font-bold" style={{ color: "var(--color-vl-ink)" }}>{user.usage.toolCalls.toLocaleString()}</span>
-                              commands
-                            </div>
-                            <div>
-                              <span className="block text-right text-[15px] font-bold" style={{ color: user.usage.failedToolCalls > 0 ? "var(--color-vl-danger)" : "var(--color-vl-ink)" }}>{user.usage.failedToolCalls.toLocaleString()}</span>
-                              failures
-                            </div>
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          className="vl-btn-primary inline-flex items-center gap-2 text-[12.5px] py-1.5 px-4 h-9 shadow-sm hover:shadow transition duration-200"
-                          disabled={savingId === user.id}
-                          onClick={() => void saveAccess(user)}
-                        >
-                          {savingId === user.id ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            <span>Save Changes</span>
-                          )}
-                        </button>
-                      </div>
-                    </div>
-                    <div className="grid gap-4 sm:grid-cols-3">
-                      <AdminSelect label="Plan" value={draft.plan} options={["trial", "pro", "business", "admin"]} onChange={(value) => updateDraft(user.id, "plan", value)} />
-                      <AdminSelect label="Status" value={draft.status} options={["trialing", "active", "past_due", "canceled", "inactive"]} onChange={(value) => updateDraft(user.id, "status", value)} />
-                      <AdminSelect label="Role" value={draft.role} options={["owner", "admin", "manager", "operator"]} onChange={(value) => updateDraft(user.id, "role", value)} />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </Section>
+        </AdminPanel>
+      </div>
 
       {/* Recent Errors Dark Terminal */}
       {data.recentErrors.length > 0 && (
-        <Section icon={<Terminal className="h-5 w-5" />} title="Exception Stream Logs" description="Live streaming execution logs for debugging tool failures.">
+        <AdminPanel
+          icon={<Terminal className="h-5 w-5" />}
+          title="Exception Stream Logs"
+          description="Recent command execution failures, contained so debugging data does not stretch the page."
+          right={<BillingBadge tone="warn" text={`${data.recentErrors.length} events`} />}
+        >
           <div className="overflow-hidden rounded-2xl border border-slate-800 bg-[#0A0E17] font-mono text-[12.5px] leading-relaxed shadow-lg">
             <div className="flex items-center justify-between border-b border-slate-800 bg-[#111622] px-4 py-3">
               <div className="flex items-center gap-2">
@@ -1148,21 +1305,67 @@ function AdminConsole({ token }: { token: string | null }) {
               ))}
             </div>
           </div>
-        </Section>
+        </AdminPanel>
       )}
     </div>
   );
 }
 
+function AdminStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl border bg-white/65 px-4 py-3 shadow-sm" style={{ borderColor: "rgba(10,10,11,0.06)" }}>
+      <p className="text-[10px] font-bold uppercase tracking-[0.15em]" style={{ color: "var(--color-vl-ink-faint)" }}>
+        {label}
+      </p>
+      <p className="mt-1 truncate text-[15px] font-bold capitalize" style={{ color: "var(--color-vl-ink)" }}>
+        {value.replace(/_/g, " ")}
+      </p>
+    </div>
+  );
+}
+
+function AdminActionButton({
+  label,
+  description,
+  onClick,
+  disabled,
+  tone = "default",
+}: {
+  label: string;
+  description: string;
+  onClick: () => void;
+  disabled?: boolean;
+  tone?: "default" | "danger";
+}) {
+  const danger = tone === "danger";
+  return (
+    <button
+      type="button"
+      className="group rounded-2xl border bg-white/70 p-4 text-left shadow-sm transition hover:bg-white hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
+      style={{
+        borderColor: danger ? "rgba(215,64,46,0.20)" : "rgba(10,10,11,0.08)",
+        color: danger ? "var(--color-vl-danger)" : "var(--color-vl-ink)",
+      }}
+      disabled={disabled}
+      onClick={onClick}
+    >
+      <span className="text-[13.5px] font-bold">{label}</span>
+      <span className="mt-1 block text-[11.5px] leading-relaxed" style={{ color: danger ? "rgba(215,64,46,0.74)" : "var(--color-vl-ink-muted)" }}>
+        {description}
+      </span>
+    </button>
+  );
+}
+
 function AdminMetricCard({ label, value, icon, bgColor, textColor, isFailure = false }: { label: string; value: number; icon: ReactNode; bgColor: string; textColor: string; isFailure?: boolean }) {
   return (
-    <div className="flex items-center gap-3.5 rounded-2xl border bg-white/60 p-4 shadow-sm hover:shadow transition duration-200" style={{ borderColor: "rgba(10,10,11,0.06)" }}>
-      <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl shadow-inner ${bgColor} ${textColor}`}>
+    <div className="flex min-w-0 items-center gap-3 rounded-2xl border bg-white/70 p-3 shadow-sm transition duration-200 hover:bg-white hover:shadow" style={{ borderColor: "rgba(10,10,11,0.06)" }}>
+      <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl shadow-inner ${bgColor} ${textColor}`}>
         {icon}
       </div>
-      <div>
-        <p className="text-[11px] uppercase tracking-[0.14em] font-bold" style={{ color: "var(--color-vl-ink-faint)" }}>{label}</p>
-        <p className="text-[20px] font-bold tabular-nums mt-0.5 leading-none" style={{ color: isFailure ? "var(--color-vl-danger)" : "var(--color-vl-ink)" }}>
+      <div className="min-w-0">
+        <p className="truncate text-[9.5px] font-bold uppercase tracking-[0.13em]" style={{ color: "var(--color-vl-ink-faint)" }}>{label}</p>
+        <p className="mt-0.5 text-[20px] font-bold leading-none tabular-nums" style={{ color: isFailure ? "var(--color-vl-danger)" : "var(--color-vl-ink)" }}>
           {value.toLocaleString()}
         </p>
       </div>
@@ -1247,7 +1450,7 @@ function UsageCard({ token, plan, isAdmin = false }: { token: string | null; pla
             {hasFiniteLimit && (
               <div className="h-3 rounded-full overflow-hidden bg-slate-100 shadow-inner" style={{ border: "1px solid rgba(14,27,44,0.04)" }}>
                 <div
-                  className="h-full rounded-full transition-all duration-500 bg-gradient-to-r from-[#FF6B47] to-[#D7402E]"
+                  className="h-full rounded-full bg-linear-to-r from-[#FF6B47] to-[#D7402E] transition-all duration-500"
                   style={{
                     width: `${pct}%`,
                   }}
