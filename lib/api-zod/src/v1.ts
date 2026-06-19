@@ -85,6 +85,7 @@ export const CreateAgentProfileRequest = z.object({
   voicePipelineProvider: VoicePipelineProvider,
   voicePipelineConfig: z.record(z.unknown()).default({}),
   noiseMode: NoiseMode.default("standard"),
+  orderHandlingMode: z.enum(["auto_complete", "hold_for_review"]).default("auto_complete"),
   allowedTools: z.array(z.string()).default([]),
   confirmationPolicy: z.record(z.unknown()).default({}),
   personality: z.string().default(""),

@@ -20,7 +20,10 @@ interface AgentProfileLaunchInfo {
   voicePipelineProvider?: string;
   voicePipelineConfig?: Record<string, unknown>;
   noiseMode?: string;
+  orderHandlingMode?: "auto_complete" | "hold_for_review";
 }
+
+type OrderHandlingMode = "auto_complete" | "hold_for_review";
 
 interface VenueInfo {
   id: number;
@@ -59,6 +62,10 @@ interface SquareContextType {
   wakePhrase: string;
   wakeMode: "ambient" | "tap";
   updateWakeSettings: (wakePhrase: string, wakeMode: "ambient" | "tap") => Promise<string | null>;
+  /** How submitted orders settle: auto-complete payment, or hold as an open ticket for review. */
+  orderHandlingMode: OrderHandlingMode;
+  /** Persist the order-handling mode to the active assistant. Returns error string or null. */
+  updateOrderHandlingMode: (mode: OrderHandlingMode) => Promise<string | null>;
   /**
    * 'venue' = POS-attached assistant (Square credentials loaded, order/menu UI active).
    * 'general' = no POS connection (web/email/knowledge tools only).
@@ -92,6 +99,7 @@ const WAKE_PHRASE_KEY = "voycelab_wake_phrase";
 const WAKE_MODE_KEY = "voycelab_wake_mode";
 const AGENT_PROFILE_KEY = "voycelab_agent_profile";
 const AGENT_PROFILE_ID_KEY = "voycelab_agent_profile_id";
+const ORDER_HANDLING_KEY = "voycelab_order_handling_mode";
 // Per-tab active assistant. localStorage is shared across every PWA tab, so a
 // second launched assistant would otherwise overwrite the first one's wake
 // settings. sessionStorage keeps each tab pinned to the assistant it launched.
@@ -104,6 +112,10 @@ function normalizeWakePhrase(value: unknown): string {
 
 function normalizeWakeMode(value: unknown): "ambient" | "tap" {
   return value === "tap" ? "tap" : "ambient";
+}
+
+function normalizeOrderHandlingMode(value: unknown): OrderHandlingMode {
+  return value === "hold_for_review" ? "hold_for_review" : "auto_complete";
 }
 
 /** Per-assistant cache key so each assistant keeps its own wake settings. */
@@ -169,6 +181,9 @@ export function SquareProvider({ children }: { children: ReactNode }) {
   const [agentProfileId, setAgentProfileId] = useState<string | null>(readActiveProfileId());
   const [wakePhrase, setWakePhrase] = useState(DEFAULT_WAKE_PHRASE);
   const [wakeMode, setWakeMode] = useState<"ambient" | "tap">("ambient");
+  const [orderHandlingMode, setOrderHandlingMode] = useState<OrderHandlingMode>(
+    normalizeOrderHandlingMode(localStorage.getItem(ORDER_HANDLING_KEY)),
+  );
   const initialHasExchangeCodeRef = useRef(new URLSearchParams(window.location.search).has("code"));
 
   function applyVenueConnection(data: any, nextVenueId: string) {
@@ -194,13 +209,18 @@ export function SquareProvider({ children }: { children: ReactNode }) {
             ? storedWakePhrase.trim()
             : DEFAULT_WAKE_PHRASE;
     const nextWakeMode = normalizeWakeMode(profile?.wakeMode ?? data.wakeMode ?? storedWakeMode);
+    const nextOrderHandling = normalizeOrderHandlingMode(
+      profile?.orderHandlingMode ?? data.orderHandlingMode ?? localStorage.getItem(ORDER_HANDLING_KEY),
+    );
 
     setAgentProfile(profile ?? null);
     setAgentProfileId(profile?.id ?? null);
     setWakePhrase(nextWakePhrase);
     setWakeMode(nextWakeMode);
+    setOrderHandlingMode(nextOrderHandling);
     localStorage.setItem(WAKE_PHRASE_KEY, nextWakePhrase);
     localStorage.setItem(WAKE_MODE_KEY, nextWakeMode);
+    localStorage.setItem(ORDER_HANDLING_KEY, nextOrderHandling);
     if (profile?.id) {
       rememberActiveProfileId(profile.id);
       // Per-assistant cache keeps each assistant's wake settings independent.
@@ -239,6 +259,40 @@ export function SquareProvider({ children }: { children: ReactNode }) {
           Authorization: `Bearer ${tok}`,
         },
         body: JSON.stringify({ wakePhrase: normalizedPhrase, wakeMode: normalizedMode }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        return (data as any).error?.message || (data as any).error || "Saved on this device, but could not update the assistant.";
+      }
+      applyAgentLaunchInfo({ agentProfile: (data as any).profile ?? data });
+      return null;
+    } catch (e: any) {
+      return e?.message || "Saved on this device, but could not update the assistant.";
+    }
+  }
+
+  async function updateOrderHandlingMode(mode: OrderHandlingMode): Promise<string | null> {
+    const normalized = normalizeOrderHandlingMode(mode);
+    const previousProfile = agentProfile;
+    const nextProfile = previousProfile ? { ...previousProfile, orderHandlingMode: normalized } : null;
+
+    setOrderHandlingMode(normalized);
+    if (nextProfile) setAgentProfile(nextProfile);
+    localStorage.setItem(ORDER_HANDLING_KEY, normalized);
+    if (nextProfile) localStorage.setItem(AGENT_PROFILE_KEY, JSON.stringify(nextProfile));
+
+    const profileId = nextProfile?.id ?? agentProfileId ?? localStorage.getItem(AGENT_PROFILE_ID_KEY);
+    const tok = authToken || localStorage.getItem(AUTH_TOKEN_KEY);
+    if (!profileId || !tok) return null;
+
+    try {
+      const res = await fetch(`${getBaseUrl()}api/v1/agent-profiles/${encodeURIComponent(profileId)}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${tok}`,
+        },
+        body: JSON.stringify({ orderHandlingMode: normalized }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -901,7 +955,7 @@ export function SquareProvider({ children }: { children: ReactNode }) {
       locationId, venueId, authToken, catalogItems, isConfigured,
       isLoadingCatalog, catalogError, connectionError, isConnectingSquare, isReconnecting,
       userInfo, venues, pendingSquareLocations, agentProfile, agentProfileId, wakePhrase, wakeMode, assistantKind,
-      updateWakeSettings,
+      updateWakeSettings, orderHandlingMode, updateOrderHandlingMode,
       login, signup, logout, connectSquare, selectSquareLocation, selectVenue,
       clearCredentials, refreshCredentials,
       loadCatalog, searchCatalog,

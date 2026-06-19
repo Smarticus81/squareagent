@@ -432,6 +432,7 @@ function SettingsSheet({ onBack, screenWakeStatus }: { onBack: () => void; scree
     isConnectingSquare, userInfo, venues, pendingSquareLocations,
     login, signup, logout, connectSquare, selectSquareLocation, selectVenue, loadCatalog,
     agentProfile, assistantKind, wakePhrase, wakeMode, updateWakeSettings,
+    orderHandlingMode, updateOrderHandlingMode,
   } = useSquare();
 
   const [prefs, setPrefs] = useState(getVoicePrefs);
@@ -449,6 +450,8 @@ function SettingsSheet({ onBack, screenWakeStatus }: { onBack: () => void; scree
   const [activationSaving, setActivationSaving] = useState(false);
   const [activationError, setActivationError] = useState<string | null>(null);
   const [activationSaved, setActivationSaved] = useState(false);
+  const [orderHandlingSaving, setOrderHandlingSaving] = useState(false);
+  const [orderHandlingError, setOrderHandlingError] = useState<string | null>(null);
 
   const isLoggedIn = !!userInfo;
 
@@ -540,6 +543,18 @@ function SettingsSheet({ onBack, screenWakeStatus }: { onBack: () => void; scree
       else setActivationSaved(true);
     } finally {
       setActivationSaving(false);
+    }
+  }
+
+  async function handleSetOrderHandling(mode: "auto_complete" | "hold_for_review") {
+    if (mode === orderHandlingMode) return;
+    setOrderHandlingSaving(true);
+    setOrderHandlingError(null);
+    try {
+      const err = await updateOrderHandlingMode(mode);
+      if (err) setOrderHandlingError(err);
+    } finally {
+      setOrderHandlingSaving(false);
     }
   }
 
@@ -824,6 +839,44 @@ function SettingsSheet({ onBack, screenWakeStatus }: { onBack: () => void; scree
               </p>
             </div>
           </details>
+
+          {assistantKind === "venue" && (
+            <details className="settings-group">
+              <summary>
+                <span><ClipboardCheck size={14} /> Order handling</span>
+                <ChevronRight size={14} />
+              </summary>
+              <div className="settings-group-body">
+                <div className="speed-row">
+                  <button
+                    type="button"
+                    className={`speed-chip${orderHandlingMode === "auto_complete" ? " active" : ""}`}
+                    disabled={orderHandlingSaving}
+                    onClick={() => handleSetOrderHandling("auto_complete")}
+                  >
+                    Auto-complete
+                  </button>
+                  <button
+                    type="button"
+                    className={`speed-chip${orderHandlingMode === "hold_for_review" ? " active" : ""}`}
+                    disabled={orderHandlingSaving}
+                    onClick={() => handleSetOrderHandling("hold_for_review")}
+                  >
+                    Hold for review
+                  </button>
+                </div>
+                <p className="settings-muted">
+                  {orderHandlingMode === "hold_for_review"
+                    ? "Submitted orders are parked on the POS as open tickets for close-out review. No payment is taken."
+                    : "Submitted orders record payment immediately and close on the POS."}
+                </p>
+                {orderHandlingSaving && (
+                  <p className="settings-muted"><Loader size={12} className="spin" /> Saving...</p>
+                )}
+                {orderHandlingError && <div className="error-text" style={{ fontSize: 12 }}>{orderHandlingError}</div>}
+              </div>
+            </details>
+          )}
 
           <details className="settings-group">
             <summary>

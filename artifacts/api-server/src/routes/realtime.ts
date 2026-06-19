@@ -29,6 +29,7 @@ import {
 } from "@workspace/voicelab-core";
 import { getPlan, planAllowsPipeline } from "@workspace/voicelab-core/pricing";
 import { getNoiseModeBehavior, type NoiseMode } from "@workspace/voicelab-core/noise";
+import { normalizeOrderHandlingMode } from "@workspace/voicelab-core/agent-profile";
 import { eq, sql, and, gte, isNull, or } from "drizzle-orm";
 import {
   type CatalogItem,
@@ -341,7 +342,7 @@ function buildTurnDetection(noiseMode: NoiseMode): Record<string, unknown> | nul
   }
 }
 
-function buildRealtimeSessionConfig(voice: string, speed: number, catalog: CatalogItem[], order: OrderItem[], plan?: string, assistantKind: "venue" | "general" = "venue", noiseMode: NoiseMode = "standard", includeGeneralTools = false, profileDisplayName = "", profilePersonality = "") {
+function buildRealtimeSessionConfig(voice: string, speed: number, catalog: CatalogItem[], order: OrderItem[], plan?: string, assistantKind: "venue" | "general" = "venue", noiseMode: NoiseMode = "standard", includeGeneralTools = false, profileDisplayName = "", profilePersonality = "", orderHandlingMode: "auto_complete" | "hold_for_review" = "auto_complete") {
   const skills = getSkillsForSession(plan ?? "trial", { kind: assistantKind, includeGeneralTools });
   const tools = buildToolsFromSkills(skills);
   let instructions = buildInstructionsFromSkills(skills, catalog, order, assistantKind);
@@ -351,6 +352,12 @@ function buildRealtimeSessionConfig(voice: string, speed: number, catalog: Catal
     const identity = profileDisplayName ? `You are ${profileDisplayName}. ` : "";
     const personality = profilePersonality ? `${profilePersonality}\n\n` : "";
     instructions = `${identity}${personality}${instructions}`;
+  }
+
+  // Order-handling behavior: in hold-for-review mode, the assistant must never
+  // imply a payment was taken — the ticket is parked on the POS for later review.
+  if (assistantKind === "venue" && orderHandlingMode === "hold_for_review") {
+    instructions = `${instructions}\n\nORDER HANDLING: This venue reviews orders at close-out. When you submit an order, it is held as an open ticket on the POS for the team to settle later — payment is NOT taken now. After submitting, confirm with phrasing like "Sent to the POS for review" or "Added to the tab for close-out". Never say it was paid, charged, or completed.`;
   }
 
   const turnDetection = buildTurnDetection(noiseMode);
@@ -745,6 +752,7 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
   let profilePersonality = "";
   let profileConnectedServiceId: string | null = null;
   let profileUsesSquareService = true;
+  let orderHandlingMode: "auto_complete" | "hold_for_review" = "auto_complete";
 
   if (agentProfileId) {
     const profile = await getCachedAgentProfile(String(agentProfileId));
@@ -758,6 +766,7 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
     }
     provider = profile.voicePipelineProvider;
     providerConfig = (profile.voicePipelineConfig as Record<string, unknown>) ?? {};
+    orderHandlingMode = normalizeOrderHandlingMode(profile.orderHandlingMode);
     if (profile.venueId !== null && requestedVenueId !== null && profile.venueId !== requestedVenueId) {
       res.status(400).json({ error: "profile_venue_mismatch", detail: "Assistant is not linked to this venue." });
       return;
@@ -846,6 +855,7 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
     includeGeneralTools,
     profileDisplayName,
     profilePersonality,
+    orderHandlingMode,
   );
 
   try {
@@ -891,6 +901,7 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
         noiseMode,
         bargeIn: acousticBargeIn,
         pushToTalk: behavior.pushToTalkRequired,
+        orderHandlingMode,
       },
     });
   } catch (e: any) {
@@ -913,6 +924,7 @@ router.post("/tools", requireAuth as any, requirePlan() as any, async (req: any,
     confirmed,
     confirmationToken,
     agentProfileId,
+    orderHandlingMode: orderHandlingModeOverride,
   } = req.body ?? {};
 
   if (!tool_name) {
@@ -937,6 +949,7 @@ router.post("/tools", requireAuth as any, requirePlan() as any, async (req: any,
   let profileConnectedServiceId: string | null = null;
   let profileUsesSquareService = true;
   let effectiveVenueId = requestedVenueId;
+  let profileOrderHandlingMode: "auto_complete" | "hold_for_review" = "auto_complete";
   if (agentProfileId) {
     const profile = await getCachedAgentProfile(String(agentProfileId));
     if (!profile) {
@@ -955,6 +968,7 @@ router.post("/tools", requireAuth as any, requirePlan() as any, async (req: any,
     if (profile.noiseMode) {
       noiseMode = profile.noiseMode as typeof noiseMode;
     }
+    profileOrderHandlingMode = normalizeOrderHandlingMode(profile.orderHandlingMode);
     profileConnectedServiceId = profile.connectedServiceId;
     if (profile.connectedServiceId) {
       const [conn] = await db
@@ -1035,6 +1049,10 @@ router.post("/tools", requireAuth as any, requirePlan() as any, async (req: any,
         venueId: effectiveVenueId ?? undefined,
         assistantKind,
         noiseMode,
+        orderHandlingMode:
+          orderHandlingModeOverride === "auto_complete" || orderHandlingModeOverride === "hold_for_review"
+            ? orderHandlingModeOverride
+            : profileOrderHandlingMode,
         confirmed: confirmed === true,
         confirmationToken: typeof confirmationToken === "string" ? confirmationToken : undefined,
       },

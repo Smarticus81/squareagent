@@ -53,6 +53,11 @@ export interface ToolContext {
   assistantKind?: "venue" | "general";
   /** Noise mode for the current session — drives confirmation thresholds. */
   noiseMode?: NoiseMode;
+  /**
+   * How submitted orders settle in Square. "hold_for_review" leaves the order
+   * OPEN on the POS for end-of-day review instead of recording payment.
+   */
+  orderHandlingMode?: "auto_complete" | "hold_for_review";
   /** Whether the caller has already confirmed this tool invocation. */
   confirmed?: boolean;
   /** Signed confirmation token returned by a previous REQUIRES_CONFIRMATION response. */

@@ -20,6 +20,7 @@ export interface CachedAgentProfile {
   voicePipelineConfig: Record<string, unknown> | null;
   connectedServiceId: string | null;
   noiseMode: string | null;
+  orderHandlingMode: string | null;
   displayName: string | null;
   personality: string | null;
   allowedTools: string[] | null;
@@ -41,6 +42,7 @@ export async function getCachedAgentProfile(id: string): Promise<CachedAgentProf
       voicePipelineConfig: agentProfilesTable.voicePipelineConfig,
       connectedServiceId: agentProfilesTable.connectedServiceId,
       noiseMode: agentProfilesTable.noiseMode,
+      orderHandlingMode: agentProfilesTable.orderHandlingMode,
       displayName: agentProfilesTable.displayName,
       personality: agentProfilesTable.personality,
       allowedTools: agentProfilesTable.allowedTools,

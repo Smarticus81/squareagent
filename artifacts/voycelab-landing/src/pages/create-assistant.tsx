@@ -141,6 +141,7 @@ interface AgentProfile {
   voicePipelineProvider: string;
   voicePipelineConfig: Record<string, unknown>;
   noiseMode: string;
+  orderHandlingMode?: "auto_complete" | "hold_for_review";
   personality: string;
 }
 
@@ -164,6 +165,7 @@ export default function CreateAssistant() {
   const [voicePipelineProvider, setVoicePipelineProvider] = useState<VoiceEngineId>("openai_realtime_webrtc");
   const [wakePhrase, setWakePhrase] = useState("Hey Voyce");
   const [wakeMode, setWakeMode] = useState<"ambient" | "tap">("ambient");
+  const [orderHandlingMode, setOrderHandlingMode] = useState<"auto_complete" | "hold_for_review">("auto_complete");
   const [geminiThinkingLevel, setGeminiThinkingLevel] = useState<"minimal" | "low" | "medium" | "high">("minimal");
   const [geminiProactiveAudio, setGeminiProactiveAudio] = useState(true);
   const [geminiAffectiveDialog, setGeminiAffectiveDialog] = useState(false);
@@ -195,6 +197,7 @@ export default function CreateAssistant() {
         setWakePhrase(profile.wakePhrase || "Hey Voyce");
         setWakeMode(profile.wakeMode === "tap" ? "tap" : "ambient");
         setNoiseMode(profile.noiseMode || "standard");
+        setOrderHandlingMode(profile.orderHandlingMode === "hold_for_review" ? "hold_for_review" : "auto_complete");
         setPersonality(profile.personality || "");
         if (
           profile.voicePipelineProvider === "openai_realtime_webrtc" ||
@@ -345,6 +348,7 @@ export default function CreateAssistant() {
         voicePipelineProvider,
         voicePipelineConfig,
         noiseMode,
+        orderHandlingMode,
         personality,
         allowedTools: [],
         confirmationPolicy: { approvals: {} },
@@ -646,6 +650,42 @@ export default function CreateAssistant() {
                 </div>
               </fieldset>
 
+              {venueId != null && (
+                <fieldset>
+                  <legend className="vl-eyebrow block mb-2">Order handling</legend>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      { id: "auto_complete", label: "Auto-complete", hint: "Records payment now" },
+                      { id: "hold_for_review", label: "Hold for review", hint: "Open ticket for close-out" },
+                    ].map((option) => (
+                      <button
+                        key={option.id}
+                        type="button"
+                        onClick={() => setOrderHandlingMode(option.id as "auto_complete" | "hold_for_review")}
+                        className="vl-card p-3 text-left transition-colors"
+                        style={{
+                          borderColor: orderHandlingMode === option.id
+                            ? "rgba(124,110,245,0.6)"
+                            : "rgba(10, 10, 11,0.10)",
+                          background: orderHandlingMode === option.id ? "rgba(124,110,245,0.06)" : "#FFFFFF",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <span className="block text-[13px] font-semibold" style={{ color: "var(--color-vl-ink)" }}>
+                          {option.label}
+                        </span>
+                        <span className="mt-1 block text-[11.5px]" style={{ color: "rgba(10,10,11,0.48)" }}>
+                          {option.hint}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                  <p className="mt-1.5 text-[11.5px]" style={{ color: "rgba(10,10,11,0.42)" }}>
+                    Hold for review parks submitted orders on the POS as open tickets so the team can settle them at close-out. No payment is taken at submit.
+                  </p>
+                </fieldset>
+              )}
+
               {voicePipelineProvider.startsWith("google_gemini_") && (
                 <fieldset className="space-y-3">
                   <legend className="vl-eyebrow block">Gemini live behavior</legend>
@@ -720,6 +760,12 @@ export default function CreateAssistant() {
               <SummaryRow label="Voice" value={activeVoiceOptions.find((option) => option.id === voice)?.label ?? voice} />
               <SummaryRow label="Noise mode" value={noiseMode.replace(/_/g, " ")} />
               <SummaryRow label="Wake mode" value={wakeMode.replace(/_/g, " ")} />
+              {venueId != null && (
+                <SummaryRow
+                  label="Order handling"
+                  value={orderHandlingMode === "hold_for_review" ? "Hold for review" : "Auto-complete"}
+                />
+              )}
             </div>
 
             {error && (

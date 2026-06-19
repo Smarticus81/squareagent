@@ -151,7 +151,39 @@ async function submitOrder(_args: Record<string, unknown>, ctx: ToolContext): Pr
   if (sessionOrder.length === 0) return { result: "The order is empty — nothing to submit." };
   if (!squareToken || !squareLocationId) return { result: "Square is not configured for this session — cannot submit." };
 
+  const holdForReview = ctx.orderHandlingMode === "hold_for_review";
+
   try {
+    if (holdForReview) {
+      // Hold-for-review: park the order on the POS as an OPEN ticket so the team
+      // can settle it at close-out. Never take payment here.
+      if (!session.squareOrderId) {
+        const sync = await syncLiveOrderToSquare(session, squareToken, squareLocationId);
+        if (!sync.ok || !session.squareOrderId) {
+          return { result: `Couldn't park the order on the POS${sync.error ? `: ${sync.error}` : ""}.` };
+        }
+      }
+      const heldOrderId = session.squareOrderId;
+      const reference = session.referenceId ?? heldOrderId;
+      const total =
+        typeof session.squareOrderTotal === "number"
+          ? session.squareOrderTotal / 100
+          : sessionOrder.reduce((s, i) => s + i.price * i.quantity, 0);
+      console.log(`[Tools/POS] Order held for review order=${redactSquareId(heldOrderId)} ref=${reference}`);
+      // Detach the session from the parked ticket without paying or cancelling,
+      // so the OPEN order stays on the POS and the next conversation starts clean.
+      sessionOrder.splice(0, sessionOrder.length);
+      session.squareOrderId = undefined;
+      session.squareOrderVersion = undefined;
+      session.squareOrderTotal = undefined;
+      session.referenceId = undefined;
+      session.lineItemUids = undefined;
+      return {
+        result: `Sent to the POS for review. Total: $${total.toFixed(2)}. It's parked as an open ticket (${reference}) for close-out — no payment taken.`,
+        command: { action: "submit", squareOrderId: heldOrderId },
+      };
+    }
+
     if (session.squareOrderId) {
       const { orderId, total, paymentId, error } = await completeLiveOrder(session, squareToken, squareLocationId);
       if (error) console.warn(`[Tools/POS] Live payment failed: ${error}`);

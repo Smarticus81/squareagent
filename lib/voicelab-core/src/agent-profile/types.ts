@@ -23,6 +23,12 @@ export interface AgentProfile {
   /** Provider-specific options (model, voice id, agent id, etc.). */
   voicePipelineConfig: Record<string, unknown>;
   noiseMode: NoiseMode;
+  /**
+   * How submitted orders settle in Square.
+   *  - "auto_complete": record payment immediately so the order closes (default).
+   *  - "hold_for_review": leave the order OPEN on the POS for end-of-day review.
+   */
+  orderHandlingMode: OrderHandlingMode;
   /** Subset of registered tool names the agent is allowed to call. */
   allowedTools: string[];
   confirmationPolicy: ConfirmationPolicy;
@@ -30,6 +36,20 @@ export interface AgentProfile {
   personality: string;
   createdAt: string;
   updatedAt: string;
+}
+
+/** Order settlement behavior for an assistant. */
+export type OrderHandlingMode = "auto_complete" | "hold_for_review";
+
+export const ORDER_HANDLING_MODES: readonly OrderHandlingMode[] = [
+  "auto_complete",
+  "hold_for_review",
+] as const;
+
+export const DEFAULT_ORDER_HANDLING_MODE: OrderHandlingMode = "auto_complete";
+
+export function normalizeOrderHandlingMode(value: unknown): OrderHandlingMode {
+  return value === "hold_for_review" ? "hold_for_review" : "auto_complete";
 }
 
 export const DEFAULT_AGENT_DISPLAY_NAME = "Bev";

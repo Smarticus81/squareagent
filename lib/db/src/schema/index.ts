@@ -134,6 +134,10 @@ export const agentProfilesTable = pgTable("agent_profiles", {
   voicePipelineProvider: text("voice_pipeline_provider").notNull(),
   voicePipelineConfig: jsonb("voice_pipeline_config").notNull().default({}),
   noiseMode: text("noise_mode").notNull().default("standard"),
+  // How submitted orders settle in Square:
+  //  - "auto_complete": record payment immediately (order COMPLETED)
+  //  - "hold_for_review": leave the order OPEN on the POS for end-of-day review
+  orderHandlingMode: text("order_handling_mode").notNull().default("auto_complete"),
   allowedTools: jsonb("allowed_tools").notNull().default([]), // string[]
   confirmationPolicy: jsonb("confirmation_policy").notNull().default({}),
   personality: text("personality").notNull().default(""),

@@ -66,6 +66,8 @@ interface VoiceAgentContextType {
     voicePipelineProvider?: string,
     voicePipelineConfig?: Record<string, unknown>,
   ) => void;
+  /** Set the live order-handling mode applied to subsequent tool calls. */
+  setOrderHandlingMode: (mode: "auto_complete" | "hold_for_review") => void;
   confirmPending: () => void;
   denyPending: () => void;
 }
@@ -177,6 +179,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
   const agentProfileIdRef = useRef("");
   const voicePipelineProviderRef = useRef("");
   const voicePipelineConfigRef = useRef<Record<string, unknown>>({});
+  const orderHandlingModeRef = useRef<"auto_complete" | "hold_for_review">("auto_complete");
   const isRunning = useRef(false);
   const agentStateRef = useRef<AgentState>("disconnected");
   const sessionIdRef = useRef("");
@@ -254,6 +257,11 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
     agentProfileIdRef.current = agentProfileId ?? "";
     voicePipelineProviderRef.current = voicePipelineProvider ?? "";
     voicePipelineConfigRef.current = voicePipelineConfig ?? {};
+  }, []);
+
+  /** Live order-handling override sent with each tool call (auto-complete vs hold-for-review). */
+  const setOrderHandlingMode = useCallback((mode: "auto_complete" | "hold_for_review") => {
+    orderHandlingModeRef.current = mode === "hold_for_review" ? "hold_for_review" : "auto_complete";
   }, []);
 
   // ── Half-duplex mic gating ──────────────────────────────────────────────────
@@ -496,6 +504,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
           order: currentOrderRef.current,
           venueId: venueIdRef.current || undefined,
           agentProfileId: agentProfileIdRef.current || undefined,
+          orderHandlingMode: orderHandlingModeRef.current,
         }),
       });
 
@@ -1433,6 +1442,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
         order: currentOrderRef.current,
         venueId: venueIdRef.current || undefined,
         agentProfileId: agentProfileIdRef.current || undefined,
+        orderHandlingMode: orderHandlingModeRef.current,
       }),
     }).then(r => r.json()).then(data => {
       sendToolOutput(data.result ?? "Confirmed and executed.");
@@ -1475,7 +1485,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
     <VoiceAgentContext.Provider value={{
       agentState, isConnected, conversation, partialTranscript, error, remoteStream,
       pendingConfirmation, connect, prewarm, activate, releaseStandby, disconnect, clearConversation, setToolHandler, interrupt,
-      setCatalog, setCurrentOrder, setAuthParams,
+      setCatalog, setCurrentOrder, setAuthParams, setOrderHandlingMode,
       confirmPending, denyPending,
     }}>
       {children}
