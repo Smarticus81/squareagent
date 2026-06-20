@@ -548,17 +548,15 @@ export default function App() {
               <span className="welcome-eyebrow">VoyceLab · Live</span>
               <h1 className="welcome-title">
                 {!sqAuthToken
-                  ? <>Your venue, <em>on voice</em>.</>
-                  : assistantKind === "general"
-                    ? <>Your venue assistant <em>is ready</em>.</>
-                    : <>Your venue, <em>on voice</em>.</>}
+                  ? <>Voice Terminal <em>Offline</em>.</>
+                  : <>Voice Terminal <em>Online</em>.</>}
               </h1>
               <p className="welcome-sub">
                 {!sqAuthToken
-                  ? "Sign in to connect your venue and start talking — orders, inventory and reports, hands-free."
+                  ? "Sign in to connect your venue and start the real-time operations console."
                   : assistantKind === "general"
                     ? "Tap the orb and speak. I can handle email, look things up, and answer questions. Connect Square in settings to unlock POS commands."
-                    : "Tap the orb and speak — I’ll handle orders, inventory and reports across your connected systems."}
+                    : "Tap the orb and speak to execute orders, adjust inventory levels, or generate reporting summaries."}
               </p>
               {!sqAuthToken ? (
                 <div className="suggestion-row">

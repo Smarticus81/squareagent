@@ -214,8 +214,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   className="text-[13px] mt-5 max-w-85 leading-relaxed"
                   style={{ color: "var(--color-vl-ink-muted)" }}
                 >
-                  Hospitality, orchestrated by voice. VoyceLab connects to your POS,
-                  inventory, events, and team — and turns conversation into action.
+                  VoyceLab synchronizes data and actions across your POS, inventory, 
+                  and team accounts.
                 </p>
               </div>
               <FooterCol
