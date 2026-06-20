@@ -768,10 +768,10 @@ router.post("/clerk-link", requireAuth as any, async (req: Request, res: Respons
     if (!org) { res.status(500).json({ error: "Organization unavailable" }); return; }
 
     const identity = await ensureClerkIdentity(user, org);
-    if (!identity) { res.status(503).json({ error: "Could not link Clerk billing identity." }); return; }
+    if (!identity) { res.status(503).json({ error: "Could not link Clerk billing identity (empty result)." }); return; }
 
     const signInToken = await createClerkSignInToken(identity.clerkUserId);
-    if (!signInToken) { res.status(503).json({ error: "Could not create Clerk sign-in token." }); return; }
+    if (!signInToken) { res.status(503).json({ error: "Could not create Clerk sign-in token (empty result)." }); return; }
 
     // Refresh cached auth so subsequent requests observe the linked clerk ids.
     invalidateAuthCacheForUser(user.id);
@@ -783,8 +783,8 @@ router.post("/clerk-link", requireAuth as any, async (req: Request, res: Respons
       organizationId,
     });
   } catch (e: any) {
-    console.error("[Auth] clerk-link error:", e.message);
-    res.status(500).json({ error: "Could not link Clerk billing." });
+    console.error("[Auth] clerk-link error:", e.message || String(e));
+    res.status(503).json({ error: `Could not link Clerk billing: ${e.message || String(e)}` });
   }
 });
 

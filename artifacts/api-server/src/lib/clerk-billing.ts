@@ -235,7 +235,7 @@ export async function ensureClerkIdentity(user: User, org: Organization): Promis
     return { clerkUserId, clerkOrgId };
   } catch (e) {
     log.error({ err: e instanceof Error ? e.message : String(e) }, "ensureClerkIdentity failed");
-    return null;
+    throw e;
   }
 }
 
@@ -256,7 +256,7 @@ export async function createClerkSignInToken(
     return res?.token ?? null;
   } catch (e) {
     log.error({ err: e instanceof Error ? e.message : String(e) }, "createSignInToken failed");
-    return null;
+    throw e;
   }
 }
 

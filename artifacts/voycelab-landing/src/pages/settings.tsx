@@ -1635,6 +1635,29 @@ function AdminDiagnosticsModal({
                       <p className="text-[13px] font-black mt-1 tabular-nums">{diagData.geminiApi?.latencyMs} ms</p>
                     </div>
                   </div>
+
+                  {/* Clerk API */}
+                  {diagData.clerkApi && (
+                    <div className="flex items-center justify-between rounded-xl p-3" style={{ background: diagData.clerkApi.status === "healthy" ? "rgba(16,185,129,0.05)" : diagData.clerkApi.status === "unconfigured" ? "rgba(100,116,139,0.05)" : "rgba(239,68,68,0.05)" }}>
+                      <div>
+                        <p className="text-[13px] font-bold">Clerk Billing API</p>
+                        <p className="text-[11px] font-semibold text-slate-400">
+                          {diagData.clerkApi.status === "unconfigured" ? "Not Configured" : "Identity lookup latency"}
+                        </p>
+                        {diagData.clerkApi.status === "unhealthy" && (
+                          <p className="text-[10px] text-red-500 mt-0.5 max-w-70 truncate" title={diagData.clerkApi.error}>{diagData.clerkApi.error}</p>
+                        )}
+                      </div>
+                      <div className="text-right">
+                        <span className={`text-[11px] font-extrabold uppercase px-2 py-0.5 rounded-md ${diagData.clerkApi.status === "healthy" ? "bg-emerald-100 text-emerald-800" : diagData.clerkApi.status === "unconfigured" ? "bg-slate-100 text-slate-800" : "bg-red-100 text-red-800"}`}>
+                          {diagData.clerkApi.status}
+                        </span>
+                        {diagData.clerkApi.status === "healthy" && (
+                          <p className="text-[13px] font-black mt-1 tabular-nums">{diagData.clerkApi.latencyMs} ms</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -1669,6 +1692,14 @@ function AdminDiagnosticsModal({
                     <div className="flex items-center gap-2 rounded-xl border p-3 bg-slate-50" style={{ borderColor: "rgba(10,10,11,0.04)" }}>
                       <span className={`h-2.5 w-2.5 rounded-full ${diagData.env?.squareAppSecretSet ? "bg-emerald-500" : "bg-red-500"}`} />
                       <span>SQUARE_SECRET</span>
+                    </div>
+                    <div className="flex items-center gap-2 rounded-xl border p-3 bg-slate-50" style={{ borderColor: "rgba(10,10,11,0.04)" }}>
+                      <span className={`h-2.5 w-2.5 rounded-full ${diagData.env?.clerkSecretKeySet ? "bg-emerald-500" : "bg-red-500"}`} />
+                      <span>CLERK_SECRET_KEY</span>
+                    </div>
+                    <div className="flex items-center gap-2 rounded-xl border p-3 bg-slate-50" style={{ borderColor: "rgba(10,10,11,0.04)" }}>
+                      <span className={`h-2.5 w-2.5 rounded-full ${diagData.env?.clerkPublishableKeySet ? "bg-emerald-500" : "bg-red-500"}`} />
+                      <span>CLERK_PUB_KEY</span>
                     </div>
                   </div>
                 </div>

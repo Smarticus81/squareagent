@@ -154,6 +154,8 @@ router.get("/diagnostics", async (req: Request, res: Response) => {
       googleGeminiApiKeySet: !!process.env.GOOGLE_GEMINI_API_KEY,
       squareAppIdSet: !!process.env.SQUARE_APPLICATION_ID,
       squareAppSecretSet: !!process.env.SQUARE_APPLICATION_SECRET,
+      clerkSecretKeySet: !!process.env.CLERK_SECRET_KEY,
+      clerkPublishableKeySet: !!process.env.VITE_CLERK_PUBLISHABLE_KEY,
     };
 
     // 2. Database Connectivity & Latency check
@@ -230,6 +232,31 @@ router.get("/diagnostics", async (req: Request, res: Response) => {
         status: "unreachable",
         error: e.message,
         latencyMs: Date.now() - geminiStart,
+      };
+    }
+
+    // 5.5. Clerk API Connectivity check
+    const clerkStart = Date.now();
+    try {
+      if (process.env.CLERK_SECRET_KEY && process.env.VITE_CLERK_PUBLISHABLE_KEY) {
+        const { clerkClient } = await import("../../lib/clerk-billing");
+        await clerkClient.users.getUserList({ limit: 1 });
+        diagnostics.clerkApi = {
+          status: "healthy",
+          latencyMs: Date.now() - clerkStart,
+        };
+      } else {
+        diagnostics.clerkApi = {
+          status: "unconfigured",
+          error: "CLERK_SECRET_KEY or VITE_CLERK_PUBLISHABLE_KEY is not set.",
+          latencyMs: 0,
+        };
+      }
+    } catch (e: any) {
+      diagnostics.clerkApi = {
+        status: "unhealthy",
+        error: e.message || String(e),
+        latencyMs: Date.now() - clerkStart,
       };
     }
 
