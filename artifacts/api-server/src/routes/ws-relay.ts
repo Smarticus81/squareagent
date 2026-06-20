@@ -24,8 +24,10 @@ import {
   emailCredentialsTable,
   knowledgeDocumentsTable,
   externalDbConnectionsTable,
+  usageEventsTable,
 } from "@workspace/db";
-import { eq, and, isNull, or } from "drizzle-orm";
+import { eq, and, isNull, or, gte, sql } from "drizzle-orm";
+import { buildUsageLimitSnapshot } from "@workspace/voicelab-core/pricing";
 import {
   cancelLiveOrder,
   type CatalogItem,
@@ -71,6 +73,7 @@ type RelayScope =
 export interface RelayCtx {
   userId: number;
   organizationId: string | null;
+  userRole: string | null;
   venueId: number | null;
   agentProfileId: string | null;
   plan: string;
@@ -288,7 +291,7 @@ function tokenFromWebSocketRequest(req: IncomingMessage): string | null {
 
 async function authenticateToken(
   token: string,
-): Promise<{ userId: number; organizationId: string | null; subscription: any; isAdmin: boolean } | null> {
+): Promise<{ userId: number; organizationId: string | null; userRole: string | null; subscription: any; isAdmin: boolean } | null> {
   try {
     const payload = jwt.verify(token, JWT_SECRET) as unknown as { sub: number; sid: string };
     if (!payload?.sub || !payload?.sid) return null;
@@ -305,7 +308,10 @@ async function authenticateToken(
     const [[subscription], [membership]] = await Promise.all([
       db.select().from(subscriptionsTable).where(eq(subscriptionsTable.userId, user.id)),
       db
-        .select({ organizationId: organizationMembershipsTable.organizationId })
+        .select({
+          organizationId: organizationMembershipsTable.organizationId,
+          role: organizationMembershipsTable.role,
+        })
         .from(organizationMembershipsTable)
         .where(eq(organizationMembershipsTable.userId, user.id))
         .limit(1),
@@ -313,6 +319,7 @@ async function authenticateToken(
     return {
       userId: user.id,
       organizationId: membership?.organizationId ?? null,
+      userRole: membership?.role ?? null,
       subscription: subscription ?? null,
       isAdmin: isAdminEmail(user.email),
     };
@@ -599,6 +606,36 @@ export function attachWebSocketRelay(server: Server): void {
     }
     const effectivePlan = effectiveRelayPlan(auth.subscription, auth.isAdmin);
 
+    // Check usage limits and overage cap (admins bypass)
+    if (!auth.isAdmin) {
+      try {
+        const periodStart = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+        const [usage] = await db
+          .select({ total: sql<number>`coalesce(sum(${usageEventsTable.quantity}), 0)` })
+          .from(usageEventsTable)
+          .where(and(
+            auth.organizationId
+              ? or(
+                  eq(usageEventsTable.organizationId, auth.organizationId),
+                  and(eq(usageEventsTable.userId, auth.userId), isNull(usageEventsTable.organizationId)),
+                )
+              : eq(usageEventsTable.userId, auth.userId),
+            eq(usageEventsTable.kind, "voice_minutes"),
+            gte(usageEventsTable.occurredAt, periodStart),
+          ));
+        
+        const used = Number(usage?.total ?? 0);
+        const limits = buildUsageLimitSnapshot(effectivePlan, used);
+        if (limits.risk === "blocked") {
+          socket.write("HTTP/1.1 402 Payment Required\r\n\r\n");
+          socket.destroy();
+          return;
+        }
+      } catch {
+        // non-critical — allow connection if usage check fails
+      }
+    }
+
     const scope = await validateRelayScope(auth.userId, auth.organizationId, venueIdStr, agentProfileId, kind);
     if (!scope.ok) {
       socket.write(`HTTP/1.1 ${scope.status} ${scope.status === 400 ? "Bad Request" : scope.status === 403 ? "Forbidden" : "Not Found"}\r\n\r\n`);
@@ -645,6 +682,7 @@ export function attachWebSocketRelay(server: Server): void {
       const ctx: RelayCtx = {
         userId: auth.userId,
         organizationId: auth.organizationId,
+        userRole: auth.userRole,
         venueId: scope.venueId,
         agentProfileId: scope.agentProfileId,
         plan: effectivePlan,
@@ -677,6 +715,7 @@ export function attachWebSocketRelay(server: Server): void {
     }
 
     // Session state
+    const connectionStartMs = Date.now();
     let catalog: CatalogItem[] = [];
     let order: OrderItem[] = [];
     const session: LiveSession = { items: [] };
@@ -783,6 +822,7 @@ export function attachWebSocketRelay(server: Server): void {
               session,
               requestId: callId || undefined,
               userId: ctx.userId,
+              userRole: ctx.userRole,
               organizationId: ctx.organizationId,
               venueId: ctx.venueId ?? undefined,
               assistantKind,
@@ -920,6 +960,26 @@ export function attachWebSocketRelay(server: Server): void {
       if (openaiWs.readyState === WebSocket.OPEN || openaiWs.readyState === WebSocket.CONNECTING) {
         openaiWs.close();
       }
+
+      // Record voice session minutes in database
+      const durationMs = Date.now() - connectionStartMs;
+      if (durationMs >= 1000) {
+        db.insert(usageEventsTable).values({
+          kind: "voice_minutes",
+          userId: ctx.userId,
+          organizationId: ctx.organizationId,
+          agentProfileId: ctx.agentProfileId,
+          quantity: Math.ceil(durationMs / 60000),
+          occurredAt: new Date(),
+          metadata: {
+            durationMs,
+            provider: ctx.voicePipelineProvider ?? "openai_realtime_server_ws",
+            venueId: ctx.venueId || null,
+          },
+        }).catch((err: any) => {
+          relayLog.error({ err: err.message }, "failed to write usage event for closed openai relay session");
+        });
+      }
     });
 
     clientWs.on("error", (err) => {
@@ -934,6 +994,7 @@ export function attachWebSocketRelay(server: Server): void {
 // -- Gemini Live relay (BidiGenerateContent over WebSocket) ---
 
 export function handleGeminiRelay(clientWs: WebSocket, ctx: RelayCtx): void {
+  const connectionStartMs = Date.now();
   const apiKey = readServerApiKey("gemini")?.value ?? "";
   if (!apiKey) {
     clientWs.send(JSON.stringify({ type: "error", error: { message: `${requiredApiKeyEnv("gemini")} not configured` } }));
@@ -1078,6 +1139,7 @@ export function handleGeminiRelay(clientWs: WebSocket, ctx: RelayCtx): void {
               session,
               requestId: id || undefined,
               userId: ctx.userId,
+              userRole: ctx.userRole,
               organizationId: ctx.organizationId,
               venueId: ctx.venueId ?? undefined,
               assistantKind,
@@ -1214,6 +1276,26 @@ export function handleGeminiRelay(clientWs: WebSocket, ctx: RelayCtx): void {
     }
     if (upstream.readyState === WebSocket.OPEN || upstream.readyState === WebSocket.CONNECTING) {
       upstream.close();
+    }
+
+    // Record voice session minutes in database
+    const durationMs = Date.now() - connectionStartMs;
+    if (durationMs >= 1000) {
+      db.insert(usageEventsTable).values({
+        kind: "voice_minutes",
+        userId: ctx.userId,
+        organizationId: ctx.organizationId,
+        agentProfileId: ctx.agentProfileId,
+        quantity: Math.ceil(durationMs / 60000),
+        occurredAt: new Date(),
+        metadata: {
+          durationMs,
+          provider: ctx.voicePipelineProvider ?? "google_gemini_live",
+          venueId: ctx.venueId || null,
+        },
+      }).catch((err: any) => {
+        relayLog.error({ err: err.message }, "failed to write usage event for closed gemini relay session");
+      });
     }
   });
 

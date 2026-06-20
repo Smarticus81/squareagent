@@ -211,3 +211,56 @@ export function planAllowsPipeline(
 ): boolean {
   return getPlanAllowedPipelines(planId).includes(provider);
 }
+
+export type UsageRisk = "ok" | "watch" | "over_included" | "near_cap" | "blocked";
+
+export function getPlanIncludedMinutes(planId: string | null | undefined): number {
+  if (planId === "admin") return -1;
+  return getPlan(planId ?? "trial")?.includedVoiceMinutes ?? getPlan("trial")?.includedVoiceMinutes ?? 60;
+}
+
+export interface UsageLimitSnapshot {
+  includedMinutes: number;
+  hardCapMinutes: number;
+  includedPercent: number;
+  hardCapPercent: number;
+  overIncluded: boolean;
+  overIncludedMinutes: number;
+  remainingIncludedMinutes: number;
+  remainingToHardCapMinutes: number;
+  risk: UsageRisk;
+}
+
+export function buildUsageLimitSnapshot(planId: string | null | undefined, used: number): UsageLimitSnapshot {
+  const included = getPlanIncludedMinutes(planId);
+  const unlimited = included === -1;
+  const hardCap = unlimited ? -1 : Math.floor(included * 1.5);
+  const includedPercent = unlimited || included <= 0 ? 0 : Math.round((used / included) * 100);
+  const hardCapPercent = unlimited || hardCap <= 0 ? 0 : Math.round((used / hardCap) * 100);
+  const overIncluded = !unlimited && used > included;
+  const blocked = !unlimited && used >= hardCap;
+  const nearCap = !unlimited && !blocked && used >= hardCap * 0.9;
+  const watch = !unlimited && !overIncluded && used >= included * 0.8;
+  const risk: UsageRisk = blocked
+    ? "blocked"
+    : nearCap
+    ? "near_cap"
+    : overIncluded
+    ? "over_included"
+    : watch
+    ? "watch"
+    : "ok";
+
+  return {
+    includedMinutes: included,
+    hardCapMinutes: hardCap,
+    includedPercent,
+    hardCapPercent,
+    overIncluded,
+    overIncludedMinutes: overIncluded ? Math.max(0, used - included) : 0,
+    remainingIncludedMinutes: unlimited ? -1 : Math.max(0, included - used),
+    remainingToHardCapMinutes: unlimited ? -1 : Math.max(0, hardCap - used),
+    risk,
+  };
+}
+

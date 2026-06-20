@@ -7,6 +7,7 @@
 
 import type { ToolExecutor, ToolContext, ToolResult } from "./types";
 import { requiresConfirmation, getToolRisk } from "@workspace/voicelab-core/confirmation";
+import { hasPermission, type Role } from "../routes/v1/_helpers";
 import { createComponentLogger } from "../lib/logger";
 import { db, toolCallsTable } from "@workspace/db";
 import { createHmac, timingSafeEqual } from "crypto";
@@ -287,6 +288,47 @@ export const confirmationMiddleware: ToolMiddleware = async (toolName, args, ctx
   return next(args, ctx);
 };
 
+const TOOL_ROLE_REQUIREMENTS: Record<string, Role> = {
+  // Destructive/Owner payments operations
+  refund_payment: "owner",
+  cancel_payment: "owner",
+
+  // Admin customer write operations
+  create_customer: "admin",
+  update_customer: "admin",
+
+  // Catalog writes (Manager or higher)
+  create_item: "manager",
+  update_item: "manager",
+  delete_item: "manager",
+  create_category: "manager",
+  apply_discount: "manager",
+
+  // Inventory writes (Manager or higher)
+  adjust_inventory: "manager",
+  set_inventory: "manager",
+  transfer_inventory: "manager",
+  batch_adjust_inventory: "manager",
+};
+
+/**
+ * Role-based access control middleware for voice agent tools.
+ * Verifies that the active user's workspace role has sufficient privileges
+ * to invoke the requested tool.
+ */
+export const roleMiddleware: ToolMiddleware = async (toolName, args, ctx, next) => {
+  const requiredRole = TOOL_ROLE_REQUIREMENTS[toolName];
+  if (requiredRole) {
+    const userRole = ctx.userRole;
+    if (!userRole || !hasPermission(userRole, requiredRole)) {
+      return {
+        result: `Tool authorization error: Insufficient permissions. Your workspace role is '${userRole || "unknown"}', but the '${toolName}' command requires a minimum role of '${requiredRole}'.`
+      };
+    }
+  }
+  return next(args, ctx);
+};
+
 // ── Default middleware stack ─────────────────────────────────────────────────
 
 /** Standard middleware stack applied to all tool executors. */
@@ -294,6 +336,7 @@ export const DEFAULT_MIDDLEWARES: ToolMiddleware[] = [
   errorMiddleware,
   timingMiddleware,
   loggingMiddleware,
+  roleMiddleware,
   confirmationMiddleware,
   auditMiddleware,
 ];

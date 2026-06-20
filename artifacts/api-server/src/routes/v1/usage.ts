@@ -2,6 +2,7 @@ import { Router } from "express";
 import { ensureUserOrganization, v1RequireAuth, jsonError } from "./_helpers";
 import { db, toolCallsTable, usageEventsTable } from "@workspace/db";
 import { eq, sql, and, gte, isNull, or } from "drizzle-orm";
+import { buildUsageLimitSnapshot } from "@workspace/voicelab-core/pricing";
 
 const router = Router();
 
@@ -76,10 +77,15 @@ router.get("/current", v1RequireAuth as any, async (req: any, res: any) => {
       .orderBy(sql`${toolCallsTable.createdAt} desc`)
       .limit(10);
 
+    const usedMinutes = Number(minutesResult?.total ?? 0);
+    const planId = req.isAdmin ? "admin" : (req.subscription?.plan ?? "trial");
+    const usageLimits = buildUsageLimitSnapshot(planId, usedMinutes);
+
     res.json({
       scope: organizationId ? "organization" : "user",
       organizationId,
-      voiceMinutes: { used: Number(minutesResult?.total ?? 0) },
+      voiceMinutes: { used: usedMinutes },
+      usageLimits,
       topTools,
       recentErrors,
     });

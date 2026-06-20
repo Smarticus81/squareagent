@@ -205,19 +205,18 @@ function Hero({ onStart }: { onStart: () => void }) {
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 w-full">
             {[
-              { src: "/brand/square-logo.png",     alt: "Square",  height: 88 },
-              { src: "/brand/openai-wordmark.png", alt: "OpenAI",  height: 99 },
-              { src: "/brand/google-g.png",        alt: "Google",  height: 180},
+              { src: "/brand/square-logo.png",     alt: "Square",  maxHeight: "36px" },
+              { src: "/brand/openai-wordmark.png", alt: "OpenAI",  maxHeight: "36px" },
+              { src: "/brand/google-g.png",        alt: "Google",  maxHeight: "56px"},
             ].map((logo) => (
               <div
                 key={logo.alt}
-                className="vl-card flex items-center justify-center rounded-2xl"
-                style={{ height: 180, padding: "0 32px" }}
+                className="vl-card flex h-24 sm:h-36 lg:h-44 items-center justify-center rounded-2xl px-6 sm:px-8"
               >
                 <img
                   src={logo.src}
                   alt={logo.alt}
-                  style={{ height: logo.height, width: "auto", objectFit: "contain" }}
+                  style={{ maxHeight: logo.maxHeight, width: "auto", objectFit: "contain" }}
                 />
               </div>
             ))}
@@ -276,7 +275,7 @@ function HeroScene() {
 
       {/* Floating command chip #1 - POS (top-right) - hidden on narrow screens */}
       <FloatingAssistantCard
-        className="hidden sm:block absolute top-[8%] right-[-2%] md:right-[-6%] vl-float-slow"
+        className="hidden lg:block absolute top-[8%] right-[-2%] md:right-[-6%] vl-float-slow"
         index="1"
         title="POS ASSISTANT"
         question="Hey Voyce, split"
@@ -286,7 +285,7 @@ function HeroScene() {
 
       {/* Floating command chip #2 - Inventory (right middle) */}
       <FloatingAssistantCard
-        className="hidden sm:block absolute top-[48%] right-[-8%] md:right-[-12%] vl-float-medium"
+        className="hidden lg:block absolute top-[48%] right-[-8%] md:right-[-12%] vl-float-medium"
         index="2"
         title="INVENTORY ASSISTANT"
         question="Voyce, do we have"
@@ -296,7 +295,7 @@ function HeroScene() {
 
       {/* Floating command chip #3 - Venue (bottom-left) */}
       <FloatingAssistantCard
-        className="hidden sm:block absolute bottom-[8%] left-[-8%] md:left-[-14%] vl-float-fast"
+        className="hidden lg:block absolute bottom-[8%] left-[-8%] md:left-[-14%] vl-float-fast"
         index="3"
         title="VENUE ASSISTANT"
         question="Hey Voyce, what's"
@@ -794,7 +793,7 @@ function AssistantTour() {
           whileInView="visible"
           viewport={{ once: true, margin: "-80px" }}
           variants={stagger}
-          className="grid md:grid-cols-3 gap-5 mt-12"
+          className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5 mt-12"
         >
           {items.map((it) => (
             <motion.div key={it.index} variants={childFade} className="vl-card p-7 relative overflow-hidden">
@@ -1159,7 +1158,7 @@ function VenueOutcomes() {
           whileInView="visible"
           viewport={{ once: true }}
           variants={stagger}
-          className="grid sm:grid-cols-3 gap-5 mt-14 max-w-4xl mx-auto"
+          className="grid grid-cols-1 md:grid-cols-3 gap-5 mt-14 max-w-4xl mx-auto"
         >
           {stats.map((s) => (
             <motion.div

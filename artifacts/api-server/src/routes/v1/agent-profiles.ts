@@ -9,6 +9,7 @@ import {
   userFromReq,
   userOwnsOrganization,
   v1RequireAuth,
+  requireMinRole,
 } from "./_helpers";
 import {
   DEFAULT_AGENT_PERSONALITY,
@@ -164,7 +165,7 @@ router.get("/", async (req: Request, res: Response) => {
   });
 });
 
-router.post("/", async (req: Request, res: Response) => {
+router.post("/", requireMinRole("manager"), async (req: Request, res: Response) => {
   const user = userFromReq(req);
   const parsed = v1.CreateAgentProfileRequest.safeParse(req.body);
   if (!parsed.success) {
@@ -261,7 +262,7 @@ router.get("/:id", async (req: Request, res: Response) => {
   res.json(rowToResponse(row as AgentProfileRow));
 });
 
-router.patch("/:id", async (req: Request, res: Response) => {
+router.patch("/:id", requireMinRole("manager"), async (req: Request, res: Response) => {
   const user = userFromReq(req);
   const parsed = v1.UpdateAgentProfileRequest.safeParse(req.body);
   if (!parsed.success) {
@@ -340,7 +341,7 @@ router.patch("/:id", async (req: Request, res: Response) => {
   res.json(rowToResponse(row as AgentProfileRow));
 });
 
-router.delete("/:id", async (req: Request, res: Response) => {
+router.delete("/:id", requireMinRole("manager"), async (req: Request, res: Response) => {
   const user = userFromReq(req);
   const [existing] = await db
     .select()

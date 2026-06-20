@@ -15,7 +15,9 @@ import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { getAllPipelineAvailability } from "../../voice-pipelines";
 import { invalidateAuthCacheForUser, isAdminEmail } from "../auth";
 import { ensureUserOrganization, jsonError, requireDb, v1RequireAuth } from "./_helpers";
-import { getPlan } from "@workspace/voicelab-core/pricing";
+import { getPlan, buildUsageLimitSnapshot, type UsageRisk } from "@workspace/voicelab-core/pricing";
+import { credentialCacheSize } from "../../lib/credential-cache";
+import { catalogCacheSize } from "../../lib/catalog-cache";
 
 const router = Router();
 
@@ -92,46 +94,6 @@ function parseWindowDays(raw: unknown): number {
   return Math.min(365, Math.max(1, Math.floor(value)));
 }
 
-type UsageRisk = "ok" | "watch" | "over_included" | "near_cap" | "blocked";
-
-function usageLimitForPlan(planId: string | null | undefined): number {
-  if (planId === "admin") return -1;
-  return getPlan(planId ?? "trial")?.includedVoiceMinutes ?? getPlan("trial")?.includedVoiceMinutes ?? 60;
-}
-
-function buildUsageLimitSnapshot(planId: string | null | undefined, used: number) {
-  const included = usageLimitForPlan(planId);
-  const unlimited = included === -1;
-  const hardCap = unlimited ? -1 : Math.floor(included * 1.5);
-  const includedPercent = unlimited || included <= 0 ? 0 : Math.round((used / included) * 100);
-  const hardCapPercent = unlimited || hardCap <= 0 ? 0 : Math.round((used / hardCap) * 100);
-  const overIncluded = !unlimited && used > included;
-  const blocked = !unlimited && used >= hardCap;
-  const nearCap = !unlimited && !blocked && used >= hardCap * 0.9;
-  const watch = !unlimited && !overIncluded && used >= included * 0.8;
-  const risk: UsageRisk = blocked
-    ? "blocked"
-    : nearCap
-    ? "near_cap"
-    : overIncluded
-    ? "over_included"
-    : watch
-    ? "watch"
-    : "ok";
-
-  return {
-    includedMinutes: included,
-    hardCapMinutes: hardCap,
-    includedPercent,
-    hardCapPercent,
-    overIncluded,
-    overIncludedMinutes: overIncluded ? Math.max(0, used - included) : 0,
-    remainingIncludedMinutes: unlimited ? -1 : Math.max(0, included - used),
-    remainingToHardCapMinutes: unlimited ? -1 : Math.max(0, hardCap - used),
-    risk,
-  };
-}
-
 function isRole(value: unknown): value is Role {
   return typeof value === "string" && (ROLES as readonly string[]).includes(value);
 }
@@ -179,6 +141,109 @@ async function primaryMembershipForUser(user: User) {
 }
 
 router.use(v1RequireAuth as never, requireDb, requirePlatformAdmin);
+
+router.get("/diagnostics", async (req: Request, res: Response) => {
+  try {
+    const diagnostics: any = {};
+
+    // 1. Environment variables check
+    diagnostics.env = {
+      databaseUrlSet: !!process.env.DATABASE_URL,
+      secretsEncryptionKeySet: !!process.env.SECRETS_ENCRYPTION_KEY,
+      openaiApiKeySet: !!process.env.OPENAI_API_KEY,
+      googleGeminiApiKeySet: !!process.env.GOOGLE_GEMINI_API_KEY,
+      squareAppIdSet: !!process.env.SQUARE_APPLICATION_ID,
+      squareAppSecretSet: !!process.env.SQUARE_APPLICATION_SECRET,
+    };
+
+    // 2. Database Connectivity & Latency check
+    const dbStart = Date.now();
+    try {
+      await db.execute(sql`SELECT 1`);
+      diagnostics.database = {
+        status: "healthy",
+        latencyMs: Date.now() - dbStart,
+      };
+    } catch (e: any) {
+      diagnostics.database = {
+        status: "unhealthy",
+        error: e.message,
+        latencyMs: Date.now() - dbStart,
+      };
+    }
+
+    // 3. Square API Connectivity check
+    const sqStart = Date.now();
+    try {
+      const response = await fetch("https://connect.squareup.com/v2/locations", {
+        headers: {
+          "Authorization": `Bearer ${process.env.SQUARE_APPLICATION_SECRET || ""}`,
+          "Content-Type": "application/json",
+        },
+      });
+      diagnostics.squareApi = {
+        status: response.status === 200 || response.status === 401 ? "healthy" : "degraded",
+        statusCode: response.status,
+        latencyMs: Date.now() - sqStart,
+      };
+    } catch (e: any) {
+      diagnostics.squareApi = {
+        status: "unreachable",
+        error: e.message,
+        latencyMs: Date.now() - sqStart,
+      };
+    }
+
+    // 4. OpenAI API Connectivity check
+    const openaiStart = Date.now();
+    try {
+      const response = await fetch("https://api.openai.com/v1/models", {
+        headers: {
+          "Authorization": `Bearer ${process.env.OPENAI_API_KEY || ""}`,
+        },
+      });
+      diagnostics.openaiApi = {
+        status: response.status === 200 || response.status === 401 ? "healthy" : "degraded",
+        statusCode: response.status,
+        latencyMs: Date.now() - openaiStart,
+      };
+    } catch (e: any) {
+      diagnostics.openaiApi = {
+        status: "unreachable",
+        error: e.message,
+        latencyMs: Date.now() - openaiStart,
+      };
+    }
+
+    // 5. Gemini API Connectivity check
+    const geminiStart = Date.now();
+    try {
+      const apiKey = process.env.GOOGLE_GEMINI_API_KEY || "";
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+      diagnostics.geminiApi = {
+        status: response.status === 200 || response.status === 400 ? "healthy" : "degraded",
+        statusCode: response.status,
+        latencyMs: Date.now() - geminiStart,
+      };
+    } catch (e: any) {
+      diagnostics.geminiApi = {
+        status: "unreachable",
+        error: e.message,
+        latencyMs: Date.now() - geminiStart,
+      };
+    }
+
+    // 6. Internal Cache diagnostics
+    diagnostics.caches = {
+      credentialsSize: credentialCacheSize(),
+      catalogSize: catalogCacheSize(),
+    };
+
+    res.json(diagnostics);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 router.get("/overview", async (req: Request, res: Response) => {
   const windowDays = parseWindowDays(req.query.days);

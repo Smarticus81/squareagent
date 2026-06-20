@@ -45,6 +45,8 @@ export interface ToolContext {
   requestId?: string;
   /** Authenticated user id — used by general-assistant tools to scope queries. */
   userId?: number;
+  /** Authenticated user organization role. */
+  userRole?: string | null;
   /** Active workspace id for shared knowledge, database, and email integrations. */
   organizationId?: string | null;
   /** Active venue id — used to filter knowledge / db / email rows by venue. */

@@ -221,7 +221,7 @@ export default function Pricing() {
             <span className="text-[14px]" style={{ color: "var(--color-vl-ink-muted)" }}>Loading plans…</span>
           </div>
         ) : (
-          <div className="mt-10 grid md:grid-cols-2 lg:grid-cols-3 gap-5">
+          <div className="mt-10 grid grid-cols-1 lg:grid-cols-3 gap-6 max-w-md mx-auto lg:max-w-none lg:mx-0">
             {plans.map((p) => (
               <PlanCard
                 key={p.id}

@@ -11,6 +11,48 @@ import { requireAuth } from "../auth";
 /** Wraps requireAuth so v1 routes can compose cleanly. */
 export const v1RequireAuth = requireAuth;
 
+export const ROLES = ["owner", "admin", "manager", "operator"] as const;
+export type Role = typeof ROLES[number];
+
+export const ROLE_HIERARCHY: Record<Role, number> = {
+  owner: 4,
+  admin: 3,
+  manager: 2,
+  operator: 1,
+};
+
+export function hasPermission(userRole: string | null | undefined, requiredMinRole: Role): boolean {
+  if (!userRole) return false;
+  let roleKey = String(userRole).toLowerCase() as Role;
+  if (roleKey as string === "member") {
+    roleKey = "operator";
+  }
+  const userRoleValue = ROLE_HIERARCHY[roleKey] || 0;
+  const requiredRoleValue = ROLE_HIERARCHY[requiredMinRole] || 0;
+  return userRoleValue >= requiredRoleValue;
+}
+
+export function requireMinRole(requiredRole: Role) {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    const org = (req as any).organization;
+    if (!org || !org.role) {
+      jsonError(res, 403, "membership_required", "Organization membership required to access this resource.");
+      return;
+    }
+
+    if (!hasPermission(org.role, requiredRole)) {
+      jsonError(
+        res,
+        403,
+        "insufficient_role",
+        `Insufficient permissions. Minimum role of '${requiredRole}' is required to perform this action.`
+      );
+      return;
+    }
+    next();
+  };
+}
+
 export function jsonError(
   res: Response,
   status: number,
