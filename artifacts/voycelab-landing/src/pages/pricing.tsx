@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { PricingTable, SignedIn, SignedOut } from "@clerk/clerk-react";
-import { ArrowRight, Check, Loader2, Lock, Sparkles } from "lucide-react";
+import { ArrowRight, Check, Loader2, Lock, Sparkles, AlertTriangle } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { withClerkBillingHeader } from "@/lib/clerk-session";
 
@@ -47,6 +47,39 @@ export default function Pricing() {
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedCheckout, setSelectedCheckout] = useState<{ planId: string; cadence: Cadence } | null>(null);
+  const [checkoutTimeout, setCheckoutTimeout] = useState(false);
+  const [clerkError, setClerkError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let timer: any = null;
+
+    if (auth?.user && clerkBillingEnabled) {
+      timer = setTimeout(() => {
+        setCheckoutTimeout(true);
+      }, 8000);
+
+      const token = localStorage.getItem("voycelab_token");
+      if (token) {
+        fetch("/api/auth/clerk-link", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` }
+        })
+          .then(async (r) => {
+            if (!r.ok) {
+              const body = await r.json().catch(() => null);
+              setClerkError(body?.error || `HTTP Status ${r.status}`);
+            }
+          })
+          .catch((err) => {
+            setClerkError(err.message || String(err));
+          });
+      }
+    }
+
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [auth?.user, clerkBillingEnabled]);
 
   useEffect(() => {
     fetch("/api/subscriptions/plans")
@@ -195,10 +228,38 @@ export default function Pricing() {
             </SignedIn>
             <SignedOut>
               {auth?.user ? (
-                <div className="flex items-center gap-3 rounded-2xl border border-black/10 bg-white/55 p-6 text-[13px]" style={{ color: "var(--color-vl-ink-muted)" }}>
-                  <Loader2 className="h-4 w-4 animate-spin" style={{ color: "var(--color-vl-brass2)" }} />
-                  Preparing your secure checkout…
-                </div>
+                clerkError ? (
+                  <div className="rounded-2xl border border-red-200 bg-red-50/55 p-6 text-[13px] text-red-800 space-y-2">
+                    <div className="flex items-center gap-2 font-black text-red-950">
+                      <AlertTriangle className="h-4 w-4 shrink-0 text-red-600" />
+                      <span>Billing Sync Failed</span>
+                    </div>
+                    <p className="leading-relaxed">
+                      The system could not link your VoyceLab workspace with Clerk Billing: <strong>{clerkError}</strong>
+                    </p>
+                    <p className="text-red-700/80 leading-relaxed text-[12px]">
+                      If you are the administrator, please ensure that both <code className="bg-red-100/50 px-1 py-0.5 rounded font-mono">CLERK_SECRET_KEY</code> and <code className="bg-red-100/50 px-1 py-0.5 rounded font-mono">VITE_CLERK_PUBLISHABLE_KEY</code> are correctly configured as environment variables in your Railway dashboard, and that they match the same Clerk instance.
+                    </p>
+                  </div>
+                ) : checkoutTimeout ? (
+                  <div className="rounded-2xl border border-amber-200 bg-amber-50/55 p-6 text-[13px] text-amber-800 space-y-2">
+                    <div className="flex items-center gap-2 font-black text-amber-950">
+                      <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
+                      <span>Establishing Connection taking longer than expected</span>
+                    </div>
+                    <p className="leading-relaxed">
+                      We are still trying to link your workspace session to Clerk Billing. This can happen if Clerk's servers are experiencing high latency.
+                    </p>
+                    <p className="text-amber-700/80 leading-relaxed text-[12px]">
+                      Please refresh the page. If this issue persists, verify that your Clerk environment keys are correctly configured and active on Railway.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-3 rounded-2xl border border-black/10 bg-white/55 p-6 text-[13px]" style={{ color: "var(--color-vl-ink-muted)" }}>
+                    <Loader2 className="h-4 w-4 animate-spin" style={{ color: "var(--color-vl-brass2)" }} />
+                    Preparing your secure checkout…
+                  </div>
+                )
               ) : (
                 <div className="rounded-2xl border border-black/10 bg-white/55 p-6 text-[13px]" style={{ color: "var(--color-vl-ink-muted)" }}>
                   <p>Log in or start a free trial to subscribe — your plan links to your workspace automatically.</p>
