@@ -57,7 +57,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 <Logo size={isLanding ? "md" : "md"} withTagline={isLanding} hideTaglineOnMobile={isLanding} />
               </Link>
 
-              <nav className="hidden md:flex items-center gap-1">
+              <nav className="hidden lg:flex items-center gap-1">
                 {headerNavItems.map((item, idx) => {
                   const isAnchor = item.href.startsWith("#");
                   const active =
@@ -144,7 +144,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   ))}
 
                 <button
-                  className="flex h-9 w-9 items-center justify-center rounded-xl md:hidden"
+                  className="flex h-9 w-9 items-center justify-center rounded-xl lg:hidden"
                   onClick={() => setMobileOpen((s) => !s)}
                   aria-label="Toggle menu"
                   style={{
@@ -160,7 +160,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
             {mobileOpen && (
               <div
-                className="md:hidden px-4 sm:px-6 py-4 flex flex-col gap-2"
+                className="lg:hidden px-4 sm:px-6 py-4 flex flex-col gap-2"
                 style={{
                   borderTop: "1px solid rgba(10, 10, 11,0.08)",
                   background: "rgba(255, 255, 255,0.92)",
@@ -214,8 +214,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   className="text-[13px] mt-5 max-w-85 leading-relaxed"
                   style={{ color: "var(--color-vl-ink-muted)" }}
                 >
-                  Hospitality, orchestrated by voice. VoyceLab connects to your POS,
-                  inventory, events, and team — and turns conversation into action.
+                  VoyceLab synchronizes data and actions across your POS, inventory, 
+                  and team accounts.
                 </p>
               </div>
               <FooterCol

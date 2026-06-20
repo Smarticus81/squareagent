@@ -63,10 +63,10 @@ export default function Assistants() {
           <div>
             <p className="vl-eyebrow">Assistants</p>
             <h1 className="vl-display mt-4 max-w-180 text-[34px] sm:text-[42px] md:text-[62px]" style={{ color: "var(--color-vl-ink)" }}>
-              Your team’s voice assistants.
+              Voice Assistants
             </h1>
-            <p className="mt-5 max-w-155 text-[16px] leading-relaxed" style={{ color: "var(--color-vl-ink-muted)" }}>
-              Create one assistant per venue. Each voice carries its connected service, room behavior, wake phrase, and approval rules.
+            <p className="mt-4 max-w-155 text-[15px] leading-relaxed" style={{ color: "var(--color-vl-ink-muted)" }}>
+              Manage your active voice assistants. Click an assistant to launch its live session, or create a new profile below.
             </p>
           </div>
           {list.length > 0 && (

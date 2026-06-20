@@ -27,7 +27,7 @@ import {
   listConnectedServiceProviders,
   listVoicePipelineProviders,
 } from "@workspace/voicelab-core";
-import { getPlan, planAllowsPipeline } from "@workspace/voicelab-core/pricing";
+import { getPlan, planAllowsPipeline, buildUsageLimitSnapshot } from "@workspace/voicelab-core/pricing";
 import { getNoiseModeBehavior, type NoiseMode } from "@workspace/voicelab-core/noise";
 import { normalizeOrderHandlingMode } from "@workspace/voicelab-core/agent-profile";
 import { eq, sql, and, gte, isNull, or } from "drizzle-orm";
@@ -701,34 +701,35 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
   }
 
   const plan = req.subscription?.plan ?? "trial";
-  const limit = includedVoiceMinutesForPlan(plan);
-  const overageCap = limit === -1 ? Number.POSITIVE_INFINITY : Math.floor(limit * 1.5);
   const organizationId = await currentOrganizationId(req);
 
+  let usedMinutes = 0;
+  let usageLimits: any = null;
+
   try {
-    if (!req.isAdmin) {
-      const periodStart = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-      const [usage] = await db
-        .select({ total: sql<number>`coalesce(sum(${usageEventsTable.quantity}), 0)` })
-        .from(usageEventsTable)
-        .where(and(
-          organizationId
-            ? or(
-                eq(usageEventsTable.organizationId, organizationId),
-                and(eq(usageEventsTable.userId, req.user.id), isNull(usageEventsTable.organizationId)),
-              )
-            : eq(usageEventsTable.userId, req.user.id),
-          eq(usageEventsTable.kind, "voice_minutes"),
-          gte(usageEventsTable.occurredAt, periodStart),
-        ));
-      const used = Number(usage?.total ?? 0);
-      if (Number.isFinite(overageCap) && used >= overageCap) {
-        res.status(429).json({
-          error: "usage_limit_exceeded",
-          detail: `You've used ${used} of ${limit} included minutes (${overageCap} overage cap). Upgrade your plan or wait for the next billing cycle.`,
-        });
-        return;
-      }
+    const periodStart = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const [usage] = await db
+      .select({ total: sql<number>`coalesce(sum(${usageEventsTable.quantity}), 0)` })
+      .from(usageEventsTable)
+      .where(and(
+        organizationId
+          ? or(
+              eq(usageEventsTable.organizationId, organizationId),
+              and(eq(usageEventsTable.userId, req.user.id), isNull(usageEventsTable.organizationId)),
+            )
+          : eq(usageEventsTable.userId, req.user.id),
+        eq(usageEventsTable.kind, "voice_minutes"),
+        gte(usageEventsTable.occurredAt, periodStart),
+      ));
+    usedMinutes = Number(usage?.total ?? 0);
+    usageLimits = buildUsageLimitSnapshot(req.isAdmin ? "admin" : plan, usedMinutes);
+
+    if (!req.isAdmin && usageLimits.risk === "blocked") {
+      res.status(402).json({
+        error: "usage_limit_exceeded",
+        detail: `Your voice assistants are currently suspended because you've reached your absolute plan overage cap (${usageLimits.hardCapMinutes} min). Please upgrade on the Billing page to resume.`,
+      });
+      return;
     }
   } catch {
     // non-critical — allow session to proceed if usage check fails
@@ -902,6 +903,12 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
         bargeIn: acousticBargeIn,
         pushToTalk: behavior.pushToTalkRequired,
         orderHandlingMode,
+        usage: usageLimits ? {
+          used: usedMinutes,
+          limit: usageLimits.includedMinutes,
+          hardCap: usageLimits.hardCapMinutes,
+          risk: usageLimits.risk,
+        } : null,
       },
     });
   } catch (e: any) {
@@ -936,6 +943,39 @@ router.post("/tools", requireAuth as any, requirePlan() as any, async (req: any,
   if (requestedVenueId === "invalid") {
     res.status(400).json({ error: "invalid_venue", detail: "venueId must be a positive integer" });
     return;
+  }
+
+  // Check overage cap on tool execution to prevent runaway loops
+  if (!req.isAdmin) {
+    try {
+      const plan = req.subscription?.plan ?? "trial";
+      const organizationId = await currentOrganizationId(req);
+      const periodStart = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      const [usage] = await db
+        .select({ total: sql<number>`coalesce(sum(${usageEventsTable.quantity}), 0)` })
+        .from(usageEventsTable)
+        .where(and(
+          organizationId
+            ? or(
+                eq(usageEventsTable.organizationId, organizationId),
+                and(eq(usageEventsTable.userId, req.user.id), isNull(usageEventsTable.organizationId)),
+              )
+            : eq(usageEventsTable.userId, req.user.id),
+          eq(usageEventsTable.kind, "voice_minutes"),
+          gte(usageEventsTable.occurredAt, periodStart),
+        ));
+      
+      const used = Number(usage?.total ?? 0);
+      const limits = buildUsageLimitSnapshot(plan, used);
+      if (limits.risk === "blocked") {
+        res.json({
+          result: `This command was blocked because this assistant has exceeded its absolute voice minutes overage cap (${limits.hardCapMinutes} min). Please upgrade your subscription on the Billing page to resume using commands.`,
+        });
+        return;
+      }
+    } catch {
+      // non-critical — proceed if db check fails
+    }
   }
 
   // venueId is optional: general-assistant tools (web/knowledge/email/db) don't
@@ -1045,6 +1085,7 @@ router.post("/tools", requireAuth as any, requirePlan() as any, async (req: any,
         squareClient,
         requestId: sessionId,
         userId: req.user.id,
+        userRole: req.organization?.role,
         organizationId,
         venueId: effectiveVenueId ?? undefined,
         assistantKind,
@@ -1081,9 +1122,41 @@ interface HeartbeatEntry {
   agentProfileId?: string | null;
   lastHeartbeatMs: number;
   startMs: number;
+  lastUpdatedMs: number;
 }
 
 const heartbeatMap = new Map<string, HeartbeatEntry>();
+
+// Sweeper for stale heartbeats to handle abrupt crashes
+setInterval(async () => {
+  const now = Date.now();
+  for (const [sessionId, entry] of heartbeatMap.entries()) {
+    if (now - entry.lastUpdatedMs > 120000) { // 2 minutes stale
+      heartbeatMap.delete(sessionId);
+      if (entry.lastHeartbeatMs > 0) {
+        try {
+          await db.insert(usageEventsTable).values({
+            kind: "voice_minutes",
+            userId: entry.userId,
+            organizationId: entry.organizationId,
+            agentProfileId: entry.agentProfileId,
+            quantity: Math.ceil(entry.lastHeartbeatMs / 60000),
+            occurredAt: new Date(),
+            metadata: {
+              durationMs: entry.lastHeartbeatMs,
+              provider: entry.provider ?? "openai_realtime_webrtc",
+              venueId: entry.venueId || null,
+              autoFlushed: true,
+            },
+          });
+          console.log(`[Realtime] Autoflushed stale session ${sessionId}: ${entry.lastHeartbeatMs}ms`);
+        } catch (err: any) {
+          console.error(`[Realtime] Failed to autoflush stale session ${sessionId}:`, err.message);
+        }
+      }
+    }
+  }
+}, 60000); // Check every minute
 
 router.post("/session/:id/heartbeat", requireAuth as any, async (req: any, res: any) => {
   const sessionId = req.params.id;
@@ -1097,6 +1170,7 @@ router.post("/session/:id/heartbeat", requireAuth as any, async (req: any, res: 
       return;
     }
     existing.lastHeartbeatMs = typeof elapsedMs === "number" ? elapsedMs : Date.now() - existing.startMs;
+    existing.lastUpdatedMs = Date.now();
     if (typeof provider === "string" && provider) existing.provider = provider;
     if (typeof agentProfileId === "string" && agentProfileId) existing.agentProfileId = agentProfileId;
   } else {
@@ -1108,6 +1182,7 @@ router.post("/session/:id/heartbeat", requireAuth as any, async (req: any, res: 
       agentProfileId: typeof agentProfileId === "string" && agentProfileId ? agentProfileId : null,
       lastHeartbeatMs: typeof elapsedMs === "number" ? elapsedMs : 0,
       startMs: Date.now(),
+      lastUpdatedMs: Date.now(),
     });
   }
 

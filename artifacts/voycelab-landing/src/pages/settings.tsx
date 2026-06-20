@@ -22,6 +22,7 @@ import {
   UsersRound,
   Activity,
   AlertCircle,
+  AlertTriangle,
   Search,
   HelpCircle,
   X
@@ -1086,6 +1087,9 @@ function AdminConsole({ token }: { token: string | null }) {
   const [actionMsg, setActionMsg] = useState<null | { tone: "ok" | "error"; text: string }>(null);
   const [actionModal, setActionModal] = useState<AdminActionModalState | null>(null);
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
+  const [controlCenterOpen, setControlCenterOpen] = useState(false);
+  const [enginesOpen, setEnginesOpen] = useState(false);
+  const [rolesOpen, setRolesOpen] = useState(false);
 
   const load = async () => {
     if (!token) {
@@ -1224,345 +1228,138 @@ function AdminConsole({ token }: { token: string | null }) {
   const watchUsers = data.users.filter((user) => user.usage.risk !== "ok");
 
   return (
-    <div className="mt-10 grid items-start gap-6 xl:grid-cols-12">
-      {error && (
-        <div className="flex items-center gap-2.5 rounded-2xl border border-red-200 bg-red-50 p-4 text-[13px] font-medium text-red-600 xl:col-span-12">
-          <AlertCircle className="h-4.5 w-4.5 shrink-0" />
-          <span>{error}</span>
-        </div>
-      )}
-
-      <AdminPanel
-        icon={<ShieldCheck className="h-5 w-5" />}
-        title="Platform Control Center"
-        description="Find an account, review access, and apply changes through focused confirmation modals."
-        className="xl:col-span-12"
-        right={
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              className="vl-btn-outline inline-flex items-center gap-2 px-4 py-2 text-[12.5px]"
-              onClick={() => setDiagnosticsOpen(true)}
-            >
-              <BarChart3 className="h-3.5 w-3.5" />
-              Diagnostics
-            </button>
-            <button
-              type="button"
-              className="vl-btn-ghost inline-flex items-center gap-2 px-4 py-2 text-[12.5px]"
-              onClick={() => void load()}
-              disabled={loading}
-            >
-              {loading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-              Refresh
-            </button>
-          </div>
-        }
+    <div className="mt-10 grid items-stretch gap-5 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-4">
+      {/* 1. Platform Control Center Card */}
+      <button
+        type="button"
+        onClick={() => setControlCenterOpen(true)}
+        className="vl-panel group flex aspect-square min-h-[210px] flex-col justify-between overflow-hidden rounded-[28px] border p-5 text-left shadow-sm transition hover:-translate-y-1 hover:shadow-lg bg-white"
+        style={{ borderColor: "rgba(14,27,44,0.05)" }}
       >
-        <div className="mb-5 grid gap-3 md:grid-cols-4">
-          <UsageRiskTile label="Blocked at cap" value={blockedUsers.length} tone="danger" onClick={() => setUsageFilter("blocked")} />
-          <UsageRiskTile label="Near hard cap" value={nearCapUsers.length} tone="warn" onClick={() => setUsageFilter("near_cap")} />
-          <UsageRiskTile label="Over included" value={overIncludedUsers.length} tone="orange" onClick={() => setUsageFilter("over_included")} />
-          <UsageRiskTile label="Needs review" value={watchUsers.length} tone="violet" onClick={() => setUsageFilter("watch")} />
+        <PremiumSettingsArt title="Platform Control Center" />
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-[0.16em]" style={{ color: "var(--color-vl-ink-faint)" }}>
+            Admin console
+          </p>
+          <h2 className="mt-2 text-[19px] font-bold leading-tight" style={{ color: "var(--color-vl-ink)" }}>
+            Platform Control Center
+          </h2>
+          <p className="mt-1.5 line-clamp-2 text-[12px] leading-relaxed" style={{ color: "var(--color-vl-ink-muted)" }}>
+            Search active accounts, adjust voice minute balances, change subscription tiers, or suspend/resume users.
+          </p>
         </div>
+        <span className="text-[11.5px] font-bold flex items-center gap-1" style={{ color: "var(--color-vl-coral-deep)" }}>
+          Manage Accounts &rarr;
+        </span>
+      </button>
 
-        <div className="grid gap-5 xl:grid-cols-[440px_minmax(0,1fr)] 2xl:grid-cols-[480px_minmax(0,1fr)]">
-          <div className="rounded-3xl border bg-white/62 p-4 shadow-sm" style={{ borderColor: "rgba(10,10,11,0.07)" }}>
-            <div className="mb-3 flex items-end justify-between gap-3">
-              <div>
-                <p className="text-[11px] font-bold uppercase tracking-[0.16em]" style={{ color: "var(--color-vl-ink-faint)" }}>
-                  Accounts
-                </p>
-                <p className="mt-1 text-[12px]" style={{ color: "var(--color-vl-ink-muted)" }}>
-                  {filteredUsers.length} visible of {data.users.length}
-                </p>
-              </div>
-              {inactiveUsers.length > 0 && (
-                <span className="rounded-lg bg-amber-50 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-amber-700">
-                  {inactiveUsers.length} need review
-                </span>
-              )}
-            </div>
-            <div className="relative">
-              <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Search by name, email, plan, or workspace..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="h-12 w-full rounded-2xl border bg-white/70 pl-11 pr-4 text-[13.5px] outline-none transition-all duration-200 focus:border-[#FF6B47]"
-                style={{ borderColor: "rgba(10,10,11,0.12)", color: "var(--color-vl-ink)" }}
-              />
-            </div>
-            <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
-              {([
-                ["all", "All"],
-                ["watch", "Review"],
-                ["over_included", "Over"],
-                ["near_cap", "Near cap"],
-                ["blocked", "Blocked"],
-              ] as const).map(([value, label]) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setUsageFilter(value)}
-                  className="rounded-xl border px-2.5 py-2 text-[10.5px] font-black uppercase tracking-[0.12em] transition hover:bg-white"
-                  style={{
-                    borderColor: usageFilter === value ? "rgba(255,107,71,0.34)" : "rgba(10,10,11,0.08)",
-                    background: usageFilter === value ? "rgba(255,107,71,0.10)" : "rgba(255,255,255,0.58)",
-                    color: usageFilter === value ? "var(--color-vl-coral-deep)" : "var(--color-vl-ink-muted)",
-                  }}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-            <div className="vl-scroll mt-3 max-h-[520px] space-y-2 overflow-y-auto pr-2">
-              {filteredUsers.map((user) => {
-                const isSelected = selectedUser?.id === user.id;
-                const status = user.subscription?.status ?? "none";
-                const statusTone =
-                  status === "active" ? "text-emerald-700 bg-emerald-50" :
-                  status === "past_due" || status === "inactive" || status === "canceled" ? "text-red-700 bg-red-50" :
-                  "text-amber-700 bg-amber-50";
-                return (
-                  <button
-                    key={user.id}
-                    type="button"
-                    className="w-full rounded-2xl border p-3.5 text-left transition hover:bg-white hover:shadow-sm"
-                    style={{
-                      borderColor: isSelected ? "rgba(255,107,71,0.34)" : "rgba(10,10,11,0.07)",
-                      background: isSelected ? "rgba(255,107,71,0.08)" : "rgba(255,255,255,0.66)",
-                    }}
-                    onClick={() => setSelectedUserId(user.id)}
-                  >
-                    <div className="flex items-start gap-3">
-                      <span
-                        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-[13px] font-black uppercase"
-                        style={{
-                          background: isSelected ? "rgba(255,107,71,0.14)" : "rgba(10,10,11,0.045)",
-                          color: isSelected ? "#D7402E" : "var(--color-vl-ink-muted)",
-                        }}
-                      >
-                        {(user.name || user.email).slice(0, 2)}
-                      </span>
-                      <div className="min-w-0">
-                        <p className="truncate text-[13.5px] font-bold" style={{ color: "var(--color-vl-ink)" }}>
-                          {user.name || user.email}
-                        </p>
-                        <p className="mt-0.5 truncate text-[11.5px]" title={user.email} style={{ color: "var(--color-vl-ink-muted)" }}>
-                          {user.email}
-                        </p>
-                        <p className="mt-0.5 truncate text-[11px]" title={user.organization?.name ?? "Workspace"} style={{ color: "var(--color-vl-ink-faint)" }}>
-                          {user.organization?.name ?? "Workspace"}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="mt-3 grid grid-cols-3 gap-2 text-[10.5px] font-bold uppercase tracking-widest">
-                      <span className="truncate rounded-lg bg-white/72 px-2 py-1 text-slate-600">
-                        {user.subscription?.plan ?? "trial"}
-                      </span>
-                      <span className="truncate rounded-lg bg-white/72 px-2 py-1 text-slate-600">
-                        {user.organization?.role ?? "no role"}
-                      </span>
-                      <span className={`truncate rounded-lg px-2 py-1 ${statusTone}`}>
-                        {status}
-                      </span>
-                    </div>
-                    <div className="mt-3">
-                      <UsageRiskBadge user={user} />
-                      <UsageMeter usage={user.usage} compact />
-                    </div>
-                  </button>
-                );
-              })}
-              {filteredUsers.length === 0 && (
-                <div className="rounded-2xl border border-dashed bg-white/40 p-6 text-center text-[13px] font-semibold text-slate-500">
-                  No accounts match the current search.
-                </div>
-              )}
-            </div>
-          </div>
-
-          {selectedUser && selectedDraft ? (
-            <div className="rounded-3xl border bg-white/75 p-5 shadow-sm" style={{ borderColor: "rgba(10,10,11,0.07)" }}>
-              <div className="flex flex-wrap items-start justify-between gap-4 border-b pb-4" style={{ borderColor: "rgba(10,10,11,0.06)" }}>
-                <div>
-                  <p className="text-[11px] font-bold uppercase tracking-[0.16em]" style={{ color: "var(--color-vl-ink-faint)" }}>
-                    Selected account
-                  </p>
-                  <h3 className="mt-1 text-[22px] font-bold leading-tight" style={{ color: "var(--color-vl-ink)" }}>
-                    {selectedUser.name || selectedUser.email}
-                  </h3>
-                  <p className="mt-1 text-[13px]" style={{ color: "var(--color-vl-ink-muted)" }}>
-                    {selectedUser.email} · {selectedUser.organization?.name ?? "Workspace"}
-                  </p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <BillingBadge tone={selectedUser.subscription?.status === "active" ? "ok" : "warn"} text={selectedUser.subscription?.status ?? "no subscription"} />
-                  <BillingBadge tone={selectedUser.isPlatformAdmin ? "ok" : "warn"} text={selectedUser.isPlatformAdmin ? "platform admin" : "standard user"} />
-                </div>
-              </div>
-
-              <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                <AdminStat label="Plan" value={selectedUser.subscription?.plan ?? "trial"} />
-                <AdminStat label="Role" value={selectedUser.organization?.role ?? "none"} />
-                <AdminStat label="Usage risk" value={usageRiskLabel(selectedUser.usage.risk)} />
-              </div>
-
-              <div className="mt-4 rounded-[24px] border bg-white/72 p-4 shadow-sm" style={{ borderColor: usageRiskColor(selectedUser.usage.risk).border }}>
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <p className="text-[11px] font-bold uppercase tracking-[0.16em]" style={{ color: "var(--color-vl-ink-faint)" }}>
-                      Voice usage this window
-                    </p>
-                    <p className="mt-1 text-[24px] font-black tabular-nums" style={{ color: "var(--color-vl-ink)" }}>
-                      {selectedUser.usage.voiceMinutes.toLocaleString()} min
-                    </p>
-                  </div>
-                  <UsageRiskBadge user={selectedUser} />
-                </div>
-                <UsageMeter usage={selectedUser.usage} />
-                <div className="mt-3 grid gap-2 sm:grid-cols-3">
-                  <AdminStat label="Included" value={formatMinutesLimit(selectedUser.usage.includedMinutes)} />
-                  <AdminStat label="Hard cap" value={formatMinutesLimit(selectedUser.usage.hardCapMinutes)} />
-                  <AdminStat label="Remaining cap" value={formatMinutesLimit(selectedUser.usage.remainingToHardCapMinutes)} />
-                </div>
-              </div>
-
-              <div className="mt-5">
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-[11px] font-bold uppercase tracking-[0.16em]" style={{ color: "var(--color-vl-ink-faint)" }}>
-                      Account actions
-                    </p>
-                    <p className="mt-1 text-[12px]" style={{ color: "var(--color-vl-ink-muted)" }}>
-                      Each action opens a confirmation modal before writing changes.
-                    </p>
-                  </div>
-                </div>
-                <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
-                <AdminActionTile
-                  label="Activate Pro"
-                  eyebrow="Subscription"
-                  description="Set plan to Pro and mark active."
-                  disabled={savingId === selectedUser.id}
-                  onClick={() => setActionModal({
-                    kind: "quick",
-                    title: "Activate Pro",
-                    description: `Activate Pro access for ${selectedUser.email}.`,
-                    confirmLabel: "Activate Pro",
-                    user: selectedUser,
-                    patch: { plan: "pro", status: "active" },
-                  })}
-                />
-                <AdminActionTile
-                  label="Grant Business"
-                  eyebrow="Subscription"
-                  description="Unlock Business plan access."
-                  disabled={savingId === selectedUser.id}
-                  onClick={() => setActionModal({
-                    kind: "quick",
-                    title: "Grant Business",
-                    description: `Grant Business access for ${selectedUser.email}.`,
-                    confirmLabel: "Grant Business",
-                    user: selectedUser,
-                    patch: { plan: "business", status: "active" },
-                  })}
-                />
-                <AdminActionTile
-                  label="Grant Admin Plan"
-                  eyebrow="Subscription"
-                  description="Give unlimited admin-plan access."
-                  disabled={savingId === selectedUser.id}
-                  onClick={() => setActionModal({
-                    kind: "quick",
-                    title: "Grant Admin Plan",
-                    description: `Grant unlimited admin-plan access for ${selectedUser.email}.`,
-                    confirmLabel: "Grant Admin Plan",
-                    user: selectedUser,
-                    patch: { plan: "admin", status: "active" },
-                  })}
-                />
-                <AdminActionTile
-                  label="Suspend Access"
-                  eyebrow="Access"
-                  description="Set status to inactive immediately."
-                  tone="danger"
-                  disabled={savingId === selectedUser.id}
-                  onClick={() => setActionModal({
-                    kind: "quick",
-                    title: "Suspend Access",
-                    description: `Suspend platform access for ${selectedUser.email}.`,
-                    confirmLabel: "Suspend Access",
-                    user: selectedUser,
-                    patch: { status: "inactive" },
-                    tone: "danger",
-                  })}
-                />
-                <AdminActionTile
-                  label="Change Role"
-                  eyebrow="Permissions"
-                  description="Assign owner, admin, manager, or operator."
-                  disabled={savingId === selectedUser.id}
-                  onClick={() => setActionModal({
-                    kind: "custom",
-                    title: "Change Role",
-                    description: `Update permissions for ${selectedUser.email}.`,
-                    confirmLabel: "Save Role",
-                    user: selectedUser,
-                    draft: { ...selectedDraft },
-                    fields: ["role"],
-                  })}
-                />
-                <AdminActionTile
-                  label="Configure Access"
-                  eyebrow="Custom"
-                  description="Edit plan, account status, and role together."
-                  disabled={savingId === selectedUser.id}
-                  onClick={() => setActionModal({
-                    kind: "custom",
-                    title: "Configure Access",
-                    description: `Edit plan, status, and role for ${selectedUser.email}.`,
-                    confirmLabel: "Save Access",
-                    user: selectedUser,
-                    draft: { ...selectedDraft },
-                    fields: ["plan", "status", "role"],
-                  })}
-                />
-                </div>
-              </div>
-
-              <div className="mt-5 border-t pt-4" style={{ borderColor: "rgba(10,10,11,0.06)" }}>
-                {actionMsg && <InlineStatus tone={actionMsg.tone} text={actionMsg.text} />}
-              </div>
-            </div>
-          ) : (
-            <div className="rounded-3xl border border-dashed bg-white/40 p-10 text-center text-[13px] font-semibold text-slate-500">
-              Select an account to take action.
-            </div>
-          )}
-
+      {/* 2. System Diagnostics Card */}
+      <button
+        type="button"
+        onClick={() => setDiagnosticsOpen(true)}
+        className="vl-panel group flex aspect-square min-h-[210px] flex-col justify-between overflow-hidden rounded-[28px] border p-5 text-left shadow-sm transition hover:-translate-y-1 hover:shadow-lg bg-white"
+        style={{ borderColor: "rgba(14,27,44,0.05)" }}
+      >
+        <PremiumSettingsArt title="System Diagnostics" />
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-[0.16em]" style={{ color: "var(--color-vl-ink-faint)" }}>
+            System health
+          </p>
+          <h2 className="mt-2 text-[19px] font-bold leading-tight" style={{ color: "var(--color-vl-ink)" }}>
+            System Diagnostics
+          </h2>
+          <p className="mt-1.5 line-clamp-2 text-[12px] leading-relaxed" style={{ color: "var(--color-vl-ink-muted)" }}>
+            Execute dynamic health checks. Monitor database latency, environment keys, and OpenAI/Gemini connectivity.
+          </p>
         </div>
-      </AdminPanel>
+        <span className="text-[11.5px] font-bold flex items-center gap-1" style={{ color: "var(--color-vl-coral-deep)" }}>
+          Run Health Check &rarr;
+        </span>
+      </button>
 
-      {actionModal && (
-        <AdminAccessModal
-          modal={actionModal}
-          saving={savingId === actionModal.user.id}
-          onClose={() => setActionModal(null)}
-          onConfirm={(patch) =>
-            void patchAccess(
-              actionModal.user,
-              patch,
-              `${actionModal.user.email} ${actionModal.kind === "quick" ? actionModal.title.toLowerCase() : "access updated"}.`,
-            )
-          }
+      {/* 3. Voice Engines Card */}
+      <button
+        type="button"
+        onClick={() => setEnginesOpen(true)}
+        className="vl-panel group flex aspect-square min-h-[210px] flex-col justify-between overflow-hidden rounded-[28px] border p-5 text-left shadow-sm transition hover:-translate-y-1 hover:shadow-lg bg-white"
+        style={{ borderColor: "rgba(14,27,44,0.05)" }}
+      >
+        <PremiumSettingsArt title="Voice Pipelines" />
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-[0.16em]" style={{ color: "var(--color-vl-ink-faint)" }}>
+            Pipelines
+          </p>
+          <h2 className="mt-2 text-[19px] font-bold leading-tight" style={{ color: "var(--color-vl-ink)" }}>
+            Voice Engines & Pipelines
+          </h2>
+          <p className="mt-1.5 line-clamp-2 text-[12px] leading-relaxed" style={{ color: "var(--color-vl-ink-muted)" }}>
+            Trace availability, capabilities, and configurations for real-time speech platforms and engines.
+          </p>
+        </div>
+        <span className="text-[11.5px] font-bold flex items-center gap-1" style={{ color: "var(--color-vl-coral-deep)" }}>
+          Check Engines &rarr;
+        </span>
+      </button>
+
+      {/* 4. Roles Card */}
+      <button
+        type="button"
+        onClick={() => setRolesOpen(true)}
+        className="vl-panel group flex aspect-square min-h-[210px] flex-col justify-between overflow-hidden rounded-[28px] border p-5 text-left shadow-sm transition hover:-translate-y-1 hover:shadow-lg bg-white"
+        style={{ borderColor: "rgba(14,27,44,0.05)" }}
+      >
+        <PremiumSettingsArt title="Workspace Roles" />
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-[0.16em]" style={{ color: "var(--color-vl-ink-faint)" }}>
+            Access policy
+          </p>
+          <h2 className="mt-2 text-[19px] font-bold leading-tight" style={{ color: "var(--color-vl-ink)" }}>
+            Workspace Roles & Policy
+          </h2>
+          <p className="mt-1.5 line-clamp-2 text-[12px] leading-relaxed" style={{ color: "var(--color-vl-ink-muted)" }}>
+            Configure and verify role-based permissions, administrative rules, and collaborative settings.
+          </p>
+        </div>
+        <span className="text-[11.5px] font-bold flex items-center gap-1" style={{ color: "var(--color-vl-coral-deep)" }}>
+          Review Policies &rarr;
+        </span>
+      </button>
+
+      {/* Modal overlays rendered conditionally */}
+      {controlCenterOpen && (
+        <AdminControlCenterModal
+          data={data}
+          loading={loading}
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
+          usageFilter={usageFilter}
+          setUsageFilter={setUsageFilter}
+          filteredUsers={filteredUsers}
+          selectedUser={selectedUser}
+          selectedUserId={selectedUserId}
+          setSelectedUserId={setSelectedUserId}
+          selectedDraft={selectedDraft}
+          savingId={savingId}
+          setSavingId={setSavingId}
+          actionMsg={actionMsg}
+          setActionMsg={setActionMsg}
+          actionModal={actionModal}
+          setActionModal={setActionModal}
+          patchAccess={patchAccess}
+          onClose={() => setControlCenterOpen(false)}
         />
       )}
 
       {diagnosticsOpen && (
-        <AdminDiagnosticsModal data={data} inactiveCount={inactiveUsers.length} onClose={() => setDiagnosticsOpen(false)} />
+        <AdminDiagnosticsModal token={token} onClose={() => setDiagnosticsOpen(false)} />
+      )}
+
+      {enginesOpen && (
+        <AdminVoiceEnginesModal data={data} onClose={() => setEnginesOpen(false)} />
+      )}
+
+      {rolesOpen && (
+        <AdminRolesModal data={data} onClose={() => setRolesOpen(false)} />
       )}
     </div>
   );
@@ -1680,14 +1477,42 @@ function UsageRiskTile({ label, value, tone, onClick }: { label: string; value: 
 }
 
 function AdminDiagnosticsModal({
-  data,
-  inactiveCount,
+  token,
   onClose,
 }: {
-  data: AdminOverview;
-  inactiveCount: number;
+  token: string | null;
   onClose: () => void;
 }) {
+  const [diagData, setDiagData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const runChecks = () => {
+    if (!token) {
+      setLoading(false);
+      setError("Sign in again to run diagnostics.");
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    fetch("/api/v1/admin/diagnostics", {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+      .then(async (r) => {
+        const payload = await r.json().catch(() => null);
+        if (!r.ok) throw new Error(payload?.error ?? "Diagnostics check failed.");
+        setDiagData(payload);
+      })
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : "Error executing diagnostics.");
+      })
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    runChecks();
+  }, [token]);
+
   return (
     <div className="fixed inset-0 z-80 flex items-center justify-center px-4 py-8">
       <button
@@ -1699,19 +1524,205 @@ function AdminDiagnosticsModal({
       <section
         role="dialog"
         aria-modal="true"
-        className="relative flex max-h-[88vh] w-full max-w-[1180px] flex-col overflow-hidden rounded-[28px] border bg-white shadow-2xl"
+        className="relative flex max-h-[88vh] w-full max-w-[960px] flex-col overflow-hidden rounded-[28px] border bg-[#FBF7F1] shadow-2xl"
         style={{ borderColor: "rgba(10,10,11,0.10)" }}
       >
-        <div className="flex flex-wrap items-start justify-between gap-4 border-b p-6" style={{ borderColor: "rgba(10,10,11,0.08)" }}>
+        <div className="flex flex-wrap items-start justify-between gap-4 border-b p-6 bg-white" style={{ borderColor: "rgba(10,10,11,0.08)" }}>
           <div>
             <p className="text-[11px] font-bold uppercase tracking-[0.16em]" style={{ color: "var(--color-vl-ink-faint)" }}>
               Admin diagnostics
             </p>
             <h2 className="mt-2 text-[28px] font-bold leading-tight" style={{ color: "var(--color-vl-ink)" }}>
-              System health and permissions
+              System Health & Connectivity
             </h2>
             <p className="mt-2 max-w-155 text-[13px] leading-relaxed" style={{ color: "var(--color-vl-ink-muted)" }}>
-              Read-only operational context. Access changes stay in the account action modals.
+              Live verification of cloud services, database channels, encryption structures, and internal caches.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className="vl-btn-outline px-4 py-2 text-[12.5px] inline-flex items-center gap-2 font-bold bg-white"
+              onClick={runChecks}
+              disabled={loading}
+            >
+              {loading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              Re-test Services
+            </button>
+            <button
+              type="button"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border bg-white/80 text-slate-500 transition hover:bg-white hover:text-slate-900"
+              style={{ borderColor: "rgba(10,10,11,0.10)" }}
+              onClick={onClose}
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+
+        <div className="vl-scroll overflow-y-auto p-6 space-y-6">
+          {loading ? (
+            <div className="flex flex-col items-center justify-center py-20 gap-3">
+              <Loader2 className="w-8 h-8 animate-spin text-[#FF6B47]" />
+              <p className="text-[14px] font-bold" style={{ color: "var(--color-vl-ink-muted)" }}>Running system connectivity checks...</p>
+            </div>
+          ) : error ? (
+            <div className="p-4 bg-red-50 border border-red-100 rounded-2xl flex items-center gap-2 text-red-600 text-[13px] font-medium">
+              <AlertCircle className="h-4.5 w-4.5 shrink-0" />
+              <span>{error}</span>
+            </div>
+          ) : (
+            <div className="grid gap-6 md:grid-cols-2">
+              {/* Service Latencies */}
+              <div className="rounded-[24px] border bg-white p-5 shadow-xs" style={{ borderColor: "rgba(10,10,11,0.06)" }}>
+                <h3 className="text-[15px] font-black mb-4 flex items-center gap-2" style={{ color: "var(--color-vl-ink)" }}>
+                  <Activity className="h-4.5 w-4.5 text-[#FF6B47]" />
+                  Live API Latency
+                </h3>
+                <div className="space-y-3.5">
+                  {/* Database */}
+                  <div className="flex items-center justify-between rounded-xl p-3" style={{ background: diagData.database?.status === "healthy" ? "rgba(16,185,129,0.05)" : "rgba(239,68,68,0.05)" }}>
+                    <div>
+                      <p className="text-[13px] font-bold">PostgreSQL Channel</p>
+                      <p className="text-[11px] font-semibold text-slate-400">Database select latency</p>
+                    </div>
+                    <div className="text-right">
+                      <span className={`text-[11px] font-extrabold uppercase px-2 py-0.5 rounded-md ${diagData.database?.status === "healthy" ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-800"}`}>
+                        {diagData.database?.status}
+                      </span>
+                      <p className="text-[13px] font-black mt-1 tabular-nums">{diagData.database?.latencyMs} ms</p>
+                    </div>
+                  </div>
+
+                  {/* Square API */}
+                  <div className="flex items-center justify-between rounded-xl p-3" style={{ background: diagData.squareApi?.status === "healthy" ? "rgba(16,185,129,0.05)" : "rgba(239,68,68,0.05)" }}>
+                    <div>
+                      <p className="text-[13px] font-bold">Square POS API</p>
+                      <p className="text-[11px] font-semibold text-slate-400">Locations lookup latency</p>
+                    </div>
+                    <div className="text-right">
+                      <span className={`text-[11px] font-extrabold uppercase px-2 py-0.5 rounded-md ${diagData.squareApi?.status === "healthy" ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-800"}`}>
+                        {diagData.squareApi?.status}
+                      </span>
+                      <p className="text-[13px] font-black mt-1 tabular-nums">{diagData.squareApi?.latencyMs} ms</p>
+                    </div>
+                  </div>
+
+                  {/* OpenAI API */}
+                  <div className="flex items-center justify-between rounded-xl p-3" style={{ background: diagData.openaiApi?.status === "healthy" ? "rgba(16,185,129,0.05)" : "rgba(239,68,68,0.05)" }}>
+                    <div>
+                      <p className="text-[13px] font-bold">OpenAI API Endpoint</p>
+                      <p className="text-[11px] font-semibold text-slate-400">Models metadata latency</p>
+                    </div>
+                    <div className="text-right">
+                      <span className={`text-[11px] font-extrabold uppercase px-2 py-0.5 rounded-md ${diagData.openaiApi?.status === "healthy" ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-800"}`}>
+                        {diagData.openaiApi?.status}
+                      </span>
+                      <p className="text-[13px] font-black mt-1 tabular-nums">{diagData.openaiApi?.latencyMs} ms</p>
+                    </div>
+                  </div>
+
+                  {/* Gemini API */}
+                  <div className="flex items-center justify-between rounded-xl p-3" style={{ background: diagData.geminiApi?.status === "healthy" ? "rgba(16,185,129,0.05)" : "rgba(239,68,68,0.05)" }}>
+                    <div>
+                      <p className="text-[13px] font-bold">Google Gemini API</p>
+                      <p className="text-[11px] font-semibold text-slate-400">BidiLive models latency</p>
+                    </div>
+                    <div className="text-right">
+                      <span className={`text-[11px] font-extrabold uppercase px-2 py-0.5 rounded-md ${diagData.geminiApi?.status === "healthy" ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-800"}`}>
+                        {diagData.geminiApi?.status}
+                      </span>
+                      <p className="text-[13px] font-black mt-1 tabular-nums">{diagData.geminiApi?.latencyMs} ms</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Environment Checklist */}
+              <div className="rounded-[24px] border bg-white p-5 shadow-xs flex flex-col justify-between" style={{ borderColor: "rgba(10,10,11,0.06)" }}>
+                <div>
+                  <h3 className="text-[15px] font-black mb-4 flex items-center gap-2" style={{ color: "var(--color-vl-ink)" }}>
+                    <ShieldCheck className="h-4.5 w-4.5 text-emerald-600" />
+                    Environment Credentials
+                  </h3>
+                  <div className="grid grid-cols-2 gap-2 text-[12.5px] font-semibold text-slate-700">
+                    <div className="flex items-center gap-2 rounded-xl border p-3 bg-slate-50" style={{ borderColor: "rgba(10,10,11,0.04)" }}>
+                      <span className={`h-2.5 w-2.5 rounded-full ${diagData.env?.databaseUrlSet ? "bg-emerald-500" : "bg-red-500"}`} />
+                      <span>DATABASE_URL</span>
+                    </div>
+                    <div className="flex items-center gap-2 rounded-xl border p-3 bg-slate-50" style={{ borderColor: "rgba(10,10,11,0.04)" }}>
+                      <span className={`h-2.5 w-2.5 rounded-full ${diagData.env?.secretsEncryptionKeySet ? "bg-emerald-500" : "bg-red-500"}`} />
+                      <span>ENCRYPTION_KEY</span>
+                    </div>
+                    <div className="flex items-center gap-2 rounded-xl border p-3 bg-slate-50" style={{ borderColor: "rgba(10,10,11,0.04)" }}>
+                      <span className={`h-2.5 w-2.5 rounded-full ${diagData.env?.openaiApiKeySet ? "bg-emerald-500" : "bg-red-500"}`} />
+                      <span>OPENAI_API_KEY</span>
+                    </div>
+                    <div className="flex items-center gap-2 rounded-xl border p-3 bg-slate-50" style={{ borderColor: "rgba(10,10,11,0.04)" }}>
+                      <span className={`h-2.5 w-2.5 rounded-full ${diagData.env?.googleGeminiApiKeySet ? "bg-emerald-500" : "bg-red-500"}`} />
+                      <span>GEMINI_API_KEY</span>
+                    </div>
+                    <div className="flex items-center gap-2 rounded-xl border p-3 bg-slate-50" style={{ borderColor: "rgba(10,10,11,0.04)" }}>
+                      <span className={`h-2.5 w-2.5 rounded-full ${diagData.env?.squareAppIdSet ? "bg-emerald-500" : "bg-red-500"}`} />
+                      <span>SQUARE_APP_ID</span>
+                    </div>
+                    <div className="flex items-center gap-2 rounded-xl border p-3 bg-slate-50" style={{ borderColor: "rgba(10,10,11,0.04)" }}>
+                      <span className={`h-2.5 w-2.5 rounded-full ${diagData.env?.squareAppSecretSet ? "bg-emerald-500" : "bg-red-500"}`} />
+                      <span>SQUARE_SECRET</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4 pt-4 border-t" style={{ borderColor: "rgba(10,10,11,0.04)" }}>
+                  <div className="flex justify-between text-[13px] font-bold">
+                    <span style={{ color: "var(--color-vl-ink-muted)" }}>Active cached venues:</span>
+                    <span className="tabular-nums" style={{ color: "var(--color-vl-coral-deep)" }}>{diagData.caches?.credentialsSize} credentials</span>
+                  </div>
+                  <div className="flex justify-between text-[13px] font-bold mt-1.5">
+                    <span style={{ color: "var(--color-vl-ink-muted)" }}>Active cached menus:</span>
+                    <span className="tabular-nums" style={{ color: "var(--color-vl-coral-deep)" }}>{diagData.caches?.catalogSize} catalogs</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function AdminVoiceEnginesModal({
+  data,
+  onClose,
+}: {
+  data: AdminOverview;
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-80 flex items-center justify-center px-4 py-8">
+      <button
+        type="button"
+        aria-label="Close voice engines"
+        className="absolute inset-0 bg-slate-950/35 backdrop-blur-sm"
+        onClick={onClose}
+      />
+      <section
+        role="dialog"
+        aria-modal="true"
+        className="relative flex max-h-[85vh] w-full max-w-[800px] flex-col overflow-hidden rounded-[28px] border bg-[#FBF7F1] shadow-2xl"
+        style={{ borderColor: "rgba(10,10,11,0.10)" }}
+      >
+        <div className="flex flex-wrap items-start justify-between gap-4 border-b p-6 bg-white" style={{ borderColor: "rgba(10,10,11,0.08)" }}>
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-[0.16em]" style={{ color: "var(--color-vl-ink-faint)" }}>
+              Voice pipelines
+            </p>
+            <h2 className="mt-2 text-[28px] font-bold leading-tight" style={{ color: "var(--color-vl-ink)" }}>
+              Voice Engines & Status
+            </h2>
+            <p className="mt-2 max-w-150 text-[13px] leading-relaxed" style={{ color: "var(--color-vl-ink-muted)" }}>
+              Verify connectivity, availability, and active deployment parameters for the real-time pipeline adapters.
             </p>
           </div>
           <button
@@ -1725,111 +1736,482 @@ function AdminDiagnosticsModal({
         </div>
 
         <div className="vl-scroll overflow-y-auto p-6">
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-            <AdminMetricCard label="Users" value={data.totals.users} icon={<UsersRound className="h-5 w-5" />} bgColor="bg-blue-50" textColor="text-blue-600" />
-            <AdminMetricCard label="Venues" value={data.totals.venues} icon={<Store className="h-5 w-5" />} bgColor="bg-emerald-50" textColor="text-emerald-600" />
-            <AdminMetricCard label="Assistants" value={data.totals.assistants} icon={<Sparkles className="h-5 w-5" />} bgColor="bg-orange-50" textColor="text-orange-500" />
-            <AdminMetricCard label="Voice Min" value={data.totals.voiceMinutes} icon={<Mic className="h-5 w-5" />} bgColor="bg-purple-50" textColor="text-purple-600" />
-            <AdminMetricCard label="Commands" value={data.totals.toolCalls} icon={<Activity className="h-5 w-5" />} bgColor="bg-teal-50" textColor="text-teal-600" />
-            <AdminMetricCard label="Attention" value={inactiveCount} icon={<AlertCircle className="h-5 w-5" />} bgColor={inactiveCount > 0 ? "bg-red-50" : "bg-gray-50"} textColor={inactiveCount > 0 ? "text-red-500" : "text-gray-500"} isFailure={inactiveCount > 0} />
-          </div>
-
-          <div className="mt-6 grid gap-5 lg:grid-cols-[1.15fr_0.85fr]">
-            <div className="rounded-3xl border bg-white/72 p-5 shadow-sm" style={{ borderColor: "rgba(10,10,11,0.07)" }}>
-              <div className="mb-4 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2.5">
-                  <KeyRound className="h-4 w-4 text-slate-500" />
-                  <h3 className="text-[15px] font-bold" style={{ color: "var(--color-vl-ink)" }}>Voice engines</h3>
-                </div>
-                <BillingBadge tone="ok" text={`${data.pipelines.length} engines`} />
-              </div>
-              <div className="vl-scroll grid max-h-80 gap-3 overflow-y-auto pr-2 sm:grid-cols-2">
-                {data.pipelines.map((pipeline) => {
-                  const isLive = pipeline.status === "available" || pipeline.status === "experimental";
-                  return (
-                    <div key={pipeline.provider} className="rounded-2xl border bg-white/70 p-4" style={{ borderColor: "rgba(10,10,11,0.06)" }}>
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="truncate text-[13px] font-bold" style={{ color: "var(--color-vl-ink)" }}>{pipeline.displayName}</p>
-                          <p className="mt-1 truncate text-[10px] font-mono font-semibold uppercase tracking-wider" style={{ color: "var(--color-vl-ink-muted)" }}>{pipeline.provider}</p>
-                        </div>
-                        <span className={`mt-1 h-3 w-3 shrink-0 rounded-[4px] ${isLive ? "bg-emerald-500" : "bg-slate-300"}`} />
-                      </div>
-                      {pipeline.reason && (
-                        <p className="mt-3 line-clamp-2 border-t pt-3 text-[11.5px] leading-relaxed" style={{ borderColor: "rgba(10,10,11,0.04)", color: "var(--color-vl-ink-muted)" }}>{pipeline.reason}</p>
-                      )}
+          <div className="grid gap-4 sm:grid-cols-2">
+            {data.pipelines.map((pipeline) => {
+              const isLive = pipeline.status === "available" || pipeline.status === "experimental";
+              return (
+                <div key={pipeline.provider} className="rounded-2xl border bg-white p-4 flex flex-col justify-between" style={{ borderColor: "rgba(10,10,11,0.06)" }}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-[14px] font-black" style={{ color: "var(--color-vl-ink)" }}>{pipeline.displayName}</p>
+                      <p className="mt-0.5 truncate text-[10.5px] font-mono font-semibold uppercase tracking-wider" style={{ color: "var(--color-vl-ink-muted)" }}>{pipeline.provider}</p>
                     </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="rounded-3xl border bg-white/72 p-5 shadow-sm" style={{ borderColor: "rgba(10,10,11,0.07)" }}>
-              <div className="mb-4 flex items-center gap-2.5">
-                <ShieldCheck className="h-4 w-4 text-slate-500" />
-                <h3 className="text-[15px] font-bold" style={{ color: "var(--color-vl-ink)" }}>Workspace roles</h3>
-              </div>
-              <div className="vl-scroll grid max-h-80 gap-3 overflow-y-auto pr-2">
-                {data.roles.map((role) => (
-                  <div key={role.role} className="rounded-2xl border bg-white/70 p-4" style={{ borderColor: "rgba(10,10,11,0.06)" }}>
-                    <div className="flex items-center gap-2.5">
-                      <Lock className="h-3.5 w-3.5 text-slate-400" />
-                      <p className="text-[13px] font-bold" style={{ color: "var(--color-vl-ink)" }}>{role.label}</p>
-                    </div>
-                    <p className="mt-2 text-[11.5px] leading-relaxed" style={{ color: "var(--color-vl-ink-muted)" }}>
-                      {role.permissions.map((p) => p.replace(/_/g, " ")).join(", ")}
-                    </p>
+                    <span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${isLive ? "bg-emerald-500" : "bg-slate-300"}`} />
                   </div>
-                ))}
-              </div>
-            </div>
+                  {pipeline.reason && (
+                    <p className="mt-3.5 border-t pt-3 text-[11.5px] leading-relaxed font-semibold" style={{ borderColor: "rgba(10,10,11,0.04)", color: "var(--color-vl-ink-muted)" }}>{pipeline.reason}</p>
+                  )}
+                </div>
+              );
+            })}
           </div>
-
-          {(data.topTools.length > 0 || data.recentErrors.length > 0) && (
-            <div className="mt-5 grid gap-5 lg:grid-cols-2">
-              {data.topTools.length > 0 && (
-                <div className="rounded-3xl border bg-white/72 p-5 shadow-sm" style={{ borderColor: "rgba(10,10,11,0.07)" }}>
-                  <h3 className="text-[15px] font-bold" style={{ color: "var(--color-vl-ink)" }}>Top commands</h3>
-                  <div className="mt-4 grid gap-2">
-                    {data.topTools.slice(0, 8).map((tool) => (
-                      <div key={tool.toolName} className="flex items-center justify-between gap-3 rounded-2xl border bg-white/70 px-4 py-2 text-[12.5px]" style={{ borderColor: "rgba(10,10,11,0.06)" }}>
-                        <span className="font-semibold capitalize text-slate-700">{tool.toolName.replace(/_/g, " ")}</span>
-                        <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[11.5px] font-bold text-slate-600 tabular-nums">{tool.count}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {data.recentErrors.length > 0 && (
-                <div className="overflow-hidden rounded-3xl border border-slate-800 bg-[#0A0E17] font-mono text-[12.5px] leading-relaxed shadow-lg">
-                  <div className="flex items-center justify-between border-b border-slate-800 bg-[#111622] px-4 py-3">
-                    <span className="font-bold uppercase tracking-wider text-slate-400 text-xs">Recent failures</span>
-                    <BillingBadge tone="warn" text={`${data.recentErrors.length} events`} />
-                  </div>
-                  <div className="vl-scroll max-h-78 space-y-3 overflow-y-auto p-4">
-                    {data.recentErrors.slice(0, 10).map((err, index) => (
-                      <div key={`${err.createdAt}-${index}`} className="border-b border-slate-900/50 pb-2.5 last:border-0 last:pb-0">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <span className="font-semibold text-[#FF6B47]">{err.email ?? "Unknown User"}</span>
-                          <span className="text-xs font-semibold text-slate-600">{new Date(err.createdAt).toLocaleTimeString()}</span>
-                        </div>
-                        <p className="mt-1 text-slate-400">
-                          <span className="mr-2 rounded-md border border-slate-800 bg-slate-900 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider text-slate-300">{err.toolName.replace(/_/g, " ")}</span>
-                          {err.errorMessage ?? "Unspecified error details."}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
         </div>
       </section>
     </div>
   );
 }
+
+function AdminRolesModal({
+  data,
+  onClose,
+}: {
+  data: AdminOverview;
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-80 flex items-center justify-center px-4 py-8">
+      <button
+        type="button"
+        aria-label="Close security roles"
+        className="absolute inset-0 bg-slate-950/35 backdrop-blur-sm"
+        onClick={onClose}
+      />
+      <section
+        role="dialog"
+        aria-modal="true"
+        className="relative flex max-h-[85vh] w-full max-w-[800px] flex-col overflow-hidden rounded-[28px] border bg-[#FBF7F1] shadow-2xl"
+        style={{ borderColor: "rgba(10,10,11,0.10)" }}
+      >
+        <div className="flex flex-wrap items-start justify-between gap-4 border-b p-6 bg-white" style={{ borderColor: "rgba(10,10,11,0.08)" }}>
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-[0.16em]" style={{ color: "var(--color-vl-ink-faint)" }}>
+              Access policy
+            </p>
+            <h2 className="mt-2 text-[28px] font-bold leading-tight" style={{ color: "var(--color-vl-ink)" }}>
+              Workspace Roles & Policy
+            </h2>
+            <p className="mt-2 max-w-150 text-[13px] leading-relaxed" style={{ color: "var(--color-vl-ink-muted)" }}>
+              System roles and granular policy sets mapped across collaboration, reporting, POS ordering, and inventory adjustments.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border bg-white/80 text-slate-500 transition hover:bg-white hover:text-slate-900"
+            style={{ borderColor: "rgba(10,10,11,0.10)" }}
+            onClick={onClose}
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="vl-scroll overflow-y-auto p-6">
+          <div className="grid gap-4 sm:grid-cols-2">
+            {data.roles.map((role) => (
+              <div key={role.role} className="rounded-2xl border bg-white p-4" style={{ borderColor: "rgba(10,10,11,0.06)" }}>
+                <div className="flex items-center gap-2.5 mb-2">
+                  <Lock className="h-4 w-4 text-slate-400" />
+                  <p className="text-[14px] font-black" style={{ color: "var(--color-vl-ink)" }}>{role.label}</p>
+                </div>
+                <div className="flex flex-wrap gap-1.5 mt-2 pt-2 border-t" style={{ borderColor: "rgba(10,10,11,0.04)" }}>
+                  {role.permissions.map((p) => (
+                    <span key={p} className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-50 border capitalize text-slate-500" style={{ borderColor: "rgba(10,10,11,0.04)" }}>
+                      {p.replace(/_/g, " ")}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function AdminControlCenterModal({
+  data,
+  loading,
+  searchQuery,
+  setSearchQuery,
+  usageFilter,
+  setUsageFilter,
+  filteredUsers,
+  selectedUser,
+  selectedUserId,
+  setSelectedUserId,
+  selectedDraft,
+  savingId,
+  setSavingId,
+  actionMsg,
+  setActionMsg,
+  actionModal,
+  setActionModal,
+  patchAccess,
+  onClose,
+}: {
+  data: AdminOverview;
+  loading: boolean;
+  searchQuery: string;
+  setSearchQuery: (q: string) => void;
+  usageFilter: string;
+  setUsageFilter: (f: any) => void;
+  filteredUsers: AdminUserAccess[];
+  selectedUser: AdminUserAccess | null;
+  selectedUserId: number | null;
+  setSelectedUserId: (id: number | null) => void;
+  selectedDraft: any;
+  savingId: number | null;
+  setSavingId: (id: number | null) => void;
+  actionMsg: { tone: "ok" | "error"; text: string } | null;
+  setActionMsg: (msg: any) => void;
+  actionModal: AdminActionModalState | null;
+  setActionModal: (state: any) => void;
+  patchAccess: any;
+  onClose: () => void;
+}) {
+  const inactiveUsers = data.users.filter((user) => ["inactive", "canceled", "past_due"].includes(user.subscription?.status ?? ""));
+  const blockedUsers = data.users.filter((user) => user.usage.risk === "blocked");
+  const nearCapUsers = data.users.filter((user) => user.usage.risk === "near_cap");
+  const overIncludedUsers = data.users.filter((user) => user.usage.risk === "over_included");
+  const watchUsers = data.users.filter((user) => user.usage.risk !== "ok");
+
+  return (
+    <div className="fixed inset-0 z-80 flex items-center justify-center px-4 py-8">
+      <button
+        type="button"
+        aria-label="Close platform control"
+        className="absolute inset-0 bg-slate-950/35 backdrop-blur-sm"
+        onClick={onClose}
+      />
+      <section
+        role="dialog"
+        aria-modal="true"
+        className="relative flex max-h-[90vh] w-full max-w-[1240px] flex-col overflow-hidden rounded-[28px] border bg-[#FBF7F1] shadow-2xl"
+        style={{ borderColor: "rgba(10,10,11,0.10)" }}
+      >
+        <div className="flex flex-wrap items-start justify-between gap-4 border-b p-6 bg-white" style={{ borderColor: "rgba(10,10,11,0.08)" }}>
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-[0.16em]" style={{ color: "var(--color-vl-ink-faint)" }}>
+              Admin console
+            </p>
+            <h2 className="mt-2 text-[28px] font-bold leading-tight" style={{ color: "var(--color-vl-ink)" }}>
+              Platform Control Center
+            </h2>
+            <p className="mt-2 max-w-180 text-[13px] leading-relaxed" style={{ color: "var(--color-vl-ink-muted)" }}>
+              Review workspace plans, change sub-limits, toggle suspensions, and manage platform-wide customer success.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border bg-white/80 text-slate-500 transition hover:bg-white hover:text-slate-900"
+            style={{ borderColor: "rgba(10,10,11,0.10)" }}
+            onClick={onClose}
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="vl-scroll overflow-y-auto p-6 space-y-5">
+          {/* Quick Filter Tiles (Uncrowded) */}
+          <div className="grid gap-3 grid-cols-2 md:grid-cols-4">
+            <UsageRiskTile label="Blocked at cap" value={blockedUsers.length} tone="danger" onClick={() => setUsageFilter("blocked")} />
+            <UsageRiskTile label="Near hard cap" value={nearCapUsers.length} tone="warn" onClick={() => setUsageFilter("near_cap")} />
+            <UsageRiskTile label="Over included" value={overIncludedUsers.length} tone="orange" onClick={() => setUsageFilter("over_included")} />
+            <UsageRiskTile label="Needs review" value={watchUsers.length} tone="violet" onClick={() => setUsageFilter("watch")} />
+          </div>
+
+          {/* Accounts & Form */}
+          <div className="grid gap-5 lg:grid-cols-[440px_minmax(0,1fr)] 2xl:grid-cols-[460px_minmax(0,1fr)] pb-2">
+            {/* Accounts Panel */}
+            <div className="rounded-3xl border bg-white p-4 shadow-xs" style={{ borderColor: "rgba(10,10,11,0.06)" }}>
+              <div className="mb-3 flex items-end justify-between gap-3">
+                <div>
+                  <p className="text-[11px] font-black uppercase tracking-[0.16em]" style={{ color: "var(--color-vl-ink-faint)" }}>
+                    Account Registry
+                  </p>
+                  <p className="mt-1 text-[11.5px] font-semibold" style={{ color: "var(--color-vl-ink-muted)" }}>
+                    {filteredUsers.length} visible of {data.users.length} total
+                  </p>
+                </div>
+                {inactiveUsers.length > 0 && (
+                  <span className="rounded-lg bg-amber-50 px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-amber-700">
+                    {inactiveUsers.length} need review
+                  </span>
+                )}
+              </div>
+
+              <div className="relative">
+                <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search name, email, plan, org..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="h-12 w-full rounded-2xl border bg-slate-50 pl-11 pr-4 text-[13px] outline-none transition-all duration-200 focus:border-[#FF6B47] focus:bg-white font-semibold"
+                  style={{ borderColor: "rgba(10,10,11,0.08)", color: "var(--color-vl-ink)" }}
+                />
+              </div>
+
+              <div className="mt-3 grid grid-cols-5 gap-1.5">
+                {([
+                  ["all", "All"],
+                  ["watch", "Review"],
+                  ["over", "Over"],
+                  ["near_cap", "Near"],
+                  ["blocked", "Block"],
+                ] as const).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setUsageFilter(value === "over" ? "over_included" : value)}
+                    className="rounded-xl border py-2 text-[10px] font-black uppercase tracking-[0.12em] transition hover:bg-white"
+                    style={{
+                      borderColor: (value === "over" ? usageFilter === "over_included" : usageFilter === value) ? "rgba(255,107,71,0.34)" : "rgba(10,10,11,0.06)",
+                      background: (value === "over" ? usageFilter === "over_included" : usageFilter === value) ? "rgba(255,107,71,0.08)" : "rgba(255,255,255,0.58)",
+                      color: (value === "over" ? usageFilter === "over_included" : usageFilter === value) ? "var(--color-vl-coral-deep)" : "var(--color-vl-ink-muted)",
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="vl-scroll mt-3.5 max-h-[460px] space-y-2 overflow-y-auto pr-1">
+                {filteredUsers.length === 0 ? (
+                  <p className="text-center text-[12.5px] py-10 font-bold" style={{ color: "var(--color-vl-ink-muted)" }}>
+                    No accounts match filters.
+                  </p>
+                ) : (
+                  filteredUsers.map((user) => {
+                    const isSelected = selectedUser?.id === user.id;
+                    const status = user.subscription?.status ?? "none";
+                    const statusTone =
+                      status === "active" ? "text-emerald-700 bg-emerald-50" :
+                      status === "past_due" || status === "inactive" || status === "canceled" ? "text-red-700 bg-red-50" :
+                      "text-amber-700 bg-amber-50";
+                    return (
+                      <button
+                        key={user.id}
+                        type="button"
+                        className="w-full rounded-2xl border p-3.5 text-left transition hover:bg-white hover:shadow-xs"
+                        style={{
+                          borderColor: isSelected ? "rgba(255,107,71,0.34)" : "rgba(10,10,11,0.06)",
+                          background: isSelected ? "rgba(255,107,71,0.08)" : "rgba(255,255,255,0.66)",
+                        }}
+                        onClick={() => setSelectedUserId(user.id)}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-[13.5px] font-bold" style={{ color: "var(--color-vl-ink)" }}>
+                              {user.name || "Unnamed user"}
+                            </p>
+                            <p className="mt-0.5 truncate text-[11.5px] font-semibold" style={{ color: "var(--color-vl-ink-muted)" }}>
+                              {user.email}
+                            </p>
+                          </div>
+                          <span className={`rounded-lg px-2 py-0.5 text-[9.5px] font-black uppercase tracking-[0.10em] ${statusTone}`}>
+                            {status}
+                          </span>
+                        </div>
+                        <div className="mt-3.5 border-t pt-3 flex items-center justify-between text-[11px] font-bold" style={{ borderColor: "rgba(10,10,11,0.04)" }}>
+                          <span style={{ color: "var(--color-vl-ink-muted)" }}>
+                            {user.organization?.name || "Personal Workspace"}
+                          </span>
+                          <span className="tabular-nums" style={{ color: user.usage.risk === "blocked" ? "var(--color-vl-danger)" : user.usage.risk !== "ok" ? "var(--color-vl-coral-deep)" : "var(--color-vl-ink-muted)" }}>
+                            {user.usage.voiceMinutes} / {user.usage.includedMinutes} min
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+
+            {/* Account Details Form */}
+            <div className="rounded-3xl border bg-white p-5 shadow-xs flex flex-col justify-between" style={{ borderColor: "rgba(10,10,11,0.06)" }}>
+              {selectedUser ? (
+                <div className="space-y-5">
+                  <div className="border-b pb-4 flex justify-between items-start gap-4" style={{ borderColor: "rgba(10,10,11,0.04)" }}>
+                    <div>
+                      <h3 className="text-[17px] font-black" style={{ color: "var(--color-vl-ink)" }}>
+                        {selectedUser.name || "User Details"}
+                      </h3>
+                      <p className="text-[12px] font-semibold mt-0.5" style={{ color: "var(--color-vl-ink-muted)" }}>
+                        Member active on secure endpoints
+                      </p>
+                    </div>
+                    {selectedUser.usage.risk !== "ok" && (
+                      <span className="rounded-lg bg-red-50 text-red-700 px-2 py-1 text-[10px] font-black uppercase tracking-wider">
+                        {selectedUser.usage.risk} Risk
+                      </span>
+                    )}
+                  </div>
+
+                  {actionMsg && (
+                    <div className={`p-4 rounded-2xl border text-[13px] font-bold leading-relaxed flex items-center gap-2 ${actionMsg.tone === "ok" ? "bg-emerald-50 border-emerald-100 text-emerald-800" : "bg-red-50 border-red-100 text-red-800"}`}>
+                      {actionMsg.tone === "ok" ? <CheckCircle2 className="h-4.5 w-4.5 shrink-0 text-emerald-600" /> : <AlertCircle className="h-4.5 w-4.5 shrink-0 text-red-600" />}
+                      <span>{actionMsg.text}</span>
+                    </div>
+                  )}
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <AdminStat label="Email ID" value={selectedUser.email} />
+                    <AdminStat label="Workspace Organization" value={selectedUser.organization?.name || "Personal Account"} />
+                    <AdminStat label="Square POS Channels" value={selectedUser.organization ? "Workspace active connection" : "Personal Workspace channel"} />
+                    <AdminStat label="Total Voice Minutes" value={`${selectedUser.usage.voiceMinutes} mins utilized`} />
+                  </div>
+
+                  <div className="border-t pt-4 space-y-4" style={{ borderColor: "rgba(10,10,11,0.04)" }}>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <AdminSelect
+                        label="Subscription Tier"
+                        value={selectedDraft?.plan || "trial"}
+                        options={["trial", "starter", "professional", "premium", "enterprise", "admin"]}
+                        onChange={(val) =>
+                          setActionModal({
+                            kind: "quick",
+                            user: selectedUser,
+                            title: "Change subscription",
+                            description: `Convert this account's core tier to ${val.toUpperCase()}? This instantly recalculates voice minute boundaries, allowed tools, and server integrations.`,
+                            confirmLabel: "Change Plan",
+                            patch: { plan: val },
+                          })
+                        }
+                      />
+                      <AdminSelect
+                        label="Subscription Status"
+                        value={selectedDraft?.status || "trialing"}
+                        options={["trialing", "active", "past_due", "canceled", "inactive"]}
+                        onChange={(val) =>
+                          setActionModal({
+                            kind: "quick",
+                            user: selectedUser,
+                            title: "Change billing status",
+                            description: `Convert billing state to ${val.toUpperCase()}? Marking as past_due, canceled, or inactive blocks assistant initialization until settled.`,
+                            confirmLabel: "Change Status",
+                            patch: { status: val },
+                          })
+                        }
+                      />
+                    </div>
+
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <AdminSelect
+                        label="Organization Role"
+                        value={selectedDraft?.role || "owner"}
+                        options={["owner", "admin", "member"]}
+                        onChange={(val) =>
+                          setActionModal({
+                            kind: "quick",
+                            user: selectedUser,
+                            title: "Change workspace role",
+                            description: `Convert organization role to ${val.toUpperCase()}? This will update workspace permissions and access parameters for collaborative systems.`,
+                            confirmLabel: "Change Role",
+                            patch: { role: val },
+                          })
+                        }
+                      />
+
+                      {/* Manual reset / override controls */}
+                      <div className="flex flex-col justify-end">
+                        <span className="text-[10px] font-black uppercase tracking-[0.14em] mb-1.5" style={{ color: "var(--color-vl-ink-faint)" }}>Quick overrides</span>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            className="vl-btn-outline w-full py-2.5 rounded-xl font-bold text-[12px] inline-flex items-center justify-center gap-1 bg-slate-50 hover:bg-white text-slate-700"
+                            style={{ borderColor: "rgba(10,10,11,0.06)" }}
+                            onClick={() =>
+                              setActionModal({
+                                kind: "quick",
+                                user: selectedUser,
+                                title: "Reset voice minutes",
+                                description: `Instantly clear voice minute accumulator for ${selectedUser.name}? This will zero out database voice event logs for the active monthly cycle.`,
+                                confirmLabel: "Reset Minutes",
+                                patch: { resetMinutes: true } as any,
+                              })
+                            }
+                          >
+                            Reset Minutes
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-24 text-center">
+                  <UserRound className="w-12 h-12 text-[#FF6B47] opacity-24 mb-3" />
+                  <p className="text-[14px] font-bold" style={{ color: "var(--color-vl-ink-muted)" }}>
+                    Select an account from the registry to inspect.
+                  </p>
+                </div>
+              )}
+
+              {selectedUser && (
+                <div className="mt-6 pt-4 border-t flex justify-end gap-2" style={{ borderColor: "rgba(10,10,11,0.04)" }}>
+                  {selectedDraft?.status !== "active" ? (
+                    <button
+                      type="button"
+                      className="px-4 py-2.5 rounded-xl bg-emerald-600 text-white font-extrabold text-[12.5px] hover:bg-emerald-700 transition"
+                      onClick={() =>
+                        setActionModal({
+                          kind: "quick",
+                          user: selectedUser,
+                          title: "Force activate account",
+                          description: `Instantly force activation of ${selectedUser.name}'s workspace billing state?`,
+                          confirmLabel: "Force Activate",
+                          patch: { status: "active" },
+                        })
+                      }
+                    >
+                      Force Activate Account
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="px-4 py-2.5 rounded-xl bg-red-600 text-white font-extrabold text-[12.5px] hover:bg-red-700 transition"
+                      onClick={() =>
+                        setActionModal({
+                          kind: "quick",
+                          user: selectedUser,
+                          title: "Deactivate workspace",
+                          description: `Suspend ${selectedUser.name}'s workspace access immediately?`,
+                          confirmLabel: "Deactivate Workspace",
+                          patch: { status: "inactive" },
+                          tone: "danger",
+                        })
+                      }
+                    >
+                      Suspend Workspace
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Confirmation Sub-Modal */}
+      {actionModal && (
+        <AdminAccessModal
+          modal={actionModal}
+          saving={savingId === actionModal.user.id}
+          onClose={() => setActionModal(null)}
+          onConfirm={(patch) =>
+            void patchAccess(
+              actionModal.user,
+              patch,
+              `${actionModal.user.email} updated successfully.`
+            )
+          }
+        />
+      )}
+    </div>
+  );
+}
+
 
 function AdminActionTile({
   label,
@@ -2037,6 +2419,17 @@ function AdminSelect({ label, value, options, onChange }: { label: string; value
 function UsageCard({ token, plan, isAdmin = false }: { token: string | null; plan?: string; isAdmin?: boolean }) {
   const [data, setData] = useState<{
     voiceMinutes: { used: number };
+    usageLimits?: {
+      includedMinutes: number;
+      hardCapMinutes: number;
+      includedPercent: number;
+      hardCapPercent: number;
+      overIncluded: boolean;
+      overIncludedMinutes: number;
+      remainingIncludedMinutes: number;
+      remainingToHardCapMinutes: number;
+      risk: "ok" | "watch" | "over_included" | "near_cap" | "blocked";
+    };
     topTools: { toolName: string; count: number }[];
     recentErrors: { toolName: string; errorMessage: string | null; createdAt: string }[];
   } | null>(null);
@@ -2066,13 +2459,28 @@ function UsageCard({ token, plan, isAdmin = false }: { token: string | null; pla
       .finally(() => setLoading(false));
   }, [token]);
 
-  const limit = isAdmin || plan === "admin"
-    ? -1
-    : getPlan(plan ?? "trial")?.includedVoiceMinutes ?? getPlan("trial")?.includedVoiceMinutes ?? 60;
   const used = data?.voiceMinutes?.used ?? 0;
+  const limits = data?.usageLimits;
+  const limit = limits ? limits.includedMinutes : (isAdmin || plan === "admin"
+    ? -1
+    : getPlan(plan ?? "trial")?.includedVoiceMinutes ?? getPlan("trial")?.includedVoiceMinutes ?? 60);
+
   const hasFiniteLimit = limit !== -1;
-  const pct = hasFiniteLimit ? Math.min(100, Math.round((used / limit) * 100)) : 0;
-  const limitLabel = hasFiniteLimit ? limit.toLocaleString() : "Unlimited";
+  const hardCap = limits ? limits.hardCapMinutes : (hasFiniteLimit ? Math.floor(limit * 1.5) : -1);
+  const risk = limits?.risk ?? (hasFiniteLimit ? (used >= hardCap ? "blocked" : used >= hardCap * 0.9 ? "near_cap" : used > limit ? "over_included" : used >= limit * 0.8 ? "watch" : "ok") : "ok");
+
+  const includedPercent = limits ? limits.includedPercent : (hasFiniteLimit ? Math.round((used / limit) * 100) : 0);
+  const hardCapPercent = limits ? limits.hardCapPercent : (hasFiniteLimit ? Math.round((used / hardCap) * 100) : 0);
+
+  // Status Badge colors and labels
+  const statusConfig: Record<string, { label: string; text: string; bg: string; border: string; bar: string }> = {
+    blocked: { label: "Suspended (At Cap)", text: "#B91C1C", bg: "rgba(239,68,68,0.08)", border: "rgba(239,68,68,0.20)", bar: "bg-red-600" },
+    near_cap: { label: "Critical (Near Cap)", text: "#B45309", bg: "rgba(245,158,11,0.08)", border: "rgba(245,158,11,0.20)", bar: "bg-amber-500" },
+    over_included: { label: "Overage Active", text: "#C2410C", bg: "rgba(255,107,71,0.08)", border: "rgba(255,107,71,0.20)", bar: "bg-[#FF6B47]" },
+    watch: { label: "Approaching Limit", text: "#5B21B6", bg: "rgba(124,110,245,0.08)", border: "rgba(124,110,245,0.20)", bar: "bg-[#7C6EF5]" },
+    ok: { label: "Optimal", text: "#047857", bg: "rgba(16,185,129,0.08)", border: "rgba(16,185,129,0.18)", bar: "bg-[#10B981]" }
+  };
+  const activeStatus = statusConfig[risk] || statusConfig.ok;
 
   return (
     <Section icon={<BarChart3 className="h-5 w-5" />} title="Resource Usage" description="Voice minutes consumption and triggered operations.">
@@ -2089,26 +2497,106 @@ function UsageCard({ token, plan, isAdmin = false }: { token: string | null; pla
       ) : (
         <div className="space-y-6">
           <div>
-            <div className="flex justify-between text-[14px] mb-2 font-bold">
-              <span style={{ color: "var(--color-vl-ink)" }}>Voice minutes</span>
-              <span className="tabular-nums" style={{ color: "var(--color-vl-ink-muted)" }}>
-                {used.toLocaleString()} <span className="text-slate-400 font-medium">/ {limitLabel} min</span>
-              </span>
-            </div>
-            {hasFiniteLimit && (
-              <div className="h-3 overflow-hidden rounded-lg bg-slate-100 shadow-inner" style={{ border: "1px solid rgba(14,27,44,0.04)" }}>
-                <div
-                  className="h-full rounded-lg bg-linear-to-r from-[#FF6B47] to-[#D7402E] transition-all duration-500"
+            {/* Upper labels & Badge */}
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+              <div>
+                <span className="text-[14.5px] font-black" style={{ color: "var(--color-vl-ink)" }}>Voice minutes</span>
+                <p className="text-[11.5px] font-semibold mt-0.5" style={{ color: "var(--color-vl-ink-muted)" }}>
+                  Tracked over active billing period
+                </p>
+              </div>
+              {hasFiniteLimit && (
+                <span
+                  className="rounded-xl border px-3 py-1 text-[10.5px] font-black uppercase tracking-wider"
                   style={{
-                    width: `${pct}%`,
+                    color: activeStatus.text,
+                    background: activeStatus.bg,
+                    borderColor: activeStatus.border
                   }}
-                />
+                >
+                  {activeStatus.label}
+                </span>
+              )}
+            </div>
+
+            {/* Blocked or near-cap explicit banners */}
+            {hasFiniteLimit && risk === "blocked" && (
+              <div className="mb-4 p-4 bg-red-50/50 border border-red-200/80 rounded-2xl text-[12.5px] leading-relaxed font-semibold text-red-800">
+                <p className="flex items-center gap-2 font-bold mb-1">
+                  <AlertCircle className="h-4.5 w-4.5 text-red-600" />
+                  Monthly Limit Blocked
+                </p>
+                Your voice assistants are currently suspended because you have reached your plan's absolute overage cap ({hardCap} minutes). Please upgrade your subscription on the Billing page or contact support to resume immediate access.
               </div>
             )}
-            {hasFiniteLimit && pct >= 80 && (
-              <p className="text-xs mt-1.5 font-bold" style={{ color: "var(--color-vl-coral-deep, #e04323)" }}>
-                {pct >= 100 ? "Overage mode active: overage charges will apply" : "Approaching monthly plan limits"}
-              </p>
+
+            {hasFiniteLimit && risk === "near_cap" && (
+              <div className="mb-4 p-4 bg-amber-50/50 border border-amber-200/80 rounded-2xl text-[12.5px] leading-relaxed font-semibold text-amber-800">
+                <p className="flex items-center gap-2 font-bold mb-1">
+                  <AlertTriangle className="h-4.5 w-4.5 text-amber-600" />
+                  Approaching Hard Suspension Cap
+                </p>
+                You are currently utilizing overage minutes and are within 10% of your plan's hard suspension cap ({hardCap} minutes). Upgrade your subscription soon to avoid service interruptions.
+              </div>
+            )}
+
+            {/* Visual Progress Bar (Overage-aware) */}
+            {hasFiniteLimit ? (
+              <div className="space-y-2">
+                <div className="relative">
+                  <div className="h-3 overflow-hidden rounded-full bg-slate-100 shadow-inner" style={{ border: "1px solid rgba(14,27,44,0.04)" }}>
+                    <div
+                      className={`h-full rounded-full ${activeStatus.bar} transition-all duration-500`}
+                      style={{
+                        width: `${Math.min(100, hardCapPercent)}%`,
+                      }}
+                    />
+                  </div>
+                  {/* Subtle marker at the included minutes mark (which is 1 / 1.5 = 66.6% of the hard cap bar) */}
+                  <div
+                    className="absolute top-0 bottom-0 w-0.5 bg-slate-300 border-l border-dashed border-slate-400"
+                    style={{ left: "66.67%" }}
+                    title="Included Minutes limit"
+                  />
+                </div>
+
+                <div className="flex justify-between items-center text-[12px] font-bold">
+                  <span className="tabular-nums" style={{ color: "var(--color-vl-ink)" }}>
+                    {used.toLocaleString()} min <span className="text-slate-400 font-medium">used</span>
+                  </span>
+                  <div className="flex gap-4 text-slate-500 font-semibold">
+                    <span title="Billed as standard monthly flat fee">
+                      Included: <strong className="text-slate-700">{limit} min</strong>
+                    </span>
+                    <span title="Overage cap: service suspends beyond this limit">
+                      Hard Cap: <strong className="text-slate-700">{hardCap} min</strong>
+                    </span>
+                  </div>
+                </div>
+
+                {/* Progress details */}
+                <div className="rounded-2xl border bg-slate-50/50 p-3 mt-3 flex justify-between items-center text-[12px] font-semibold" style={{ borderColor: "rgba(10,10,11,0.05)" }}>
+                  <span style={{ color: "var(--color-vl-ink-muted)" }}>
+                    {used > limit ? (
+                      <>
+                        Using overage: <strong className="text-orange-700">+{Math.max(0, used - limit)} min</strong> billed at ${getPlan(plan ?? "trial")?.overagePerMinuteUsd.toFixed(2) ?? "0.18"}/min.
+                      </>
+                    ) : (
+                      <>
+                        Plan allocation: <strong>{limit - used} min</strong> remaining.
+                      </>
+                    )}
+                  </span>
+                  <span className="tabular-nums" style={{ color: "var(--color-vl-ink-muted)" }}>
+                    {hardCapPercent}% of absolute cap
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-2xl border bg-emerald-50/30 border-emerald-100 p-4 text-[13px] font-semibold text-emerald-800 flex justify-between items-center">
+                <span>All voice minutes are completely unlimited on your current administrative role.</span>
+                <span className="text-emerald-600 font-bold uppercase tracking-wider text-[11px]">Unlimited</span>
+              </div>
             )}
           </div>
 

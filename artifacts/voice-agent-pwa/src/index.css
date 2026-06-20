@@ -1019,3 +1019,127 @@ html[data-theme="dark"] .welcome-signin { background: #FFFFFF; color: var(--ink)
 @media (min-width: 1024px) {
   .panel { max-height: 55vh; }
 }
+
+/* ── iPad Mini & iPhone Deep Layout Optimizations ────────────── */
+
+/* Touch target upgrades on mobile devices */
+@media (max-width: 1024px) {
+  .hamburger {
+    padding: 8px !important;
+    min-height: 44px !important;
+    min-width: 44px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+  .order-badge {
+    min-height: 44px !important;
+    min-width: 44px !important;
+    border-radius: 12px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+}
+
+/* Horizontal scrolling for Suggestion Chips on mobile & smaller tablets */
+@media (max-width: 768px) {
+  .suggestion-row {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    width: 100vw !important;
+    padding: 8px 36px 16px !important;
+    margin-left: -36px !important; /* Bleed out to screen edge */
+    margin-right: -36px !important;
+    gap: 10px !important;
+    justify-content: flex-start !important;
+    scrollbar-width: none !important;
+  }
+  .suggestion-row::-webkit-scrollbar {
+    display: none !important;
+  }
+  .suggestion-chip {
+    flex-shrink: 0 !important;
+    white-space: nowrap !important;
+  }
+}
+
+/* Horizontal scrolling for Status Chips to prevent wrapping on narrow mobile */
+@media (max-width: 640px) {
+  .status-chips {
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    width: 100vw !important;
+    padding: 4px 24px !important;
+    margin-left: -24px !important;
+    margin-right: -24px !important;
+    justify-content: flex-start !important;
+    scrollbar-width: none !important;
+  }
+  .status-chips::-webkit-scrollbar {
+    display: none !important;
+  }
+  .vl-pill {
+    flex-shrink: 0 !important;
+  }
+}
+
+/* Brand strip responsive spacing */
+@media (max-width: 640px) {
+  .brand-strip {
+    gap: 10px !important;
+    padding: 10px 16px !important;
+  }
+  .brand-strip-logo {
+    height: 16px !important;
+  }
+}
+
+/* Floating rounded panel sheet design for iPad Mini in portrait & landscape */
+@media (min-width: 768px) {
+  .panel {
+    max-width: 540px !important;
+    margin: 0 auto !important;
+    border-radius: 28px !important;
+    border: 1px solid var(--panel-border) !important;
+    bottom: 24px !important;
+    left: 24px !important;
+    right: 24px !important;
+    max-height: 72vh !important;
+    box-shadow: 0 16px 48px rgba(10, 10, 11, 0.22) !important;
+    padding-bottom: 20px !important;
+  }
+  .panel-backdrop {
+    backdrop-filter: blur(4px) !important;
+    background: rgba(10, 10, 11, 0.20) !important;
+  }
+}
+
+/* Sizing of Voice Orb on smaller/shorter screens to avoid crowding */
+@media (max-height: 740px) {
+  .orb-stage {
+    padding: 10px 0 !important;
+  }
+  .voice-orb {
+    width: 110px !important;
+    height: 110px !important;
+  }
+}
+@media (max-height: 660px) {
+  .orb-stage {
+    padding: 6px 0 !important;
+  }
+  .voice-orb {
+    width: 85px !important;
+    height: 85px !important;
+  }
+  .welcome-title {
+    font-size: 24px !important;
+  }
+  .welcome-sub {
+    font-size: 13px !important;
+    max-width: 280px !important;
+  }
+}

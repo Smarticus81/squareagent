@@ -18,7 +18,7 @@ import {
   emailCredentialsTable,
 } from "@workspace/db";
 import { requireAuth } from "../auth";
-import { ensureUserOrganization } from "./_helpers";
+import { ensureUserOrganization, requireMinRole } from "./_helpers";
 import { embedBatch, chunkText } from "../../lib/embeddings";
 import { encrypt } from "../../lib/secrets";
 import { extractTextFromUpload } from "../../lib/document-extract";
@@ -113,7 +113,7 @@ async function validatePostgresConnection(connectionString: string): Promise<{ o
 
 // ── Knowledge documents ───────────────────────────────────────────────────────
 
-router.post("/documents", uploadLimiter, async (req: Request, res: Response): Promise<void> => {
+router.post("/documents", requireMinRole("manager"), uploadLimiter, async (req: Request, res: Response): Promise<void> => {
   const userId = (req as any).user.id as number;
   const organizationId = await currentOrganizationId(req);
   const { title, text, sourceType = "text", sourceUri } = req.body ?? {};
@@ -201,7 +201,7 @@ router.get("/documents", async (req: Request, res: Response): Promise<void> => {
   res.json({ documents: docs });
 });
 
-router.delete("/documents/:id", async (req: Request, res: Response): Promise<void> => {
+router.delete("/documents/:id", requireMinRole("manager"), async (req: Request, res: Response): Promise<void> => {
   const userId = (req as any).user.id as number;
   const organizationId = await currentOrganizationId(req);
   const id = String(req.params.id);
@@ -234,7 +234,7 @@ router.get("/database-connections", async (req: Request, res: Response): Promise
   res.json({ connections: rows });
 });
 
-router.post("/database-connections", writeLimiter, async (req: Request, res: Response): Promise<void> => {
+router.post("/database-connections", requireMinRole("manager"), writeLimiter, async (req: Request, res: Response): Promise<void> => {
   const userId = (req as any).user.id as number;
   const organizationId = await currentOrganizationId(req);
   const { label = "default", connectionString, schemaHint } = req.body ?? {};
@@ -277,7 +277,7 @@ router.post("/database-connections", writeLimiter, async (req: Request, res: Res
   res.status(201).json({ id: row.id, label: row.label, validated: true });
 });
 
-router.delete("/database-connections/:id", async (req: Request, res: Response): Promise<void> => {
+router.delete("/database-connections/:id", requireMinRole("manager"), async (req: Request, res: Response): Promise<void> => {
   const userId = (req as any).user.id as number;
   const organizationId = await currentOrganizationId(req);
   const id = String(req.params.id);
@@ -311,7 +311,7 @@ router.get("/email", async (req: Request, res: Response): Promise<void> => {
   res.json({ email: row ?? null });
 });
 
-router.put("/email", writeLimiter, async (req: Request, res: Response): Promise<void> => {
+router.put("/email", requireMinRole("manager"), writeLimiter, async (req: Request, res: Response): Promise<void> => {
   const userId = (req as any).user.id as number;
   const organizationId = await currentOrganizationId(req);
   const {
@@ -410,6 +410,7 @@ router.put("/email", writeLimiter, async (req: Request, res: Response): Promise<
 
 router.post(
   "/documents/upload",
+  requireMinRole("manager"),
   uploadLimiter,
   upload.single("file"),
   async (req: Request, res: Response): Promise<void> => {
@@ -472,7 +473,7 @@ router.post(
   },
 );
 
-router.delete("/email", async (req: Request, res: Response): Promise<void> => {
+router.delete("/email", requireMinRole("manager"), async (req: Request, res: Response): Promise<void> => {
   const userId = (req as any).user.id as number;
   const organizationId = await currentOrganizationId(req);
   await db.delete(emailCredentialsTable).where(tenantWhere(emailCredentialsTable, userId, organizationId));

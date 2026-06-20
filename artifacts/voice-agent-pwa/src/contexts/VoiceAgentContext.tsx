@@ -70,6 +70,12 @@ interface VoiceAgentContextType {
   setOrderHandlingMode: (mode: "auto_complete" | "hold_for_review") => void;
   confirmPending: () => void;
   denyPending: () => void;
+  sessionUsage: {
+    used: number;
+    limit: number;
+    hardCap: number;
+    risk: string;
+  } | null;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -167,6 +173,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [pendingConfirmation, setPendingConfirmation] = useState<PendingConfirmation | null>(null);
+  const [sessionUsage, setSessionUsage] = useState<VoiceAgentContextType["sessionUsage"]>(null);
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const dcRef = useRef<RTCDataChannel | null>(null);
@@ -1098,6 +1105,11 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
       }
 
       const sessionData = await tokenRes.json();
+      if (sessionData?.voicelab?.usage) {
+        setSessionUsage(sessionData.voicelab.usage);
+      } else {
+        setSessionUsage(null);
+      }
       // Extract session ID immediately to avoid race with session.created event
       if (sessionData.id) sessionIdRef.current = String(sessionData.id);
       // Server decides duplex behavior per noise mode. Default = half-duplex.
@@ -1265,6 +1277,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
 
     closeTransport();
     setAgentState("disconnected");
+    setSessionUsage(null);
   }, [sendSessionEnd, clearStandbyExpire, closeTransport]);
 
   // ── Standby lifecycle (wake-word mode) ──────────────────────────────────────
@@ -1486,7 +1499,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
       agentState, isConnected, conversation, partialTranscript, error, remoteStream,
       pendingConfirmation, connect, prewarm, activate, releaseStandby, disconnect, clearConversation, setToolHandler, interrupt,
       setCatalog, setCurrentOrder, setAuthParams, setOrderHandlingMode,
-      confirmPending, denyPending,
+      confirmPending, denyPending, sessionUsage,
     }}>
       {children}
     </VoiceAgentContext.Provider>

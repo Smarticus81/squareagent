@@ -9,8 +9,9 @@ import {
   emailCredentialsTable,
   externalDbConnectionsTable,
   knowledgeDocumentsTable,
+  usageEventsTable,
 } from "@workspace/db";
-import { and, eq, isNull, or } from "drizzle-orm";
+import { and, eq, gte, isNull, or, sql } from "drizzle-orm";
 import {
   jsonError,
   requireDb,
@@ -29,7 +30,7 @@ import {
   getSkillsForSession,
 } from "../../skills";
 import type { ToolDefinition } from "../../tools";
-import { planAllowsPipeline } from "@workspace/voicelab-core/pricing";
+import { planAllowsPipeline, buildUsageLimitSnapshot } from "@workspace/voicelab-core/pricing";
 import type { VoicePipelineProvider } from "@workspace/voicelab-core/voice-pipeline";
 import { getNoiseModeBehavior, type NoiseMode } from "@workspace/voicelab-core/noise";
 
@@ -141,6 +142,40 @@ router.post("/", async (req: Request, res: Response) => {
       },
     );
     return;
+  }
+
+  // Check usage limits & hard overage cap
+  if (!isAdmin) {
+    try {
+      const periodStart = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      const [usage] = await db
+        .select({ total: sql<number>`coalesce(sum(${usageEventsTable.quantity}), 0)` })
+        .from(usageEventsTable)
+        .where(and(
+          profile.organizationId
+            ? or(
+                eq(usageEventsTable.organizationId, profile.organizationId),
+                and(eq(usageEventsTable.userId, user.id), isNull(usageEventsTable.organizationId)),
+              )
+            : eq(usageEventsTable.userId, user.id),
+          eq(usageEventsTable.kind, "voice_minutes"),
+          gte(usageEventsTable.occurredAt, periodStart),
+        ));
+      
+      const used = Number(usage?.total ?? 0);
+      const limits = buildUsageLimitSnapshot(plan, used);
+      if (limits.risk === "blocked") {
+        jsonError(
+          res,
+          402,
+          "usage_limit_exceeded",
+          `Your voice assistants are currently suspended because you've reached your absolute plan overage cap (${limits.hardCapMinutes} min). Please upgrade on the Billing page to resume.`
+        );
+        return;
+      }
+    } catch (e: any) {
+      // non-critical — proceed if db usage check fails to avoid voice session downtime
+    }
   }
 
   // Infer assistant kind from the connected service. Anything that isn't

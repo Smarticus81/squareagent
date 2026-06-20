@@ -103,7 +103,7 @@ export default function App() {
     agentState, isConnected, conversation, partialTranscript, error, remoteStream,
     pendingConfirmation, connect, prewarm, activate, releaseStandby, disconnect, setToolHandler, interrupt,
     setCatalog, setCurrentOrder, setAuthParams, setOrderHandlingMode,
-    confirmPending, denyPending,
+    confirmPending, denyPending, sessionUsage,
   } = useVoiceAgent();
 
   const {
@@ -510,6 +510,36 @@ export default function App() {
         )}
       </div>
 
+      {/* ── Resource Limits / Overage Banners ───────────────── */}
+      {sessionUsage && sessionUsage.risk !== "ok" && (
+        <div className="mx-4 my-2.5 p-3.5 rounded-2xl border text-[12px] leading-relaxed font-semibold shadow-xs flex items-start gap-3"
+             style={{
+               background: sessionUsage.risk === "blocked" ? "rgba(239,68,68,0.06)" : sessionUsage.risk === "near_cap" ? "rgba(245,158,11,0.06)" : "rgba(255,107,71,0.05)",
+               borderColor: sessionUsage.risk === "blocked" ? "rgba(239,68,68,0.22)" : sessionUsage.risk === "near_cap" ? "rgba(245,158,11,0.22)" : "rgba(255,107,71,0.20)",
+               color: sessionUsage.risk === "blocked" ? "#991B1B" : sessionUsage.risk === "near_cap" ? "#92400E" : "#9A3412"
+             }}>
+          <div className="shrink-0 mt-0.5">
+            {sessionUsage.risk === "blocked" ? (
+              <span className="flex h-5 w-5 items-center justify-center rounded-lg bg-red-100 text-red-600 font-black">!</span>
+            ) : (
+              <span className="flex h-5 w-5 items-center justify-center rounded-lg bg-amber-100 text-amber-600 font-black">!</span>
+            )}
+          </div>
+          <div className="flex-1">
+            <p className="font-bold mb-0.5">
+              {sessionUsage.risk === "blocked" ? "Assistant Suspended" : sessionUsage.risk === "near_cap" ? "Overage Limit Critical" : "Overage Mode Active"}
+            </p>
+            <p style={{ opacity: 0.85 }}>
+              {sessionUsage.risk === "blocked" 
+                ? `This assistant is suspended because your organization has reached its monthly overage cap (${sessionUsage.hardCap} min). Please upgrade on the billing dashboard.`
+                : sessionUsage.risk === "near_cap"
+                ? `Using overage minutes (${sessionUsage.used} / ${sessionUsage.hardCap} min cap). Upgrade soon to prevent automated suspension.`
+                : `Currently using overage minutes (${sessionUsage.used} used of ${sessionUsage.limit} included min). Monthly overage rates apply.`}
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* ── Conversation area ────────────────────────────────── */}
       <div className="content">
         <div className="convo-area">
@@ -518,17 +548,15 @@ export default function App() {
               <span className="welcome-eyebrow">VoyceLab · Live</span>
               <h1 className="welcome-title">
                 {!sqAuthToken
-                  ? <>Your venue, <em>on voice</em>.</>
-                  : assistantKind === "general"
-                    ? <>Your venue assistant <em>is ready</em>.</>
-                    : <>Your venue, <em>on voice</em>.</>}
+                  ? <>Voice Terminal <em>Offline</em>.</>
+                  : <>Voice Terminal <em>Online</em>.</>}
               </h1>
               <p className="welcome-sub">
                 {!sqAuthToken
-                  ? "Sign in to connect your venue and start talking — orders, inventory and reports, hands-free."
+                  ? "Sign in to connect your venue and start the real-time operations console."
                   : assistantKind === "general"
                     ? "Tap the orb and speak. I can handle email, look things up, and answer questions. Connect Square in settings to unlock POS commands."
-                    : "Tap the orb and speak — I’ll handle orders, inventory and reports across your connected systems."}
+                    : "Tap the orb and speak to execute orders, adjust inventory levels, or generate reporting summaries."}
               </p>
               {!sqAuthToken ? (
                 <div className="suggestion-row">
