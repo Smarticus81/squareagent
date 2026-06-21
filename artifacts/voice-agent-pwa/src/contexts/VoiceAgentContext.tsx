@@ -926,7 +926,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
 
     const sessionHeaders: Record<string, string> = { "Content-Type": "application/json" };
     sessionHeaders["Authorization"] = `Bearer ${authTokenRef.current}`;
-    const sessionRes = await fetch(`${baseUrl}api/v1/realtime-sessions`, {
+    const sessionRes = await fetch(`${baseUrl}api/v1/realtime/sessions`, {
       method: "POST",
       headers: sessionHeaders,
       body: JSON.stringify({
