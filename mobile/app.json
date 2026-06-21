@@ -1,0 +1,71 @@
+{
+  "expo": {
+    "name": "VoyceLab",
+    "slug": "voycelab",
+    "scheme": "voycelab",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "backgroundColor": "#FBF7F1",
+    "primaryColor": "#FF6B47",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#FBF7F1"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.voycelab.app",
+      "config": {
+        "usesNonExemptEncryption": false
+      },
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "VoyceLab uses your microphone so you can speak commands to your voice assistant.",
+        "NSCameraUsageDescription": "VoyceLab may use the camera for scanning and capture features.",
+        "ITSAppUsesNonExemptEncryption": false,
+        "UIBackgroundModes": [
+          "audio"
+        ],
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": false
+        }
+      }
+    },
+    "android": {
+      "package": "com.voycelab.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#FBF7F1",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "permissions": [
+        "RECORD_AUDIO",
+        "MODIFY_AUDIO_SETTINGS"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "deploymentTarget": "16.4"
+          }
+        }
+      ]
+    ],
+    "extra": {
+      "pwaUrl": "https://voycelab.up.railway.app/agent/",
+      "eas": {
+        "projectId": "36043f11-c509-458e-8706-e049d231ec29"
+      }
+    },
+    "owner": "smarticus1"
+  }
+}
