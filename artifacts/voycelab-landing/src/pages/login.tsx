@@ -3,6 +3,7 @@ import { Link, useLocation, useSearch } from "wouter";
 import { Logo } from "@/components/logo";
 import { VoiceRail } from "@/components/voice-rail";
 import { useForgotPassword, useLogin, useResetPassword } from "@/hooks/use-auth";
+import { consumeIntendedPath } from "@/lib/post-login-redirect";
 import { ArrowLeft, CheckCircle2, Loader2 } from "lucide-react";
 
 export default function Login() {
@@ -23,7 +24,9 @@ export default function Login() {
     e.preventDefault();
     login.mutate({ email, password }, {
       onSuccess: () => {
-        setLocation(sessionStorage.getItem("voycelab.pending_plan") ? "/pricing" : "/assistants");
+        // Land the user back on the page they originally tried to open.
+        const intended = consumeIntendedPath();
+        setLocation(sessionStorage.getItem("voycelab.pending_plan") ? "/pricing" : intended ?? "/assistants");
       },
     });
   };

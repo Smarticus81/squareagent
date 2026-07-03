@@ -45,6 +45,8 @@ interface SquareContextType {
   authToken: string | null;
   catalogItems: SquareCatalogItem[];
   isConfigured: boolean;
+  /** True once the boot sequence (stored session, launch code, OAuth return) has resolved. */
+  credentialsReady: boolean;
   isLoadingCatalog: boolean;
   catalogError: string | null;
   connectionError: string | null;
@@ -952,7 +954,7 @@ export function SquareProvider({ children }: { children: ReactNode }) {
 
   return (
     <SquareContext.Provider value={{
-      locationId, venueId, authToken, catalogItems, isConfigured,
+      locationId, venueId, authToken, catalogItems, isConfigured, credentialsReady,
       isLoadingCatalog, catalogError, connectionError, isConnectingSquare, isReconnecting,
       userInfo, venues, pendingSquareLocations, agentProfile, agentProfileId, wakePhrase, wakeMode, assistantKind,
       updateWakeSettings, orderHandlingMode, updateOrderHandlingMode,

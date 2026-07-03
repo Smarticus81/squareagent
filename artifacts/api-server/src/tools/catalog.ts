@@ -9,6 +9,7 @@ import {
   updateCatalogItem,
   deleteCatalogItem,
   SQUARE_BASE,
+  squareFetch,
   squareHeaders,
 } from "../lib/square-helpers";
 
@@ -139,7 +140,7 @@ async function deleteItem(args: Record<string, unknown>, ctx: ToolContext): Prom
 async function listCategories(_args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
   if (!ctx.squareToken) return { result: "Square not connected." };
   try {
-    const res = await fetch(`${SQUARE_BASE}/catalog/list?types=CATEGORY`, {
+    const res = await squareFetch(`${SQUARE_BASE}/catalog/list?types=CATEGORY`, {
       headers: squareHeaders(ctx.squareToken),
     });
     const data = (await res.json()) as any;
@@ -157,7 +158,7 @@ async function createCategory(args: Record<string, unknown>, ctx: ToolContext): 
   if (!name) return { result: "Category name is required." };
   if (!ctx.squareToken) return { result: "Square not connected." };
   try {
-    const res = await fetch(`${SQUARE_BASE}/catalog/object`, {
+    const res = await squareFetch(`${SQUARE_BASE}/catalog/object`, {
       method: "POST",
       headers: squareHeaders(ctx.squareToken),
       body: JSON.stringify({
@@ -180,7 +181,7 @@ async function createCategory(args: Record<string, unknown>, ctx: ToolContext): 
 async function listModifiers(_args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
   if (!ctx.squareToken) return { result: "Square not connected." };
   try {
-    const res = await fetch(`${SQUARE_BASE}/catalog/list?types=MODIFIER_LIST`, {
+    const res = await squareFetch(`${SQUARE_BASE}/catalog/list?types=MODIFIER_LIST`, {
       headers: squareHeaders(ctx.squareToken),
     });
     const data = (await res.json()) as any;
@@ -224,7 +225,7 @@ async function applyDiscount(args: Record<string, unknown>, ctx: ToolContext): P
     }
 
     // We need to update the order with the discount
-    const res = await fetch(`${SQUARE_BASE}/orders/${ctx.session.squareOrderId}`, {
+    const res = await squareFetch(`${SQUARE_BASE}/orders/${ctx.session.squareOrderId}`, {
       method: "PUT",
       headers: squareHeaders(ctx.squareToken),
       body: JSON.stringify({

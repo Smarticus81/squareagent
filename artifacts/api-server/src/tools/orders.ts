@@ -7,6 +7,7 @@ import {
   listRecentOrders,
   getSalesSummary,
   SQUARE_BASE,
+  squareFetch,
   squareHeaders,
 } from "../lib/square-helpers";
 
@@ -132,7 +133,7 @@ async function salesReport(args: Record<string, unknown>, ctx: ToolContext): Pro
 async function listOpenOrders(_args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
   if (!ctx.squareToken || !ctx.squareLocationId) return { result: "Square not connected." };
   try {
-    const res = await fetch(`${SQUARE_BASE}/orders/search`, {
+    const res = await squareFetch(`${SQUARE_BASE}/orders/search`, {
       method: "POST",
       headers: squareHeaders(ctx.squareToken),
       body: JSON.stringify({
@@ -165,7 +166,7 @@ async function getOrderDetails(args: Record<string, unknown>, ctx: ToolContext):
   if (!orderId) return { result: "Order ID is required." };
   if (!ctx.squareToken) return { result: "Square not connected." };
   try {
-    const res = await fetch(`${SQUARE_BASE}/orders/${orderId}`, {
+    const res = await squareFetch(`${SQUARE_BASE}/orders/${orderId}`, {
       headers: squareHeaders(ctx.squareToken),
     });
     const data = (await res.json()) as any;

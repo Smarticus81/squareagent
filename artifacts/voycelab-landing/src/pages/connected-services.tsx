@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, type FormEvent } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
+import { rememberIntendedPath } from "@/lib/post-login-redirect";
 import {
   useVenues,
   useSaveVenue,
@@ -324,7 +325,7 @@ export default function ConnectedServices() {
   const [serviceProviders, setServiceProviders] = useState<ConnectedServiceProviderInfo[]>([]);
 
   useEffect(() => {
-    if (!isLoading && !auth?.user) setLocation("/login");
+    if (!isLoading && !auth?.user) { rememberIntendedPath(); setLocation("/login"); }
   }, [auth, isLoading, setLocation]);
 
   useEffect(() => {
@@ -605,7 +606,12 @@ export default function ConnectedServices() {
                     )}
                   </div>
                   <button
-                    onClick={() => deleteVenue.mutate(v.id)}
+                    onClick={() => {
+                      // Destructive: severs the Square connection and any assistants pointed at it.
+                      if (window.confirm(`Disconnect ${v.squareLocationName ?? v.name ?? "this venue"} from Square? Assistants using it will stop working until you reconnect.`)) {
+                        deleteVenue.mutate(v.id);
+                      }
+                    }}
                     disabled={deleteVenue.isPending}
                     className="inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-[12px] font-semibold transition-colors disabled:opacity-60"
                     style={{

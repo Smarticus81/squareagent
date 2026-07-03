@@ -3,7 +3,7 @@
  */
 
 import type { ToolDefinition, ToolExecutor, ToolContext, ToolResult } from "./types";
-import { SQUARE_BASE, squareHeaders } from "../lib/square-helpers";
+import { SQUARE_BASE, squareFetch, squareHeaders } from "../lib/square-helpers";
 
 // ── Definitions ───────────────────────────────────────────────────────────────
 
@@ -53,7 +53,7 @@ async function listPayments(args: Record<string, unknown>, ctx: ToolContext): Pr
   if (!ctx.squareToken || !ctx.squareLocationId) return { result: "Square not connected." };
   const limit = Number(args.limit ?? 10);
   try {
-    const res = await fetch(
+    const res = await squareFetch(
       `${SQUARE_BASE}/payments?location_id=${ctx.squareLocationId}&sort_order=DESC&limit=${limit}`,
       { headers: squareHeaders(ctx.squareToken) },
     );
@@ -86,7 +86,7 @@ async function refundPayment(args: Record<string, unknown>, ctx: ToolContext): P
     if (args.amount !== undefined) {
       amountCents = Math.round(Number(args.amount) * 100);
     } else {
-      const payRes = await fetch(`${SQUARE_BASE}/payments/${paymentId}`, {
+      const payRes = await squareFetch(`${SQUARE_BASE}/payments/${paymentId}`, {
         headers: squareHeaders(ctx.squareToken),
       });
       const payData = (await payRes.json()) as any;
@@ -94,7 +94,7 @@ async function refundPayment(args: Record<string, unknown>, ctx: ToolContext): P
       amountCents = payData.payment?.amount_money?.amount ?? 0;
     }
 
-    const res = await fetch(`${SQUARE_BASE}/refunds`, {
+    const res = await squareFetch(`${SQUARE_BASE}/refunds`, {
       method: "POST",
       headers: squareHeaders(ctx.squareToken),
       body: JSON.stringify({
@@ -118,7 +118,7 @@ async function cancelPayment(args: Record<string, unknown>, ctx: ToolContext): P
   if (!paymentId) return { result: "Payment ID is required." };
   if (!ctx.squareToken) return { result: "Square not connected." };
   try {
-    const res = await fetch(`${SQUARE_BASE}/payments/${paymentId}/cancel`, {
+    const res = await squareFetch(`${SQUARE_BASE}/payments/${paymentId}/cancel`, {
       method: "POST",
       headers: squareHeaders(ctx.squareToken),
     });

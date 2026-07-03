@@ -1,6 +1,22 @@
-import { createContext, useContext, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { type SquareCatalogItem } from "@/contexts/SquareContext";
 import { getBaseUrl } from "@/lib/api";
+
+// Per-tab draft persistence: a refresh (or iOS tab eviction) mid-order must
+// not empty the ticket. sessionStorage keeps drafts isolated per tab.
+const DRAFT_ORDER_KEY = "voycelab_draft_order";
+
+function restoreDraftOrder(): Order | null {
+  try {
+    const raw = sessionStorage.getItem(DRAFT_ORDER_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || !Array.isArray(parsed.items) || parsed.items.length === 0) return null;
+    return { ...parsed, createdAt: new Date(parsed.createdAt) } as Order;
+  } catch {
+    return null;
+  }
+}
 
 export interface OrderLineItem {
   id: string;
@@ -40,8 +56,20 @@ function calcTotal(items: OrderLineItem[]): number {
 }
 
 export function OrderProvider({ children }: { children: ReactNode }) {
-  const [currentOrder, setCurrentOrder] = useState<Order | null>(null);
+  const [currentOrder, setCurrentOrder] = useState<Order | null>(restoreDraftOrder);
   const [lastSubmittedOrder, setLastSubmittedOrder] = useState<Order | null>(null);
+
+  useEffect(() => {
+    try {
+      if (currentOrder?.items.length) {
+        sessionStorage.setItem(DRAFT_ORDER_KEY, JSON.stringify(currentOrder));
+      } else {
+        sessionStorage.removeItem(DRAFT_ORDER_KEY);
+      }
+    } catch {
+      // storage may be unavailable (private mode) — drafts just won't survive refresh
+    }
+  }, [currentOrder]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitWarning, setSubmitWarning] = useState<string | null>(null);

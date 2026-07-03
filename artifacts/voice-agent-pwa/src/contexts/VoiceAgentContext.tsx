@@ -1127,6 +1127,17 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
       const pc = new RTCPeerConnection();
       pcRef.current = pc;
 
+      // A half-dead connection (media stalls, DC still "open") would otherwise
+      // leave the UI on "Listening" forever with no recovery path.
+      pc.onconnectionstatechange = () => {
+        if (pcRef.current !== pc || pc.connectionState !== "failed") return;
+        if (standbyRef.current) return; // dc.onclose recycles standby quietly
+        debugVoiceLog("[WebRTC] Connection failed mid-session");
+        closeTransportRef.current?.();
+        setError("Connection lost. Tap the orb to reconnect.");
+        setAgentState("error");
+      };
+
       // 3. Set up audio playback — remote audio track goes to an <audio> element.
       // The element is attached to the DOM (hidden) and marked playsInline so
       // the browser's echo canceller has a real render reference and iOS Safari
@@ -1399,8 +1410,14 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const handler = () => sendSessionEnd();
+    // iOS Safari often skips beforeunload; pagehide is the reliable signal
+    // there. The server dedupes, so both firing is harmless.
     window.addEventListener("beforeunload", handler);
-    return () => window.removeEventListener("beforeunload", handler);
+    window.addEventListener("pagehide", handler);
+    return () => {
+      window.removeEventListener("beforeunload", handler);
+      window.removeEventListener("pagehide", handler);
+    };
   }, [sendSessionEnd]);
 
   const isConnected = agentState !== "disconnected" && agentState !== "error";

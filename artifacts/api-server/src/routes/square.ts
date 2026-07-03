@@ -216,7 +216,13 @@ router.get("/oauth/callback", async (req: Request, res: Response): Promise<void>
 
     if (!tokenRes.ok || !data.access_token) {
       const msg = data.message || data.errors?.[0]?.detail || "Token exchange failed";
-      res.send(popupHtml(null, msg));
+      if (isRedirectMode) {
+        // Full-page flows (onboarding, standalone PWA) must land back in the
+        // app with oauth_error — a popup page here would strand the user.
+        res.redirect(`${returnTarget}${returnTarget.includes("?") ? "&" : "?"}oauth_error=${encodeURIComponent(msg)}`);
+      } else {
+        res.send(popupHtml(null, msg));
+      }
       return;
     }
 

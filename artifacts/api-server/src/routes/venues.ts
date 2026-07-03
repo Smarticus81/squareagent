@@ -17,6 +17,7 @@ import { ensureUserOrganization } from "./v1/_helpers";
 import { getCachedCredentials, invalidateCredentials } from "../lib/credential-cache";
 import { encrypt, decrypt } from "../lib/secrets";
 import { claimPendingSquareOAuthToken } from "../lib/square-oauth-claims";
+import { squareFetch } from "../lib/square-helpers";
 
 const router = Router();
 
@@ -422,7 +423,7 @@ router.delete("/:id", requireAuth as any, async (req: Request, res: Response): P
       try {
         const appId = process.env.SQUARE_APPLICATION_ID;
         if (appId) {
-          await fetch("https://connect.squareup.com/oauth2/revoke", {
+          await squareFetch("https://connect.squareup.com/oauth2/revoke", {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -567,7 +568,7 @@ router.get("/:id/catalog", requireAuth as any, async (req: Request, res: Respons
 
     do {
       const url = `${SQUARE_BASE}/catalog/list?types=ITEM&include_deleted_objects=false${cursor ? `&cursor=${cursor}` : ""}`;
-      const response = await fetch(url, { headers: squareHeaders(plainToken) });
+      const response = await squareFetch(url, { headers: squareHeaders(plainToken) });
       const data = (await response.json()) as any;
 
       if (!response.ok) {
@@ -666,7 +667,7 @@ router.post("/:id/orders", requireAuth as any, async (req: Request, res: Respons
       },
     }));
 
-    const orderRes = await fetch(`${SQUARE_BASE}/orders`, {
+    const orderRes = await squareFetch(`${SQUARE_BASE}/orders`, {
       method: "POST",
       headers: squareHeaders(plainToken),
       body: JSON.stringify({
@@ -686,7 +687,7 @@ router.post("/:id/orders", requireAuth as any, async (req: Request, res: Respons
 
     const orderId = orderData.order?.id;
     const orderTotal = orderData.order?.total_money?.amount ?? 0;
-    const paymentRes = await fetch(`${SQUARE_BASE}/payments`, {
+    const paymentRes = await squareFetch(`${SQUARE_BASE}/payments`, {
       method: "POST",
       headers: squareHeaders(plainToken),
       body: JSON.stringify({
