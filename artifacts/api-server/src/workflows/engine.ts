@@ -17,6 +17,7 @@ export async function executeWorkflow(
   workflow: WorkflowDefinition,
   userArgs: Record<string, unknown>,
   ctx: ToolContext,
+  onStep?: (step: StepResult) => void,
 ): Promise<WorkflowResult> {
   const stepResults: StepResult[] = [];
   const totalStart = Date.now();
@@ -36,12 +37,21 @@ export async function executeWorkflow(
 
     try {
       const { result } = await executeToolCall(step.toolName, args, ctx);
-      stepResults.push({
+      // errorMiddleware swallows executor throws into a "Tool error: ..." result
+      // string, so an error-shaped result must not report the step as ok.
+      const failed = typeof result === "string" && result.startsWith("Tool error:");
+      const stepResult: StepResult = {
         step: step.label,
         result,
         durationMs: Date.now() - stepStart,
-        ok: true,
-      });
+        ok: !failed,
+      };
+      stepResults.push(stepResult);
+      onStep?.(stepResult);
+
+      if (failed && !continueOnError) {
+        break;
+      }
     } catch (e: any) {
       const errorResult: StepResult = {
         step: step.label,
@@ -50,6 +60,7 @@ export async function executeWorkflow(
         ok: false,
       };
       stepResults.push(errorResult);
+      onStep?.(errorResult);
 
       if (!continueOnError) {
         break;

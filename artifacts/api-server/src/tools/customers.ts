@@ -3,7 +3,7 @@
  */
 
 import type { ToolDefinition, ToolExecutor, ToolContext, ToolResult } from "./types";
-import { SQUARE_BASE, squareHeaders } from "../lib/square-helpers";
+import { SQUARE_BASE, squareFetch, squareHeaders } from "../lib/square-helpers";
 
 // ── Definitions ───────────────────────────────────────────────────────────────
 
@@ -74,7 +74,7 @@ async function searchCustomer(args: Record<string, unknown>, ctx: ToolContext): 
   if (!query) return { result: "Search query is required." };
   if (!ctx.squareToken) return { result: "Square not connected." };
   try {
-    const res = await fetch(`${SQUARE_BASE}/customers/search`, {
+    const res = await squareFetch(`${SQUARE_BASE}/customers/search`, {
       method: "POST",
       headers: squareHeaders(ctx.squareToken),
       body: JSON.stringify({
@@ -93,7 +93,7 @@ async function searchCustomer(args: Record<string, unknown>, ctx: ToolContext): 
 
     // If no results, try searching by display name
     if (customers.length === 0) {
-      const res2 = await fetch(`${SQUARE_BASE}/customers/search`, {
+      const res2 = await squareFetch(`${SQUARE_BASE}/customers/search`, {
         method: "POST",
         headers: squareHeaders(ctx.squareToken),
         body: JSON.stringify({
@@ -137,7 +137,7 @@ async function createCustomer(args: Record<string, unknown>, ctx: ToolContext): 
   body.idempotency_key = `cust-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
   try {
-    const res = await fetch(`${SQUARE_BASE}/customers`, {
+    const res = await squareFetch(`${SQUARE_BASE}/customers`, {
       method: "POST",
       headers: squareHeaders(ctx.squareToken),
       body: JSON.stringify(body),
@@ -157,7 +157,7 @@ async function getCustomer(args: Record<string, unknown>, ctx: ToolContext): Pro
   if (!customerId) return { result: "Customer ID is required." };
   if (!ctx.squareToken) return { result: "Square not connected." };
   try {
-    const res = await fetch(`${SQUARE_BASE}/customers/${customerId}`, {
+    const res = await squareFetch(`${SQUARE_BASE}/customers/${customerId}`, {
       headers: squareHeaders(ctx.squareToken),
     });
     const data = (await res.json()) as any;
@@ -189,7 +189,7 @@ async function updateCustomer(args: Record<string, unknown>, ctx: ToolContext): 
   if (args.note) body.note = String(args.note);
 
   try {
-    const res = await fetch(`${SQUARE_BASE}/customers/${customerId}`, {
+    const res = await squareFetch(`${SQUARE_BASE}/customers/${customerId}`, {
       method: "PUT",
       headers: squareHeaders(ctx.squareToken),
       body: JSON.stringify(body),

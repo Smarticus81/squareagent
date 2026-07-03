@@ -11,6 +11,7 @@ import {
   pushToTerminal,
   redactSquareId,
   SQUARE_BASE,
+  squareFetch,
   squareErrorSummary,
   squareHeaders,
 } from "../lib/square-helpers";
@@ -207,7 +208,7 @@ async function submitOrder(_args: Record<string, unknown>, ctx: ToolContext): Pr
       ...(item.variationId ? {} : { base_price_money: { amount: Math.round(item.price * 100), currency: "USD" } }),
     }));
     const ticketRef = `VOICE-${Date.now()}`;
-    const orderRes = await fetch(`${SQUARE_BASE}/orders`, {
+    const orderRes = await squareFetch(`${SQUARE_BASE}/orders`, {
       method: "POST",
       headers: squareHeaders(squareToken),
       body: JSON.stringify({
@@ -224,7 +225,7 @@ async function submitOrder(_args: Record<string, unknown>, ctx: ToolContext): Pr
     const orderId = orderData.order?.id;
     const orderTotal = orderData.order?.total_money?.amount ?? 0;
 
-    const paymentRes = await fetch(`${SQUARE_BASE}/payments`, {
+    const paymentRes = await squareFetch(`${SQUARE_BASE}/payments`, {
       method: "POST",
       headers: squareHeaders(squareToken),
       body: JSON.stringify({
@@ -264,7 +265,7 @@ async function sendToTerminal(_args: Record<string, unknown>, ctx: ToolContext):
   if (!session.squareOrderId) return { result: "Could not create the order in Square. Try submitting instead." };
 
   try {
-    const devRes = await fetch(`${SQUARE_BASE}/devices?location_id=${squareLocationId}`, { headers: squareHeaders(squareToken) });
+    const devRes = await squareFetch(`${SQUARE_BASE}/devices?location_id=${squareLocationId}`, { headers: squareHeaders(squareToken) });
     const devData = (await devRes.json()) as any;
     const allDevices = devData.devices ?? [];
     // Square Terminal hardware supports Terminal Checkout API; iPads/POS devices do not

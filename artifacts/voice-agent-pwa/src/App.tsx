@@ -113,6 +113,7 @@ export default function App() {
 
   const {
     isConfigured,
+    credentialsReady,
     catalogItems,
     isLoadingCatalog,
     catalogError,
@@ -267,12 +268,19 @@ export default function App() {
 
   const wakeWords = useMemo(() => buildWakeWords(wakePhrase), [wakePhrase]);
 
+  const onWakePermissionDenied = useCallback(() => {
+    // Without this the orb sits at "Waking up" forever with no explanation.
+    setMicError("Microphone blocked. Enable it in your browser site settings, then tap the orb.");
+    setMode("idle");
+  }, []);
+
   const { isListening: wakeWordListening, startWakeWord, stopWakeWord } = useWakeWord({
     wakeWords,
     confidenceThreshold: 0.5,
     onWakeWordDetected,
     onStopDetected,
     onShutdownDetected,
+    onPermissionDenied: onWakePermissionDenied,
   });
 
   useEffect(() => {
@@ -296,10 +304,12 @@ export default function App() {
   // straight into wake mode. Browsers that need mic permission will prompt or
   // fall back to the existing tap flow.
   useEffect(() => {
-    if (mode === "idle" && sqAuthToken && wakeWordAvailable) {
+    // micError guard: after a permission denial, stay idle instead of
+    // re-entering wake mode and re-triggering the denied mic loop.
+    if (mode === "idle" && sqAuthToken && wakeWordAvailable && !micError) {
       setMode("wake_word");
     }
-  }, [mode, sqAuthToken, wakeWordAvailable]);
+  }, [mode, sqAuthToken, wakeWordAvailable, micError]);
 
   useEffect(() => {
     if (mode === "wake_word" && !wakeWordAvailable) {
@@ -431,6 +441,17 @@ export default function App() {
       // session without the spoken greeting so the mic opens instantly.
       void activate({ greet: false });
     } else if (mode === "command") {
+      if (agentState === "connecting") {
+        // An impatient second tap during connect must not cancel the session.
+        return;
+      }
+      if (agentState === "error") {
+        // Tap on a failed session = reconnect, matching the on-screen hint.
+        await disconnect();
+        setMode("command");
+        connect();
+        return;
+      }
       if (agentState === "speaking") {
         interrupt();
       } else {
@@ -543,7 +564,15 @@ export default function App() {
       {/* ── Conversation area ────────────────────────────────── */}
       <div className="content">
         <div className="convo-area">
-          {msgs.length === 0 && !partialTranscript && (mode === "idle" || mode === "shutdown" || mode === "wake_word") && (
+          {!credentialsReady && msgs.length === 0 && (
+            // Boot is still resolving the stored session / launch code —
+            // don't flash "Offline / Sign in" at an already signed-in user.
+            <div className="welcome">
+              <span className="welcome-eyebrow">VoyceLab · Live</span>
+              <h1 className="welcome-title">Waking <em>up</em>…</h1>
+            </div>
+          )}
+          {credentialsReady && msgs.length === 0 && !partialTranscript && (mode === "idle" || mode === "shutdown" || mode === "wake_word") && (
             <div className="welcome">
               <span className="welcome-eyebrow">VoyceLab · Live</span>
               <h1 className="welcome-title">
@@ -607,9 +636,18 @@ export default function App() {
             onTap={handleRailTap}
           />
           <div className="orb-label">{label ?? (mode === "idle" ? "" : "")}</div>
-          {mode === "idle" && <div className="orb-hint">{wakeWordAvailable ? "tap for wake mode" : "tap to speak"}</div>}
+          {mode === "idle" && (
+            <div className="orb-hint">
+              {wakeWordAvailable
+                ? "tap for wake mode"
+                : wakeEnabled && !isWakeWordSupported()
+                  ? "tap to speak — hands-free wake isn't supported in this browser"
+                  : "tap to speak"}
+            </div>
+          )}
           {mode === "wake_word" && wakeWordAvailable && <div className="orb-hint">say {wakePhrase || "Hey Voyce"}</div>}
           {agentState === "speaking" && <div className="orb-hint">tap to interrupt</div>}
+          {mode === "command" && agentState === "error" && <div className="orb-hint">tap to reconnect</div>}
         </div>
       </div>
 
@@ -623,14 +661,15 @@ export default function App() {
         <img src={assetUrl("brand/google-g.png")} alt="Google" className="brand-strip-logo brand-strip-logo-narrow" />
       </div>
 
-      {/* Voice confirmation — visible even when order panel is closed */}
-      {pendingConfirmation && (
+      {/* Voice confirmation — the panel renders its own banner when open, so
+          only show the floating one when the panel is closed. */}
+      {pendingConfirmation && !panelOpen && (
         <div
           style={{
             position: "fixed",
             left: 16,
             right: 16,
-            bottom: 148,
+            bottom: "calc(148px + env(safe-area-inset-bottom))",
             zIndex: 40,
             background: "linear-gradient(135deg, #FFF3E0, #FFE0B2)",
             border: "2px solid #FF9800",

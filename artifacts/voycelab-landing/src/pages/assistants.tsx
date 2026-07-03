@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
+import { rememberIntendedPath } from "@/lib/post-login-redirect";
 import { useVenues } from "@/hooks/use-venues";
 import { VoiceRail } from "@/components/voice-rail";
 import { ExternalLink, Loader2, Plus, Settings2, Sparkles, Store, Trash2, X } from "lucide-react";
@@ -20,9 +21,10 @@ export default function Assistants() {
   const { data: profiles, isLoading: profilesLoading, error: profilesError } = useAgentProfiles();
   const deleteAssistant = useDeleteAssistant();
   const [selectedAssistantId, setSelectedAssistantId] = useState<string | null>(null);
+  const [launchIssue, setLaunchIssue] = useState<{ message: string; url?: string } | null>(null);
 
   useEffect(() => {
-    if (!isLoading && !auth?.user) setLocation("/login");
+    if (!isLoading && !auth?.user) { rememberIntendedPath(); setLocation("/login"); }
   }, [auth, isLoading, setLocation]);
 
   if (isLoading || (venuesLoading && !venuesError) || (profilesLoading && !profilesError)) {
@@ -139,8 +141,12 @@ export default function Assistants() {
           <AssistantDetailModal
             assistant={selectedAssistant}
             removing={deleteAssistant.isPending && deleteAssistant.variables === selectedAssistant.id}
-            onClose={() => setSelectedAssistantId(null)}
-            onLaunch={() => launchAssistant(selectedAssistant.venueId, selectedAssistant.id)}
+            launchIssue={launchIssue}
+            onClose={() => { setLaunchIssue(null); setSelectedAssistantId(null); }}
+            onLaunch={async () => {
+              setLaunchIssue(null);
+              setLaunchIssue(await launchAssistant(selectedAssistant.venueId, selectedAssistant.id));
+            }}
             onReconfigure={() => setLocation(`/assistants/edit/${selectedAssistant.id}`)}
             onRemove={() => {
               const confirmed = window.confirm(
@@ -236,6 +242,7 @@ function AssistantArt({ assistant, compact = false }: { assistant: AssistantSumm
 function AssistantDetailModal({
   assistant,
   removing,
+  launchIssue,
   onClose,
   onLaunch,
   onReconfigure,
@@ -243,6 +250,7 @@ function AssistantDetailModal({
 }: {
   assistant: AssistantSummary;
   removing: boolean;
+  launchIssue: { message: string; url?: string } | null;
   onClose: () => void;
   onLaunch: () => void;
   onReconfigure: () => void;
@@ -308,6 +316,20 @@ function AssistantDetailModal({
               >
                 Open assistant <ExternalLink className="h-3.5 w-3.5" />
               </button>
+              {launchIssue && (
+                <p className="rounded-2xl border px-3 py-2 text-[12.5px]" style={{ color: "var(--color-vl-danger)", background: "rgba(215,64,46,0.08)", borderColor: "rgba(215,64,46,0.18)" }}>
+                  {launchIssue.message}
+                  {launchIssue.url && (
+                    <>
+                      {" "}
+                      <a href={launchIssue.url} target="_blank" rel="noopener noreferrer" className="font-semibold underline">
+                        Open it here
+                      </a>
+                      .
+                    </>
+                  )}
+                </p>
+              )}
               <button
                 type="button"
                 onClick={onReconfigure}
@@ -434,7 +456,11 @@ function roomLabel(noiseMode: string): string {
   return noiseMode.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-async function launchAssistant(venueId: number | null, agentProfileId: string) {
+/** Returns null on success, or a user-facing issue (with a manual link when the popup was blocked). */
+async function launchAssistant(
+  venueId: number | null,
+  agentProfileId: string,
+): Promise<{ message: string; url?: string } | null> {
   try {
     const token = localStorage.getItem("voycelab_token") || "";
     const res = await fetch("/api/auth/exchange/create", {
@@ -450,8 +476,14 @@ async function launchAssistant(venueId: number | null, agentProfileId: string) {
     const baseUrl = isLocalDev
       ? `${window.location.protocol}//${window.location.hostname}:8081/`
       : `${window.location.origin}/agent/`;
-    window.open(`${baseUrl}?code=${encodeURIComponent(code)}&agentProfileId=${encodeURIComponent(agentProfileId)}`, "_blank", "noopener,noreferrer");
+    const url = `${baseUrl}?code=${encodeURIComponent(code)}&agentProfileId=${encodeURIComponent(agentProfileId)}`;
+    const opened = window.open(url, "_blank", "noopener,noreferrer");
+    if (!opened) {
+      return { message: "Your browser blocked the new tab.", url };
+    }
+    return null;
   } catch (e) {
     console.error(e);
+    return { message: e instanceof Error ? e.message : "Could not open the assistant. Try again." };
   }
 }

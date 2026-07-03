@@ -1,6 +1,7 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useParams, useSearch } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
+import { rememberIntendedPath } from "@/lib/post-login-redirect";
 import { useVenues } from "@/hooks/use-venues";
 import { withClerkBillingHeader } from "@/lib/clerk-session";
 import { getPlanAllowedPipelines } from "@workspace/voicelab-core/pricing";
@@ -176,9 +177,12 @@ export default function CreateAssistant() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(!!editId);
+  // A failed edit-load leaves the form at defaults; saving then would silently
+  // overwrite the real profile, so block submit until a reload succeeds.
+  const [editLoadFailed, setEditLoadFailed] = useState(false);
 
   useEffect(() => {
-    if (!authLoading && !auth) navigate("/login");
+    if (!authLoading && !auth) { rememberIntendedPath(); navigate("/login"); }
   }, [auth, authLoading, navigate]);
 
   useEffect(() => {
@@ -226,7 +230,8 @@ export default function CreateAssistant() {
         if (typeof cfg?.proactiveAudio === "boolean") setGeminiProactiveAudio(cfg.proactiveAudio);
         if (typeof cfg?.affectiveDialog === "boolean") setGeminiAffectiveDialog(cfg.affectiveDialog);
       } catch {
-        setError("Could not load this assistant for editing.");
+        setEditLoadFailed(true);
+        setError("Could not load this assistant for editing. Reload the page to try again — saving is disabled so your live settings aren't overwritten.");
       } finally {
         setLoadingProfile(false);
       }
@@ -783,7 +788,7 @@ export default function CreateAssistant() {
 
             <button
               type="submit"
-              disabled={saving || !name.trim() || !canUseSelectedEngine}
+              disabled={saving || !name.trim() || !canUseSelectedEngine || editLoadFailed}
               className="vl-btn-primary mt-5 inline-flex w-full items-center justify-center gap-2 text-[14px] disabled:cursor-not-allowed disabled:opacity-50"
             >
               {saving ? (

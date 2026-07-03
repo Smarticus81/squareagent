@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useSearch } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
+import { rememberIntendedPath } from "@/lib/post-login-redirect";
 import {
   useVenues,
   useSaveVenue,
@@ -70,7 +71,7 @@ export default function Onboarding() {
 
   /* Auth guard */
   useEffect(() => {
-    if (!authLoading && !auth?.user) navigate("/login");
+    if (!authLoading && !auth?.user) { rememberIntendedPath(); navigate("/login"); }
   }, [auth, authLoading, navigate]);
 
   /* Restore name from sessionStorage if user went through OAuth redirect */
@@ -173,7 +174,12 @@ export default function Onboarding() {
   }
 
   async function handleLaunch() {
-    if (!name.trim() || !auth?.organizationId) return;
+    if (!name.trim()) return;
+    if (!auth?.organizationId) {
+      // Silently returning here makes the primary button look dead.
+      setError("Your workspace is still being set up. Wait a moment, then try again — or reload the page.");
+      return;
+    }
     setSaving(true);
     setError(null);
     try {

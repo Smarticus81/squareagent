@@ -3,7 +3,7 @@
  */
 
 import type { ToolDefinition, ToolExecutor, ToolContext, ToolResult } from "./types";
-import { SQUARE_BASE, squareHeaders } from "../lib/square-helpers";
+import { SQUARE_BASE, squareFetch, squareHeaders } from "../lib/square-helpers";
 
 // ── Definitions ───────────────────────────────────────────────────────────────
 
@@ -84,7 +84,7 @@ function parsePeriod(period: string): { start: string; end: string } {
 }
 
 async function fetchOrders(squareToken: string, locationId: string, startAt: string, endAt: string, states?: string[]) {
-  const res = await fetch(`${SQUARE_BASE}/orders/search`, {
+  const res = await squareFetch(`${SQUARE_BASE}/orders/search`, {
     method: "POST",
     headers: squareHeaders(squareToken),
     body: JSON.stringify({

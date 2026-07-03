@@ -30,6 +30,27 @@ export function squareHeaders(token: string) {
   };
 }
 
+export const SQUARE_FETCH_TIMEOUT_MS = 10_000;
+
+/**
+ * fetch wrapper for Square API calls with a hard timeout. Raw fetch has no
+ * deadline, so a Square outage would hang a live voice command (and the SSE
+ * workflow stream) indefinitely; this fails fast with a speakable message.
+ */
+export async function squareFetch(url: string | URL, init: RequestInit = {}): Promise<Response> {
+  try {
+    return await fetch(url, {
+      ...init,
+      signal: init.signal ?? AbortSignal.timeout(SQUARE_FETCH_TIMEOUT_MS),
+    });
+  } catch (e: any) {
+    if (e?.name === "TimeoutError" || e?.name === "AbortError") {
+      throw new Error("Square did not respond in time. Please try again.");
+    }
+    throw e;
+  }
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface CatalogItem {
@@ -82,7 +103,7 @@ export async function getInventoryCount(
   locationId: string,
   variationId: string,
 ): Promise<number> {
-  const res = await fetch(`${SQUARE_BASE}/inventory/counts/batch-retrieve`, {
+  const res = await squareFetch(`${SQUARE_BASE}/inventory/counts/batch-retrieve`, {
     method: "POST",
     headers: squareHeaders(token),
     body: JSON.stringify({
@@ -162,7 +183,7 @@ export async function syncLiveOrderToSquare(
         // drawer and load directly into the cart when tapped.
       };
       console.log(`[LiveSync] Creating order location=${redactSquareId(locationId)} itemCount=${lineItems.length}`);
-      const res = await fetch(`${SQUARE_BASE}/orders`, {
+      const res = await squareFetch(`${SQUARE_BASE}/orders`, {
         method: "POST",
         headers: squareHeaders(squareToken),
         body: JSON.stringify({
@@ -185,7 +206,7 @@ export async function syncLiveOrderToSquare(
     } else if (session.items.length > 0) {
       // ── UPDATE existing order — clear old line items by UID, set new ones ──
       const uidsToRemove = (session.lineItemUids || []).map((uid) => `line_items[${uid}]`);
-      const res = await fetch(`${SQUARE_BASE}/orders/${session.squareOrderId}`, {
+      const res = await squareFetch(`${SQUARE_BASE}/orders/${session.squareOrderId}`, {
         method: "PUT",
         headers: squareHeaders(squareToken),
         body: JSON.stringify({
@@ -216,7 +237,7 @@ export async function syncLiveOrderToSquare(
         console.log(`[LiveSync] Order already empty order=${redactSquareId(session.squareOrderId)}`);
         return { ok: true, squareOrderId: session.squareOrderId };
       }
-      const res = await fetch(`${SQUARE_BASE}/orders/${session.squareOrderId}`, {
+      const res = await squareFetch(`${SQUARE_BASE}/orders/${session.squareOrderId}`, {
         method: "PUT",
         headers: squareHeaders(squareToken),
         body: JSON.stringify({
@@ -258,7 +279,7 @@ export async function cancelLiveOrder(
     // To cancel we update the order state. Square requires paying or canceling OPEN orders.
     // We use the UpdateOrder endpoint with state: CANCELED.
     // Note: This only works if the order has no completed payments.
-    const res = await fetch(`${SQUARE_BASE}/orders/${session.squareOrderId}`, {
+    const res = await squareFetch(`${SQUARE_BASE}/orders/${session.squareOrderId}`, {
       method: "PUT",
       headers: squareHeaders(squareToken),
       body: JSON.stringify({
@@ -300,7 +321,7 @@ export async function completeLiveOrder(
   const orderTotal = session.squareOrderTotal ?? 0;
 
   try {
-    const paymentRes = await fetch(`${SQUARE_BASE}/payments`, {
+    const paymentRes = await squareFetch(`${SQUARE_BASE}/payments`, {
       method: "POST",
       headers: squareHeaders(squareToken),
       body: JSON.stringify({
@@ -338,7 +359,7 @@ export async function pushToTerminal(
   totalCents: number,
 ): Promise<{ checkoutId?: string; error?: string }> {
   try {
-    const res = await fetch(`${SQUARE_BASE}/terminals/checkouts`, {
+    const res = await squareFetch(`${SQUARE_BASE}/terminals/checkouts`, {
       method: "POST",
       headers: squareHeaders(squareToken),
       body: JSON.stringify({
@@ -385,7 +406,7 @@ export async function createCatalogItem(
   const itemId = `#item-${Date.now()}`;
   const varId = `#var-${Date.now()}`;
   try {
-    const res = await fetch(`${SQUARE_BASE}/catalog/object`, {
+    const res = await squareFetch(`${SQUARE_BASE}/catalog/object`, {
       method: "POST",
       headers: squareHeaders(squareToken),
       body: JSON.stringify({
@@ -428,7 +449,7 @@ export async function updateCatalogItem(
 ): Promise<{ ok: boolean; error?: string }> {
   try {
     // Fetch current object first
-    const getRes = await fetch(`${SQUARE_BASE}/catalog/object/${catalogObjectId}`, {
+    const getRes = await squareFetch(`${SQUARE_BASE}/catalog/object/${catalogObjectId}`, {
       headers: squareHeaders(squareToken),
     });
     const getData = (await getRes.json()) as any;
@@ -443,7 +464,7 @@ export async function updateCatalogItem(
       };
     }
 
-    const res = await fetch(`${SQUARE_BASE}/catalog/object`, {
+    const res = await squareFetch(`${SQUARE_BASE}/catalog/object`, {
       method: "POST",
       headers: squareHeaders(squareToken),
       body: JSON.stringify({
@@ -465,7 +486,7 @@ export async function deleteCatalogItem(
   catalogObjectId: string,
 ): Promise<{ ok: boolean; error?: string }> {
   try {
-    const res = await fetch(`${SQUARE_BASE}/catalog/object/${catalogObjectId}`, {
+    const res = await squareFetch(`${SQUARE_BASE}/catalog/object/${catalogObjectId}`, {
       method: "DELETE",
       headers: squareHeaders(squareToken),
     });
@@ -486,7 +507,7 @@ export async function listRecentOrders(
   limit = 20,
 ): Promise<{ ok: boolean; orders?: any[]; error?: string }> {
   try {
-    const res = await fetch(`${SQUARE_BASE}/orders/search`, {
+    const res = await squareFetch(`${SQUARE_BASE}/orders/search`, {
       method: "POST",
       headers: squareHeaders(squareToken),
       body: JSON.stringify({
@@ -513,7 +534,7 @@ export async function getSalesSummary(
   endDate: string,
 ): Promise<{ ok: boolean; summary?: { totalOrders: number; totalRevenue: number; avgOrder: number; topItems: Array<{ name: string; qty: number; revenue: number }> }; error?: string }> {
   try {
-    const res = await fetch(`${SQUARE_BASE}/orders/search`, {
+    const res = await squareFetch(`${SQUARE_BASE}/orders/search`, {
       method: "POST",
       headers: squareHeaders(squareToken),
       body: JSON.stringify({
@@ -572,7 +593,7 @@ export async function listLocations(
   squareToken: string,
 ): Promise<{ ok: boolean; locations?: Array<{ id: string; name: string; status: string }>; error?: string }> {
   try {
-    const res = await fetch(`${SQUARE_BASE}/locations`, {
+    const res = await squareFetch(`${SQUARE_BASE}/locations`, {
       headers: squareHeaders(squareToken),
     });
     const data = (await res.json()) as any;

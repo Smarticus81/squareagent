@@ -6,7 +6,7 @@
  */
 
 import type { CatalogItem } from "./square-helpers";
-import { SQUARE_BASE, squareHeaders } from "./square-helpers";
+import { SQUARE_BASE, squareFetch, squareHeaders } from "./square-helpers";
 import crypto from "crypto";
 
 interface CachedCatalog {
@@ -71,7 +71,7 @@ async function fetchCatalog(squareToken: string, locationId: string): Promise<Ca
   try {
     do {
       const url = `${SQUARE_BASE}/catalog/list?types=ITEM${cursor ? `&cursor=${cursor}` : ""}`;
-      const res = await fetch(url, { headers: squareHeaders(squareToken) });
+      const res = await squareFetch(url, { headers: squareHeaders(squareToken) });
       if (!res.ok) {
         console.warn("[CatalogCache] Failed to fetch catalog:", res.status);
         break;

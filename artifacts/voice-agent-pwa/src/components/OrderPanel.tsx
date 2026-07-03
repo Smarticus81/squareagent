@@ -482,6 +482,8 @@ function SettingsSheet({ onBack, screenWakeStatus }: { onBack: () => void; scree
     const next = theme === "dark" ? "light" : "dark";
     document.documentElement.setAttribute("data-theme", next);
     localStorage.setItem("voycelab_theme", next);
+    // Keep the browser/status-bar chrome in step with the app theme.
+    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", next === "dark" ? "#07080A" : "#FFFFFF");
     setTheme(next);
   };
   const updateVoice = (v: string) => { setVoicePref(v); setPrefs(getVoicePrefs()); };
