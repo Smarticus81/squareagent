@@ -146,6 +146,61 @@ export interface ClerkIdentity {
   clerkOrgId: string;
 }
 
+type ClerkApiError = Error & {
+  status?: number;
+  statusCode?: number;
+  clerkTraceId?: string;
+  errors?: Array<{
+    code?: string;
+    message?: string;
+    longMessage?: string;
+    meta?: { paramName?: string };
+  }>;
+};
+
+function clerkErrorStatus(error: unknown): number | undefined {
+  if (!error || typeof error !== "object") return undefined;
+  const { status, statusCode } = error as ClerkApiError;
+  return typeof status === "number" ? status : typeof statusCode === "number" ? statusCode : undefined;
+}
+
+function isMissingClerkResource(error: unknown): boolean {
+  if (clerkErrorStatus(error) === 404) return true;
+  if (!error || typeof error !== "object") return false;
+  const clerkErrors = (error as ClerkApiError).errors;
+  return Array.isArray(clerkErrors) && clerkErrors.some((item) => item.code?.includes("not_found"));
+}
+
+export function formatClerkApiError(error: unknown): string {
+  if (!error || typeof error !== "object") return String(error);
+  const clerkError = error as ClerkApiError;
+  const base = clerkError.message || String(error);
+  const details = Array.isArray(clerkError.errors)
+    ? clerkError.errors
+        .map((item) => {
+          const message = item.longMessage || item.message;
+          const code = item.code ? `[${item.code}]` : "";
+          const param = item.meta?.paramName ? ` (${item.meta.paramName})` : "";
+          return [code, message ? `${message}${param}` : ""].filter(Boolean).join(" ");
+        })
+        .filter(Boolean)
+        .join("; ")
+    : "";
+  return details ? `${base}: ${details}` : base;
+}
+
+function clerkOrgSlug(org: Organization): string {
+  const base = org.name
+    .toLowerCase()
+    .replace(/['’]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40)
+    .replace(/-+$/g, "") || "voycelab-workspace";
+
+  return `${base}-${org.id.slice(0, 8)}`;
+}
+
 function unwrapList<T>(value: unknown): T[] {
   if (Array.isArray(value)) return value as T[];
   if (value && typeof value === "object" && Array.isArray((value as { data?: unknown }).data)) {
@@ -155,7 +210,15 @@ function unwrapList<T>(value: unknown): T[] {
 }
 
 async function findOrCreateClerkUser(user: User): Promise<string> {
-  if (user.clerkUserId) return user.clerkUserId;
+  if (user.clerkUserId) {
+    try {
+      const existing = await defaultClerkClient.users.getUser(user.clerkUserId);
+      return existing.id;
+    } catch (e) {
+      if (!isMissingClerkResource(e)) throw e;
+      log.warn({ clerkUserId: user.clerkUserId }, "stored clerk user id was not found; relinking user");
+    }
+  }
 
   const email = user.email.toLowerCase().trim();
   let clerkUserId: string | null = null;
@@ -205,12 +268,19 @@ async function ensureClerkOrgMembership(clerkOrgId: string, clerkUserId: string)
 
 async function findOrCreateClerkOrg(org: Organization, clerkUserId: string): Promise<string> {
   if (org.clerkOrgId) {
-    await ensureClerkOrgMembership(org.clerkOrgId, clerkUserId);
-    return org.clerkOrgId;
+    try {
+      const existing = await defaultClerkClient.organizations.getOrganization({ organizationId: org.clerkOrgId });
+      await ensureClerkOrgMembership(existing.id, clerkUserId);
+      return existing.id;
+    } catch (e) {
+      if (!isMissingClerkResource(e)) throw e;
+      log.warn({ clerkOrgId: org.clerkOrgId }, "stored clerk organization id was not found; relinking organization");
+    }
   }
 
   const created = await defaultClerkClient.organizations.createOrganization({
-    name: org.name,
+    name: org.name.trim() || "VoyceLab Workspace",
+    slug: clerkOrgSlug(org),
     createdBy: clerkUserId,
   });
 
@@ -234,7 +304,7 @@ export async function ensureClerkIdentity(user: User, org: Organization): Promis
     const clerkOrgId = await findOrCreateClerkOrg(org, clerkUserId);
     return { clerkUserId, clerkOrgId };
   } catch (e) {
-    log.error({ err: e instanceof Error ? e.message : String(e) }, "ensureClerkIdentity failed");
+    log.error({ err: formatClerkApiError(e) }, "ensureClerkIdentity failed");
     throw e;
   }
 }
@@ -255,7 +325,7 @@ export async function createClerkSignInToken(
     });
     return res?.token ?? null;
   } catch (e) {
-    log.error({ err: e instanceof Error ? e.message : String(e) }, "createSignInToken failed");
+    log.error({ err: formatClerkApiError(e) }, "createSignInToken failed");
     throw e;
   }
 }

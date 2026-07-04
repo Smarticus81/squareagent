@@ -238,7 +238,7 @@ export default function Pricing() {
                       The system could not link your VoyceLab workspace with Clerk Billing: <strong>{clerkError}</strong>
                     </p>
                     <p className="text-red-700/80 leading-relaxed text-[12px]">
-                      If you are the administrator, please ensure that both <code className="bg-red-100/50 px-1 py-0.5 rounded font-mono">CLERK_SECRET_KEY</code> and <code className="bg-red-100/50 px-1 py-0.5 rounded font-mono">VITE_CLERK_PUBLISHABLE_KEY</code> are correctly configured as environment variables in your Railway dashboard, and that they match the same Clerk instance.
+                      If you are the administrator, verify the Railway Clerk keys point to the same Clerk instance, Organizations and Billing are enabled in Clerk, and this workspace was not previously linked to a different Clerk environment.
                     </p>
                   </div>
                 ) : checkoutTimeout ? (

@@ -13,7 +13,7 @@ import crypto from "crypto";
 import nodemailer from "nodemailer";
 import { db, usersTable, sessionsTable, subscriptionsTable, exchangeCodesTable, organizationMembershipsTable, organizationsTable, venuesTable, agentProfilesTable, passwordResetTokensTable } from "@workspace/db";
 import { and, eq, gte, isNull, lt, or } from "drizzle-orm";
-import { checkClerkOrgPlan, isClerkConfigured, ensureClerkIdentity, createClerkSignInToken } from "../lib/clerk-billing";
+import { checkClerkOrgPlan, isClerkConfigured, ensureClerkIdentity, createClerkSignInToken, formatClerkApiError } from "../lib/clerk-billing";
 import { decrypt, encrypt } from "../lib/secrets";
 
 const router = Router();
@@ -783,8 +783,9 @@ router.post("/clerk-link", requireAuth as any, async (req: Request, res: Respons
       organizationId,
     });
   } catch (e: any) {
-    console.error("[Auth] clerk-link error:", e.message || String(e));
-    res.status(503).json({ error: `Could not link Clerk billing: ${e.message || String(e)}` });
+    const errorMessage = formatClerkApiError(e);
+    console.error("[Auth] clerk-link error:", errorMessage);
+    res.status(503).json({ error: `Could not link Clerk billing: ${errorMessage}` });
   }
 });
 
