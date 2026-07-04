@@ -21,7 +21,7 @@ const KEEP_AWAKE_TAG = "voycelab-session";
 
 function resolvePwaUrl(): string {
   const fromExtra = (Constants.expoConfig?.extra as { pwaUrl?: string } | undefined)?.pwaUrl;
-  const url = (fromExtra && fromExtra.trim().length > 0 ? fromExtra : "https://voycelab.up.railway.app/agent/").trim();
+  const url = (fromExtra && fromExtra.trim().length > 0 ? fromExtra : "https://www.voycelab.com/agent/").trim();
   return url.endsWith("/") ? url : `${url}/`;
 }
 

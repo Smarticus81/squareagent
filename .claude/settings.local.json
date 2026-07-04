@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx tsc *)",
+      "Bash(ls artifacts/api-server/.env)",
+      "Bash(tail -5 artifacts/api-server/dev-local.log)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8080/api/health)",
+      "Bash(curl -s -X POST http://localhost:8080/api/realtime/session -H \"Content-Type: application/json\" -d '{}')"
+    ]
+  }
+}

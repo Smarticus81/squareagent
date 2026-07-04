@@ -61,7 +61,7 @@
       ]
     ],
     "extra": {
-      "pwaUrl": "https://voycelab.up.railway.app/agent/",
+      "pwaUrl": "https://www.voycelab.com/agent/",
       "eas": {
         "projectId": "36043f11-c509-458e-8706-e049d231ec29"
       }
