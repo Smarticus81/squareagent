@@ -84,9 +84,9 @@ findings:
 | # | Finding | Status |
 |---|---------|--------|
 | M1 | iOS reclaims the WKWebView content process under memory pressure (routine for an always-on venue screen) — the app was left showing a **dead white view** until force-quit; same for Android render-process death | ✅ `onContentProcessDidTerminate` / `onRenderProcessGone` now auto-reload |
-| M2 | Square/Clerk OAuth started inside the WebView is routed to the **system browser**, but the OAuth return then lands in Safari's copy of the web app, not back in the native app — the user's in-app session never learns the connection succeeded | ⏭ needs universal links (AASA) or in-app OAuth completion; connect Square from the dashboard in the meantime |
-| M3 | The `voycelab://` scheme is declared in `app.json` but **incoming deep links are never handled** — the dashboard's "Open assistant" launch codes (`?code=…&agentProfileId=…`) can't target the native app | ⏭ handle `Linking` initial/updated URLs and append the query to the WebView source |
-| M4 | Status bar is hard-coded dark-on-light; the PWA's dark theme will mismatch | ⏭ read the WebView theme (postMessage) or follow system appearance |
+| M2 | Square OAuth started inside the WebView was routed to the **system browser**, so the OAuth return landed in Safari's copy of the web app — the in-app session never learned the connection succeeded | ✅ `squareup.com`/`squareupsandbox.com` now stay in the WebView so the redirect chain completes in-app (Clerk/Google still open externally — they refuse embedded contexts; note a Square login *via Google* inside the WebView will be refused by Google, use Square credentials) |
+| M3 | The `voycelab://` scheme was declared but **incoming deep links were never handled** — dashboard launch codes couldn't target the native app | ✅ initial + runtime links (`voycelab://…` and `https://…/agent/…`) map onto the embedded PWA with their query preserved; iOS `associatedDomains` + Android verified intent filters added; API server serves `/.well-known/apple-app-site-association` and `assetlinks.json` once `APPLE_TEAM_ID` / `ANDROID_CERT_SHA256` are set |
+| M4 | Status bar was hard-coded dark-on-light; the PWA's dark theme mismatched | ✅ the PWA's `data-theme` is mirrored to the shell via postMessage; status bar and chrome follow |
 
 ## Polish
 

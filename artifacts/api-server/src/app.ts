@@ -96,6 +96,42 @@ app.use(["/api/realtime", "/api/realtime/gemini"], rateLimit({
 
 app.use("/api", router);
 
+// App-link association files for the native mobile wrapper. Universal links
+// (iOS) and verified app links (Android) let dashboard "Open assistant" URLs
+// open the installed app. Served 404 until the signing identifiers are set.
+app.get("/.well-known/apple-app-site-association", (_req, res) => {
+	const teamId = process.env.APPLE_TEAM_ID;
+	if (!teamId) {
+		res.status(404).json({ error: "not_configured" });
+		return;
+	}
+	res.setHeader("Cache-Control", "no-cache");
+	res.json({
+		applinks: {
+			apps: [],
+			details: [{ appID: `${teamId}.com.voycelab.app`, paths: ["/agent/*", "/agent"] }],
+		},
+	});
+});
+app.get("/.well-known/assetlinks.json", (_req, res) => {
+	const sha256 = process.env.ANDROID_CERT_SHA256;
+	if (!sha256) {
+		res.status(404).json({ error: "not_configured" });
+		return;
+	}
+	res.setHeader("Cache-Control", "no-cache");
+	res.json([
+		{
+			relation: ["delegate_permission/common.handle_all_urls"],
+			target: {
+				namespace: "android_app",
+				package_name: "com.voycelab.app",
+				sha256_cert_fingerprints: [sha256],
+			},
+		},
+	]);
+});
+
 // Hashed Vite assets are immutable; index.html must always revalidate so a
 // deploy doesn't leave clients holding a shell that points at purged chunks.
 const staticOptions = {

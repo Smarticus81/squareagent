@@ -25,6 +25,26 @@ function resolvePwaUrl(): string {
   return url.endsWith("/") ? url : `${url}/`;
 }
 
+// Injected after load: mirrors the PWA's data-theme attribute out to the
+// native shell so the status bar and chrome follow the in-app theme toggle.
+const INJECTED_THEME_SYNC = `
+  (function () {
+    try {
+      var post = function () {
+        if (window.ReactNativeWebView) {
+          window.ReactNativeWebView.postMessage(JSON.stringify({
+            type: 'theme',
+            value: document.documentElement.getAttribute('data-theme') || 'light',
+          }));
+        }
+      };
+      new MutationObserver(post).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+      post();
+    } catch (e) {}
+    true;
+  })();
+`;
+
 // Injected before page scripts run so the embedded PWA behaves like a native
 // app: locks zoom, removes long-press callouts, and disables overscroll bounce.
 const INJECTED_BEFORE_LOAD = `
@@ -58,6 +78,8 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+  const [webUrl, setWebUrl] = useState(pwaUrl);
+  const [theme, setTheme] = useState<"light" | "dark">("light");
 
   // Venue POS surface: keep the display awake the entire time the app is open.
   useEffect(() => {
@@ -67,12 +89,49 @@ export default function App() {
     };
   }, []);
 
+  // Map an incoming deep link (voycelab:// scheme or a universal link into
+  // /agent/) onto the embedded PWA, preserving launch params like
+  // ?code=…&agentProfileId=… minted by the dashboard's "Open assistant".
+  const toWebUrl = useCallback(
+    (link: string | null): string | null => {
+      if (!link) return null;
+      const [base, query = ""] = link.split("?");
+      const isScheme = base.startsWith("voycelab://");
+      const isAgentLink = pwaHost && base.startsWith("http") && base.includes(`${pwaHost}/agent`);
+      if (!isScheme && !isAgentLink) return null;
+      return query ? `${pwaUrl}?${query}` : pwaUrl;
+    },
+    [pwaUrl, pwaHost],
+  );
+
+  useEffect(() => {
+    void Linking.getInitialURL().then((link) => {
+      const mapped = toWebUrl(link);
+      if (mapped) setWebUrl(mapped);
+    });
+    const sub = Linking.addEventListener("url", ({ url }) => {
+      const mapped = toWebUrl(url);
+      if (mapped) {
+        setFailed(false);
+        setWebUrl(mapped);
+        setReloadKey((k) => k + 1);
+      }
+    });
+    return () => sub.remove();
+  }, [toWebUrl]);
+
   const onShouldStartLoadWithRequest = useCallback(
     (request: WebViewNavigation) => {
       const target = request.url;
       if (target.startsWith("http") && pwaHost && !target.includes(pwaHost)) {
-        // Route third-party auth flows (Square OAuth, Clerk, Google) to the
-        // system browser so their redirects complete correctly.
+        // Square OAuth must stay inside the WebView: its redirect chain ends
+        // back on our host, which a system-browser detour can never deliver
+        // into this app's session.
+        if (/(^https:\/\/)([\w-]+\.)*squareup(sandbox)?\.com\//i.test(target)) {
+          return true;
+        }
+        // Route other third-party auth flows (Clerk, Google) to the system
+        // browser — several of them refuse to run embedded.
         if (/oauth|auth|accounts|login|checkout|billing/i.test(target)) {
           void Linking.openURL(target);
           return false;
@@ -89,9 +148,11 @@ export default function App() {
     setReloadKey((k) => k + 1);
   }, []);
 
+  const chromeBg = theme === "dark" ? "#07080A" : BRAND_BG;
+
   return (
-    <SafeAreaView style={styles.safe}>
-      <StatusBar style="dark" />
+    <SafeAreaView style={[styles.safe, { backgroundColor: chromeBg }]}>
+      <StatusBar style={theme === "dark" ? "light" : "dark"} />
       {failed ? (
         <View style={styles.center}>
           <Text style={styles.title}>VoyceLab</Text>
@@ -104,8 +165,8 @@ export default function App() {
         <WebView
           key={reloadKey}
           ref={webRef}
-          source={{ uri: pwaUrl }}
-          style={styles.web}
+          source={{ uri: webUrl }}
+          style={[styles.web, { backgroundColor: chromeBg }]}
           originWhitelist={["*"]}
           javaScriptEnabled
           domStorageEnabled
@@ -121,6 +182,15 @@ export default function App() {
           keyboardDisplayRequiresUserAction={false}
           setSupportMultipleWindows={false}
           injectedJavaScriptBeforeContentLoaded={INJECTED_BEFORE_LOAD}
+          injectedJavaScript={INJECTED_THEME_SYNC}
+          onMessage={(e) => {
+            try {
+              const msg = JSON.parse(e.nativeEvent.data) as { type?: string; value?: string };
+              if (msg?.type === "theme") setTheme(msg.value === "dark" ? "dark" : "light");
+            } catch {
+              // ignore unrecognized messages
+            }
+          }}
           onShouldStartLoadWithRequest={onShouldStartLoadWithRequest}
           onLoadStart={() => setLoading(true)}
           onLoadEnd={() => setLoading(false)}
@@ -148,7 +218,7 @@ export default function App() {
         />
       )}
       {loading && !failed ? (
-        <View style={styles.loader} pointerEvents="none">
+        <View style={[styles.loader, { backgroundColor: chromeBg }]} pointerEvents="none">
           <ActivityIndicator size="large" color={BRAND_ACCENT} />
         </View>
       ) : null}

@@ -20,6 +20,10 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.voycelab.app",
+      "associatedDomains": [
+        "applinks:www.voycelab.com",
+        "applinks:voycelab.com"
+      ],
       "config": {
         "usesNonExemptEncryption": false
       },
@@ -45,6 +49,17 @@
       "permissions": [
         "RECORD_AUDIO",
         "MODIFY_AUDIO_SETTINGS"
+      ],
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            { "scheme": "https", "host": "www.voycelab.com", "pathPrefix": "/agent" },
+            { "scheme": "https", "host": "voycelab.com", "pathPrefix": "/agent" }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
       ]
     },
     "web": {
