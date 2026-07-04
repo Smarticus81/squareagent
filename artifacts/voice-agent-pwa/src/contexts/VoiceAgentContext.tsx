@@ -27,6 +27,23 @@ export interface OrderCommand {
   squareOrderId?: string;
 }
 
+interface VoiceOrderSnapshotItem {
+  item_id?: string;
+  variationId?: string;
+  name?: string;
+  item_name?: string;
+  price: number;
+  quantity: number;
+}
+
+interface VoiceCatalogSnapshotItem {
+  id?: string;
+  variationId?: string;
+  name: string;
+  price: number;
+  category?: string;
+}
+
 export type CommandHandler = (commands: OrderCommand[]) => void;
 
 export interface PendingConfirmation {
@@ -82,6 +99,75 @@ interface VoiceAgentContextType {
 
 let _msgId = 0;
 const genId = () => `msg-${Date.now()}-${++_msgId}`;
+
+function normalizeOrderSnapshot(order: unknown[]): VoiceOrderSnapshotItem[] {
+  return order.flatMap((raw) => {
+    if (!raw || typeof raw !== "object") return [];
+    const item = raw as Record<string, unknown>;
+    const name = typeof item.name === "string" ? item.name : typeof item.item_name === "string" ? item.item_name : "";
+    const quantity = Number(item.quantity ?? 0);
+    const price = Number(item.price ?? 0);
+    if (!name || !Number.isFinite(quantity) || quantity <= 0) return [];
+    return [{
+      item_id: typeof item.item_id === "string" ? item.item_id : typeof item.id === "string" ? item.id : undefined,
+      variationId: typeof item.variationId === "string" ? item.variationId : undefined,
+      name,
+      item_name: name,
+      price: Number.isFinite(price) ? price : 0,
+      quantity,
+    }];
+  });
+}
+
+function applyOrderCommandToSnapshot(
+  order: VoiceOrderSnapshotItem[],
+  command: OrderCommand,
+  catalog: VoiceCatalogSnapshotItem[],
+): VoiceOrderSnapshotItem[] {
+  if (command.action === "clear" || command.action === "submit") return [];
+
+  const quantity = Math.max(1, Number(command.quantity ?? 1));
+  const commandName = (command.item_name ?? "").toLowerCase();
+  const catalogMatch = catalog.find((item) => command.item_id && item.id === command.item_id)
+    ?? catalog.find((item) => item.name.toLowerCase() === commandName)
+    ?? catalog.find((item) => item.name.toLowerCase().includes(commandName) || commandName.includes(item.name.toLowerCase()));
+  const itemName = catalogMatch?.name ?? command.item_name;
+  if (!itemName) return order;
+
+  const matchesCommand = (item: VoiceOrderSnapshotItem) => {
+    const itemId = item.item_id;
+    const name = (item.item_name ?? item.name ?? "").toLowerCase();
+    return Boolean(command.item_id && itemId === command.item_id)
+      || name === itemName.toLowerCase()
+      || name.includes(itemName.toLowerCase())
+      || itemName.toLowerCase().includes(name);
+  };
+
+  if (command.action === "add") {
+    const existing = order.find(matchesCommand);
+    if (existing) {
+      return order.map((item) => matchesCommand(item) ? { ...item, quantity: item.quantity + quantity } : item);
+    }
+    return [...order, {
+      item_id: command.item_id ?? catalogMatch?.id,
+      variationId: catalogMatch?.variationId,
+      name: itemName,
+      item_name: itemName,
+      price: Number(command.price ?? catalogMatch?.price ?? 0),
+      quantity,
+    }];
+  }
+
+  if (command.action === "remove") {
+    return order.flatMap((item) => {
+      if (!matchesCommand(item)) return [item];
+      const nextQuantity = item.quantity - quantity;
+      return nextQuantity > 0 ? [{ ...item, quantity: nextQuantity }] : [];
+    });
+  }
+
+  return order;
+}
 
 function clearStoredLaunchSession() {
   localStorage.removeItem("voycelab_token");
@@ -180,7 +266,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
   const audioElRef = useRef<HTMLAudioElement | null>(null);
   const commandHandlerRef = useRef<CommandHandler | null>(null);
   const catalogRef = useRef<unknown[]>([]);
-  const currentOrderRef = useRef<unknown[]>([]);
+  const currentOrderRef = useRef<VoiceOrderSnapshotItem[]>([]);
   const venueIdRef = useRef("");
   const authTokenRef = useRef("");
   const agentProfileIdRef = useRef("");
@@ -247,7 +333,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const setCurrentOrder = useCallback((order: unknown[]) => {
-    currentOrderRef.current = order;
+    currentOrderRef.current = normalizeOrderSnapshot(order);
     sendContextUpdate();
   }, []);
 
@@ -440,6 +526,16 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const applyServerOrderCommand = useCallback((command: OrderCommand) => {
+    currentOrderRef.current = applyOrderCommandToSnapshot(
+      currentOrderRef.current,
+      command,
+      catalogRef.current as VoiceCatalogSnapshotItem[],
+    );
+    sendContextUpdate();
+    commandHandlerRef.current?.([command]);
+  }, [sendContextUpdate]);
+
   /** Clear response-guard state. Called on cancel/teardown so the next turn isn't blocked. */
   const resetResponseGuard = useCallback(() => {
     activeResponseRef.current = false;
@@ -527,16 +623,16 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      sendToolOutput(data.result ?? "Tool execution failed");
-
       if (data.command) {
-        commandHandlerRef.current?.([data.command]);
+        applyServerOrderCommand(data.command);
       }
+
+      sendToolOutput(data.result ?? "Tool execution failed");
     } catch (e: any) {
       console.error(`[WebRTC] Tool exec error:`, e.message);
       sendToolOutput(`Error: ${e.message}`);
     }
-  }, [requestResponse]);
+  }, [applyServerOrderCommand, requestResponse]);
 
   // ── Standby / activation helpers ────────────────────────────────────────────
 
@@ -1475,12 +1571,12 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
         orderHandlingMode: orderHandlingModeRef.current,
       }),
     }).then(r => r.json()).then(data => {
+      if (data.command) applyServerOrderCommand(data.command);
       sendToolOutput(data.result ?? "Confirmed and executed.");
-      if (data.command) commandHandlerRef.current?.([data.command]);
     }).catch(e => {
       sendToolOutput(`Error: ${e.message}`);
     });
-  }, [pendingConfirmation, requestResponse]);
+  }, [applyServerOrderCommand, pendingConfirmation, requestResponse]);
 
   const denyPending = useCallback(() => {
     const conf = pendingConfirmation;

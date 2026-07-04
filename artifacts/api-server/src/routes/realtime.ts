@@ -34,6 +34,7 @@ import { eq, sql, and, gte, isNull, or } from "drizzle-orm";
 import {
   type CatalogItem,
   type OrderItem,
+  type SessionOrderItem,
 } from "../lib/square-helpers";
 import { SquareClient } from "../lib/square-client";
 import { getCachedCredentials } from "../lib/credential-cache";
@@ -96,6 +97,43 @@ function parseOptionalVenueId(raw: unknown): number | null | "invalid" {
   if (raw === undefined || raw === null || raw === "") return null;
   const value = Number(raw);
   return Number.isInteger(value) && value > 0 ? value : "invalid";
+}
+
+function orderSnapshotToSessionItems(rawOrder: unknown, catalog: CatalogItem[]): SessionOrderItem[] {
+  if (!Array.isArray(rawOrder)) return [];
+
+  const items = new Map<string, SessionOrderItem>();
+  for (const raw of rawOrder) {
+    if (!raw || typeof raw !== "object") continue;
+    const item = raw as Record<string, unknown>;
+    const itemId = typeof item.item_id === "string" ? item.item_id : typeof item.id === "string" ? item.id : undefined;
+    const itemName = typeof item.item_name === "string" ? item.item_name : typeof item.name === "string" ? item.name : "";
+    const quantity = Number(item.quantity ?? 0);
+    if (!itemName || !Number.isFinite(quantity) || quantity <= 0) continue;
+
+    const normalizedName = itemName.toLowerCase();
+    const match = catalog.find((catalogItem) => itemId && catalogItem.id === itemId)
+      ?? catalog.find((catalogItem) => catalogItem.name.toLowerCase() === normalizedName)
+      ?? catalog.find((catalogItem) => catalogItem.name.toLowerCase().includes(normalizedName) || normalizedName.includes(catalogItem.name.toLowerCase()));
+    const catalogItemId = match?.id ?? itemId ?? itemName;
+    const variationId = match?.variationId ?? (typeof item.variationId === "string" ? item.variationId : undefined);
+    const price = Number(item.price ?? match?.price ?? 0);
+
+    const existing = items.get(catalogItemId);
+    if (existing) {
+      existing.quantity += quantity;
+    } else {
+      items.set(catalogItemId, {
+        catalogItemId,
+        variationId,
+        name: match?.name ?? itemName,
+        price: Number.isFinite(price) ? price : 0,
+        quantity,
+      });
+    }
+  }
+
+  return [...items.values()];
 }
 
 async function hasGeneralConnectedSystems(userId: number, organizationId: string | null): Promise<boolean> {
@@ -1052,6 +1090,13 @@ router.post("/tools", requireAuth as any, requirePlan() as any, async (req: any,
     return;
   }
   const session = getOrCreateSession(sessionId, squareToken, squareLocationId, req.user.id, numericVenueId);
+  if (!existingSession && session.items.length === 0) {
+    const initialItems = orderSnapshotToSessionItems(order, catalog);
+    if (initialItems.length > 0) {
+      session.items.push(...initialItems);
+      markDirty(sessionId);
+    }
+  }
 
   try {
     const squareClient = squareToken ? new SquareClient(squareToken, squareLocationId) : undefined;

@@ -38,10 +38,11 @@ interface OrderContextType {
   lastSubmittedOrder: Order | null;
   addItem: (item: SquareCatalogItem, quantity?: number) => void;
   removeItem: (lineItemId: string) => void;
+  removeItemByName: (itemName: string, quantity?: number) => void;
   updateQuantity: (lineItemId: string, quantity: number) => void;
   clearOrder: () => void;
   /** Mark the current order as submitted by the voice agent (Square was already called server-side). */
-  markVoiceOrderSubmitted: () => void;
+  markVoiceOrderSubmitted: (squareOrderId?: string) => void;
   submitOrder: (venueId?: string | null, authToken?: string | null) => Promise<{ success: boolean; orderId?: string; error?: string; warning?: string; paymentRecorded?: boolean }>;
   isSubmitting: boolean;
   submitError: string | null;
@@ -96,6 +97,23 @@ export function OrderProvider({ children }: { children: ReactNode }) {
     });
   }
 
+  function removeItemByName(itemName: string, quantity = 1) {
+    const n = itemName.toLowerCase();
+    const qty = Math.max(1, quantity);
+    setCurrentOrder((prev) => {
+      if (!prev) return null;
+      const line = prev.items.find((i) => i.catalogItem.name.toLowerCase() === n)
+        ?? prev.items.find((i) => i.catalogItem.name.toLowerCase().includes(n));
+      if (!line) return prev;
+      const newItems = prev.items.flatMap((i) => {
+        if (i.id !== line.id) return [i];
+        const nextQuantity = i.quantity - qty;
+        return nextQuantity > 0 ? [{ ...i, quantity: nextQuantity }] : [];
+      });
+      return newItems.length ? { ...prev, items: newItems, total: calcTotal(newItems) } : null;
+    });
+  }
+
   function updateQuantity(id: string, qty: number) {
     if (qty <= 0) return removeItem(id);
     setCurrentOrder((prev) => {
@@ -112,12 +130,14 @@ export function OrderProvider({ children }: { children: ReactNode }) {
   }
 
   /** Called when the voice agent has already submitted the order server-side; just updates UI state. */
-  function markVoiceOrderSubmitted() {
-    if (!currentOrder?.items.length) return;
-    const done: Order = { ...currentOrder, status: "completed" };
-    setCurrentOrder(null);
-    setLastSubmittedOrder(done);
-    setTimeout(() => setLastSubmittedOrder(null), 5000);
+  function markVoiceOrderSubmitted(squareOrderId?: string) {
+    setCurrentOrder((prev) => {
+      if (!prev?.items.length) return prev;
+      const done: Order = { ...prev, status: "completed", squareOrderId: squareOrderId ?? prev.squareOrderId };
+      setLastSubmittedOrder(done);
+      setTimeout(() => setLastSubmittedOrder(null), 5000);
+      return null;
+    });
   }
 
   async function submitOrder(venueId?: string | null, authToken?: string | null) {
@@ -158,7 +178,7 @@ export function OrderProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <OrderContext.Provider value={{ currentOrder, lastSubmittedOrder, addItem, removeItem, updateQuantity, clearOrder, markVoiceOrderSubmitted, submitOrder, isSubmitting, submitError, submitWarning }}>
+    <OrderContext.Provider value={{ currentOrder, lastSubmittedOrder, addItem, removeItem, removeItemByName, updateQuantity, clearOrder, markVoiceOrderSubmitted, submitOrder, isSubmitting, submitError, submitWarning }}>
       {children}
     </OrderContext.Provider>
   );

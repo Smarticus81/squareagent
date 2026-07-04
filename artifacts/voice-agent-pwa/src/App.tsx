@@ -108,7 +108,7 @@ export default function App() {
 
   const {
     currentOrder, lastSubmittedOrder,
-    addItem, removeItem, updateQuantity, clearOrder, markVoiceOrderSubmitted, submitOrder, isSubmitting,
+    addItem, removeItemByName, clearOrder, markVoiceOrderSubmitted, submitOrder, isSubmitting,
   } = useOrder();
 
   const {
@@ -194,7 +194,9 @@ export default function App() {
   useEffect(() => {
     setCurrentOrder(
       (currentOrder?.items ?? []).map((i) => ({
-        name: i.catalogItem.name, price: i.catalogItem.price, quantity: i.quantity,
+        item_id: i.catalogItem.id, variationId: i.catalogItem.variationId,
+        name: i.catalogItem.name, item_name: i.catalogItem.name,
+        price: i.catalogItem.price, quantity: i.quantity,
       })),
     );
   }, [currentOrder, setCurrentOrder]);
@@ -215,28 +217,22 @@ export default function App() {
           break;
         }
         case "remove": {
-          const n = (cmd.item_name ?? "").toLowerCase();
-          const ord = orderRef.current;
-          const line = ord?.items.find((i) => i.catalogItem.name.toLowerCase() === n)
-            ?? ord?.items.find((i) => i.catalogItem.name.toLowerCase().includes(n));
-          if (line) removeItem(line.id);
+          if (cmd.item_name) removeItemByName(cmd.item_name, cmd.quantity ?? 1);
           break;
         }
         case "clear":
           clearOrder();
           break;
         case "submit": {
-          if (orderRef.current?.items.length) {
-            soundSubmit();
-            markVoiceOrderSubmitted();
-            setPanelScreen("order");
-            setPanelOpen(true);
-          }
+          soundSubmit();
+          markVoiceOrderSubmitted(cmd.squareOrderId);
+          setPanelScreen("order");
+          setPanelOpen(true);
           break;
         }
       }
     }
-  }, [addItem, removeItem, clearOrder, markVoiceOrderSubmitted]);
+  }, [addItem, removeItemByName, clearOrder, markVoiceOrderSubmitted]);
 
   useEffect(() => { setToolHandler(handleCmds); }, [handleCmds, setToolHandler]);
 
