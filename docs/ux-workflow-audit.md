@@ -1,9 +1,9 @@
 # UX Workflow Audit — VoyceLab
 
 Full-journey trace of every surface a user touches: the operator dashboard
-(`voycelab-landing`), the voice PWA (`voice-agent-pwa`, which is also the iOS
-experience as an installable PWA — there is no native iOS app in this repo),
-and the API behaviors that shape perceived UX. Each flow was traced through
+(`voycelab-landing`), the voice PWA (`voice-agent-pwa`), the native iOS/Android
+wrapper (`mobile/`, an Expo WebView shell around the deployed PWA), and the API
+behaviors that shape perceived UX. Each flow was traced through
 the code (entry → route → state → API → terminal states), then audited for
 step count, state loss, feedback gaps, and unhappy paths.
 
@@ -74,6 +74,19 @@ optimistic client-side; tools execute server-side via `POST
 | F17 | Pending OAuth state is **in-memory** — a redeploy mid-OAuth forces the user to restart the connect flow | `routes/square.ts:92` | ⏭ persist pending state alongside the existing DB-backed claims |
 | F18 | No **unsaved-changes guard** on any dashboard CRUD form | `create-assistant.tsx` etc. | ⏭ `beforeunload` guard when dirty |
 | F19 | Workflow one-tap buttons exist only in the PWA, **not the operator dashboard** | — | ⏭ product decision |
+
+## Native mobile wrapper (`mobile/`)
+
+The Expo app is a WebView shell around `https://www.voycelab.com/agent/`, so
+every PWA fix above reaches native users automatically on deploy. Wrapper-level
+findings:
+
+| # | Finding | Status |
+|---|---------|--------|
+| M1 | iOS reclaims the WKWebView content process under memory pressure (routine for an always-on venue screen) — the app was left showing a **dead white view** until force-quit; same for Android render-process death | ✅ `onContentProcessDidTerminate` / `onRenderProcessGone` now auto-reload |
+| M2 | Square/Clerk OAuth started inside the WebView is routed to the **system browser**, but the OAuth return then lands in Safari's copy of the web app, not back in the native app — the user's in-app session never learns the connection succeeded | ⏭ needs universal links (AASA) or in-app OAuth completion; connect Square from the dashboard in the meantime |
+| M3 | The `voycelab://` scheme is declared in `app.json` but **incoming deep links are never handled** — the dashboard's "Open assistant" launch codes (`?code=…&agentProfileId=…`) can't target the native app | ⏭ handle `Linking` initial/updated URLs and append the query to the WebView source |
+| M4 | Status bar is hard-coded dark-on-light; the PWA's dark theme will mismatch | ⏭ read the WebView theme (postMessage) or follow system appearance |
 
 ## Polish
 

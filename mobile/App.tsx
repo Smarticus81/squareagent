@@ -134,6 +134,15 @@ export default function App() {
               setFailed(true);
             }
           }}
+          onContentProcessDidTerminate={() => {
+            // iOS reclaims the WKWebView content process under memory pressure
+            // (routine for an always-on venue screen) — without this the app is
+            // left showing a dead white view until force-quit.
+            reload();
+          }}
+          onRenderProcessGone={() => {
+            reload();
+          }}
           allowsAirPlayForMediaPlayback
           applicationNameForUserAgent="VoyceLabApp"
         />
