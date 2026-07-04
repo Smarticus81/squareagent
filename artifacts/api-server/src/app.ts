@@ -96,17 +96,34 @@ app.use(["/api/realtime", "/api/realtime/gemini"], rateLimit({
 
 app.use("/api", router);
 
+// Hashed Vite assets are immutable; index.html must always revalidate so a
+// deploy doesn't leave clients holding a shell that points at purged chunks.
+const staticOptions = {
+	index: false as const,
+	maxAge: "1y",
+	immutable: true,
+	setHeaders: (res: express.Response, filePath: string) => {
+		if (filePath.endsWith(".html") || filePath.endsWith("sw.js") || filePath.endsWith("manifest.json")) {
+			res.setHeader("Cache-Control", "no-cache");
+		}
+	},
+};
+const sendIndex = (res: express.Response, dist: string) => {
+	res.setHeader("Cache-Control", "no-cache");
+	res.sendFile(path.join(dist, "index.html"));
+};
+
 if (existsSync(voiceAgentDist)) {
-	app.use("/agent", express.static(voiceAgentDist, { index: false }));
+	app.use("/agent", express.static(voiceAgentDist, staticOptions));
 	app.get(/^\/agent(?:\/.*)?$/, (_req, res) => {
-		res.sendFile(path.join(voiceAgentDist, "index.html"));
+		sendIndex(res, voiceAgentDist);
 	});
 }
 
 if (existsSync(landingDist)) {
-	app.use(express.static(landingDist, { index: false }));
+	app.use(express.static(landingDist, staticOptions));
 	app.get(/^(?!\/api(?:\/|$)|\/agent(?:\/|$)).*/, (_req, res) => {
-		res.sendFile(path.join(landingDist, "index.html"));
+		sendIndex(res, landingDist);
 	});
 }
 

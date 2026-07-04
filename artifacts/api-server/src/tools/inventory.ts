@@ -7,6 +7,7 @@ import {
   findCatalogItem,
   getInventoryCount,
   SQUARE_BASE,
+  squareFetch,
   squareHeaders,
 } from "../lib/square-helpers";
 
@@ -160,7 +161,7 @@ async function checkAllInventory(_args: Record<string, unknown>, ctx: ToolContex
   if (ctx.catalog.length === 0) return { result: "No catalog items loaded." };
   try {
     const ids = ctx.catalog.map((c) => c.variationId ?? c.id);
-    const res = await fetch(`${SQUARE_BASE}/inventory/counts/batch-retrieve`, {
+    const res = await squareFetch(`${SQUARE_BASE}/inventory/counts/batch-retrieve`, {
       method: "POST",
       headers: squareHeaders(ctx.squareToken),
       body: JSON.stringify({ catalog_object_ids: ids, location_ids: [ctx.squareLocationId] }),
@@ -206,7 +207,7 @@ async function adjustInventory(args: Record<string, unknown>, ctx: ToolContext):
   }
 
   try {
-    const res = await fetch(`${SQUARE_BASE}/inventory/changes/batch-create`, {
+    const res = await squareFetch(`${SQUARE_BASE}/inventory/changes/batch-create`, {
       method: "POST",
       headers: squareHeaders(ctx.squareToken),
       body: JSON.stringify({
@@ -243,7 +244,7 @@ async function setInventory(args: Record<string, unknown>, ctx: ToolContext): Pr
   if (!ctx.squareToken || !ctx.squareLocationId) return { result: "Square not connected." };
   const variationId = match.variationId ?? match.id;
   try {
-    const res = await fetch(`${SQUARE_BASE}/inventory/changes/batch-create`, {
+    const res = await squareFetch(`${SQUARE_BASE}/inventory/changes/batch-create`, {
       method: "POST",
       headers: squareHeaders(ctx.squareToken),
       body: JSON.stringify({
@@ -278,7 +279,7 @@ async function transferInventory(args: Record<string, unknown>, ctx: ToolContext
   if (!toLocationId) return { result: "Destination location ID is required." };
   const variationId = match.variationId ?? match.id;
   try {
-    const res = await fetch(`${SQUARE_BASE}/inventory/changes/batch-create`, {
+    const res = await squareFetch(`${SQUARE_BASE}/inventory/changes/batch-create`, {
       method: "POST",
       headers: squareHeaders(ctx.squareToken),
       body: JSON.stringify({
@@ -310,7 +311,7 @@ async function getInventoryChanges(args: Record<string, unknown>, ctx: ToolConte
   if (!ctx.squareToken || !ctx.squareLocationId) return { result: "Square not connected." };
   const variationId = match.variationId ?? match.id;
   try {
-    const res = await fetch(
+    const res = await squareFetch(
       `${SQUARE_BASE}/inventory/changes?catalog_object_id=${variationId}&location_ids=${ctx.squareLocationId}`,
       { headers: squareHeaders(ctx.squareToken) },
     );
@@ -336,7 +337,7 @@ async function lowStockReport(args: Record<string, unknown>, ctx: ToolContext): 
   const threshold = Number(args.threshold ?? 5);
   try {
     const ids = ctx.catalog.map((c) => c.variationId ?? c.id);
-    const res = await fetch(`${SQUARE_BASE}/inventory/counts/batch-retrieve`, {
+    const res = await squareFetch(`${SQUARE_BASE}/inventory/counts/batch-retrieve`, {
       method: "POST",
       headers: squareHeaders(ctx.squareToken),
       body: JSON.stringify({ catalog_object_ids: ids, location_ids: [ctx.squareLocationId] }),
@@ -415,7 +416,7 @@ async function batchAdjustInventory(args: Record<string, unknown>, ctx: ToolCont
   if (changes.length === 0) return { result: `None of the items found: ${notFound.join(", ")}` };
 
   try {
-    const res = await fetch(`${SQUARE_BASE}/inventory/changes/batch-create`, {
+    const res = await squareFetch(`${SQUARE_BASE}/inventory/changes/batch-create`, {
       method: "POST",
       headers: squareHeaders(ctx.squareToken),
       body: JSON.stringify({
@@ -438,7 +439,7 @@ async function inventorySummary(_args: Record<string, unknown>, ctx: ToolContext
   if (ctx.catalog.length === 0) return { result: "No catalog items loaded." };
   try {
     const ids = ctx.catalog.map((c) => c.variationId ?? c.id);
-    const res = await fetch(`${SQUARE_BASE}/inventory/counts/batch-retrieve`, {
+    const res = await squareFetch(`${SQUARE_BASE}/inventory/counts/batch-retrieve`, {
       method: "POST",
       headers: squareHeaders(ctx.squareToken),
       body: JSON.stringify({ catalog_object_ids: ids, location_ids: [ctx.squareLocationId] }),

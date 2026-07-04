@@ -23,6 +23,7 @@ import {
 } from "@workspace/voicelab-core/connected-service";
 import {
   SQUARE_BASE,
+  squareFetch,
   squareHeaders,
   squareErrorSummary,
   syncLiveOrderToSquare,
@@ -70,7 +71,7 @@ function readSquareConfig(connection: ServiceConnection): SquareConnectionConfig
 
 /** Fetch and normalize the Square catalog. */
 async function fetchSquareCatalog(token: string): Promise<NormalizedCatalogItem[]> {
-  const res = await fetch(`${SQUARE_BASE}/catalog/list?types=ITEM`, {
+  const res = await squareFetch(`${SQUARE_BASE}/catalog/list?types=ITEM`, {
     headers: squareHeaders(token),
   });
   if (!res.ok) {
@@ -131,7 +132,7 @@ export class SquareAdapter implements ConnectedServiceAdapter {
     try {
       const creds = readSquareCreds(connection);
       const cfg = readSquareConfig(connection);
-      const res = await fetch(`${SQUARE_BASE}/locations/${cfg.locationId}`, {
+      const res = await squareFetch(`${SQUARE_BASE}/locations/${cfg.locationId}`, {
         headers: squareHeaders(creds.accessToken),
       });
       const checkedAt = new Date().toISOString();
@@ -242,7 +243,7 @@ export class SquareAdapter implements ConnectedServiceAdapter {
       });
     }
     // Total is unknown here; fetch the order to determine the amount.
-    const orderRes = await fetch(`${SQUARE_BASE}/orders/batch-retrieve`, {
+    const orderRes = await squareFetch(`${SQUARE_BASE}/orders/batch-retrieve`, {
       method: "POST",
       headers: squareHeaders(creds.accessToken),
       body: JSON.stringify({ location_id: input.locationId, order_ids: [input.orderId] }),
@@ -285,7 +286,7 @@ export class SquareAdapter implements ConnectedServiceAdapter {
     const creds = readSquareCreds(ctx.connection);
     const fromState = input.delta >= 0 ? "NONE" : "IN_STOCK";
     const toState = input.delta >= 0 ? "IN_STOCK" : "WASTE";
-    const res = await fetch(`${SQUARE_BASE}/inventory/changes/batch-create`, {
+    const res = await squareFetch(`${SQUARE_BASE}/inventory/changes/batch-create`, {
       method: "POST",
       headers: squareHeaders(creds.accessToken),
       body: JSON.stringify({

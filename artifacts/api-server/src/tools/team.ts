@@ -3,7 +3,7 @@
  */
 
 import type { ToolDefinition, ToolExecutor, ToolContext, ToolResult } from "./types";
-import { SQUARE_BASE, squareHeaders } from "../lib/square-helpers";
+import { SQUARE_BASE, squareFetch, squareHeaders } from "../lib/square-helpers";
 
 // ── Definitions ───────────────────────────────────────────────────────────────
 
@@ -51,7 +51,7 @@ export const definitions: ToolDefinition[] = [
 async function listTeam(_args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
   if (!ctx.squareToken) return { result: "Square not connected." };
   try {
-    const res = await fetch(`${SQUARE_BASE}/team-members/search`, {
+    const res = await squareFetch(`${SQUARE_BASE}/team-members/search`, {
       method: "POST",
       headers: squareHeaders(ctx.squareToken),
       body: JSON.stringify({
@@ -80,7 +80,7 @@ async function listTeam(_args: Record<string, unknown>, ctx: ToolContext): Promi
 async function currentShifts(_args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
   if (!ctx.squareToken) return { result: "Square not connected." };
   try {
-    const res = await fetch(`${SQUARE_BASE}/labor/shifts/search`, {
+    const res = await squareFetch(`${SQUARE_BASE}/labor/shifts/search`, {
       method: "POST",
       headers: squareHeaders(ctx.squareToken),
       body: JSON.stringify({
@@ -111,7 +111,7 @@ async function clockIn(args: Record<string, unknown>, ctx: ToolContext): Promise
   if (!teamMemberId) return { result: "Team member ID is required." };
   if (!ctx.squareToken) return { result: "Square not connected." };
   try {
-    const res = await fetch(`${SQUARE_BASE}/labor/shifts`, {
+    const res = await squareFetch(`${SQUARE_BASE}/labor/shifts`, {
       method: "POST",
       headers: squareHeaders(ctx.squareToken),
       body: JSON.stringify({
@@ -137,14 +137,14 @@ async function clockOut(args: Record<string, unknown>, ctx: ToolContext): Promis
   if (!ctx.squareToken) return { result: "Square not connected." };
   try {
     // Get current shift to get version
-    const getRes = await fetch(`${SQUARE_BASE}/labor/shifts/${shiftId}`, {
+    const getRes = await squareFetch(`${SQUARE_BASE}/labor/shifts/${shiftId}`, {
       headers: squareHeaders(ctx.squareToken),
     });
     const getData = (await getRes.json()) as any;
     if (!getRes.ok) return { result: `Shift not found: ${getData.errors?.[0]?.detail ?? "Unknown"}` };
 
     const shift = getData.shift;
-    const res = await fetch(`${SQUARE_BASE}/labor/shifts/${shiftId}`, {
+    const res = await squareFetch(`${SQUARE_BASE}/labor/shifts/${shiftId}`, {
       method: "PUT",
       headers: squareHeaders(ctx.squareToken),
       body: JSON.stringify({

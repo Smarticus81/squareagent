@@ -45,6 +45,8 @@ interface UseWakeWordOptions {
   onStopDetected: () => void;
   /** Terminal words — stop listening completely */
   onShutdownDetected: () => void;
+  /** Mic permission denied while listening — surface it instead of stalling silently. */
+  onPermissionDenied?: () => void;
 }
 
 export function useWakeWord({
@@ -55,6 +57,7 @@ export function useWakeWord({
   onWakeWordDetected,
   onStopDetected,
   onShutdownDetected,
+  onPermissionDenied,
 }: UseWakeWordOptions) {
   const [isListening, setIsListening] = useState(false);
 
@@ -68,6 +71,7 @@ export function useWakeWord({
   const onWakeRef = useRef(onWakeWordDetected);
   const onStopRef = useRef(onStopDetected);
   const onShutdownRef = useRef(onShutdownDetected);
+  const onPermissionDeniedRef = useRef(onPermissionDenied);
 
   wakeWordsRef.current = wakeWords;
   stopPhrasesRef.current = stopPhrases;
@@ -75,6 +79,7 @@ export function useWakeWord({
   onWakeRef.current = onWakeWordDetected;
   onStopRef.current = onStopDetected;
   onShutdownRef.current = onShutdownDetected;
+  onPermissionDeniedRef.current = onPermissionDenied;
 
   const clearRestartTimer = useCallback(() => {
     if (restartTimerRef.current) {
@@ -186,6 +191,7 @@ export function useWakeWord({
       if (e.error === "not-allowed" || e.error === "service-not-allowed") {
         console.error("[WakeWord] Mic permission denied — stopping");
         stop();
+        onPermissionDeniedRef.current?.();
         return;
       }
 

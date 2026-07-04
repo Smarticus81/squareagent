@@ -178,12 +178,15 @@ function Hero({ onStart }: { onStart: () => void }) {
           </div>
 
           {/* - RIGHT: scene with floating assistants - */}
+          {/* id anchors the hero "See it in action" CTA — the standalone
+              #voice-demo section is not mounted on this page. */}
           <motion.div
+            id="voice-demo"
             initial="hidden"
             animate="visible"
             custom={6}
             variants={fadeUp}
-            className="relative"
+            className="relative scroll-mt-24"
           >
             <HeroScene />
           </motion.div>

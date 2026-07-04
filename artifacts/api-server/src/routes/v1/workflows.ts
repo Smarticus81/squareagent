@@ -84,11 +84,11 @@ router.post("/:slug/run", v1RequireAuth as any, requirePlan() as any, async (req
   };
 
   try {
-    const { result, stepResults, totalDurationMs } = await executeWorkflow(workflow, {}, ctx);
-
-    for (const step of stepResults) {
+    // Stream each step as it completes so the client shows live progress
+    // instead of buffering the whole run and dumping it at the end.
+    const { result, totalDurationMs } = await executeWorkflow(workflow, {}, ctx, (step) => {
       res.write(`data: ${JSON.stringify({ type: "step", step: step.step, ok: step.ok, result: step.result, durationMs: step.durationMs })}\n\n`);
-    }
+    });
 
     res.write(`data: ${JSON.stringify({ type: "done", summary: result, totalDurationMs })}\n\n`);
   } catch (e: any) {

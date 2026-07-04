@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
+import { rememberIntendedPath } from "@/lib/post-login-redirect";
 import { SignedIn, SignedOut, OrganizationSwitcher } from "@clerk/clerk-react";
 import {
   ArrowLeft,
@@ -192,7 +193,7 @@ export default function Settings() {
   const [platformStatus, setPlatformStatus] = useState<PlatformConfigStatus | null>(null);
 
   useEffect(() => {
-    if (!isLoading && !auth?.user) setLocation("/login");
+    if (!isLoading && !auth?.user) { rememberIntendedPath(); setLocation("/login"); }
   }, [auth, isLoading, setLocation]);
 
   useEffect(() => {

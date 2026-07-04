@@ -1133,6 +1133,7 @@ setInterval(async () => {
   for (const [sessionId, entry] of heartbeatMap.entries()) {
     if (now - entry.lastUpdatedMs > 120000) { // 2 minutes stale
       heartbeatMap.delete(sessionId);
+      endedSessions.set(sessionId, now);
       if (entry.lastHeartbeatMs > 0) {
         try {
           await db.insert(usageEventsTable).values({
@@ -1189,9 +1190,24 @@ router.post("/session/:id/heartbeat", requireAuth as any, async (req: any, res: 
   res.sendStatus(200);
 });
 
+// Sessions already finalized — the client may legitimately POST /end more than
+// once (pagehide + beforeunload both fire); without this a retry re-bills the
+// body durationMs a second time.
+const endedSessions = new Map<string, number>();
+setInterval(() => {
+  const cutoff = Date.now() - 10 * 60_000;
+  for (const [id, endedAt] of endedSessions.entries()) {
+    if (endedAt < cutoff) endedSessions.delete(id);
+  }
+}, 60_000);
+
 router.post("/session/:id/end", requireAuth as any, async (req: any, res: any) => {
   const sessionId = req.params.id;
   const { durationMs, provider, agentProfileId } = req.body ?? {};
+  if (endedSessions.has(sessionId)) {
+    res.sendStatus(200);
+    return;
+  }
   const entry = heartbeatMap.get(sessionId);
   const organizationId = await currentOrganizationId(req);
   if (entry && (entry.userId !== req.user.id || entry.organizationId !== organizationId)) {
@@ -1225,6 +1241,7 @@ router.post("/session/:id/end", requireAuth as any, async (req: any, res: any) =
     }
   }
 
+  endedSessions.set(sessionId, Date.now());
   heartbeatMap.delete(sessionId);
   res.sendStatus(200);
 });
