@@ -11,7 +11,7 @@ import { Webhook } from "svix";
 import { db, subscriptionsTable, usersTable, organizationsTable, organizationMembershipsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { invalidateAuthCacheForUser, requireAuth } from "./auth";
-import { checkClerkOrgPlan } from "../lib/clerk-billing";
+import { checkClerkOrgPlan, mirrorClerkOrgMembership, removeClerkOrgMembershipMirror } from "../lib/clerk-billing";
 import { PLANS, type PlanId } from "@workspace/voicelab-core/pricing";
 
 const router = Router();
@@ -428,7 +428,19 @@ async function localUserIdForClerkPayer(data: Record<string, any>): Promise<numb
   const metadataUserId = Number(data.metadata?.userId ?? data.subscription?.metadata?.userId ?? 0);
   if (Number.isInteger(metadataUserId) && metadataUserId > 0) return metadataUserId;
 
-  const email = await emailForClerkUser(extractPayerUserId(data));
+  const clerkUserId = extractPayerUserId(data);
+
+  // Fast path: the clerk-link flow persists clerk_user_id on the local user.
+  if (clerkUserId) {
+    const [linked] = await db
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .where(eq(usersTable.clerkUserId, clerkUserId))
+      .limit(1);
+    if (linked) return linked.id;
+  }
+
+  const email = await emailForClerkUser(clerkUserId);
   if (!email) return null;
 
   const [user] = await db
@@ -484,6 +496,42 @@ async function syncClerkBillingEvent(type: string, data: Record<string, any>): P
 
   await upsertSubscriptionForUser(userId, subscriptionValues);
   console.log(`[Clerk Billing] Synced ${type} for user ${userId}`);
+}
+
+/**
+ * Mirror Clerk organizationMembership.* events into local org memberships so
+ * invited teammates get venue access and inherit the org's plan, and removed
+ * members lose it.
+ */
+async function syncClerkMembershipEvent(type: string, data: Record<string, any>): Promise<void> {
+  const clerkOrgId = String(data.organization?.id ?? data.organization_id ?? "");
+  const clerkUserId = String(
+    data.public_user_data?.user_id ??
+    data.public_user_data?.userId ??
+    data.user_id ??
+    data.userId ??
+    "",
+  );
+  const clerkRole = String(data.role ?? "");
+
+  if (!clerkOrgId || !clerkUserId) {
+    console.warn(`[Clerk Billing] Membership event ${type} missing org/user id`);
+    return;
+  }
+
+  const result = type.endsWith(".deleted")
+    ? await removeClerkOrgMembershipMirror(clerkOrgId, clerkUserId)
+    : await mirrorClerkOrgMembership(clerkOrgId, clerkUserId, clerkRole);
+
+  if (!result) {
+    // The Clerk user has no VoyceLab account yet — they'll be mirrored when
+    // they sign up and clerk-link runs.
+    console.log(`[Clerk Billing] Membership event ${type}: no local counterpart yet (clerk user ${clerkUserId})`);
+    return;
+  }
+
+  invalidateAuthCacheForUser(result.localUserId);
+  console.log(`[Clerk Billing] Membership event ${type}: ${result.action} user ${result.localUserId} in org ${result.localOrgId}`);
 }
 
 // ── POST /checkout — Handoff to Clerk Billing ─────────────────────────────────
@@ -552,6 +600,8 @@ router.post("/webhook", async (req: Request, res: Response): Promise<void> => {
   try {
     if (event.type?.startsWith("subscription." ) || event.type?.startsWith("subscriptionItem.")) {
       await syncClerkBillingEvent(event.type, event.data ?? {});
+    } else if (event.type?.startsWith("organizationMembership.")) {
+      await syncClerkMembershipEvent(event.type, event.data ?? {});
     } else if (event.type?.startsWith("paymentAttempt.")) {
       console.log(`[Clerk Billing] Payment attempt event: ${event.type}`);
     }

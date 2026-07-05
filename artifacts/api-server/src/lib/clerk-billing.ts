@@ -9,8 +9,16 @@
 
 import { clerkMiddleware, getAuth, clerkClient as defaultClerkClient } from "@clerk/express";
 import type { Request, Response, NextFunction } from "express";
-import { db, usersTable, organizationsTable, type User, type Organization } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import {
+  db,
+  usersTable,
+  organizationsTable,
+  organizationMembershipsTable,
+  subscriptionsTable,
+  type User,
+  type Organization,
+} from "@workspace/db";
+import { and, eq } from "drizzle-orm";
 import { createComponentLogger } from "./logger";
 
 const log = createComponentLogger("clerk-billing");
@@ -392,6 +400,11 @@ export async function ensureClerkIdentity(user: User, org: Organization): Promis
   try {
     const clerkUserId = await findOrCreateClerkUser(user);
     const clerkOrgId = await findOrCreateClerkOrg(org, clerkUserId);
+    // Best-effort: mirror any other Clerk org memberships (e.g. the user was
+    // invited to a teammate's org in Clerk before/after signing up here).
+    await mirrorAllClerkMembershipsForUser(clerkUserId).catch((e) =>
+      log.warn({ err: formatClerkApiError(e) }, "membership mirror during link failed"),
+    );
     return { clerkUserId, clerkOrgId };
   } catch (e) {
     log.error({ err: formatClerkApiError(e) }, "ensureClerkIdentity failed");
@@ -421,3 +434,203 @@ export async function createClerkSignInToken(
 }
 
 export { defaultClerkClient as clerkClient };
+
+// ── Clerk org membership mirroring ──────────────────────────────────────────────
+// Clerk B2B billing attaches subscriptions to Clerk organizations. When a
+// member is invited/removed in Clerk, mirror the change into the local
+// organization_memberships table so plan sync and venue access follow.
+
+export interface MirroredMembership {
+  localUserId: number;
+  localOrgId: string;
+  action: "added" | "updated" | "removed" | "skipped";
+}
+
+function localRoleFromClerkRole(clerkRole: string): "admin" | "operator" {
+  return clerkRole.toLowerCase().includes("admin") ? "admin" : "operator";
+}
+
+/** Resolve a Clerk user id to the local VoyceLab user, persisting the link when found by email. */
+export async function resolveLocalUserByClerkId(clerkUserId: string): Promise<User | null> {
+  if (!db || !clerkUserId) return null;
+
+  const [byId] = await db.select().from(usersTable).where(eq(usersTable.clerkUserId, clerkUserId)).limit(1);
+  if (byId) return byId;
+
+  try {
+    const clerkUser = await defaultClerkClient.users.getUser(clerkUserId);
+    const email = (
+      clerkUser.primaryEmailAddress?.emailAddress ??
+      clerkUser.emailAddresses?.[0]?.emailAddress ??
+      ""
+    ).toLowerCase().trim();
+    if (!email) return null;
+
+    const [byEmail] = await db.select().from(usersTable).where(eq(usersTable.email, email)).limit(1);
+    if (!byEmail) return null;
+
+    await db.update(usersTable).set({ clerkUserId, updatedAt: new Date() }).where(eq(usersTable.id, byEmail.id));
+    return { ...byEmail, clerkUserId };
+  } catch (e) {
+    log.warn({ err: formatClerkApiError(e), clerkUserId }, "could not resolve clerk user to local user");
+    return null;
+  }
+}
+
+/** Copy the org-level subscription onto a member so plan gating applies immediately. */
+async function inheritOrgSubscription(localOrgId: string, localUserId: number): Promise<void> {
+  const [orgSub] = await db
+    .select()
+    .from(subscriptionsTable)
+    .where(eq(subscriptionsTable.organizationId, localOrgId))
+    .limit(1);
+  if (!orgSub) return;
+
+  const values = {
+    plan: orgSub.plan,
+    status: orgSub.status,
+    trialEndsAt: null,
+    currentPeriodEnd: orgSub.currentPeriodEnd,
+    cancelAt: orgSub.cancelAt,
+    clerkSubscriptionId: orgSub.clerkSubscriptionId,
+    organizationId: localOrgId,
+  };
+
+  const [userSub] = await db
+    .select({ id: subscriptionsTable.id })
+    .from(subscriptionsTable)
+    .where(eq(subscriptionsTable.userId, localUserId))
+    .limit(1);
+
+  if (userSub) {
+    await db.update(subscriptionsTable).set({ ...values, updatedAt: new Date() }).where(eq(subscriptionsTable.id, userSub.id));
+  } else {
+    await db.insert(subscriptionsTable).values({ userId: localUserId, ...values });
+  }
+}
+
+/**
+ * Mirror a Clerk org membership into the local membership table.
+ * Returns null when the Clerk org or user has no local counterpart yet.
+ */
+export async function mirrorClerkOrgMembership(
+  clerkOrgId: string,
+  clerkUserId: string,
+  clerkRole = "",
+): Promise<MirroredMembership | null> {
+  if (!db || !clerkOrgId || !clerkUserId) return null;
+
+  const [org] = await db
+    .select()
+    .from(organizationsTable)
+    .where(eq(organizationsTable.clerkOrgId, clerkOrgId))
+    .limit(1);
+  if (!org) return null;
+
+  const user = await resolveLocalUserByClerkId(clerkUserId);
+  if (!user) return null;
+
+  const role = org.ownerUserId === user.id ? "owner" : localRoleFromClerkRole(clerkRole);
+
+  const [existing] = await db
+    .select()
+    .from(organizationMembershipsTable)
+    .where(
+      and(
+        eq(organizationMembershipsTable.userId, user.id),
+        eq(organizationMembershipsTable.organizationId, org.id),
+      ),
+    )
+    .limit(1);
+
+  if (existing) {
+    if (existing.role !== role && existing.role !== "owner") {
+      await db
+        .update(organizationMembershipsTable)
+        .set({ role })
+        .where(eq(organizationMembershipsTable.id, existing.id));
+      await inheritOrgSubscription(org.id, user.id);
+      return { localUserId: user.id, localOrgId: org.id, action: "updated" };
+    }
+    return { localUserId: user.id, localOrgId: org.id, action: "skipped" };
+  }
+
+  await db.insert(organizationMembershipsTable).values({
+    organizationId: org.id,
+    userId: user.id,
+    role,
+  });
+  await inheritOrgSubscription(org.id, user.id);
+  log.info({ localUserId: user.id, localOrgId: org.id, role }, "mirrored clerk org membership");
+  return { localUserId: user.id, localOrgId: org.id, action: "added" };
+}
+
+/**
+ * Remove the local mirror of a Clerk org membership. Never removes the org
+ * owner. Reverts the member's subscription when it was inherited from the org.
+ */
+export async function removeClerkOrgMembershipMirror(
+  clerkOrgId: string,
+  clerkUserId: string,
+): Promise<MirroredMembership | null> {
+  if (!db || !clerkOrgId || !clerkUserId) return null;
+
+  const [org] = await db
+    .select()
+    .from(organizationsTable)
+    .where(eq(organizationsTable.clerkOrgId, clerkOrgId))
+    .limit(1);
+  if (!org) return null;
+
+  const user = await resolveLocalUserByClerkId(clerkUserId);
+  if (!user) return null;
+  if (org.ownerUserId === user.id) {
+    return { localUserId: user.id, localOrgId: org.id, action: "skipped" };
+  }
+
+  await db
+    .delete(organizationMembershipsTable)
+    .where(
+      and(
+        eq(organizationMembershipsTable.userId, user.id),
+        eq(organizationMembershipsTable.organizationId, org.id),
+      ),
+    );
+
+  // If their plan came from this org, revert it — they lost the org's billing.
+  const [userSub] = await db
+    .select()
+    .from(subscriptionsTable)
+    .where(eq(subscriptionsTable.userId, user.id))
+    .limit(1);
+  if (userSub?.organizationId === org.id) {
+    await db
+      .update(subscriptionsTable)
+      .set({
+        plan: "trial",
+        status: "canceled",
+        organizationId: null,
+        clerkSubscriptionId: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(subscriptionsTable.id, userSub.id));
+  }
+
+  log.info({ localUserId: user.id, localOrgId: org.id }, "removed mirrored clerk org membership");
+  return { localUserId: user.id, localOrgId: org.id, action: "removed" };
+}
+
+/** Mirror every Clerk org membership for a Clerk user into local tables. */
+export async function mirrorAllClerkMembershipsForUser(clerkUserId: string): Promise<MirroredMembership[]> {
+  if (!db || !clerkUserId) return [];
+  const memberships = await defaultClerkClient.users.getOrganizationMembershipList({ userId: clerkUserId });
+  const list = unwrapList<{ organization?: { id?: string }; role?: string }>(memberships);
+  const results: MirroredMembership[] = [];
+  for (const membership of list) {
+    const orgId = membership.organization?.id;
+    if (!orgId) continue;
+    const mirrored = await mirrorClerkOrgMembership(orgId, clerkUserId, membership.role ?? "");
+    if (mirrored) results.push(mirrored);
+  }
+  return results;
+}

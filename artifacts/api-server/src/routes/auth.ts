@@ -12,7 +12,7 @@ import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import nodemailer from "nodemailer";
 import { db, usersTable, sessionsTable, subscriptionsTable, exchangeCodesTable, organizationMembershipsTable, organizationsTable, venuesTable, agentProfilesTable, passwordResetTokensTable } from "@workspace/db";
-import { and, eq, gte, isNull, lt, or } from "drizzle-orm";
+import { and, eq, gte, inArray, isNull, lt, or } from "drizzle-orm";
 import { checkClerkOrgPlan, isClerkConfigured, ensureClerkIdentity, createClerkSignInToken, formatClerkApiError } from "../lib/clerk-billing";
 import { decrypt, encrypt } from "../lib/secrets";
 
@@ -423,14 +423,40 @@ export async function requireAuth(req: Request, res: Response, next: Function): 
           .where(eq(subscriptionsTable.userId, user.id))
           .then((rows: SubscriptionRow[]) => rows[0] ?? null);
 
-    const organizationPromise = db
-      .select()
-      .from(organizationMembershipsTable)
-      .where(eq(organizationMembershipsTable.userId, user.id))
-      .limit(1)
-      .then((rows: (typeof organizationMembershipsTable.$inferSelect)[]) =>
-        rows[0] ? { id: rows[0].organizationId, role: rows[0].role } : null,
-      )
+    const organizationPromise = (async (): Promise<{ id: string; role: string } | null> => {
+      const rows = await db
+        .select()
+        .from(organizationMembershipsTable)
+        .where(eq(organizationMembershipsTable.userId, user.id));
+      if (rows.length === 0) return null;
+
+      // When the user belongs to multiple orgs (e.g. their personal workspace
+      // plus a team they were invited to), prefer the org with an active paid
+      // subscription so shared billing and venue access apply.
+      if (rows.length > 1) {
+        const orgIds = rows.map((r: typeof organizationMembershipsTable.$inferSelect) => r.organizationId);
+        const subs = await db
+          .select({
+            organizationId: subscriptionsTable.organizationId,
+            status: subscriptionsTable.status,
+            plan: subscriptionsTable.plan,
+          })
+          .from(subscriptionsTable)
+          .where(inArray(subscriptionsTable.organizationId, orgIds));
+        const paidOrg = subs.find(
+          (s: { organizationId: string | null; status: string; plan: string }) =>
+            s.status === "active" && s.plan !== "trial",
+        );
+        if (paidOrg?.organizationId) {
+          const membership = rows.find(
+            (r: typeof organizationMembershipsTable.$inferSelect) => r.organizationId === paidOrg.organizationId,
+          );
+          if (membership) return { id: membership.organizationId, role: membership.role };
+        }
+      }
+
+      return { id: rows[0].organizationId, role: rows[0].role };
+    })()
       // organization_memberships table may not exist yet; continue without it
       .catch(() => null);
 
