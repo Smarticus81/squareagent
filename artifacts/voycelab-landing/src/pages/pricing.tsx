@@ -394,7 +394,7 @@ export default function Pricing() {
             <Tile
               kicker="Overages"
               title="Soft cap, never a hard stop"
-              body="If you blow through your included minutes, your assistants keep working. Overage rate drops as you climb tiers — Business pays $0.12/min, Pro pays $0.18/min."
+              body="If you blow through your included minutes, your assistants keep working. Overage rate drops as you climb tiers — Business pays $0.10/min, Pro pays $0.15/min."
             />
             <Tile
               kicker="No surprises"
@@ -445,7 +445,7 @@ export default function Pricing() {
             />
             <Faq
               q="Is the trial really 14 days, no card?"
-              a="Yes. 60 voice minutes and core POS commands. Card is collected only if you upgrade."
+              a="Yes. 100 voice minutes and core POS commands. Card is collected only if you upgrade."
             />
             <Faq
               q="What if I'm a chain or hospitality group?"

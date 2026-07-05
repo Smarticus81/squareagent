@@ -13,9 +13,17 @@ import type { VoicePipelineProvider } from "../voice-pipeline/types";
  * Premium tiers are priced for multi-venue groups, where the platform
  * replaces full-time night-of-event coordinators.
  *
- * Underlying voice cost (gpt-realtime-2 and Gemini Flash Live native
- * audio): ~$0.04 per spoken minute on average. Margins below assume 60%
- * inclusion of plan minutes get used in a typical month.
+ * Underlying voice cost (verified against provider price sheets):
+ *   - Gemini 3.1 Flash Live / 2.5 Native Audio: ~$0.005/min audio in +
+ *     ~$0.018/min audio out => ~$0.01 per conversation-minute.
+ *   - OpenAI gpt-realtime: ~$0.06/min in / ~$0.24/min out => ~$0.10-0.14
+ *     per command-style conversation-minute with cached input.
+ *   Blended across the engine mix: ~$0.03-0.06 per spoken minute.
+ *
+ * Sizing basis: a single busy venue uses 15-30 spoken minutes/day
+ * (~450-900 min/month). Included minutes must cover normal full-shift use
+ * of every venue on the plan without touching overage; overage exists for
+ * spikes, and the 1.5x hard cap is an abuse guard, not a normal ceiling.
  */
 
 export type PlanId = "trial" | "pro" | "business";
@@ -102,14 +110,14 @@ export const PLANS: PlanDefinition[] = [
     trialDays: 14,
     maxVenues: 1,
     maxAssistants: 1,
-    includedVoiceMinutes: 60,
+    includedVoiceMinutes: 100,
     overagePerMinuteUsd: 0,
     skillTiers: ["core"],
     allowedPipelines: PIPELINES_TRIAL,
     cta: "Start free trial",
     bullets: [
       { text: "1 venue, 1 assistant" },
-      { text: "60 voice minutes for 14 days" },
+      { text: "100 voice minutes for 14 days" },
       { text: "POS, orders, and reporting" },
       { text: "Build, test, and demo with your team" },
     ],
@@ -124,21 +132,21 @@ export const PLANS: PlanDefinition[] = [
     ribbon: "Most popular",
     maxVenues: 3,
     maxAssistants: 10,
-    includedVoiceMinutes: 500,
-    overagePerMinuteUsd: 0.18,
+    includedVoiceMinutes: 1500,
+    overagePerMinuteUsd: 0.15,
     skillTiers: ["core", "standard", "premium"],
     allowedPipelines: PIPELINES_PAID,
     cta: "Pick Pro",
     clerkPlanEnvVar: "CLERK_PLAN_PRO_ID",
     bullets: [
       { text: "Up to 3 venues, 10 assistants" },
-      { text: "500 voice minutes / month included" },
+      { text: "1,500 voice minutes / month included" },
       {
         text: "OpenAI Realtime + Gemini 3.1 Flash Live + Gemini 2.5 Native Audio",
         emphasis: true,
       },
       { text: "Every skill: POS, inventory, catalog, customers, payments, team & labor" },
-      { text: "Overage billed at $0.18/min, capped at 1.5x your plan" },
+      { text: "Overage billed at $0.15/min — assistants never hard-stop mid-shift" },
       { text: "Priority email + chat support" },
     ],
   },
@@ -150,18 +158,18 @@ export const PLANS: PlanDefinition[] = [
     yearlyPriceUsdPerMonth: 335,
     maxVenues: -1,
     maxAssistants: -1,
-    includedVoiceMinutes: 2000,
-    overagePerMinuteUsd: 0.12,
+    includedVoiceMinutes: 6000,
+    overagePerMinuteUsd: 0.1,
     skillTiers: ["core", "standard", "premium"],
     allowedPipelines: PIPELINES_PAID,
     cta: "Pick Business",
     clerkPlanEnvVar: "CLERK_PLAN_BUSINESS_ID",
     bullets: [
       { text: "Unlimited venues and assistants" },
-      { text: "2,000 voice minutes / month included" },
+      { text: "6,000 voice minutes / month included" },
       { text: "Every skill and every voice engine", emphasis: true },
       { text: "Team & labor: shifts, clock-in, who's on the floor right now" },
-      { text: "Overage billed at $0.12/min, capped at 1.5x your plan" },
+      { text: "Overage billed at $0.10/min — assistants never hard-stop mid-shift" },
       { text: "24/7 chat + dedicated customer success" },
     ],
   },

@@ -262,7 +262,7 @@ ${voiceEngines}
 Pricing and trial:
 ${planSummary}
 - Yearly billing saves about 17%.
-- The trial is 14 days, no card required, with 60 voice minutes and core POS commands for testing.
+- The trial is 14 days, no card required, with 100 voice minutes and core POS commands for testing.
 - Billing is platform fee plus spoken voice minutes. Idle screens and dashboard work cost nothing.
 - Overage is a soft cap, not a hard stop. Assistants keep working; the overage rate drops on higher tiers.
 - For enterprise needs like SSO, SCIM, IP allowlists, custom audit logs, or dedicated deployments, contact sales@voycelab.com.
