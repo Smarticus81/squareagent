@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
-import { PricingTable, SignedIn, SignedOut } from "@clerk/clerk-react";
+import { PricingTable, SignedIn, SignedOut, useClerk, useAuth as useClerkAuth } from "@clerk/clerk-react";
 import { ArrowRight, Check, Loader2, Lock, Sparkles, AlertTriangle } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { withClerkBillingHeader } from "@/lib/clerk-session";
@@ -35,6 +35,85 @@ interface PlanResponse {
 }
 
 type Cadence = "monthly" | "yearly";
+
+/**
+ * Renders the Clerk organization PricingTable only once an organization is
+ * active on the Clerk session. `<PricingTable for="organization" />` silently
+ * renders nothing without an active org, so we activate the linked org first
+ * and surface a visible error instead of a blank space when that fails.
+ */
+function OrgPricingTable() {
+  const clerk = useClerk();
+  const { isLoaded, orgId } = useClerkAuth();
+  const [activating, setActivating] = useState(false);
+  const [activationError, setActivationError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isLoaded || orgId || activating || activationError) return;
+    let cancelled = false;
+
+    (async () => {
+      setActivating(true);
+      try {
+        const token = localStorage.getItem("voycelab_token");
+        if (!token) throw new Error("You are signed in to billing but not to VoyceLab. Please log in again.");
+        const res = await fetch("/api/auth/clerk-link", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await res.json().catch(() => null);
+        if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+        if (!data?.clerkOrgId) throw new Error("No billing organization is linked to this workspace yet.");
+        await clerk.setActive({ organization: data.clerkOrgId });
+      } catch (e) {
+        if (!cancelled) setActivationError(e instanceof Error ? e.message : String(e));
+      } finally {
+        if (!cancelled) setActivating(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isLoaded, orgId, activating, activationError, clerk]);
+
+  if (!isLoaded || (!orgId && !activationError)) {
+    return (
+      <div className="flex items-center gap-3 rounded-2xl border border-black/10 bg-white/55 p-6 text-[13px]" style={{ color: "var(--color-vl-ink-muted)" }}>
+        <Loader2 className="h-4 w-4 animate-spin" style={{ color: "var(--color-vl-brass2)" }} />
+        Activating your billing workspace…
+      </div>
+    );
+  }
+
+  if (!orgId) {
+    return (
+      <div className="rounded-2xl border border-red-200 bg-red-50/55 p-6 text-[13px] text-red-800 space-y-2">
+        <div className="flex items-center gap-2 font-black text-red-950">
+          <AlertTriangle className="h-4 w-4 shrink-0 text-red-600" />
+          <span>Could not activate billing workspace</span>
+        </div>
+        <p className="leading-relaxed">{activationError}</p>
+        <button
+          type="button"
+          className="vl-btn-ghost text-[12px] mt-1"
+          onClick={() => setActivationError(null)}
+        >
+          Try again
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <PricingTable for="organization" />
+      <p className="mt-3 text-[11px]" style={{ color: "var(--color-vl-ink-faint)" }}>
+        If no plans appear above, the administrator needs to create organization plans under Billing in the Clerk Dashboard.
+      </p>
+    </>
+  );
+}
 
 export default function Pricing() {
   const [, navigate] = useLocation();
@@ -220,7 +299,7 @@ export default function Pricing() {
               </div>
             )}
             <SignedIn>
-              <PricingTable for="organization" />
+              <OrgPricingTable />
               <div className="mt-4 flex items-center gap-2 text-[12px]" style={{ color: "var(--color-vl-ink-faint)" }}>
                 <Lock className="h-3.5 w-3.5" />
                 Payments are processed securely by Stripe. Cancel or change your plan anytime.

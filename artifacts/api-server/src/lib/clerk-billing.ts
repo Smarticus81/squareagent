@@ -326,14 +326,33 @@ async function findOrCreateClerkUser(user: User): Promise<string> {
 }
 
 async function ensureClerkOrgMembership(clerkOrgId: string, clerkUserId: string): Promise<void> {
+  // Check first — the common case is that the user is already a member.
+  try {
+    const memberships = await defaultClerkClient.organizations.getOrganizationMembershipList({
+      organizationId: clerkOrgId,
+      limit: 100,
+    });
+    const list = unwrapList<{ publicUserData?: { userId?: string } }>(memberships);
+    if (list.some((m) => m.publicUserData?.userId === clerkUserId)) return;
+  } catch (e) {
+    log.warn({ err: formatClerkApiError(e) }, "clerk membership lookup failed");
+  }
+
   try {
     await defaultClerkClient.organizations.createOrganizationMembership({
       organizationId: clerkOrgId,
       userId: clerkUserId,
       role: "org:admin",
     });
-  } catch {
-    // Already a member, or membership cannot be added — safe to ignore.
+  } catch (e) {
+    const clerkErrors = (e as ClerkApiError).errors;
+    const alreadyMember =
+      Array.isArray(clerkErrors) &&
+      clerkErrors.some((item) => item.code?.includes("already") || item.code?.includes("duplicate"));
+    if (alreadyMember) return;
+    // Real failures (e.g. org membership limit reached) must surface — a
+    // signed-in user without org membership sees an empty billing page.
+    throw e;
   }
 }
 
