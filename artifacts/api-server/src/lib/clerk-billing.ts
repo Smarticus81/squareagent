@@ -209,6 +209,51 @@ function unwrapList<T>(value: unknown): T[] {
   return [];
 }
 
+/** Derive a Clerk-safe username from the account email; unique per VoyceLab user id. */
+function clerkUsername(user: User): string {
+  const localPart = user.email.toLowerCase().trim().split("@")[0] ?? "";
+  const base = localPart.replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "voycelab-user";
+  return `${base}-${user.id}`;
+}
+
+/** True when Clerk rejected creation because an identifier (external_id, email, username) is already taken. */
+function isIdentifierTaken(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const clerkErrors = (error as ClerkApiError).errors;
+  return Array.isArray(clerkErrors) && clerkErrors.some((item) => item.code === "form_identifier_exists");
+}
+
+/** Find an existing Clerk user by VoyceLab external id or email. */
+async function lookupClerkUser(user: User): Promise<string | null> {
+  const email = user.email.toLowerCase().trim();
+  try {
+    const byExternalId = await defaultClerkClient.users.getUserList({ externalId: [String(user.id)] });
+    const externalMatches = unwrapList<{ id: string }>(byExternalId);
+    if (externalMatches.length > 0) return externalMatches[0].id;
+
+    const byEmail = await defaultClerkClient.users.getUserList({ emailAddress: [email] });
+    const emailMatches = unwrapList<{ id: string }>(byEmail);
+    if (emailMatches.length > 0) return emailMatches[0].id;
+  } catch (e) {
+    log.warn({ err: e instanceof Error ? e.message : String(e) }, "clerk user lookup failed");
+  }
+  return null;
+}
+
+/** Fields Clerk reported as missing when the instance requires extra sign-up attributes. */
+function missingRequiredFields(error: unknown): string[] {
+  if (!error || typeof error !== "object") return [];
+  const clerkErrors = (error as ClerkApiError).errors;
+  if (!Array.isArray(clerkErrors)) return [];
+  const fields = new Set<string>();
+  for (const item of clerkErrors) {
+    if (item.code !== "form_data_missing") continue;
+    const source = `${item.longMessage ?? ""} ${item.message ?? ""}`;
+    for (const match of source.matchAll(/"([a-z_]+)"/g)) fields.add(match[1]);
+  }
+  return [...fields];
+}
+
 async function findOrCreateClerkUser(user: User): Promise<string> {
   if (user.clerkUserId) {
     try {
@@ -221,29 +266,55 @@ async function findOrCreateClerkUser(user: User): Promise<string> {
   }
 
   const email = user.email.toLowerCase().trim();
-  let clerkUserId: string | null = null;
-
-  try {
-    const list = await defaultClerkClient.users.getUserList({ emailAddress: [email] });
-    const existing = unwrapList<{ id: string }>(list);
-    if (existing.length > 0) clerkUserId = existing[0].id;
-  } catch (e) {
-    log.warn({ err: e instanceof Error ? e.message : String(e) }, "clerk user lookup failed");
-  }
+  let clerkUserId: string | null = await lookupClerkUser(user);
 
   if (!clerkUserId) {
     const parts = (user.name ?? "").trim().split(/\s+/).filter(Boolean);
     const firstName = parts.shift();
     const lastName = parts.join(" ");
-    const created = await defaultClerkClient.users.createUser({
+    const baseParams = {
       emailAddress: [email],
       firstName: firstName || undefined,
       lastName: lastName || undefined,
       skipPasswordRequirement: true,
       skipPasswordChecks: true,
       externalId: String(user.id),
-    });
-    clerkUserId = created.id;
+    };
+    try {
+      const created = await defaultClerkClient.users.createUser(baseParams);
+      clerkUserId = created.id;
+    } catch (e) {
+      // A user with this external id / email already exists in Clerk (e.g. a
+      // previous link attempt succeeded but the DB link was never saved).
+      // Find and reuse it instead of failing.
+      if (isIdentifierTaken(e)) {
+        clerkUserId = await lookupClerkUser(user);
+        if (!clerkUserId) {
+          throw new Error(
+            "A Clerk user already exists for this account's external id, but it could not be retrieved. " +
+              "In the Clerk Dashboard, find the user whose External ID is " +
+              `"${user.id}" and delete it (or contact support), then retry.`,
+          );
+        }
+      } else {
+        const missing = missingRequiredFields(e);
+        if (missing.length === 0) throw e;
+        // Retry supplying a generated username if that's what the instance requires.
+        if (missing.every((field) => field === "username")) {
+          const created = await defaultClerkClient.users.createUser({
+            ...baseParams,
+            username: clerkUsername(user),
+          });
+          clerkUserId = created.id;
+        } else {
+          const unfixable = missing.filter((field) => field !== "username");
+          throw new Error(
+            `The Clerk instance requires ${unfixable.map((f) => `"${f}"`).join(", ")} for every user, which VoyceLab cannot provide automatically. ` +
+              `In the Clerk Dashboard, go to User & Authentication settings and set ${unfixable.join(", ")} to optional (or off), then retry.`,
+          );
+        }
+      }
+    }
   }
 
   await db
