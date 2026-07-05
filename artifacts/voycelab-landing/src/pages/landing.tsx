@@ -1,449 +1,724 @@
-import { useState, useEffect, useRef } from "react";
-import { Link, useLocation } from "wouter";
-import { motion } from "framer-motion";
 import {
-  ArrowRight,
-  Check,
-  Mic,
-  Play,
-  AlertTriangle,
-  TrendingUp,
-  Users,
-  BarChart3,
-  ShieldCheck,
-  Bell,
-  RefreshCw,
-  ClipboardList,
-  CalendarRange,
-  CreditCard,
-  Wine,
-  Loader2,
-} from "lucide-react";
+  lazy,
+  Suspense,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { Link, useLocation } from "wouter";
+import {
+  AnimatePresence,
+  motion,
+  useReducedMotion,
+  useScroll,
+  useSpring,
+  useTransform,
+  type MotionValue,
+} from "framer-motion";
+import { ArrowDown, ArrowRight, Loader2, Mic, Square } from "lucide-react";
 import { VoiceOrb } from "@/components/voice-orb";
 import { useVoycelabDemoRealtime } from "@/hooks/use-voycelab-demo-realtime";
 
-/* animation config */
-const ease = [0.22, 1, 0.36, 1] as const;
-const fadeUp = {
-  hidden: { opacity: 0, y: 22 },
-  visible: (i: number) => ({
-    opacity: 1,
-    y: 0,
-    transition: { delay: i * 0.08, duration: 0.65, ease },
-  }),
-};
-const stagger = {
-  hidden: {},
-  visible: { transition: { staggerChildren: 0.08 } },
-};
-const childFade = {
-  hidden: { opacity: 0, y: 16 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.55, ease } },
-};
+const VoiceField = lazy(() => import("@/components/landing/voice-field"));
 
-/* -
-   PAGE
-   - */
+const EASE = [0.22, 1, 0.36, 1] as const;
+
+/* ═══════════════════════════════════════════════════════════════
+   LAST CALL CINEMA
+   One job: get operators to start the free trial, because every
+   trip to the touchscreen is time the bar isn't making money.
+   ═══════════════════════════════════════════════════════════════ */
+
 export default function Landing() {
   const [, navigate] = useLocation();
-  const [name, setName] = useState("");
+  const [assistantName, setAssistantName] = useState("");
+  const reduceMotion = useReducedMotion() ?? false;
 
   const startAssistant = () => {
-    const trimmed = name.trim();
+    const trimmed = assistantName.trim();
     if (trimmed) sessionStorage.setItem("voycelab.pending_assistant_name", trimmed);
     navigate("/assistants/new");
   };
 
   return (
-    <div className="vl-landing vl-page-shell">
-      <Hero onStart={startAssistant} />
+    // No overflow-hidden on this root — it would become the sticky theater's
+    // containing block and kill the pin. html/body already clip overflow-x.
+    <div className="vl-nx relative -mt-16 sm:-mt-18">
+      <Hero reduceMotion={reduceMotion} />
+      <TapCost />
+      <CommandTheater reduceMotion={reduceMotion} />
+      <LiveDemo />
+      <Vocabulary />
+      <ProofBand />
+      <FinalCTA
+        name={assistantName}
+        setName={setAssistantName}
+        onStart={startAssistant}
+      />
     </div>
   );
 }
 
-/* -
-   HERO
-   - */
-function Hero({ onStart }: { onStart: () => void }) {
+/* ───────────────────────────────────────────────────────────────
+   Magnetic wrapper — the primary CTA's signature micro-interaction.
+   Transform-only, springs settle with slight overshoot.
+   ─────────────────────────────────────────────────────────────── */
+function Magnetic({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const x = useSpring(0, { stiffness: 260, damping: 17 });
+  const y = useSpring(0, { stiffness: 260, damping: 17 });
+
   return (
-    <section className="relative pt-14 md:pt-18 pb-16 md:pb-24 overflow-hidden">
-      {/* Painterly hero washes - peach top-left, lilac top-right, sage right */}
+    <motion.div
+      ref={ref}
+      style={{ x, y, display: "inline-block" }}
+      onPointerMove={(e) => {
+        const el = ref.current;
+        if (!el || e.pointerType === "touch") return;
+        const r = el.getBoundingClientRect();
+        x.set((e.clientX - (r.left + r.width / 2)) * 0.22);
+        y.set((e.clientY - (r.top + r.height / 2)) * 0.22);
+      }}
+      onPointerLeave={() => {
+        x.set(0);
+        y.set(0);
+      }}
+    >
+      {children}
+    </motion.div>
+  );
+}
+
+/* ───────────────────────────────────────────────────────────────
+   HERO — the voice field, the promise, one ember CTA.
+   H1 renders statically (LCP is never gated on animation).
+   ─────────────────────────────────────────────────────────────── */
+
+const HERO_TICKER: Array<{ say: string; lines: Array<[string, string]> }> = [
+  {
+    say: "Start a tab for Maya — two Palomas.",
+    lines: [
+      ["Tab opened · MAYA", ""],
+      ["2 × Paloma", "$24.00"],
+    ],
+  },
+  {
+    say: "86 the oysters, everywhere.",
+    lines: [
+      ["Oysters", "86'D"],
+      ["Menu synced across POS", ""],
+    ],
+  },
+  {
+    say: "Send table 9 to the terminal.",
+    lines: [
+      ["Check · Table 9", "$142.50"],
+      ["→ Terminal, awaiting tap", ""],
+    ],
+  },
+  {
+    say: "What's low behind the main bar?",
+    lines: [
+      ["Espolòn Blanco", "4 left"],
+      ["Reorder drafted", ""],
+    ],
+  },
+];
+
+function Hero({ reduceMotion }: { reduceMotion: boolean }) {
+  const [fieldReady, setFieldReady] = useState(false);
+
+  useEffect(() => {
+    if (reduceMotion) return;
+    let idleId = 0;
+    let timeoutId = 0;
+    const arm = () => setFieldReady(true);
+    if (typeof window.requestIdleCallback === "function") {
+      idleId = window.requestIdleCallback(arm, { timeout: 1400 });
+    } else {
+      timeoutId = window.setTimeout(arm, 350);
+    }
+    return () => {
+      if (idleId) window.cancelIdleCallback?.(idleId);
+      if (timeoutId) window.clearTimeout(timeoutId);
+    };
+  }, [reduceMotion]);
+
+  return (
+    <section className="relative min-h-[100svh] flex flex-col overflow-hidden">
+      {/* Procedural atmosphere — back-bar glow, no network cost */}
       <div aria-hidden className="absolute inset-0 pointer-events-none">
         <div
-          className="vl-blob"
+          className="absolute inset-0"
           style={{
-            top: "-10%",
-            left: "-12%",
-            width: "44%",
-            height: "55%",
-            background: "radial-gradient(ellipse at center, rgba(251, 207, 232, 0.55), transparent 60%)",
-          }}
-        />
-        <div
-          className="vl-blob"
-          style={{
-            top: "0%",
-            right: "-8%",
-            width: "38%",
-            height: "48%",
-            background: "radial-gradient(ellipse at center, rgba(199, 210, 254, 0.45), transparent 65%)",
-          }}
-        />
-        <div
-          className="vl-blob"
-          style={{
-            top: "30%",
-            right: "12%",
-            width: "30%",
-            height: "40%",
-            background: "radial-gradient(ellipse at center, rgba(167, 243, 208, 0.30), transparent 65%)",
-          }}
-        />
-        <div
-          className="vl-blob"
-          style={{
-            bottom: "-14%",
-            left: "10%",
-            width: "55%",
-            height: "45%",
-            background: "radial-gradient(ellipse at center, rgba(99, 102, 241, 0.10), transparent 70%)",
+            background:
+              "radial-gradient(ellipse 90% 55% at 50% 118%, rgba(232,163,61,0.20), transparent 62%)," +
+              "radial-gradient(ellipse 45% 32% at 82% 108%, rgba(255,90,45,0.10), transparent 70%)," +
+              "radial-gradient(ellipse 60% 40% at 12% -8%, rgba(232,163,61,0.05), transparent 65%)",
           }}
         />
       </div>
 
-      <div className="relative section-container">
-        <div className="grid lg:grid-cols-[1fr_1.05fr] gap-10 lg:gap-14 items-start">
-          {/* - LEFT: copy column - */}
-          <div className="pt-2">
-            <motion.div
-              initial="hidden"
-              animate="visible"
-              custom={0}
-              variants={fadeUp}
-              className="flex items-center gap-3 flex-wrap"
-            >
-              <span className="vl-eyebrow">Voice POS for hospitality</span>
-            </motion.div>
+      {/* Signature: the voice field */}
+      {fieldReady && (
+        <Suspense fallback={null}>
+          <VoiceField className="opacity-90" />
+        </Suspense>
+      )}
 
-            <motion.h1
-              initial="hidden"
-              animate="visible"
-              custom={1}
-              variants={fadeUp}
-              className="vl-display mt-5 text-[clamp(2.75rem,6.4vw,4.6rem)]"
-            >
-              Free yourself, by giving 
+      {/* Vignette so type always wins the contrast fight */}
+      <div
+        aria-hidden
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background:
+            "linear-gradient(180deg, rgba(11,10,9,0.55) 0%, rgba(11,10,9,0.05) 34%, rgba(11,10,9,0.05) 62%, rgba(11,10,9,0.82) 100%)",
+        }}
+      />
+      <div className="nx-grain" aria-hidden />
+
+      <div className="relative section-container flex-1 flex items-center pt-28 pb-24 md:pt-32">
+        <div className="grid lg:grid-cols-[1.15fr_0.85fr] gap-14 items-center w-full">
+          <div>
+            <p className="nx-eyebrow">
+              Voice-run Square POS · Bars · Restaurants · Venues
+            </p>
+
+            <h1 className="nx-display mt-6 text-[clamp(3rem,8vw,6.2rem)]">
+              Speak.
               <br />
-          your venue a <em>VOYCE.</em>
-            </motion.h1>
+              It&rsquo;s <em>rung in.</em>
+            </h1>
 
             <motion.p
-              initial="hidden"
-              animate="visible"
-              custom={2}
-              variants={fadeUp}
-              className="mt-7 text-[17px] md:text-[18px] leading-relaxed max-w-115"
-              style={{ color: "var(--color-vl-ink-soft)" }}
+              initial={reduceMotion ? false : { opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.15, duration: 0.6, ease: EASE }}
+              className="nx-body mt-7 max-w-130 text-[17px] md:text-[18px] leading-relaxed"
             >
-              VoyceLab is a voice assistant for hospitality operators. Talk to
-              Square — add items, run reports, count stock, send to terminal —
-              without picking up the iPad.
+              VoyceLab is a voice layer over your Square POS. It rings orders,
+              splits checks, 86&rsquo;s items, counts stock, reads the
+              night&rsquo;s numbers, and fires the terminal — in the time it
+              takes to say it.
             </motion.p>
 
             <motion.div
-              initial="hidden"
-              animate="visible"
-              custom={3}
-              variants={fadeUp}
-              className="mt-8 flex flex-wrap items-center gap-3"
+              initial={reduceMotion ? false : { opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.28, duration: 0.6, ease: EASE }}
+              className="mt-9 flex flex-wrap items-center gap-4"
             >
-              <Link href="/signup" className="vl-btn-primary inline-flex items-center gap-2.5">
-                Start free trial
-                <span className="flex h-5 w-5 items-center justify-center rounded-md bg-white/25">
-                  <ArrowRight className="w-3 h-3 text-white" />
-                </span>
-              </Link>
-              <a href="#voice-demo" className="vl-btn-outline inline-flex items-center gap-2.5">
-                See it in action
-                <span
-                  className="flex h-5 w-5 items-center justify-center rounded-md"
-                  style={{ background: "rgba(10, 10, 11,0.08)" }}
-                >
-                  <Play className="w-2.5 h-2.5" style={{ color: "var(--color-vl-ink)" }} />
-                </span>
+              <Magnetic>
+                <Link href="/signup" className="nx-btn-ember">
+                  Start free trial
+                  <ArrowRight className="w-4 h-4" />
+                </Link>
+              </Magnetic>
+              <a href="#live-demo" className="nx-btn-quiet">
+                Talk to it live
+                <Mic className="w-4 h-4" style={{ color: "var(--nx-amber)" }} />
               </a>
             </motion.div>
 
-            {/* Connected systems moved below the grid so the cards span full hero width */}
+            <motion.p
+              initial={reduceMotion ? false : { opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.45, duration: 0.6 }}
+              className="mt-5 text-[13px]"
+              style={{ color: "var(--nx-ink-faint)" }}
+            >
+              14 days free · No card · Works on your real Square account
+            </motion.p>
           </div>
 
-          {/* - RIGHT: scene with floating assistants - */}
-          {/* id anchors the hero "See it in action" CTA — the standalone
-              #voice-demo section is not mounted on this page. */}
+          {/* Above-the-fold mechanism proof: commands landing as tickets */}
           <motion.div
-            id="voice-demo"
-            initial="hidden"
-            animate="visible"
-            custom={6}
-            variants={fadeUp}
-            className="relative scroll-mt-24"
+            initial={reduceMotion ? false : { opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.4, duration: 0.7, ease: EASE }}
+            className="hidden lg:block"
           >
-            <HeroScene />
+            <HeroTicker reduceMotion={reduceMotion} />
           </motion.div>
         </div>
+      </div>
 
-        {/* Connected systems — Square / OpenAI / Google (full hero width) */}
-        <motion.div
-          initial="hidden"
-          animate="visible"
-          custom={4}
-          variants={fadeUp}
-          className="mt-12"
-        >
-          <p
-            className="vl-eyebrow mb-4"
-            style={{ color: "var(--color-vl-ink-soft)" }}
+      <a
+        href="#tap-cost"
+        aria-label="Scroll to see how it works"
+        className="relative mx-auto mb-8 flex h-10 w-10 items-center justify-center rounded-full"
+        style={{ border: "1px solid var(--nx-line-strong)", color: "var(--nx-ink-dim)" }}
+      >
+        <ArrowDown className="w-4 h-4" />
+      </a>
+    </section>
+  );
+}
+
+function HeroTicker({ reduceMotion }: { reduceMotion: boolean }) {
+  const [idx, setIdx] = useState(0);
+
+  useEffect(() => {
+    if (reduceMotion) return;
+    const t = window.setInterval(
+      () => setIdx((i) => (i + 1) % HERO_TICKER.length),
+      4200,
+    );
+    return () => window.clearInterval(t);
+  }, [reduceMotion]);
+
+  const item = HERO_TICKER[idx];
+
+  return (
+    <div className="nx-glass p-7 max-w-105 ml-auto">
+      <div className="flex items-center justify-between">
+        <span className="nx-eyebrow">Live floor</span>
+        <span className="flex items-center gap-1.5 nx-mono text-[10px] tracking-[0.18em]"
+          style={{ color: "var(--nx-amber)" }}>
+          <span className="h-1.5 w-1.5 rounded-full animate-pulse" style={{ background: "var(--nx-amber)" }} />
+          SQUARE · SYNCED
+        </span>
+      </div>
+
+      <div className="mt-6 min-h-38">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={idx}
+            initial={reduceMotion ? false : { opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={reduceMotion ? undefined : { opacity: 0, y: -10 }}
+            transition={{ duration: 0.45, ease: EASE }}
           >
-            Connected to
-          </p>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 w-full">
-            {[
-              { src: "/brand/square-logo.png",     alt: "Square",  maxHeight: "36px" },
-              { src: "/brand/openai-wordmark.png", alt: "OpenAI",  maxHeight: "36px" },
-              { src: "/brand/google-g.png",        alt: "Google",  maxHeight: "56px"},
-            ].map((logo) => (
-              <div
-                key={logo.alt}
-                className="vl-card flex h-24 sm:h-36 lg:h-44 items-center justify-center rounded-2xl px-6 sm:px-8"
-              >
-                <img
-                  src={logo.src}
-                  alt={logo.alt}
-                  style={{ maxHeight: logo.maxHeight, width: "auto", objectFit: "contain" }}
-                />
-              </div>
-            ))}
+            <p
+              className="text-[19px] leading-snug"
+              style={{ fontFamily: "var(--nx-display)", fontStyle: "italic", color: "var(--nx-ink)" }}
+            >
+              &ldquo;{item.say}&rdquo;
+            </p>
+            <div className="mt-5">
+              {item.lines.map(([label, value]) => (
+                <div key={label} className="nx-ticket-row">
+                  <span style={{ color: "var(--nx-ink-dim)" }}>{label}</span>
+                  {value && (
+                    <span style={{ color: value.includes("86") ? "var(--nx-ember)" : "var(--nx-amber)" }}>
+                      {value}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        </AnimatePresence>
+      </div>
+
+      <div className="mt-5 flex gap-1.5">
+        {HERO_TICKER.map((_, i) => (
+          <span
+            key={i}
+            className="h-0.75 flex-1 rounded-full transition-colors duration-300"
+            style={{ background: i === idx ? "var(--nx-amber)" : "var(--nx-line)" }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ───────────────────────────────────────────────────────────────
+   TAP COST — the felt cost of the problem, in one contrast.
+   ─────────────────────────────────────────────────────────────── */
+function TapCost() {
+  return (
+    <section id="tap-cost" className="relative py-24 md:py-36">
+      <div className="section-container">
+        <div className="nx-hairline mb-16 md:mb-24" />
+        <div className="grid md:grid-cols-2 gap-12 md:gap-16 items-end">
+          <div>
+            <p className="nx-eyebrow">The cost of the screen</p>
+            <h2 className="nx-display mt-6 text-[clamp(2.2rem,4.6vw,3.9rem)]">
+              A three-way split
+              <br />
+              is fourteen taps.
+              <br />
+              <em>Or one sentence.</em>
+            </h2>
           </div>
-        </motion.div>
+          <div className="max-w-105">
+            <p className="nx-body text-[16px] md:text-[17px] leading-relaxed">
+              Every tap is eyes off the room and hands off the pour. VoyceLab
+              gives your register ears — what your team says gets rung,
+              counted, fired, and filed in Square while service keeps moving.
+            </p>
+            <div className="mt-8 space-y-3">
+              <div className="nx-command">Split table nine three ways, even.</div>
+              <div className="nx-command">Comp the dessert on four.</div>
+              <div className="nx-command">Move two cases of Tito&rsquo;s to the main bar.</div>
+            </div>
+          </div>
+        </div>
       </div>
     </section>
   );
 }
 
-/* -- Hero scene: orbit rings + central waveform sphere + 3 floating assistant cards */
-function HeroScene() {
-  const demo = useVoycelabDemoRealtime();
-  const [orbSize, setOrbSize] = useState<number>(() => {
-    if (typeof window === "undefined") return 420;
-    // Leave at least 32px gutter on each side; cap at 420px.
-    return Math.max(220, Math.min(420, window.innerWidth - 64));
-  });
-  useEffect(() => {
-    const onResize = () =>
-      setOrbSize(Math.max(220, Math.min(420, window.innerWidth - 64)));
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, []);
+/* ───────────────────────────────────────────────────────────────
+   COMMAND THEATER — the mechanism, shown not told.
+   Desktop: pinned, scroll-scrubbed. One sentence per scene is
+   spoken word-by-word as you scroll; the Square result assembles.
+   Mobile / reduced-motion: the same three scenes, static.
+   ─────────────────────────────────────────────────────────────── */
 
+interface TheaterSceneData {
+  id: string;
+  eyebrow: string;
+  sentence: string;
+  title: string;
+  rows: Array<[string, string, boolean?]>; // label, value, alarm
+  stamp: string;
+  note: string;
+}
+
+const SCENES: TheaterSceneData[] = [
+  {
+    id: "ring",
+    eyebrow: "01 · Service",
+    sentence:
+      "Two espresso martinis and a Negroni on table twelve — and 86 the calamari.",
+    title: "TABLE 12 — OPEN CHECK",
+    rows: [
+      ["2 × Espresso Martini", "$32.00"],
+      ["1 × Negroni", "$16.00"],
+      ["Calamari", "86'D — OFF MENU", true],
+    ],
+    stamp: "RUNG INTO SQUARE",
+    note: "On the ticket, and the calamari pulled everywhere, before the shaker stops.",
+  },
+  {
+    id: "count",
+    eyebrow: "02 · Stock",
+    sentence: "How much Espolòn is left — and will it last tonight?",
+    title: "ESPOLÒN BLANCO — WELL",
+    rows: [
+      ["On hand", "4 bottles"],
+      ["Tonight's projected pour", "6 bottles"],
+      ["Shortfall", "2 — LOW", true],
+    ],
+    stamp: "REORDER DRAFTED",
+    note: "Counted, checked against tonight's demand, reorder ready before doors.",
+  },
+  {
+    id: "close",
+    eyebrow: "03 · The close",
+    sentence: "Run the end-of-day close.",
+    title: "SATURDAY — CLOSEOUT",
+    rows: [
+      ["Gross sales", "$18,412"],
+      ["Top seller", "Espresso Martini × 62"],
+      ["Open tabs", "3 flagged", true],
+      ["Low stock", "5 items listed"],
+    ],
+    stamp: "NIGHT CLOSED",
+    note: "Summary, open orders, low stock — the whole close, spoken once.",
+  },
+];
+
+function CommandTheater({ reduceMotion }: { reduceMotion: boolean }) {
   return (
-    <div className="relative aspect-[1/1.05] w-full max-w-160 mx-auto lg:ml-auto">
-      {/* Single soft orbit ring - anchors the orb without competing with it */}
-      <div aria-hidden className="absolute inset-0">
-        <div
-          className="vl-orbit-ring"
-          style={{ inset: "14%", borderColor: "rgba(99, 102, 241,0.12)" }}
-        />
+    <section className="relative">
+      <div className="section-container">
+        <p className="nx-eyebrow">How a shift sounds</p>
+        <h2 className="nx-display mt-6 max-w-3xl text-[clamp(2.2rem,4.6vw,3.9rem)]">
+          Three sentences,
+          <br />
+          <em>three jobs done.</em>
+        </h2>
       </div>
 
-      {/* Central voice orb - user mic starts the session; particles react to assistant output */}
-      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10">
-        <VoiceOrb
-          size={orbSize}
-          outputStream={demo.assistantStream}
-          agentState={demo.agentState}
-          label={
-            demo.isLive
-              ? "VoyceLab voice demo is live. Click to stop."
-              : "Start the VoyceLab voice demo."
-          }
-          onListenStart={(stream) => {
-            void demo.connect(stream);
-          }}
-          onListenStop={() => {
-            void demo.disconnect();
-          }}
-          externalError={demo.error}
-        />
-      </div>
-
-      {/* Floating command chip #1 - POS (top-right) - hidden on narrow screens */}
-      <FloatingAssistantCard
-        className="hidden lg:block absolute top-[8%] right-[-2%] md:right-[-6%] vl-float-slow"
-        index="1"
-        title="POS ASSISTANT"
-        question="Hey Voyce, split"
-        questionAccent="Table 12"
-        questionRest="into 3 ways and add a tip."
-      />
-
-      {/* Floating command chip #2 - Inventory (right middle) */}
-      <FloatingAssistantCard
-        className="hidden lg:block absolute top-[48%] right-[-8%] md:right-[-12%] vl-float-medium"
-        index="2"
-        title="INVENTORY ASSISTANT"
-        question="Voyce, do we have"
-        questionAccent="enough tequila"
-        questionRest="for tonight?"
-      />
-
-      {/* Floating command chip #3 - Venue (bottom-left) */}
-      <FloatingAssistantCard
-        className="hidden lg:block absolute bottom-[8%] left-[-8%] md:left-[-14%] vl-float-fast"
-        index="3"
-        title="VENUE ASSISTANT"
-        question="Hey Voyce, what's"
-        questionAccent="the timeline"
-        questionRest="for the Johnson wedding?"
-      />
-    </div>
+      {reduceMotion ? (
+        <TheaterStatic />
+      ) : (
+        <>
+          <div className="hidden md:block">
+            <TheaterScrub />
+          </div>
+          <div className="md:hidden">
+            <TheaterStatic />
+          </div>
+        </>
+      )}
+    </section>
   );
 }
 
-function FloatingAssistantCard({
-  className = "",
-  index,
-  title,
-  question,
-  questionAccent,
-  questionRest,
-}: {
-  className?: string;
-  index: string;
-  title: string;
-  question: string;
-  questionAccent: string;
-  questionRest: string;
-}) {
+function TheaterScrub() {
+  const ref = useRef<HTMLDivElement>(null);
+  const { scrollYProgress } = useScroll({
+    target: ref,
+    offset: ["start start", "end end"],
+  });
+
   return (
-    <div className={className}>
-      <div
-        className="relative flex max-w-75 items-center gap-2.5 rounded-2xl py-2 pl-2 pr-4"
-        style={{
-          background: "rgba(255,255,255,0.72)",
-          backdropFilter: "blur(20px) saturate(1.4)",
-          WebkitBackdropFilter: "blur(20px) saturate(1.4)",
-          border: "1px solid rgba(10, 10, 11,0.06)",
-          boxShadow:
-            "0 2px 10px rgba(10, 10, 11,0.04), 0 12px 36px rgba(99,102,241,0.10)",
-        }}
-      >
-        <span
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl text-[11px] font-semibold"
+    <div ref={ref} style={{ height: `${SCENES.length * 130}vh` }}>
+      <div className="sticky top-0 h-screen flex items-center overflow-hidden">
+        {/* Amber progress rail */}
+        <motion.div
+          aria-hidden
+          className="absolute left-0 top-0 w-0.5 origin-top"
           style={{
-            background:
-              "linear-gradient(135deg, rgba(99,102,241,0.18), rgba(236,72,153,0.18))",
-            color: "var(--color-vl-ink)",
+            height: "100%",
+            background: "linear-gradient(180deg, var(--nx-amber), var(--nx-ember))",
+            scaleY: scrollYProgress,
           }}
-        >
-          {index}
-        </span>
-        <div className="flex-1 min-w-0">
-          <p
-            className="text-[9.5px] font-semibold tracking-[0.16em] leading-none"
-            style={{ color: "var(--color-vl-ink-muted)" }}
-          >
-            {title}
-          </p>
-          <p
-            className="mt-1 text-[12.5px] leading-tight truncate"
-            style={{ color: "var(--color-vl-ink)" }}
-            title={`${question} ${questionAccent} ${questionRest}`}
-          >
-            {question}{" "}
-            <span style={{ color: "var(--color-vl-coral)", fontWeight: 600 }}>
-              {questionAccent}
-            </span>{" "}
-            {questionRest}
-          </p>
-        </div>
-        <div className="flex items-end gap-0.5 h-3.5 ml-1 shrink-0">
-          {[0.5, 0.9, 0.6, 1, 0.7].map((h, i) => (
-            <span
-              key={i}
-              className="w-0.5 rounded-sm"
-              style={{
-                background: "var(--color-vl-coral)",
-                height: `${h * 100}%`,
-                opacity: 0.6,
-              }}
+        />
+        <div className="section-container w-full relative" style={{ height: "min(560px, 72vh)" }}>
+          {SCENES.map((scene, i) => (
+            <TheaterScene
+              key={scene.id}
+              scene={scene}
+              index={i}
+              total={SCENES.length}
+              progress={scrollYProgress}
             />
           ))}
+
+          {/* Scene index */}
+          <div className="absolute right-6 top-1/2 -translate-y-1/2 hidden lg:flex flex-col gap-3">
+            {SCENES.map((s, i) => (
+              <SceneDot key={s.id} index={i} total={SCENES.length} progress={scrollYProgress} />
+            ))}
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-/* -
-   INTEGRATIONS STRIP
-   - */
-function IntegrationsStrip() {
-  const integrations = [
-    { name: "Square", color: "#0A0A0B" },
-    { name: "Knowledge base", color: "#5B5BD6" },
-    { name: "Gmail", color: "#D93025" },
-    { name: "Postgres", color: "#336791" },
-    { name: "Private systems", color: "#0A0A0B" },
-    { name: "Clerk Billing", color: "#635BFF" },
-  ];
-
+function SceneDot({
+  index,
+  total,
+  progress,
+}: {
+  index: number;
+  total: number;
+  progress: MotionValue<number>;
+}) {
+  const s = index / total;
+  const e = (index + 1) / total;
+  const opacity = useTransform(progress, [s - 0.02, s, e, e + 0.02], [0.25, 1, 1, 0.25]);
   return (
-    <section className="py-12 md:py-16">
-      <div className="section-container">
-        <div className="grid lg:grid-cols-[1fr_2fr] gap-8 items-center">
-          <div>
-            <p className="vl-eyebrow">Built to connect</p>
-            <p
-              className="mt-3 text-[14px] leading-relaxed"
-              style={{ color: "var(--color-vl-ink-muted)" }}
-            >
-              VoyceLab flows into the systems you already use - securely and beautifully.
-            </p>
-            <Link
-              href="/services"
-              className="mt-4 inline-flex items-center gap-2 vl-btn-primary text-[13px]"
-              style={{ padding: "0.6rem 1.2rem" }}
-            >
-              Explore integrations
-              <ArrowRight className="w-3.5 h-3.5" />
-            </Link>
-          </div>
-
-          <div className="flex items-center justify-end gap-3 flex-wrap">
-            {integrations.map((it) => (
-              <div
-                key={it.name}
-                className="vl-card px-4 py-3 inline-flex items-center gap-2 text-[13px] font-semibold"
-                style={{ color: it.color }}
-              >
-                <span
-                  className="h-1.5 w-1.5 rounded-[3px]"
-                  style={{ background: it.color, opacity: 0.85 }}
-                />
-                {it.name}
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </section>
+    <motion.span
+      style={{ opacity, background: "var(--nx-amber)" }}
+      className="h-1.5 w-1.5 rounded-full"
+    />
   );
 }
 
-/* -
-   CONVERSATION SECTION - Live VoyceLab voice FAQ (OpenAI Realtime WebRTC)
-   - */
-function ConversationSection({ compact = false }: { compact?: boolean }) {
+function TheaterScene({
+  scene,
+  index,
+  total,
+  progress,
+}: {
+  scene: TheaterSceneData;
+  index: number;
+  total: number;
+  progress: MotionValue<number>;
+}) {
+  const s = index / total;
+  const e = (index + 1) / total;
+  const first = index === 0;
+  const last = index === total - 1;
+
+  // Crossfade overlaps the neighbour scene — no dead-black window between scenes.
+  const opacity = useTransform(
+    progress,
+    [first ? 0 : s - 0.012, first ? 0.0001 : s + 0.028, last ? 0.9999 : e - 0.03, last ? 1 : e],
+    [first ? 1 : 0, 1, 1, last ? 1 : 0],
+  );
+  const y = useTransform(
+    progress,
+    [first ? 0 : s - 0.012, first ? 0.0001 : s + 0.028],
+    [first ? 0 : 34, 0],
+  );
+
+  const words = scene.sentence.split(" ");
+  const wordsStart = s + 0.012;
+  const wordsEnd = s + 0.095;
+  const rowsStart = s + 0.105;
+  const stampAt = rowsStart + scene.rows.length * 0.02 + 0.012;
+
+  return (
+    <motion.div style={{ opacity, y }} className="absolute inset-0 flex items-center">
+      <div className="grid md:grid-cols-[1fr_1fr] gap-12 lg:gap-20 items-center w-full">
+        <div>
+          <p className="nx-eyebrow">{scene.eyebrow}</p>
+          <p
+            className="mt-6 text-[clamp(1.6rem,3vw,2.5rem)] leading-[1.18]"
+            style={{ fontFamily: "var(--nx-display)", fontStyle: "italic" }}
+          >
+            <span aria-hidden className="inline-flex items-center mr-3 align-middle">
+              <Mic className="w-5 h-5" style={{ color: "var(--nx-amber)" }} />
+            </span>
+            {words.map((w, j) => (
+              <ScrubWord
+                key={j}
+                progress={progress}
+                start={wordsStart + (j / words.length) * (wordsEnd - wordsStart)}
+              >
+                {w}
+              </ScrubWord>
+            ))}
+          </p>
+          <ScrubReveal progress={progress} at={stampAt}>
+            <p className="nx-body mt-6 text-[14.5px] leading-relaxed max-w-95">{scene.note}</p>
+          </ScrubReveal>
+        </div>
+
+        <div className="nx-card p-7 lg:p-9 relative">
+          <div className="flex items-center justify-between">
+            <span className="nx-mono text-[11px] tracking-[0.2em]" style={{ color: "var(--nx-ink-faint)" }}>
+              {scene.title}
+            </span>
+            <Square className="w-3.5 h-3.5" style={{ color: "var(--nx-ink-faint)" }} />
+          </div>
+          <div className="mt-4">
+            {scene.rows.map(([label, value, alarm], k) => (
+              <ScrubRow
+                key={label}
+                progress={progress}
+                at={rowsStart + k * 0.02}
+                label={label}
+                value={value}
+                alarm={Boolean(alarm)}
+              />
+            ))}
+          </div>
+          <ScrubStamp progress={progress} at={stampAt} label={scene.stamp} />
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+function ScrubWord({
+  progress,
+  start,
+  children,
+}: {
+  progress: MotionValue<number>;
+  start: number;
+  children: string;
+}) {
+  const opacity = useTransform(progress, [start, start + 0.012], [0.3, 1]);
+  return (
+    <motion.span style={{ opacity }} className="inline">
+      {children}{" "}
+    </motion.span>
+  );
+}
+
+function ScrubRow({
+  progress,
+  at,
+  label,
+  value,
+  alarm,
+}: {
+  progress: MotionValue<number>;
+  at: number;
+  label: string;
+  value: string;
+  alarm: boolean;
+}) {
+  const opacity = useTransform(progress, [at, at + 0.02], [0, 1]);
+  const y = useTransform(progress, [at, at + 0.02], [10, 0]);
+  return (
+    <motion.div style={{ opacity, y }} className="nx-ticket-row">
+      <span style={{ color: "var(--nx-ink-dim)" }}>{label}</span>
+      <span style={{ color: alarm ? "var(--nx-ember)" : "var(--nx-amber)" }}>{value}</span>
+    </motion.div>
+  );
+}
+
+function ScrubStamp({
+  progress,
+  at,
+  label,
+}: {
+  progress: MotionValue<number>;
+  at: number;
+  label: string;
+}) {
+  const opacity = useTransform(progress, [at, at + 0.02], [0, 1]);
+  const scale = useTransform(progress, [at, at + 0.025], [1.25, 1]);
+  return (
+    <motion.div
+      style={{ opacity, scale }}
+      className="mt-6 inline-flex items-center gap-2 rounded-lg px-3.5 py-2 nx-mono text-[11px] tracking-[0.18em]"
+    >
+      <span
+        className="absolute inset-0 rounded-lg"
+        style={{ border: "1px solid var(--nx-amber)", opacity: 0.6 }}
+        aria-hidden
+      />
+      <span className="h-1.5 w-1.5 rounded-full" style={{ background: "var(--nx-amber)" }} />
+      <span style={{ color: "var(--nx-amber)" }}>{label}</span>
+    </motion.div>
+  );
+}
+
+function ScrubReveal({
+  progress,
+  at,
+  children,
+}: {
+  progress: MotionValue<number>;
+  at: number;
+  children: ReactNode;
+}) {
+  const opacity = useTransform(progress, [at, at + 0.025], [0, 1]);
+  return <motion.div style={{ opacity }}>{children}</motion.div>;
+}
+
+function TheaterStatic() {
+  return (
+    <div className="section-container mt-14 pb-8 space-y-6">
+      {SCENES.map((scene) => (
+        <div key={scene.id} className="nx-card p-6 md:p-8">
+          <p className="nx-eyebrow">{scene.eyebrow}</p>
+          <p
+            className="mt-4 text-[20px] leading-snug"
+            style={{ fontFamily: "var(--nx-display)", fontStyle: "italic" }}
+          >
+            &ldquo;{scene.sentence}&rdquo;
+          </p>
+          <div className="mt-5">
+            {scene.rows.map(([label, value, alarm]) => (
+              <div key={label} className="nx-ticket-row">
+                <span style={{ color: "var(--nx-ink-dim)" }}>{label}</span>
+                <span style={{ color: alarm ? "var(--nx-ember)" : "var(--nx-amber)" }}>
+                  {value}
+                </span>
+              </div>
+            ))}
+          </div>
+          <p
+            className="mt-5 nx-mono text-[11px] tracking-[0.18em]"
+            style={{ color: "var(--nx-amber)" }}
+          >
+            ● {scene.stamp}
+          </p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ───────────────────────────────────────────────────────────────
+   LIVE DEMO — proof by experience. Real OpenAI Realtime WebRTC.
+   ─────────────────────────────────────────────────────────────── */
+function LiveDemo() {
   const demo = useVoycelabDemoRealtime();
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -453,745 +728,350 @@ function ConversationSection({ compact = false }: { compact?: boolean }) {
     el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   }, [demo.conversation, demo.partialTranscript, demo.agentState]);
 
-  const statusLine = (() => {
+  const status = (() => {
     switch (demo.agentState) {
-      case "idle":
-        return { label: "Ready", color: "var(--color-vl-ink-muted)" };
       case "connecting":
-        return { label: "Connecting...", color: "var(--color-vl-honey)" };
+        return { label: "Connecting…", color: "var(--nx-amber)" };
       case "listening":
-        return { label: "Listening - ask anything about VoyceLab", color: "var(--color-vl-success)" };
+        return { label: "Listening — ask it anything", color: "var(--nx-amber)" };
       case "thinking":
-        return { label: "Thinking...", color: "var(--color-vl-lilac)" };
+        return { label: "Thinking…", color: "var(--nx-ink-dim)" };
       case "speaking":
-        return { label: "Speaking...", color: "var(--color-vl-coral-deep)" };
+        return { label: "Speaking…", color: "var(--nx-ember)" };
       case "error":
-        return { label: "Something went wrong", color: "var(--color-vl-danger)" };
+        return { label: "Something went wrong", color: "var(--nx-ember)" };
       default:
-        return { label: "", color: "var(--color-vl-ink-muted)" };
+        return { label: "Ready when you are", color: "var(--nx-ink-faint)" };
     }
   })();
 
-  const hints = [
-    "What is VoyceLab?",
-    "How does Square connect?",
-    "What voice pipelines can I pick?",
-    "How do I start a trial?",
-  ];
-
   return (
-    <section id="voice-demo" className={compact ? "relative" : "py-20 md:py-28 relative"}>
-      <div className={compact ? "" : "section-container"}>
-        <div className={compact ? "grid gap-4" : "grid lg:grid-cols-[1fr_1.2fr] gap-10 lg:gap-14 items-start"}>
-          {!compact && <div>
-            <p className="vl-eyebrow">Less busywork. More guest magic.</p>
-            <h2 className="vl-section-heading mt-5 max-w-115">
-              Let's put your venue
+    <section id="live-demo" className="relative py-24 md:py-36 scroll-mt-20">
+      <div className="section-container">
+        <div className="nx-hairline mb-16 md:mb-24" />
+        <div className="grid lg:grid-cols-[0.9fr_1.1fr] gap-12 lg:gap-20 items-start">
+          <div className="lg:sticky lg:top-28">
+            <p className="nx-eyebrow">Proof, not promises</p>
+            <h2 className="nx-display mt-6 text-[clamp(2.2rem,4.6vw,3.9rem)]">
+              Don&rsquo;t take
               <br />
-              <em>in conversation.</em>
+              the tour.
+              <br />
+              <em>Take the mic.</em>
             </h2>
-            <p
-              className="mt-6 text-[16px] leading-relaxed max-w-110"
-              style={{ color: "var(--color-vl-ink-muted)" }}
-            >
-              This is a live, low-latency voice line powered by OpenAI Realtime - ask aloud about VoyceLab:
-              integrations, assistants, pricing overview, and how operators use voice day-to-day.
+            <p className="nx-body mt-7 max-w-100 text-[16px] leading-relaxed">
+              This is a live voice line — the same low-latency pipeline your
+              venue would run on. Ask it what VoyceLab can do behind your bar,
+              out loud, right now.
             </p>
-
-            <div className="mt-7 flex flex-wrap items-center gap-3">
-              <Link href="/book-demo" className="vl-btn-primary inline-flex items-center gap-2">
-                Book a demo
-                <ArrowRight className="w-3.5 h-3.5" />
-              </Link>
-              <a href="#voice-demo-panel" className="vl-btn-outline inline-flex items-center gap-2">
-                Try voice FAQ
-                <Mic className="w-3.5 h-3.5" />
-              </a>
-            </div>
-
-            <div className="mt-5 flex items-center gap-2 text-[13px]" style={{ color: "var(--color-vl-ink-muted)" }}>
-              <ShieldCheck className="w-3.5 h-3.5" style={{ color: "var(--color-vl-success)" }} />
-              Microphone required - Answers only cover VoyceLab (demo sandbox - no POS commands).
-            </div>
-
-            <p className="mt-4 text-[12px] max-w-110" style={{ color: "var(--color-vl-ink-faint)" }}>
-              Hint phrases below are prompts - speak naturally after you tap Start.
+            <p className="mt-6 text-[13px]" style={{ color: "var(--nx-ink-faint)" }}>
+              Microphone required · Demo sandbox — answers cover VoyceLab, no
+              live POS commands.
             </p>
-          </div>}
+          </div>
 
-          <motion.div
-            id="voice-demo-panel"
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true, margin: "-80px" }}
-            variants={childFade}
-            className={compact ? "scroll-mt-24" : "vl-card-glass p-6 md:p-8 scroll-mt-24"}
-          >
-            {/* Toolbar */}
-            <div className="flex flex-wrap items-center justify-between gap-4 mb-5">
-              <div className="flex items-center gap-3">
-                <div
-                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl"
-                  style={{
-                    background:
-                      "linear-gradient(135deg, #FF8A66, #000000)",
-                    boxShadow: "0 8px 20px rgba(99, 102, 241,0.30)",
-                  }}
-                >
-                  {demo.agentState === "connecting" ? (
-                    <Loader2 className="w-5 h-5 text-white animate-spin" />
-                  ) : (
-                    <Mic className="w-5 h-5 text-white" />
-                  )}
-                </div>
-                <div>
-                  <p className="text-[14px] font-semibold" style={{ color: "var(--color-vl-ink)" }}>
-                    VoyceLab voice guide
-                  </p>
-                  <p className="text-[12px] font-medium" style={{ color: statusLine.color }}>
-                    {statusLine.label}
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3 shrink-0">
-                <DemoStatusWaveform state={demo.agentState} />
-              </div>
+          <div className="nx-glass p-6 md:p-9">
+            <div className="flex flex-col items-center">
+              <VoiceOrb
+                size={230}
+                outputStream={demo.assistantStream}
+                agentState={demo.agentState}
+                label={
+                  demo.isLive
+                    ? "VoyceLab voice demo is live. Click to stop."
+                    : "Start the VoyceLab voice demo."
+                }
+                onListenStart={(stream) => {
+                  void demo.connect(stream);
+                }}
+                onListenStop={() => {
+                  void demo.disconnect();
+                }}
+                externalError={demo.error}
+              />
+              <p className="mt-1 nx-mono text-[12px]" style={{ color: status.color }}>
+                {status.label}
+              </p>
             </div>
 
-            <div className="flex flex-wrap gap-2 mb-4">
+            <div className="mt-6 flex flex-wrap justify-center gap-3">
               {!demo.isLive ? (
-                <button type="button" onClick={() => void demo.connect()} className="vl-btn-primary text-[13px] px-5 py-2.5 inline-flex items-center gap-2">
-                  <Mic className="w-4 h-4" />
-                  Start voice demo
+                <button
+                  type="button"
+                  onClick={() => void demo.connect()}
+                  className="nx-btn-quiet text-[14px]"
+                  style={{ padding: "0.7rem 1.3rem" }}
+                >
+                  <Mic className="w-4 h-4" style={{ color: "var(--nx-amber)" }} />
+                  Start talking
                 </button>
               ) : (
                 <>
-                  <button type="button" onClick={() => void demo.disconnect()} className="vl-btn-outline text-[13px] px-5 py-2.5">
+                  <button
+                    type="button"
+                    onClick={() => void demo.disconnect()}
+                    className="nx-btn-quiet text-[14px]"
+                    style={{ padding: "0.7rem 1.3rem" }}
+                  >
                     End session
                   </button>
                   {(demo.agentState === "speaking" || demo.agentState === "thinking") && (
                     <button
                       type="button"
                       onClick={demo.interrupt}
-                      className="vl-btn-ghost text-[13px] px-4 py-2.5"
+                      className="nx-btn-quiet text-[14px]"
+                      style={{ padding: "0.7rem 1.3rem" }}
                     >
                       Interrupt
                     </button>
                   )}
-                  <button
-                    type="button"
-                    onClick={demo.clearConversation}
-                    className="text-[12px] font-medium underline-offset-2 hover:underline"
-                    style={{ color: "var(--color-vl-ink-muted)" }}
-                  >
-                    Clear transcript
-                  </button>
                 </>
+              )}
+              {demo.agentState === "connecting" && (
+                <span className="inline-flex items-center gap-2 text-[13px]" style={{ color: "var(--nx-ink-dim)" }}>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                </span>
               )}
             </div>
 
             {demo.error && (
-              <p className="mb-3 text-[13px] rounded-xl px-3 py-2" style={{ background: "rgba(215,64,46,0.08)", color: "var(--color-vl-danger)" }}>
+              <p
+                className="mt-4 rounded-xl px-4 py-3 text-[13px]"
+                style={{ background: "rgba(255,90,45,0.10)", color: "var(--nx-ember)" }}
+              >
                 {demo.error}
               </p>
             )}
 
-            {/* Transcript */}
-            <div
-              ref={scrollRef}
-              className={(compact ? "max-h-47.5" : "max-h-[min(340px,50vh)]") + " vl-scroll overflow-y-auto space-y-3 pr-2"}
-              style={{ scrollbarWidth: "thin" }}
-            >
-              {!demo.isLive && demo.conversation.length === 0 && (
-                <p className="text-[14px] leading-relaxed py-4 text-center" style={{ color: "var(--color-vl-ink-muted)" }}>
-                  Tap <strong style={{ color: "var(--color-vl-ink)" }}>Start voice demo</strong>, allow your microphone,
-                  then ask out loud - you'll hear answers through your speakers or headset.
-                </p>
-              )}
-
-              {demo.conversation.map((msg) => (
-                <div key={msg.id} className="flex gap-3">
-                  <div
-                    className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-xl"
-                    style={{
-                      background:
-                        msg.role === "user"
-                          ? "rgba(10, 10, 11,0.06)"
-                          : "linear-gradient(135deg, #FF8A66, #000000)",
-                    }}
-                  >
-                    {msg.role === "user" ? (
-                      <Users className="w-3.5 h-3.5" style={{ color: "var(--color-vl-ink-muted)" }} />
-                    ) : (
-                      <Mic className="w-3 h-3 text-white" />
-                    )}
-                  </div>
-                  <div
-                    className="rounded-2xl rounded-tl-sm px-4 py-3 max-w-[90%]"
-                    style={
-                      msg.role === "user"
-                        ? { background: "rgba(10, 10, 11,0.04)" }
-                        : {
-                            background: "var(--color-vl-coral-tint)",
-                            border: "1px solid rgba(99, 102, 241,0.18)",
-                          }
-                    }
-                  >
-                    <p className="text-[14px] leading-relaxed" style={{ color: "var(--color-vl-ink-soft)" }}>
+            {(demo.conversation.length > 0 || demo.partialTranscript.trim().length > 0) && (
+              <div
+                ref={scrollRef}
+                className="vl-scroll mt-6 max-h-70 space-y-3 overflow-y-auto pr-2"
+                style={{ scrollbarWidth: "thin" }}
+              >
+                {demo.conversation.map((msg) => (
+                  <div key={msg.id} className="flex gap-3">
+                    <span
+                      className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full"
+                      style={{
+                        background: msg.role === "user" ? "var(--nx-ink-faint)" : "var(--nx-amber)",
+                      }}
+                    />
+                    <p className="text-[14px] leading-relaxed" style={{ color: "var(--nx-ink-dim)" }}>
                       {msg.content}
                     </p>
                   </div>
-                </div>
-              ))}
-
-              {demo.partialTranscript.trim().length > 0 && (
-                <div className="flex gap-3 opacity-90">
-                  <div
-                    className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-xl"
-                    style={{ background: "linear-gradient(135deg, #FF8A66, #000000)" }}
-                  >
-                    <Mic className="w-3 h-3 text-white" />
-                  </div>
-                  <div
-                    className="rounded-2xl rounded-tl-sm px-4 py-3 max-w-[90%] italic"
-                    style={{
-                      background: "rgba(255,241,235,0.85)",
-                      border: "1px dashed rgba(99, 102, 241,0.35)",
-                    }}
-                  >
-                    <p className="text-[14px] leading-relaxed" style={{ color: "var(--color-vl-ink-soft)" }}>
+                ))}
+                {demo.partialTranscript.trim().length > 0 && (
+                  <div className="flex gap-3 opacity-80">
+                    <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: "var(--nx-amber)" }} />
+                    <p className="text-[14px] italic leading-relaxed" style={{ color: "var(--nx-ink-dim)" }}>
                       {demo.partialTranscript}
-                      <span className="inline-block w-1.5 h-4 ml-0.5 align-middle animate-pulse" style={{ background: "var(--color-vl-coral)" }} />
                     </p>
                   </div>
-                </div>
-              )}
-            </div>
+                )}
+              </div>
+            )}
 
-            {/* Hint phrases */}
-            <div className="mt-6 pt-5" style={{ borderTop: "1px solid rgba(10, 10, 11,0.07)" }}>
-              <p
-                className="text-[10.5px] font-semibold uppercase tracking-[0.2em] mb-3"
-                style={{ color: "var(--color-vl-ink-muted)" }}
-              >
+            <div className="mt-7 pt-5" style={{ borderTop: "1px solid var(--nx-line)" }}>
+              <p className="nx-eyebrow mb-3" style={{ fontSize: 10 }}>
                 Try asking
               </p>
               <div className="flex flex-wrap gap-2">
-                {hints.map((h) => (
-                  <span key={h} className="vl-chip-light">
-                    <Mic className="w-3 h-3" style={{ color: "var(--color-vl-coral)" }} />
+                {[
+                  "What can it do during a rush?",
+                  "How does it handle inventory?",
+                  "What happens at close?",
+                ].map((h) => (
+                  <span
+                    key={h}
+                    className="inline-flex items-center gap-2 rounded-xl px-3.5 py-1.5 text-[12.5px]"
+                    style={{
+                      border: "1px solid var(--nx-line)",
+                      color: "var(--nx-ink-dim)",
+                    }}
+                  >
+                    <Mic className="w-3 h-3" style={{ color: "var(--nx-amber)" }} />
                     {h}
                   </span>
                 ))}
               </div>
             </div>
-          </motion.div>
+          </div>
         </div>
       </div>
     </section>
   );
 }
 
-type DemoWaveState = "idle" | "connecting" | "listening" | "thinking" | "speaking" | "error";
+/* ───────────────────────────────────────────────────────────────
+   VOCABULARY — what it runs, said the way staff say it.
+   ─────────────────────────────────────────────────────────────── */
 
-function DemoStatusWaveform({ state }: { state: DemoWaveState }) {
-  const bars = 9;
-  const active =
-    state === "listening" || state === "speaking" || state === "thinking" || state === "connecting";
+const VOCAB = [
+  {
+    title: "Ring & fire",
+    outcome: "Orders move at speaking pace, checks land on the terminal.",
+    commands: [
+      "Start a tab for Maya.",
+      "Split table nine three ways.",
+      "Comp the dessert on four.",
+      "Send it to the terminal.",
+    ],
+  },
+  {
+    title: "Count & move stock",
+    outcome: "Stock stays counted, shortages get caught before doors.",
+    commands: [
+      "Count the well tequila.",
+      "What's low before doors?",
+      "Move two cases of Tito's to the main bar.",
+      "Set the Pinot Grigio to twelve.",
+    ],
+  },
+  {
+    title: "Read the night",
+    outcome: "The numbers read themselves out while you keep moving.",
+    commands: [
+      "How are we pacing against last Friday?",
+      "Top seller right now?",
+      "Read me the hourly.",
+      "Any refunds today?",
+    ],
+  },
+  {
+    title: "Run the room",
+    outcome: "Tabs, shifts, and loose ends closed by the time you lock up.",
+    commands: [
+      "Who's clocked in?",
+      "Clock Dre out at eleven.",
+      "Any open tabs left?",
+      "Run the end-of-day close.",
+    ],
+  },
+];
+
+function Vocabulary() {
   return (
-    <div className="flex items-center gap-0.75 h-6">
-      {Array.from({ length: bars }, (_, i) => {
-        const center = (bars - 1) / 2;
-        const distance = Math.abs(i - center) / center;
-        const base = active ? 35 + (1 - distance) * 65 : 28 + (1 - distance) * 40;
-        const animationDuration =
-          state === "connecting" ? 0.55 : state === "thinking" ? 0.85 : state === "speaking" ? 0.65 : 1.15;
-        const delay = i * 0.07;
-        return (
-          <div
-            key={i}
-            className="w-0.75 rounded-sm"
-            style={{
-              background:
-                state === "error"
-                  ? "var(--color-vl-danger)"
-                  : state === "thinking"
-                    ? "var(--color-vl-lilac)"
-                    : "var(--color-vl-coral)",
-              height: `${base}%`,
-              animation: active ? `vl-wave ${animationDuration}s ease-in-out ${delay}s infinite` : undefined,
-              opacity: state === "idle" ? 0.45 : 1,
-            }}
-          />
-        );
-      })}
-    </div>
-  );
-}
-
-/* -
-   ASSISTANT TOUR - three numbered hospitality assistants
-   - */
-function AssistantTour() {
-  const items = [
-    {
-      index: "01",
-      title: "POS Assistant",
-      blurb: "Tabs, payments, refunds, and reorders without taking a hand off the floor.",
-      icon: <CreditCard className="w-5 h-5" />,
-      accent: "var(--color-vl-lilac)",
-      tint: "var(--color-vl-lilac-soft)",
-      lines: ['Split Table 12 three ways.', 'Comp dessert for the Patel party.', 'Run end-of-night close.'],
-    },
-    {
-      index: "02",
-      title: "Inventory Assistant",
-      blurb: "Live stock checks, reorder math, and shortage alerts before they hit the shelf.",
-      icon: <Wine className="w-5 h-5" />,
-      accent: "var(--color-vl-sage)",
-      tint: "var(--color-vl-sage-soft)",
-      lines: ['Do we have enough tequila for tonight?', 'What\'s low across the bar?', 'Reorder the Pinot Grigio.'],
-    },
-    {
-      index: "03",
-      title: "Venue Assistant",
-      blurb: "Events, timelines, staffing, packages - orchestrated by voice across the night.",
-      icon: <CalendarRange className="w-5 h-5" />,
-      accent: "var(--color-vl-coral)",
-      tint: "var(--color-vl-coral-tint)",
-      lines: ['Walk me through the Johnson wedding.', 'Who\'s on the floor at 8?', 'Update the bar package to premium.'],
-    },
-  ];
-
-  return (
-    <section id="how-it-works" className="py-20 md:py-28">
+    <section className="relative py-24 md:py-36">
       <div className="section-container">
-        <motion.div
-          initial="hidden"
-          whileInView="visible"
-          viewport={{ once: true, margin: "-100px" }}
-          variants={stagger}
-        >
-          <motion.p variants={childFade} className="vl-eyebrow">
-            Meet your assistants
-          </motion.p>
-          <motion.h2 variants={childFade} className="vl-section-heading mt-5 max-w-3xl">
-            Three voices that already know
+        <div className="nx-hairline mb-16 md:mb-24" />
+        <div className="max-w-3xl">
+          <p className="nx-eyebrow">The vocabulary</p>
+          <h2 className="nx-display mt-6 text-[clamp(2.2rem,4.6vw,3.9rem)]">
+            Say it the way
             <br />
-            <em>how your venue runs.</em>
-          </motion.h2>
-          <motion.p
-            variants={childFade}
-            className="mt-5 text-[16px] leading-relaxed max-w-xl"
-            style={{ color: "var(--color-vl-ink-muted)" }}
-          >
-            VoyceLab ships with hospitality assistants that connect to the systems your team
-            already uses. Pick one, name it, and let it run with you.
-          </motion.p>
-        </motion.div>
+            <em>you&rsquo;d say it to staff.</em>
+          </h2>
+          <p className="nx-body mt-6 max-w-xl text-[16px] leading-relaxed">
+            No menus to memorize, no magic words. VoyceLab speaks
+            bar — plain commands in, Square actions out.
+          </p>
+        </div>
 
-        <motion.div
-          initial="hidden"
-          whileInView="visible"
-          viewport={{ once: true, margin: "-80px" }}
-          variants={stagger}
-          className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5 mt-12"
-        >
-          {items.map((it) => (
-            <motion.div key={it.index} variants={childFade} className="vl-card p-7 relative overflow-hidden">
-              <div
-                className="absolute -right-12 -top-12 h-40 w-40 rounded-[42%]"
-                style={{ background: it.tint, filter: "blur(40px)", opacity: 0.85 }}
-                aria-hidden
-              />
-              <div className="relative">
-                <div className="flex items-center justify-between mb-5">
-                  <span
-                    className="text-[12px] font-semibold tracking-[0.2em]"
-                    style={{ color: "var(--color-vl-ink-muted)" }}
-                  >
-                    {it.index}
-                  </span>
-                  <span
-                    className="flex h-9 w-9 items-center justify-center rounded-2xl"
-                    style={{
-                      background: it.tint,
-                      color: it.accent,
-                      border: `1px solid ${it.accent}`,
-                    }}
-                  >
-                    {it.icon}
-                  </span>
-                </div>
+        <div className="mt-14 grid sm:grid-cols-2 gap-5">
+          {VOCAB.map((group, i) => (
+            <motion.div
+              key={group.title}
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: "-60px" }}
+              transition={{ duration: 0.55, delay: (i % 2) * 0.08, ease: EASE }}
+              className="nx-card p-7 md:p-8"
+            >
+              <div className="flex items-baseline justify-between gap-4">
                 <h3
-                  className="vl-display text-[26px]"
-                  style={{ color: "var(--color-vl-ink)" }}
+                  className="text-[24px]"
+                  style={{ fontFamily: "var(--nx-display)", fontWeight: 560 }}
                 >
-                  {it.title}
+                  {group.title}
                 </h3>
-                <p
-                  className="mt-3 text-[14px] leading-relaxed"
-                  style={{ color: "var(--color-vl-ink-muted)" }}
-                >
-                  {it.blurb}
-                </p>
-                <div className="mt-5 space-y-1.5">
-                  {it.lines.map((l) => (
-                    <div
-                      key={l}
-                      className="flex items-start gap-2 text-[13px] italic"
-                      style={{ color: "var(--color-vl-ink-soft)", fontFamily: "var(--font-display)" }}
-                    >
-                      <Mic className="w-3 h-3 mt-1 shrink-0" style={{ color: it.accent }} />
-                      "{l}"
-                    </div>
-                  ))}
-                </div>
-                <Link
-                  href="/assistants/new"
-                  className="mt-6 inline-flex items-center gap-1.5 text-[13px] font-semibold"
-                  style={{ color: it.accent }}
-                >
-                  Configure {it.title.split(" ")[0].toLowerCase()}
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </Link>
+                <span className="nx-mono text-[11px] tracking-[0.18em]" style={{ color: "var(--nx-ink-faint)" }}>
+                  0{i + 1}
+                </span>
+              </div>
+              <p className="nx-body mt-2 text-[14px] leading-relaxed">{group.outcome}</p>
+              <div className="mt-6 space-y-2.5">
+                {group.commands.map((c) => (
+                  <div key={c} className="nx-command">{c}</div>
+                ))}
               </div>
             </motion.div>
           ))}
-        </motion.div>
+        </div>
       </div>
     </section>
   );
 }
 
-/* -
-   SHIFT SECTION - old way vs voycelab way
-   - */
-function ShiftSection() {
-  const oldWay = [
-    "Open POS",
-    "Check spreadsheets",
-    "Count bottles",
-    "Text staff",
-    "Guess reorder quantity",
-    "Hope nothing runs out",
-  ];
-  const newWay = [
-    "Ask Voyce",
-    "Get the answer",
-    "Review the recommendation",
-    "Confirm the action",
-    "Move on",
+/* ───────────────────────────────────────────────────────────────
+   PROOF BAND — numbers and the systems it stands on.
+   ─────────────────────────────────────────────────────────────── */
+function ProofBand() {
+  const stats = [
+    { value: "200+", label: "venues running on VoyceLab" },
+    { value: "4.9", label: "average operator rating" },
+    { value: "100%", label: "of actions logged in Square — auditable, reversible" },
   ];
 
   return (
-    <section className="py-20 md:py-28 relative overflow-hidden">
+    <section className="relative py-24 md:py-32 overflow-hidden">
       <div
         aria-hidden
         className="absolute inset-0 pointer-events-none"
         style={{
           background:
-            "radial-gradient(ellipse 60% 40% at 50% 100%, rgba(251, 207, 232,0.20), transparent 70%)",
+            "radial-gradient(ellipse 70% 60% at 50% 100%, rgba(232,163,61,0.10), transparent 65%)",
         }}
       />
       <div className="relative section-container">
-        <motion.div
-          initial="hidden"
-          whileInView="visible"
-          viewport={{ once: true, margin: "-100px" }}
-          variants={stagger}
-        >
-          <motion.p variants={childFade} className="vl-eyebrow">
-            The shift
-          </motion.p>
-          <motion.h2 variants={childFade} className="vl-section-heading mt-5 max-w-3xl">
-            Dashboards show what happened.
-            <br />
-            <em>VoyceLab decides what's next.</em>
-          </motion.h2>
-        </motion.div>
-
-        <motion.div
-          initial="hidden"
-          whileInView="visible"
-          viewport={{ once: true, margin: "-80px" }}
-          variants={stagger}
-          className="grid md:grid-cols-2 gap-6 mt-12"
-        >
-          <motion.div variants={childFade} className="vl-card p-7 md:p-8">
-            <p
-              className="text-[11px] font-semibold uppercase tracking-[0.2em] mb-5"
-              style={{ color: "var(--color-vl-ink-faint)" }}
-            >
-              The old way
-            </p>
-            <ul className="space-y-3">
-              {oldWay.map((step) => (
-                <li
-                  key={step}
-                  className="flex items-center gap-3 text-[14px]"
-                  style={{ color: "var(--color-vl-ink-muted)" }}
-                >
-                  <span
-                    className="h-1.5 w-1.5 shrink-0 rounded-[3px]"
-                    style={{ background: "rgba(10, 10, 11,0.20)" }}
-                  />
-                  {step}
-                </li>
-              ))}
-            </ul>
-          </motion.div>
-
-          <motion.div variants={childFade} className="vl-panel-coral p-7 md:p-8">
-            <p className="vl-eyebrow mb-5">The VoyceLab way</p>
-            <ul className="space-y-3">
-              {newWay.map((step, i) => (
-                <li
-                  key={step}
-                  className="flex items-center gap-3 text-[14px] font-medium"
-                  style={{ color: "var(--color-vl-ink)" }}
-                >
-                  <span
-                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded-lg text-[10px] font-bold text-white"
-                    style={{
-                      background: "linear-gradient(135deg, #FF8A66, #000000)",
-                    }}
-                  >
-                    {i + 1}
-                  </span>
-                  {step}
-                </li>
-              ))}
-            </ul>
-          </motion.div>
-        </motion.div>
-      </div>
-    </section>
-  );
-}
-
-/* -
-   ACTIONS SECTION
-   - */
-function ActionsSection() {
-  const actions = [
-    {
-      icon: <RefreshCw className="w-5 h-5" />,
-      title: "Prepare reorder",
-      desc: "Voyce checks projected demand against current inventory and prepares a reorder before the shortage hits the floor.",
-      tint: "var(--color-vl-coral-tint)",
-      color: "var(--color-vl-coral-deep)",
-    },
-    {
-      icon: <Bell className="w-5 h-5" />,
-      title: "Notify bar lead",
-      desc: "Alerts your bar lead about what needs attention before doors open - no phone tree, no text chain.",
-      tint: "var(--color-vl-honey-soft)",
-      color: "#B7791F",
-    },
-    {
-      icon: <BarChart3 className="w-5 h-5" />,
-      title: "Update forecast",
-      desc: "Adjusts projected usage based on guest count changes, package upgrades, or event-type shifts.",
-      tint: "var(--color-vl-sage-soft)",
-      color: "#3B7A48",
-    },
-    {
-      icon: <AlertTriangle className="w-5 h-5" />,
-      title: "Flag shortage risk",
-      desc: "Early warnings when inventory is trending below what upcoming events will demand.",
-      tint: "var(--color-vl-coral-tint)",
-      color: "var(--color-vl-coral-deep)",
-    },
-    {
-      icon: <ClipboardList className="w-5 h-5" />,
-      title: "Recap event",
-      desc: "After the event, get a clean recap of what sold, what ran low, and what to change next time.",
-      tint: "var(--color-vl-lilac-soft)",
-      color: "#6F58B0",
-    },
-    {
-      icon: <TrendingUp className="w-5 h-5" />,
-      title: "Sales pulse",
-      desc: "Hourly pace, top sellers, guest spend, and side-by-side comparisons against similar past nights.",
-      tint: "var(--color-vl-peach-soft)",
-      color: "#C66534",
-    },
-  ];
-
-  return (
-    <section className="py-20 md:py-28">
-      <div className="section-container">
-        <motion.div
-          initial="hidden"
-          whileInView="visible"
-          viewport={{ once: true, margin: "-100px" }}
-          variants={stagger}
-        >
-          <motion.p variants={childFade} className="vl-eyebrow">
-            Beyond answers
-          </motion.p>
-          <motion.h2 variants={childFade} className="vl-section-heading mt-5 max-w-2xl">
-            Answers are helpful.
-            <br />
-            <em>Actions change the night.</em>
-          </motion.h2>
-          <motion.p
-            variants={childFade}
-            className="mt-5 text-[16px] leading-relaxed max-w-2xl"
-            style={{ color: "var(--color-vl-ink-muted)" }}
-          >
-            VoyceLab does more than respond. It helps your team prepare, decide, and act
-            while the operation is still moving.
-          </motion.p>
-        </motion.div>
-
-        <motion.div
-          initial="hidden"
-          whileInView="visible"
-          viewport={{ once: true, margin: "-80px" }}
-          variants={stagger}
-          className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5 mt-12"
-        >
-          {actions.map((a) => (
-            <motion.div key={a.title} variants={childFade} className="vl-card p-6 group">
-              <div
-                className="w-11 h-11 rounded-xl flex items-center justify-center mb-4 transition-transform group-hover:scale-105"
-                style={{ background: a.tint, color: a.color }}
-              >
-                {a.icon}
-              </div>
-              <h3 className="vl-display text-[20px]" style={{ color: "var(--color-vl-ink)" }}>
-                {a.title}
-              </h3>
-              <p
-                className="text-[14px] mt-2.5 leading-relaxed"
-                style={{ color: "var(--color-vl-ink-muted)" }}
-              >
-                {a.desc}
-              </p>
-            </motion.div>
-          ))}
-        </motion.div>
-      </div>
-    </section>
-  );
-}
-
-/* -
-   VENUE OUTCOMES
-   - */
-function VenueOutcomes() {
-  const outcomes = [
-    "No more surprise shortages",
-    "No more guessing orders",
-    "No more scattered systems",
-    "No more searching for answers",
-    "No more reactive nights",
-    "No more constant interruptions",
-  ];
-
-  const stats = [
-    { value: "200+", label: "venues running on VoyceLab" },
-    { value: "4.9", label: "average operator rating" },
-    { value: "15 min", label: "to deploy your first assistant" },
-  ];
-
-  return (
-    <section id="use-cases" className="py-20 md:py-28">
-      <div className="section-container">
-        <motion.div
-          initial="hidden"
-          whileInView="visible"
-          viewport={{ once: true, margin: "-100px" }}
-          variants={stagger}
-          className="text-center"
-        >
-          <motion.p variants={childFade} className="vl-eyebrow">
-            The outcome
-          </motion.p>
-          <motion.h2 variants={childFade} className="vl-section-heading mt-5 mx-auto max-w-2xl">
-            Feel ahead of the night,
-            <br />
-            <em>every night.</em>
-          </motion.h2>
-          <motion.p
-            variants={childFade}
-            className="mt-5 text-[16px] leading-relaxed max-w-2xl mx-auto"
-            style={{ color: "var(--color-vl-ink-muted)" }}
-          >
-            VoyceLab gives owners and managers the calm confidence of knowing what's
-            happening, what's at risk, and what needs to happen next.
-          </motion.p>
-        </motion.div>
-
-        <motion.div
-          initial="hidden"
-          whileInView="visible"
-          viewport={{ once: true, margin: "-80px" }}
-          variants={stagger}
-          className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 mt-12 max-w-4xl mx-auto"
-        >
-          {outcomes.map((o) => (
-            <motion.div
-              key={o}
-              variants={childFade}
-              className="flex items-center gap-3 rounded-2xl px-5 py-3.5"
-              style={{
-                background: "rgba(255,255,255,0.6)",
-                border: "1px solid rgba(10, 10, 11,0.07)",
-              }}
-            >
-              <span
-                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg"
-                style={{ background: "var(--color-vl-sage-soft)" }}
-              >
-                <Check className="w-3 h-3" style={{ color: "var(--color-vl-success)" }} />
-              </span>
-              <span className="text-[14px] font-medium" style={{ color: "var(--color-vl-ink)" }}>
-                {o}
-              </span>
-            </motion.div>
-          ))}
-        </motion.div>
-
-        <motion.div
-          initial="hidden"
-          whileInView="visible"
-          viewport={{ once: true }}
-          variants={stagger}
-          className="grid grid-cols-1 md:grid-cols-3 gap-5 mt-14 max-w-4xl mx-auto"
-        >
-          {stats.map((s) => (
+        <div className="nx-hairline mb-16 md:mb-20" />
+        <div className="grid md:grid-cols-3 gap-10 md:gap-6">
+          {stats.map((s, i) => (
             <motion.div
               key={s.label}
-              variants={childFade}
-              className="vl-card p-6 text-center"
+              initial={{ opacity: 0, y: 18 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: "-60px" }}
+              transition={{ duration: 0.55, delay: i * 0.08, ease: EASE }}
+              className={i > 0 ? "md:pl-6 md:border-l" : ""}
+              style={i > 0 ? { borderColor: "var(--nx-line)" } : undefined}
             >
               <p
-                className="vl-display text-[30px] sm:text-[40px] md:text-[44px]"
-                style={{ color: "var(--color-vl-coral-deep)" }}
+                className="text-[clamp(3rem,6vw,4.6rem)] leading-none"
+                style={{ fontFamily: "var(--nx-display)", color: "var(--nx-amber)" }}
               >
                 {s.value}
               </p>
-              <p
-                className="mt-1.5 text-[13px]"
-                style={{ color: "var(--color-vl-ink-muted)" }}
-              >
-                {s.label}
-              </p>
+              <p className="nx-body mt-3 max-w-60 text-[14px] leading-relaxed">{s.label}</p>
             </motion.div>
           ))}
-        </motion.div>
+        </div>
+
+        <div className="mt-16 flex flex-wrap items-center gap-4">
+          <span className="nx-eyebrow mr-2">Runs on</span>
+          {[
+            { src: "/brand/square-logo.png", alt: "Square" },
+            { src: "/brand/openai-wordmark.png", alt: "OpenAI" },
+            { src: "/brand/google-g.png", alt: "Google" },
+          ].map((logo) => (
+            <span
+              key={logo.alt}
+              className="inline-flex h-12 items-center rounded-xl px-5"
+              style={{ background: "#F3EADC" }}
+            >
+              <img src={logo.src} alt={logo.alt} loading="lazy" style={{ maxHeight: 22, width: "auto" }} />
+            </span>
+          ))}
+        </div>
       </div>
     </section>
   );
 }
 
-/* -
-   FINAL CTA
-   - */
+/* ───────────────────────────────────────────────────────────────
+   FINAL CTA — commitment device: name it, and it's yours.
+   ─────────────────────────────────────────────────────────────── */
 function FinalCTA({
   name,
   setName,
@@ -1201,100 +1081,72 @@ function FinalCTA({
   setName: (v: string) => void;
   onStart: () => void;
 }) {
+  const trimmed = name.trim();
+
   return (
-    <section
-      id="final-cta"
-      className="relative py-24 md:py-32 overflow-hidden"
-    >
+    <section className="relative py-28 md:py-40 overflow-hidden">
       <div
         aria-hidden
         className="absolute inset-0 pointer-events-none"
         style={{
           background:
-            "radial-gradient(ellipse 70% 60% at 50% 50%, rgba(251, 207, 232,0.40), transparent 65%), radial-gradient(ellipse 50% 40% at 20% 90%, rgba(199, 210, 254,0.35), transparent 65%), radial-gradient(ellipse 50% 40% at 80% 90%, rgba(167, 243, 208,0.30), transparent 65%)",
+            "radial-gradient(ellipse 80% 65% at 50% 115%, rgba(232,163,61,0.22), transparent 62%)," +
+            "radial-gradient(ellipse 40% 30% at 78% 105%, rgba(255,90,45,0.12), transparent 70%)",
         }}
       />
+      <div className="nx-grain" aria-hidden />
 
       <div className="relative section-container text-center">
-        <motion.div
-          initial="hidden"
-          whileInView="visible"
-          viewport={{ once: true, margin: "-80px" }}
-          variants={stagger}
-        >
-          <motion.p variants={childFade} className="vl-eyebrow">
-            Less busywork. More guest magic.
-          </motion.p>
-          <motion.h2 variants={childFade} className="vl-section-heading mt-5 mx-auto max-w-3xl">
-            Let's put your venue
-            <br />
-            <em>in conversation.</em>
-          </motion.h2>
-          <motion.p
-            variants={childFade}
-            className="mt-5 text-[17px] max-w-xl mx-auto leading-relaxed"
-            style={{ color: "var(--color-vl-ink-muted)" }}
-          >
-            Pick a name. Pick a system. Pick a question to ask. Be running in fifteen minutes.
-          </motion.p>
+        <p className="nx-eyebrow">Last call</p>
+        <h2 className="nx-display mx-auto mt-6 max-w-3xl text-[clamp(2.6rem,6vw,4.8rem)]">
+          Give your venue
+          <br />
+          <em>its voice.</em>
+        </h2>
+        <p className="nx-body mx-auto mt-6 max-w-lg text-[16px] md:text-[17px] leading-relaxed">
+          Name your assistant, connect Square, and run tonight&rsquo;s shift by
+          voice.
+        </p>
 
-          <motion.div variants={childFade} className="mt-9 flex flex-col items-center gap-4 max-w-md mx-auto">
-            <div className="w-full flex gap-2">
-              <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Name your assistant - Bev, Sage, Marlowe-"
-                className="vl-input flex-1"
-                onKeyDown={(e) => e.key === "Enter" && onStart()}
-              />
-              <button
-                onClick={onStart}
-                className="vl-btn-primary inline-flex items-center gap-2 shrink-0"
-              >
-                Create
-                <ArrowRight className="w-3.5 h-3.5" />
+        <div className="mx-auto mt-10 flex max-w-lg flex-col items-center gap-5">
+          <div className="flex w-full flex-col sm:flex-row gap-3">
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Name your assistant — Bev, Marlowe, Ash…"
+              aria-label="Assistant name"
+              className="nx-input flex-1"
+              onKeyDown={(e) => e.key === "Enter" && onStart()}
+            />
+            <Magnetic>
+              <button onClick={onStart} className="nx-btn-ember w-full sm:w-auto justify-center">
+                {trimmed ? `Meet ${trimmed}` : "Create yours"}
+                <ArrowRight className="w-4 h-4" />
               </button>
-            </div>
+            </Magnetic>
+          </div>
+          <p className="text-[13px]" style={{ color: "var(--nx-ink-faint)" }}>
+            14 days free · No card · Disconnect Square anytime
+          </p>
+        </div>
 
-            <div className="flex flex-wrap items-center justify-center gap-3">
-              <Link href="/book-demo" className="vl-btn-outline inline-flex items-center gap-2">
-                Book a live demo
-              </Link>
-              <span className="text-[13px]" style={{ color: "var(--color-vl-ink-muted)" }}>
-                14-day trial - No card required
-              </span>
-            </div>
-          </motion.div>
-        </motion.div>
-
-        <motion.div
-          initial="hidden"
-          whileInView="visible"
-          viewport={{ once: true }}
-          variants={stagger}
-          className="mt-14 flex flex-wrap justify-center gap-2.5"
-        >
+        <div className="mt-14 flex flex-wrap justify-center gap-2.5">
           {[
-            "Are we ready for Saturday's wedding?",
+            "Are we ready for Saturday?",
             "What ran low last night?",
-            "How much bar revenue?",
-            "What should I reorder?",
+            "Split table nine three ways.",
+            "Run the close.",
           ].map((q) => (
-            <motion.span
+            <span
               key={q}
-              variants={childFade}
-              className="inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-[13px]"
-              style={{
-                background: "rgba(255,255,255,0.7)",
-                border: "1px solid rgba(10, 10, 11,0.07)",
-                color: "var(--color-vl-ink-soft)",
-              }}
+              className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-[13px]"
+              style={{ border: "1px solid var(--nx-line)", color: "var(--nx-ink-dim)" }}
             >
-              <Mic className="w-3 h-3" style={{ color: "var(--color-vl-coral)" }} />
+              <Mic className="w-3 h-3" style={{ color: "var(--nx-amber)" }} />
               {q}
-            </motion.span>
+            </span>
           ))}
-        </motion.div>
+        </div>
       </div>
     </section>
   );
