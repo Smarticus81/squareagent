@@ -60,16 +60,16 @@ const FRAG = /* glsl */ `
     if (r > 0.5) discard;
     float soft = smoothstep(0.5, 0.12, r);
 
-    // Amber floor -> ember peaks
-    vec3 amber = vec3(0.910, 0.639, 0.239); // #E8A33D
-    vec3 ember = vec3(1.000, 0.353, 0.176); // #FF5A2D
-    vec3 deep  = vec3(0.28, 0.19, 0.10);
+    // Brand ramp on white paper: soft lilac floor -> indigo -> pink peaks
+    vec3 lilac  = vec3(0.780, 0.824, 0.996); // #C7D2FE
+    vec3 indigo = vec3(0.388, 0.400, 0.945); // #6366F1
+    vec3 pink   = vec3(0.925, 0.282, 0.600); // #EC4899
     float t = smoothstep(-0.4, 2.2, vHeight);
-    vec3 col = mix(mix(deep, amber, smoothstep(-1.2, 0.9, vHeight)), ember, t * t);
+    vec3 col = mix(mix(lilac, indigo, smoothstep(-1.2, 0.9, vHeight)), pink, t * t);
 
-    // Fade the far edge of the field into the dark
+    // Fade the far edge of the field into the paper
     float edge = 1.0 - smoothstep(26.0, 46.0, vDist);
-    float alpha = soft * edge * (0.16 + t * 0.7);
+    float alpha = soft * edge * (0.20 + t * 0.62);
     gl_FragColor = vec4(col, alpha);
   }
 `;
@@ -122,9 +122,10 @@ export default function VoiceField({ className = "" }: { className?: string }) {
     const mat = new THREE.ShaderMaterial({
       vertexShader: VERT,
       fragmentShader: FRAG,
+      // Normal blending: additive washes out to white on a light background
       transparent: true,
       depthWrite: false,
-      blending: THREE.AdditiveBlending,
+      blending: THREE.NormalBlending,
       uniforms: {
         uTime: { value: 0 },
         uPointer: { value: new THREE.Vector2(0, -100) },
