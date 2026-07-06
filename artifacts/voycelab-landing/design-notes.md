@@ -5,88 +5,55 @@ passes: read this first, build on it, don't re-litigate.
 
 ## Conversion spine
 
-> This page exists to get bar/restaurant operators to start a free trial,
-> because every trip to the touchscreen is time the bar isn't making money.
+> This page exists to get bar/restaurant operators to start a free trial.
 
-Narrative order: promise (hero) → felt cost (fourteen taps) → mechanism shown
-(command theater) → proof by experience (live voice demo) → capability
-vocabulary → social proof → risk-reversed ask (name your assistant).
+Section order: plain claim (hero) → what it does for staff → how it works
+(scroll theater) → live demo → what it does for the business → proof →
+risk-reversed ask (name your assistant).
 
-## Direction: "Last call cinema"
+## Direction: light, on-brand, plain-spoken
 
-The product lives behind a bar at 11pm, so the landing page does too.
-Dark warm near-black, back-bar amber, ivory type. The interior app stays
-light — this theme is scoped to the landing route only (`.vl-nx` in
-`index.css`, dark chrome via `vl-header-dark` / `vl-footer-dark`).
+**Owner feedback (v2): dark theme rejected — "too cliché"; v1 copy rejected —
+"too markety." Do not bring either back.** The page uses the site's existing
+light system (white paper, pastel washes, near-black ink, indigo accent,
+Inter) and straightforward copy written from the owner's own advantages
+list: sub-second responses, hands-free ordering, accurate modifiers, live
+Square inventory, fast onboarding, tab integration, pour-cost control,
+voice-queried sales data. Claims are concrete and literal; example commands
+use real bar vocabulary ("Two old fashioneds, one no cherry", "Is the IPA
+keg tapped?").
 
-Tokens (roles, not decoration):
+## Motion (kept from v1, reskinned)
 
-- `--nx-bg #0B0A09` closing-time black (surface)
-- `--nx-ink #F3EADC` back-bar ivory
-- `--nx-amber #E8A33D` pour amber — signal/data accent only
-- `--nx-ember #FF5A2D` ember — **primary CTA only**, appears nowhere else
-- Display face: Fraunces (opsz 144, weights 420/560 + italics); body Inter;
-  commands JetBrains Mono
+- **Voice-field hero** (`src/components/landing/voice-field.tsx`): GPU
+  particle "sound horizon" in brand pastels — lilac → indigo → pink by wave
+  amplitude, NormalBlending (additive washes out on white). Single draw
+  call, DPR ≤ 2, idle-loaded, paused offscreen, disposed on unmount, never
+  mounted under `prefers-reduced-motion`. three.js stays in its own lazy
+  chunk.
+- **Command theater**: pinned 390vh scroll scrub — a spoken sentence fills
+  word-by-word while the Square result (tab, inventory, report) assembles
+  row-by-row. Static cards on mobile and reduced motion.
+- **Hero ticker**: auto-cycling command→result card, desktop only.
+- Magnetic hover on the primary CTA; whileInView fades on cards
+  (≤ 0.07s stagger, transform+opacity only).
+- H1 renders statically — LCP never waits on JS animation.
 
-## Signature moment
-
-`src/components/landing/voice-field.tsx` — a GPU particle "sound horizon"
-behind the hero: concentric voice ripples + carrier swell, amber→ember ramp
-by amplitude, lifts under the pointer. Single draw call (Points +
-ShaderMaterial), DPR ≤ 2, pauses offscreen/tab-hidden, disposes on unmount.
-Lazy-loaded on `requestIdleCallback`; never mounted under
-`prefers-reduced-motion` (static gradient atmosphere instead). three.js is
-its own vite chunk, so the hero-critical bundle stays small (landing route
-~12 KB gz + motion ~14 KB gz).
-
-Second moment: the **command theater** — a pinned 390vh scroll scrub where a
-spoken sentence fills word-by-word and the Square result (ticket / stock
-count / closeout) assembles row-by-row. Desktop only; mobile and
-reduced-motion get the same three scenes as static cards.
-
-## Choices made (and kept)
-
-- H1 renders statically — LCP is never gated on JS animation. Entrance
-  animation only on secondary hero elements.
-- One ember CTA per viewport. Header CTA on landing is a quiet outline.
-- Copy is capability-first ("rings orders, splits checks, 86's items"),
-  never setup-ease ("15 minutes to deploy" copy from the old page was cut).
-- Hero right column: auto-cycling command→ticket card (mechanism proof above
-  the fold), desktop only.
-- Live demo section reuses the real OpenAI Realtime WebRTC demo
-  (`useVoycelabDemoRealtime` + `VoiceOrb`) — proof by experience, not a video.
-- Stats kept to claims the old page already made (200+ venues, 4.9 rating).
-- Brand logos sit on ivory chips so native logo colors survive the dark bg.
-- Logo PNG has a black wordmark; `.vl-logo-invert`
-  (invert + hue-rotate) lifts it to ivory while keeping the bars orange.
-
-## Killed / burned fingers
+## Burned fingers (keep these fixes)
 
 - **`overflow-x: hidden` on html/body silently breaks `position: sticky`**
-  (body becomes a nested scroll container). Fixed globally with
-  `overflow-x: clip` under `@supports`. If the theater ever stops pinning,
-  look for a new overflow ancestor first.
-- Scene crossfades must overlap (`s − 0.012 → s + 0.028`) — sequential
-  fades left a dead-black viewport between scenes.
-- Killed a planned parallax layer on the vocabulary cards — it fought the
-  mono command lists. Cards get a whileInView fade only.
-- JSX comments can't precede the root element of a `return` — esbuild error.
+  (body becomes a nested scroll container). Fixed with `overflow-x: clip`
+  under `@supports`. If the theater ever stops pinning, look for a new
+  overflow ancestor first.
+- Theater scene crossfades must overlap (`s − 0.012 → s + 0.028`) —
+  sequential fades leave a dead-blank viewport between scenes.
+- JSX comments can't precede the root element of a `return` (esbuild error).
 
-## Higgsfield assets (generated, not yet in repo)
+## History
 
-Two soul_cinematic stills were generated and approved but this environment's
-egress policy blocks downloading from the Higgsfield CDN. To add them later
-(download, convert to WebP ~1600w/q80, drop in `public/atmos/`):
-
-- Back-bar 21:9 hero backdrop:
-  `https://d8j0ntlcm91z4.cloudfront.net/user_3FvUSDWlpMZmeo552NjYHGJ67RL/hf_20260705_230502_3f69ddf6-f3e8-4476-b5aa-edec46e13e25.png`
-  → intended as a ~25%-opacity photographic layer under the hero particle
-  field (add behind `<VoiceField>`, `loading="lazy"`, fade in on load).
-- Whiskey-pour macro 3:4:
-  `https://d8j0ntlcm91z4.cloudfront.net/user_3FvUSDWlpMZmeo552NjYHGJ67RL/hf_20260705_230513_f0e87b23-9a0b-4cac-bd4d-1fbc94a6e0ff.png`
-  → candidate art for the proof band's right column.
-
-Prompt recipe that worked: name the palette hexes, "near-black frame, warm
-amber highlights", "lower half dark and uncluttered for text", "35mm film
-still". The page currently ships with procedural atmosphere (gradients +
-SVG-turbulence grain) and loses nothing structural without the photos.
+- v1 (PR #34, merged then superseded): dark "last call cinema" theme, amber
+  palette, Fraunces display, punchy copy ("Speak. It's rung in."). Owner
+  rejected the dark aesthetic and the copy tone; v2 keeps v1's motion
+  system and structure on the original light theme with literal copy.
+- Higgsfield stills generated for v1 (dark bar imagery) don't fit the light
+  direction; URLs are in the PR #34 description if ever wanted.

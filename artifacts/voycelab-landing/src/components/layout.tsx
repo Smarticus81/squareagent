@@ -47,23 +47,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   const headerNavItems = showAppShellNav ? APP_NAV : isLanding ? LANDING_NAV : PUBLIC_SITE_NAV;
 
-  // Landing runs the dark "last call" theme; interior pages stay light.
-  const inkMuted = isLanding ? "rgba(243, 234, 220, 0.68)" : "rgba(10, 10, 11, 0.62)";
-  const inkFull = isLanding ? "#F3EADC" : "#0A0A0B";
-
   return (
     <div className="min-h-screen flex flex-col relative">
       {!isAuthPage && (
-        <header className={`fixed top-0 inset-x-0 z-50 ${isLanding ? "vl-landing-header vl-header-dark" : ""}`}>
+        <header className={`fixed top-0 inset-x-0 z-50 ${isLanding ? "vl-landing-header" : ""}`}>
           <div className="vl-glass">
             <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-10 h-16 sm:h-18 flex items-center justify-between gap-2 sm:gap-4">
               <Link href="/" className="hover:opacity-90 transition-opacity min-w-0 shrink">
-                <Logo
-                  size={isLanding ? "md" : "md"}
-                  withTagline={isLanding}
-                  hideTaglineOnMobile={isLanding}
-                  className={isLanding ? "vl-logo-invert" : undefined}
-                />
+                <Logo size={isLanding ? "md" : "md"} withTagline={isLanding} hideTaglineOnMobile={isLanding} />
               </Link>
 
               <nav className="hidden lg:flex items-center gap-1">
@@ -80,9 +71,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
                         key={`${item.href}-${idx}`}
                         href={item.href}
                         className="text-[13px] font-medium px-3 py-1.5 transition-colors"
-                        style={{ color: inkMuted }}
-                        onMouseEnter={(e) => (e.currentTarget.style.color = inkFull)}
-                        onMouseLeave={(e) => (e.currentTarget.style.color = inkMuted)}
+                        style={{ color: "rgba(10, 10, 11, 0.62)" }}
+                        onMouseEnter={(e) => (e.currentTarget.style.color = "#0A0A0B")}
+                        onMouseLeave={(e) => (e.currentTarget.style.color = "rgba(10, 10, 11, 0.62)")}
                       >
                         {item.label}
                       </a>
@@ -95,7 +86,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       href={item.href}
                       className="rounded-xl px-3 py-1.5 text-[13px] font-medium transition-colors"
                       style={{
-                        color: active ? "var(--color-vl-coral-deep)" : inkMuted,
+                        color: active ? "var(--color-vl-coral-deep)" : "rgba(10, 10, 11, 0.62)",
                         background: active ? "var(--color-vl-coral-tint)" : "transparent",
                       }}
                     >
@@ -121,7 +112,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       <button
                         onClick={() => logout.mutate()}
                         className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[13px] font-medium transition-colors"
-                        style={{ color: inkMuted }}
+                        style={{ color: "rgba(10, 10, 11, 0.62)" }}
                       >
                         <LogOut className="w-3.5 h-3.5" />
                         <span className="hidden sm:inline">Sign out</span>
@@ -132,38 +123,23 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       <Link
                         href="/login"
                         className="text-[13px] font-medium"
-                        style={{ color: inkMuted }}
+                        style={{ color: "rgba(10, 10, 11, 0.62)" }}
                       >
                         Sign in
                       </Link>
-                      {isLanding ? (
-                        <Link
-                          href="/signup"
-                          className="inline-flex items-center gap-2 rounded-xl text-[13px] font-semibold"
-                          style={{
-                            padding: "0.5rem 1.1rem",
-                            color: "#F3EADC",
-                            border: "1px solid rgba(243, 234, 220, 0.28)",
-                          }}
+                      <Link href="/book-demo" className="inline-block">
+                        <button
+                          className="vl-btn-primary text-[13px] inline-flex items-center gap-2"
+                          style={{ padding: "0.5rem 1.1rem 0.5rem 1.2rem" }}
                         >
-                          Start free trial
-                          <ArrowRight className="w-3 h-3" />
-                        </Link>
-                      ) : (
-                        <Link href="/book-demo" className="inline-block">
-                          <button
-                            className="vl-btn-primary text-[13px] inline-flex items-center gap-2"
-                            style={{ padding: "0.5rem 1.1rem 0.5rem 1.2rem" }}
+                          Book a demo
+                          <span
+                            className="flex h-4 w-4 items-center justify-center rounded-md bg-white/25"
                           >
-                            Book a demo
-                            <span
-                              className="flex h-4 w-4 items-center justify-center rounded-md bg-white/25"
-                            >
-                              <ArrowRight className="w-2.5 h-2.5 text-white" />
-                            </span>
-                          </button>
-                        </Link>
-                      )}
+                            <ArrowRight className="w-2.5 h-2.5 text-white" />
+                          </span>
+                        </button>
+                      </Link>
                     </>
                   ))}
 
@@ -171,19 +147,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   className="flex h-9 w-9 items-center justify-center rounded-xl lg:hidden"
                   onClick={() => setMobileOpen((s) => !s)}
                   aria-label="Toggle menu"
-                  style={
-                    isLanding
-                      ? {
-                          color: "#F3EADC",
-                          border: "1px solid rgba(243, 234, 220, 0.22)",
-                          background: "rgba(243, 234, 220, 0.06)",
-                        }
-                      : {
-                          color: "var(--color-vl-ink)",
-                          border: "1px solid rgba(10, 10, 11,0.10)",
-                          background: "rgba(255,255,255,0.6)",
-                        }
-                  }
+                  style={{
+                    color: "var(--color-vl-ink)",
+                    border: "1px solid rgba(10, 10, 11,0.10)",
+                    background: "rgba(255,255,255,0.6)",
+                  }}
                 >
                   {mobileOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
                 </button>
@@ -193,21 +161,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
             {mobileOpen && (
               <div
                 className="lg:hidden px-4 sm:px-6 py-4 flex flex-col gap-2"
-                style={
-                  isLanding
-                    ? {
-                        borderTop: "1px solid rgba(243, 234, 220, 0.10)",
-                        background: "rgba(11, 10, 9, 0.96)",
-                      }
-                    : {
-                        borderTop: "1px solid rgba(10, 10, 11,0.08)",
-                        background: "rgba(255, 255, 255,0.92)",
-                      }
-                }
+                style={{
+                  borderTop: "1px solid rgba(10, 10, 11,0.08)",
+                  background: "rgba(255, 255, 255,0.92)",
+                }}
               >
                 {headerNavItems.map((item, idx) => {
                   const isAnchor = item.href.startsWith("#");
-                  const mobileInk = isLanding ? "rgba(243, 234, 220, 0.8)" : "rgba(10, 10, 11, 0.75)";
                   if (isLanding && isAnchor) {
                     return (
                       <a
@@ -215,7 +175,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                         href={item.href}
                         onClick={() => setMobileOpen(false)}
                         className="text-[14px] py-2"
-                        style={{ color: mobileInk }}
+                        style={{ color: "rgba(10, 10, 11, 0.75)" }}
                       >
                         {item.label}
                       </a>
@@ -227,7 +187,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       href={item.href}
                       onClick={() => setMobileOpen(false)}
                       className="text-[14px] py-2"
-                      style={{ color: mobileInk }}
+                      style={{ color: "rgba(10, 10, 11, 0.75)" }}
                     >
                       {item.label}
                     </Link>
@@ -243,13 +203,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
       {!isAuthPage && (
         <footer
-          className={`mt-auto ${isLanding ? "vl-landing-footer vl-footer-dark" : ""}`}
+          className={`mt-auto ${isLanding ? "vl-landing-footer" : ""}`}
           style={{ borderTop: "1px solid rgba(10, 10, 11,0.08)" }}
         >
           <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-10 py-10 sm:py-14">
             <div className="grid sm:grid-cols-2 md:grid-cols-[1.6fr_1fr_1fr_1fr] gap-8 md:gap-10">
               <div>
-                <Logo size="md" withTagline className={isLanding ? "vl-logo-invert" : undefined} />
+                <Logo size="md" withTagline />
                 <p
                   className="text-[13px] mt-5 max-w-85 leading-relaxed"
                   style={{ color: "var(--color-vl-ink-muted)" }}
