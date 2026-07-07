@@ -454,10 +454,16 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
     if ((!dc || dc.readyState !== "open") && (!ws || ws.readyState !== WebSocket.OPEN)) return;
 
     const catalog = catalogRef.current as Array<{ name: string; price: number; category?: string }>;
-    const catalogStr =
-      catalog.length > 0
-        ? catalog.map((c) => `  - ${c.name}: $${c.price.toFixed(2)}${c.category ? ` (${c.category})` : ""}`).join("\n")
-        : "  (No catalog loaded)";
+    const menuLoaded = catalog.length > 0;
+    const catalogStr = menuLoaded
+      ? catalog.map((c) => `  - ${c.name}: $${c.price.toFixed(2)}${c.category ? ` (${c.category})` : ""}`).join("\n")
+      : "  (No menu loaded — you cannot see any items.)";
+    // Explicitly flip the order-taking guard as the menu loads/unloads mid-session,
+    // so a menu that arrives after connect lifts the initial "MENU NOT AVAILABLE"
+    // block (and a menu that goes away re-arms it).
+    const menuStatus = menuLoaded
+      ? "MENU AVAILABLE: the menu is now loaded. You can take orders normally, using only the items and prices listed above."
+      : "MENU NOT AVAILABLE: you cannot see the menu. Do NOT take orders, add items, quote prices, or name specific items — tell the user to sign in and connect Square from the dashboard first, and never pretend an item was added.";
 
     const order = currentOrderRef.current as Array<{ quantity: number; item_name?: string; name?: string; price: number }>;
     const orderStr =
@@ -487,7 +493,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
         item: {
           type: "message",
           role: "system",
-          content: [{ type: "input_text", text: `[Context update]\n\nCatalog:\n${catalogStr}\n\nCurrent order:\n${orderStr}` }],
+          content: [{ type: "input_text", text: `[Context update]\n\n${menuStatus}\n\nCatalog:\n${catalogStr}\n\nCurrent order:\n${orderStr}` }],
         },
       }));
     }
