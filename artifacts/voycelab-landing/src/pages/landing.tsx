@@ -233,6 +233,8 @@ function Hero({ reduceMotion }: { reduceMotion: boolean }) {
             >
               14-day free trial · No card required · Works with your Square account
             </motion.p>
+
+            <SocialProofStrip />
           </div>
 
           {/* Above-the-fold proof: spoken commands landing in Square */}
@@ -263,6 +265,28 @@ function Hero({ reduceMotion }: { reduceMotion: boolean }) {
   );
 }
 
+/* ───────────────────────────────────────────────────────────────
+   SOCIAL PROOF — hero trust strip.
+   IMPORTANT: ships empty and renders nothing until real proof exists.
+   Fill SOCIAL_PROOF with genuine quotes/venues only — never invent.
+   Example: { quote: "Ripped through Friday rush.", source: "Bar manager, Fort Worth TX" }
+   ─────────────────────────────────────────────────────────────── */
+
+const SOCIAL_PROOF: Array<{ quote: string; source: string }> = [
+  // TODO(growth): add real venue quotes here as pilots convert.
+];
+
+function SocialProofStrip() {
+  if (SOCIAL_PROOF.length === 0) return null;
+  const item = SOCIAL_PROOF[0];
+  return (
+    <p className="mt-6 max-w-115 text-[14px] leading-relaxed" style={{ color: "var(--color-vl-ink-soft)" }}>
+      &ldquo;{item.quote}&rdquo;{" "}
+      <span style={{ color: "var(--color-vl-ink-muted)" }}>— {item.source}</span>
+    </p>
+  );
+}
+
 function HeroTicker({ reduceMotion }: { reduceMotion: boolean }) {
   const [idx, setIdx] = useState(0);
 
@@ -278,7 +302,11 @@ function HeroTicker({ reduceMotion }: { reduceMotion: boolean }) {
   const item = HERO_TICKER[idx];
 
   return (
-    <div className="vl-card-glass p-7 max-w-105 ml-auto">
+    <a
+      href="#live-demo"
+      aria-label="Jump to the live voice demo"
+      className="vl-card-glass block p-7 max-w-105 ml-auto transition-transform duration-300 hover:-translate-y-0.5"
+    >
       <div className="flex items-center justify-between">
         <p className="vl-eyebrow">On the floor</p>
         <span
@@ -335,7 +363,16 @@ function HeroTicker({ reduceMotion }: { reduceMotion: boolean }) {
           />
         ))}
       </div>
-    </div>
+
+      <p
+        className="mt-4 flex items-center gap-1.5 text-[12px] font-medium"
+        style={{ color: "var(--color-vl-accent-deep)" }}
+      >
+        <Mic className="w-3 h-3" />
+        Try it yourself — live demo below
+        <ArrowDown className="w-3 h-3" />
+      </p>
+    </a>
   );
 }
 
@@ -845,18 +882,20 @@ function LiveDemo() {
           <div className="lg:sticky lg:top-28">
             <p className="vl-eyebrow">Live demo</p>
             <h2 className="vl-section-heading mt-5">
-              Hear it <em>for yourself.</em>
+              Ring an order — <em>out loud.</em>
             </h2>
             <p
               className="mt-6 max-w-100 text-[16px] leading-relaxed"
               style={{ color: "var(--color-vl-ink-muted)" }}
             >
-              This demo runs on the same low-latency voice pipeline venues use
-              in service. Ask it what VoyceLab can do — out loud.
+              This is the real product, pointed at a sandbox bar. Say
+              &ldquo;two margaritas and a Modelo&rdquo; and watch the ticket
+              build — the same way it lands in Square during service. Add
+              items, remove them, ask for the total.
             </p>
             <p className="mt-5 text-[13px]" style={{ color: "var(--color-vl-ink-faint)" }}>
-              Microphone required · Demo sandbox — answers cover VoyceLab, no
-              live POS commands.
+              Microphone required · Sandbox menu — same voice pipeline venues
+              use in service, nothing touches a real POS.
             </p>
           </div>
 
@@ -933,6 +972,10 @@ function LiveDemo() {
               </p>
             )}
 
+            {(demo.isLive || demo.order.length > 0) && (
+              <DemoTicket order={demo.order} total={demo.orderTotal} isLive={demo.isLive} />
+            )}
+
             {(demo.conversation.length > 0 || demo.partialTranscript.trim().length > 0) && (
               <div
                 ref={scrollRef}
@@ -977,13 +1020,14 @@ function LiveDemo() {
 
             <div className="mt-7 pt-5" style={{ borderTop: "1px solid rgba(10, 10, 11, 0.07)" }}>
               <p className="vl-eyebrow mb-3" style={{ fontSize: 10 }}>
-                Try asking
+                Try saying
               </p>
               <div className="flex flex-wrap gap-2">
                 {[
-                  "What can it do during a rush?",
-                  "How does inventory work?",
-                  "What does it cost?",
+                  "Two margaritas and a Modelo",
+                  "Add wings and a queso",
+                  "Remove one margarita",
+                  "What's my total?",
                 ].map((h) => (
                   <span key={h} className="vl-chip-light">
                     <Mic className="w-3 h-3" style={{ color: "var(--color-vl-accent)" }} />
@@ -996,6 +1040,94 @@ function LiveDemo() {
         </div>
       </div>
     </section>
+  );
+}
+
+/* ───────────────────────────────────────────────────────────────
+   DEMO TICKET — the live order built by voice in the demo above.
+   This is the conversion moment: spoken words → ticket rows.
+   ─────────────────────────────────────────────────────────────── */
+
+function DemoTicket({
+  order,
+  total,
+  isLive,
+}: {
+  order: Array<{ name: string; price: number; quantity: number }>;
+  total: number;
+  isLive: boolean;
+}) {
+  return (
+    <div
+      className="mt-6 rounded-2xl p-5"
+      style={{
+        border: "1px solid rgba(10, 10, 11, 0.10)",
+        background: "rgba(255,255,255,0.75)",
+      }}
+    >
+      <div className="flex items-center justify-between">
+        <p className="vl-eyebrow" style={{ fontSize: 10 }}>
+          The Den · Demo ticket
+        </p>
+        <span
+          className="flex items-center gap-1.5 text-[10px] font-mono tracking-[0.18em]"
+          style={{ color: "var(--color-vl-accent-deep)" }}
+        >
+          <span
+            className={`h-1.5 w-1.5 rounded-full ${isLive ? "animate-pulse" : ""}`}
+            style={{ background: isLive ? "var(--color-vl-accent)" : "rgba(10,10,11,0.2)" }}
+          />
+          {isLive ? "LIVE" : "SESSION ENDED"}
+        </span>
+      </div>
+
+      <div className="mt-4 min-h-16">
+        {order.length === 0 ? (
+          <p className="text-[14px] italic" style={{ color: "var(--color-vl-ink-faint)" }}>
+            Ticket&rsquo;s empty — say &ldquo;two margaritas and a Modelo.&rdquo;
+          </p>
+        ) : (
+          <AnimatePresence initial={false}>
+            {order.map((item) => (
+              <motion.div
+                key={item.name}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.3, ease: EASE }}
+                className="lx-ticket-row"
+              >
+                <span style={{ color: "var(--color-vl-ink-soft)" }}>
+                  {item.quantity} × {item.name}
+                </span>
+                <span style={{ color: "var(--color-vl-accent-deep)", fontWeight: 600 }}>
+                  ${(item.price * item.quantity).toFixed(2)}
+                </span>
+              </motion.div>
+            ))}
+          </AnimatePresence>
+        )}
+      </div>
+
+      {order.length > 0 && (
+        <>
+          <div
+            className="mt-3 flex items-center justify-between pt-3 text-[15px] font-semibold"
+            style={{ borderTop: "1px dashed rgba(10, 10, 11, 0.14)", color: "var(--color-vl-ink)" }}
+          >
+            <span>Total</span>
+            <span>${total.toFixed(2)}</span>
+          </div>
+          <Link
+            href="/signup"
+            className="vl-btn-primary mt-5 inline-flex w-full items-center justify-center gap-2 text-[14px]"
+          >
+            Put this on your Square — start free trial
+            <ArrowRight className="w-3.5 h-3.5" />
+          </Link>
+        </>
+      )}
+    </div>
   );
 }
 

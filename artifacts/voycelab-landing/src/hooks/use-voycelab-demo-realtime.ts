@@ -1,6 +1,12 @@
 import { useCallback, useRef, useState, type MutableRefObject } from "react";
 
-/** VoyceLab landing FAQ demo: browser WebRTC direct to OpenAI using a short-lived ephemeral token. */
+/**
+ * VoyceLab landing live demo: browser WebRTC direct to OpenAI using a
+ * short-lived ephemeral token, running against The Den — a sandbox bar with a
+ * mock catalog. Spoken orders trigger real tool calls, executed server-side
+ * (/api/realtime/demo-bar-tools), and the live ticket state is exposed so the
+ * landing page can render the order building in real time.
+ */
 
 export type DemoAgentState =
   | "idle"
@@ -15,6 +21,19 @@ export interface DemoMessage {
   role: "user" | "agent";
   content: string;
   timestamp: Date;
+}
+
+export interface DemoCatalogItem {
+  name: string;
+  price: number;
+  category: string;
+}
+
+export interface DemoOrderItem {
+  name: string;
+  price: number;
+  quantity: number;
+  category: string;
 }
 
 let _mid = 0;
@@ -98,7 +117,10 @@ export function useVoycelabDemoRealtime() {
   const [partialTranscript, setPartialTranscript] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [assistantStream, setAssistantStream] = useState<MediaStream | null>(null);
+  const [order, setOrder] = useState<DemoOrderItem[]>([]);
+  const [catalog, setCatalog] = useState<DemoCatalogItem[]>([]);
 
+  const sessionIdRef = useRef<string>("");
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const dcRef = useRef<RTCDataChannel | null>(null);
   const audioElRef = useRef<HTMLAudioElement | null>(null);
@@ -194,6 +216,51 @@ export function useVoycelabDemoRealtime() {
     setError(null);
   }, [cancelMicReopen]);
 
+  /**
+   * Execute a mock-bar tool call server-side, update the live ticket, and hand
+   * the result back to the model so it can speak the confirmation.
+   */
+  const executeToolCall = useCallback(async (callId: string, toolName: string, argsJson: string) => {
+    let args: Record<string, unknown> = {};
+    try {
+      args = JSON.parse(argsJson || "{}") as Record<string, unknown>;
+    } catch {
+      /* malformed args — execute with empty args */
+    }
+
+    let output = "Something went wrong — ask the guest to repeat that.";
+    try {
+      const res = await fetch("/api/realtime/demo-bar-tools", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          session_id: sessionIdRef.current,
+          tool_name: toolName,
+          arguments: args,
+        }),
+      });
+      if (res.ok) {
+        const data = (await res.json()) as { result?: string; order?: DemoOrderItem[] };
+        if (Array.isArray(data.order)) setOrder(data.order);
+        if (typeof data.result === "string" && data.result) output = data.result;
+      }
+    } catch {
+      /* network hiccup — fall through with the fallback output */
+    }
+
+    const dc = dcRef.current;
+    if (dc?.readyState === "open") {
+      dc.send(
+        JSON.stringify({
+          type: "conversation.item.create",
+          item: { type: "function_call_output", call_id: callId, output },
+        }),
+      );
+      dc.send(JSON.stringify({ type: "response.create" }));
+    }
+  }, []);
+
   const handleDcEvent = useCallback(
     (raw: string) => {
       let event: Record<string, unknown>;
@@ -253,6 +320,16 @@ export function useVoycelabDemoRealtime() {
           setAs("speaking");
           break;
 
+        case "response.function_call_arguments.done": {
+          const callId = String(event.call_id ?? "");
+          const name = String(event.name ?? "");
+          if (callId && name) {
+            setAs("thinking");
+            void executeToolCall(callId, name, String(event.arguments ?? "{}"));
+          }
+          break;
+        }
+
         case "response.done":
           if (isRunning.current) {
             reopenMic();
@@ -273,7 +350,7 @@ export function useVoycelabDemoRealtime() {
           break;
       }
     },
-    [addMessage, gateMicForPlayback, reopenMic, reopenMicNow],
+    [addMessage, executeToolCall, gateMicForPlayback, reopenMic, reopenMicNow],
   );
 
   const connect = useCallback(async (existingStream?: MediaStream) => {
@@ -298,11 +375,11 @@ export function useVoycelabDemoRealtime() {
     const unmuteHooked = new WeakSet<MediaStreamTrack>();
 
     try {
-      const tokenRes = await fetch("/api/realtime/demo-session", {
+      const tokenRes = await fetch("/api/realtime/demo", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ voice: "coral", speed: 1.05 }),
+        body: JSON.stringify({ voice: "coral", speed: 1.05, mode: "bar" }),
       });
 
       if (!tokenRes.ok) {
@@ -314,7 +391,11 @@ export function useVoycelabDemoRealtime() {
         id?: string;
         client_secret?: { value?: string };
         voicelab?: { bargeIn?: boolean };
+        catalog?: DemoCatalogItem[];
       };
+      sessionIdRef.current = sessionData.id || genId();
+      if (Array.isArray(sessionData.catalog)) setCatalog(sessionData.catalog);
+      setOrder([]);
       const ephemeralKey = sessionData.client_secret?.value;
       if (!ephemeralKey) throw new Error("Voice session did not return an ephemeral key");
       // Server decides duplex behavior. Default = half-duplex (gate the mic).
@@ -455,12 +536,17 @@ export function useVoycelabDemoRealtime() {
     agentState === "thinking" ||
     agentState === "speaking";
 
+  const orderTotal = order.reduce((sum, i) => sum + i.price * i.quantity, 0);
+
   return {
     agentState,
     conversation,
     partialTranscript,
     error,
     assistantStream,
+    order,
+    orderTotal,
+    catalog,
     connect,
     disconnect,
     interrupt,
