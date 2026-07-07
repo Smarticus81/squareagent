@@ -92,6 +92,16 @@ async function addItem(args: Record<string, unknown>, ctx: ToolContext): Promise
   const sessionOrder = session.items;
   const itemName = String(args.item_name ?? "");
   const qty = Number(args.quantity ?? 1);
+  // No menu loaded — we can't see what's available, so we can't take an order.
+  // Refuse truthfully instead of adding an item we can't verify or price. This
+  // backstops the prompt: the assistant only takes orders when it can actually
+  // see the catalog.
+  if (catalog.length === 0) {
+    return {
+      result:
+        "MENU NOT AVAILABLE: no menu is loaded, so there are no items to order from. Do not claim anything was added. Tell the user you can't see their menu yet and they need to sign in and connect Square from the dashboard before you can take orders.",
+    };
+  }
   const match = findCatalogItem(catalog, itemName);
   if (match) {
     const existing = sessionOrder.find((i) => i.catalogItemId === match.id);

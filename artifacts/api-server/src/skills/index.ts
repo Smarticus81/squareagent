@@ -155,10 +155,17 @@ export function buildInstructionsFromSkills(
     return buildGeneralAssistantInstructions(skills);
   }
 
-  const catalogStr =
-    catalog.length > 0
-      ? catalog.map((c) => `  - ${c.name}: $${c.price.toFixed(2)}${c.category ? ` (${c.category})` : ""}`).join("\n")
-      : "  (No catalog loaded — ask user to connect Square)";
+  // When no catalog is loaded, the assistant literally cannot see the venue's
+  // menu — it has no way to know which drinks/items exist or what they cost.
+  // Order-taking MUST be blocked in this state; otherwise the model, running a
+  // confident bar-manager persona, will happily "take orders" and invent items
+  // and prices it can't actually see. This is the guard the user asked for:
+  // only take orders when you can actually see what's available.
+  const menuLoaded = catalog.length > 0;
+
+  const catalogStr = menuLoaded
+    ? catalog.map((c) => `  - ${c.name}: $${c.price.toFixed(2)}${c.category ? ` (${c.category})` : ""}`).join("\n")
+    : "  (No menu loaded — you cannot see any items. See the MENU NOT AVAILABLE rules below.)";
 
   const orderStr =
     order.length > 0
@@ -171,6 +178,16 @@ export function buildInstructionsFromSkills(
 
   const activeSkillNames = skills.map((s) => s.name).join(", ");
 
+  const menuGuard = menuLoaded
+    ? ""
+    : `
+MENU NOT AVAILABLE — you cannot see the menu right now (no items are loaded, likely because Square isn't connected yet or hasn't finished loading). This overrides every other instruction below about acting immediately:
+- You do NOT know what drinks, food, or products are available, or what anything costs. You have no menu to work from.
+- Do NOT take orders. Do NOT add items, submit orders, send to terminal, or quote any price. Do NOT name, guess, or invent specific menu items — you cannot see them, so any item or price you say would be made up.
+- If the user tries to order, be honest in one short, warm sentence: you can't see their menu yet, and they'll need to sign in and connect Square from the VoyceLab dashboard before you can take orders. Offer to help once it's connected.
+- Never pretend an item was added or an order was placed. It is far better to say you can't see the menu than to fake it.
+`;
+
   return `You are VoyceLab, the voice operating assistant for modern venues running on Square. You have access to the following capabilities: ${activeSkillNames}.
 
 Catalog:
@@ -178,6 +195,7 @@ ${catalogStr}
 
 Current order:
 ${orderStr}
+${menuGuard}
 
 Persona:
 - Sharp, knowledgeable, confident. You're the venue's operations brain.
