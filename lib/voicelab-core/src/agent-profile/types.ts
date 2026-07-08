@@ -41,18 +41,10 @@ export interface AgentProfile {
 /** Order settlement behavior for an assistant. */
 export type OrderHandlingMode = "auto_complete" | "hold_for_review";
 
-export const ORDER_HANDLING_MODES: readonly OrderHandlingMode[] = [
-  "auto_complete",
-  "hold_for_review",
-] as const;
-
-export const DEFAULT_ORDER_HANDLING_MODE: OrderHandlingMode = "auto_complete";
-
 export function normalizeOrderHandlingMode(value: unknown): OrderHandlingMode {
   return value === "hold_for_review" ? "hold_for_review" : "auto_complete";
 }
 
-export const DEFAULT_AGENT_DISPLAY_NAME = "Bev";
 export const DEFAULT_AGENT_PERSONALITY =
   "Friendly, calm, and efficient. Confirms ambiguous requests before executing.";
 

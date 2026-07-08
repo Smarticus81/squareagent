@@ -222,7 +222,7 @@ export function planAllowsPipeline(
 
 export type UsageRisk = "ok" | "watch" | "over_included" | "near_cap" | "blocked";
 
-export function getPlanIncludedMinutes(planId: string | null | undefined): number {
+function getPlanIncludedMinutes(planId: string | null | undefined): number {
   if (planId === "admin") return -1;
   return getPlan(planId ?? "trial")?.includedVoiceMinutes ?? getPlan("trial")?.includedVoiceMinutes ?? 60;
 }
