@@ -9,7 +9,7 @@ import type { ToolDefinition, ToolExecutor } from "../tools/types";
 
 export type SkillTier = "core" | "standard" | "premium";
 
-export type RequiredContext = "catalog" | "squareToken" | "squareLocationId";
+type RequiredContext = "catalog" | "squareToken" | "squareLocationId";
 
 export interface SkillDefinition {
   /** Unique skill identifier (e.g. "pos", "inventory"). */

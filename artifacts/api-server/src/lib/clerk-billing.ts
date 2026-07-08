@@ -70,7 +70,7 @@ export function clerkBillingMiddleware() {
  * Read Clerk org billing claims from a request that has passed through
  * clerkBillingMiddleware. Returns null if Clerk auth is not present.
  */
-export function getClerkBillingAuth(req: Request): {
+function getClerkBillingAuth(req: Request): {
   userId: string | null;
   orgId: string | null;
   orgRole: string | null;
@@ -129,16 +129,6 @@ export function checkClerkOrgPlan(req: Request): { plan: string; active: boolean
   }
 
   return { plan: "trial", active: false };
-}
-
-/**
- * Check if a Clerk-authenticated org has a specific feature.
- * Used for feature-gated access (e.g., inventory, team-labor skills).
- */
-export function checkClerkOrgFeature(req: Request, feature: string): boolean {
-  const billing = getClerkBillingAuth(req);
-  if (!billing?.orgId) return false;
-  return billing.has({ feature });
 }
 
 // ── Clerk identity provisioning ───────────────────────────────────────────────
@@ -451,7 +441,7 @@ function localRoleFromClerkRole(clerkRole: string): "admin" | "operator" {
 }
 
 /** Resolve a Clerk user id to the local VoyceLab user, persisting the link when found by email. */
-export async function resolveLocalUserByClerkId(clerkUserId: string): Promise<User | null> {
+async function resolveLocalUserByClerkId(clerkUserId: string): Promise<User | null> {
   if (!db || !clerkUserId) return null;
 
   const [byId] = await db.select().from(usersTable).where(eq(usersTable.clerkUserId, clerkUserId)).limit(1);
@@ -621,7 +611,7 @@ export async function removeClerkOrgMembershipMirror(
 }
 
 /** Mirror every Clerk org membership for a Clerk user into local tables. */
-export async function mirrorAllClerkMembershipsForUser(clerkUserId: string): Promise<MirroredMembership[]> {
+async function mirrorAllClerkMembershipsForUser(clerkUserId: string): Promise<MirroredMembership[]> {
   if (!db || !clerkUserId) return [];
   const memberships = await defaultClerkClient.users.getOrganizationMembershipList({ userId: clerkUserId });
   const list = unwrapList<{ organization?: { id?: string }; role?: string }>(memberships);

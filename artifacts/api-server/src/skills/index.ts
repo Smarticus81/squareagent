@@ -6,7 +6,7 @@
  */
 
 import type { SkillDefinition, SkillTier } from "./types";
-import type { ToolDefinition, ToolExecutor } from "../tools/types";
+import type { ToolDefinition } from "../tools/types";
 import type { CatalogItem, OrderItem } from "../lib/square-helpers";
 import { PLAN_TIERS } from "./types";
 
@@ -38,21 +38,13 @@ const GENERAL_SKILLS: SkillDefinition[] = [generalAssistantSkill];
 // wait_for_user for silence/background-noise handling).
 const META_SKILLS: SkillDefinition[] = [metaSkill];
 
-// ── All registered skills ───────────────────────────────────────────────────
-
-export const ALL_SKILLS: SkillDefinition[] = [
-  ...META_SKILLS,
-  ...VENUE_SKILLS,
-  ...GENERAL_SKILLS,
-];
-
 // ── Skill selection ─────────────────────────────────────────────────────────
 
 /**
  * Get skills available for a session based on subscription plan.
  * Returns skills whose tier is included in the plan's allowed tiers.
  */
-export function getSkillsForPlan(plan: string): SkillDefinition[] {
+function getSkillsForPlan(plan: string): SkillDefinition[] {
   const allowedTiers = PLAN_TIERS[plan] ?? PLAN_TIERS.trial;
   return VENUE_SKILLS.filter((skill) => allowedTiers.includes(skill.tier));
 }
@@ -122,19 +114,6 @@ export function buildToolsFromSkills(skills: SkillDefinition[]): ToolDefinition[
     }
   }
   return tools;
-}
-
-/**
- * Merge executor maps from selected skills (deduped by name).
- */
-export function buildExecutorsFromSkills(skills: SkillDefinition[]): Record<string, ToolExecutor> {
-  const executors: Record<string, ToolExecutor> = {};
-  for (const skill of skills) {
-    for (const [name, fn] of Object.entries(skill.executors)) {
-      if (!executors[name]) executors[name] = fn;
-    }
-  }
-  return executors;
 }
 
 /**

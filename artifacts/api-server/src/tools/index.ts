@@ -31,8 +31,7 @@ import * as generalDatabase from "./general/database";
 import metaSkill from "../skills/meta.skill";
 
 // Re-export types for convenience
-export type { ToolDefinition, ToolExecutor, ToolContext, ToolResult } from "./types";
-export type { ToolMiddleware } from "./middleware";
+export type { ToolDefinition } from "./types";
 
 // ── Aggregate all domain modules ──────────────────────────────────────────────
 
@@ -56,7 +55,7 @@ const DOMAIN_MODULES = [
 
 // ── ALL_TOOLS: flat array of every tool definition (for OpenAI session config) ─
 
-export const ALL_TOOLS: ToolDefinition[] = [
+const ALL_TOOLS: ToolDefinition[] = [
   ...metaSkill.tools,
   ...DOMAIN_MODULES.flatMap((m) => m.definitions),
 ];
@@ -93,14 +92,4 @@ export async function executeToolCall(
 /** Get the count of registered tools (useful for logs). */
 export function toolCount(): number {
   return ALL_TOOLS.length;
-}
-
-/** Check if a tool exists in the registry. */
-export function hasTool(toolName: string): boolean {
-  return toolName in EXECUTOR_MAP;
-}
-
-/** Get all registered tool names. */
-export function toolNames(): string[] {
-  return Object.keys(EXECUTOR_MAP);
 }

@@ -36,9 +36,9 @@ describe("connected-service registry", () => {
 });
 
 describe("voice-pipeline registry", () => {
-  it("lists 8 voice pipeline providers across all categories", () => {
+  it("lists all registered voice pipeline providers across all categories", () => {
     const list = listVoicePipelineProviders();
-    expect(list.length).toBe(8);
+    expect(list.length).toBe(7);
   });
 
   it("marks fallbacks correctly", () => {

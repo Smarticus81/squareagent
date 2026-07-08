@@ -3,8 +3,6 @@ import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ClerkProvider, SignedIn, SignedOut, OrganizationProfile, OrganizationSwitcher } from "@clerk/clerk-react";
 import { ThemeProvider } from "next-themes";
-import { Toaster } from "@/components/ui/toaster";
-import { TooltipProvider } from "@/components/ui/tooltip";
 import { Layout } from "@/components/layout";
 import { ClerkIdentityBridge } from "@/components/clerk-identity-bridge";
 
@@ -168,13 +166,10 @@ function AppContent() {
   return (
     <ThemeProvider attribute="class" defaultTheme="dark" forcedTheme="dark" disableTransitionOnChange>
       <QueryClientProvider client={queryClient}>
-        <TooltipProvider>
-          {clerkPublishableKey && <ClerkIdentityBridge />}
-          <WouterRouter base={import.meta.env.BASE_URL?.replace(/\/$/, "") || ""}>
-            <Router />
-          </WouterRouter>
-          <Toaster />
-        </TooltipProvider>
+        {clerkPublishableKey && <ClerkIdentityBridge />}
+        <WouterRouter base={import.meta.env.BASE_URL?.replace(/\/$/, "") || ""}>
+          <Router />
+        </WouterRouter>
       </QueryClientProvider>
     </ThemeProvider>
   );

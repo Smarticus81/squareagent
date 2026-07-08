@@ -3,14 +3,14 @@ import { z } from "zod";
 import { withClerkBillingHeader } from "@/lib/clerk-session";
 
 // Schemas
-export const UserSchema = z.object({
+const UserSchema = z.object({
   id: z.number(),
   email: z.string().email(),
   name: z.string(),
   isAdmin: z.boolean().optional(),
 });
 
-export const SubscriptionSchema = z.object({
+const SubscriptionSchema = z.object({
   id: z.number(),
   userId: z.number(),
   plan: z.string(),
@@ -20,7 +20,7 @@ export const SubscriptionSchema = z.object({
   clerkSubscriptionId: z.string().nullable().optional(),
 });
 
-export const AuthResponseSchema = z.object({
+const AuthResponseSchema = z.object({
   token: z.string(),
   user: UserSchema,
   subscription: SubscriptionSchema.nullable().optional(),
@@ -29,15 +29,12 @@ export const AuthResponseSchema = z.object({
   isAdmin: z.boolean().optional(),
 });
 
-export const MeResponseSchema = z.object({
+const MeResponseSchema = z.object({
   user: UserSchema,
   subscription: SubscriptionSchema.nullable().optional(),
   organizationId: z.string().nullable().optional(),
   isAdmin: z.boolean().optional(),
 });
-
-export type User = z.infer<typeof UserSchema>;
-export type Subscription = z.infer<typeof SubscriptionSchema>;
 
 // Helpers
 const getToken = () => localStorage.getItem("voycelab_token");

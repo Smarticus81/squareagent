@@ -5,8 +5,7 @@
     "lib": ["es2022", "dom"],
     "outDir": "./dist",
     "rootDir": "./src",
-    "customConditions": ["workspace"],
-    "jsx": "react-jsx"
+    "customConditions": ["workspace"]
   },
   "include": ["src"]
 }

@@ -25,7 +25,7 @@ export interface ServerApiKey {
   canonicalEnv: string;
 }
 
-export function isUsableApiKeyValue(value: string | undefined): value is string {
+function isUsableApiKeyValue(value: string | undefined): value is string {
   const trimmed = value?.trim();
   return Boolean(trimmed && !PLACEHOLDER_KEY_PATTERN.test(trimmed));
 }

@@ -14,18 +14,15 @@ import {
 import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { getAllPipelineAvailability } from "../../voice-pipelines";
 import { invalidateAuthCacheForUser, isAdminEmail } from "../auth";
-import { ensureUserOrganization, jsonError, requireDb, v1RequireAuth } from "./_helpers";
+import { ensureUserOrganization, jsonError, requireDb, v1RequireAuth, ROLES, type Role } from "./_helpers";
 import { getPlan, buildUsageLimitSnapshot, type UsageRisk } from "@workspace/voicelab-core/pricing";
 import { credentialCacheSize } from "../../lib/credential-cache";
-import { catalogCacheSize } from "../../lib/catalog-cache";
 
 const router = Router();
 
-const ROLES = ["owner", "admin", "manager", "operator"] as const;
 const PLANS = ["trial", "pro", "business", "admin"] as const;
 const STATUSES = ["trialing", "active", "past_due", "canceled", "inactive"] as const;
 
-type Role = typeof ROLES[number];
 type Plan = typeof PLANS[number];
 type Status = typeof STATUSES[number];
 type UserRow = typeof usersTable.$inferSelect;
@@ -263,7 +260,6 @@ router.get("/diagnostics", async (req: Request, res: Response) => {
     // 6. Internal Cache diagnostics
     diagnostics.caches = {
       credentialsSize: credentialCacheSize(),
-      catalogSize: catalogCacheSize(),
     };
 
     res.json(diagnostics);

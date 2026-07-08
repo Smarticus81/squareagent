@@ -4,7 +4,7 @@
 
 import type { ToolResult } from "../tools/types";
 
-export interface WorkflowStep {
+interface WorkflowStep {
   /** Tool to execute. */
   toolName: string;
   /** Static args or a function that builds args from previous results. */

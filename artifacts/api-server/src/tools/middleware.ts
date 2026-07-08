@@ -2,7 +2,7 @@
  * Tool Middleware Pipeline — cross-cutting concerns for tool execution.
  *
  * Middlewares wrap tool executors with timing, logging, error handling, and rate limiting.
- * They compose via applyMiddleware() and execute in order (first middleware = outermost).
+ * They compose via wrapExecutors() and execute in order (first middleware = outermost).
  */
 
 import type { ToolExecutor, ToolContext, ToolResult } from "./types";
@@ -54,7 +54,7 @@ const CONFIRMATION_SECRET = getConfirmationSecret();
 
 // ── Middleware type ─────────────────────────────────────────────────────────
 
-export type NextFn = (args: Record<string, unknown>, ctx: ToolContext) => Promise<ToolResult>;
+type NextFn = (args: Record<string, unknown>, ctx: ToolContext) => Promise<ToolResult>;
 
 export type ToolMiddleware = (
   toolName: string,
@@ -62,25 +62,6 @@ export type ToolMiddleware = (
   ctx: ToolContext,
   next: NextFn,
 ) => Promise<ToolResult>;
-
-// ── Compose middleware around an executor ────────────────────────────────────
-
-export function applyMiddleware(
-  executor: ToolExecutor,
-  ...middlewares: ToolMiddleware[]
-): ToolExecutor {
-  // Build the chain from inside out
-  let chain: NextFn = (args, ctx) => executor(args, ctx);
-
-  // Apply middlewares in reverse so the first one in the array is the outermost
-  for (let i = middlewares.length - 1; i >= 0; i--) {
-    const mw = middlewares[i];
-    const next = chain;
-    chain = (args, ctx) => mw("", args, ctx, next);
-  }
-
-  return chain;
-}
 
 /**
  * Wrap an entire executor map with middleware, preserving tool names in the middleware context.
@@ -111,7 +92,7 @@ export function wrapExecutors(
 /**
  * Timing middleware — logs execution duration for every tool call.
  */
-export const timingMiddleware: ToolMiddleware = async (toolName, args, ctx, next) => {
+const timingMiddleware: ToolMiddleware = async (toolName, args, ctx, next) => {
   const start = Date.now();
   const result = await next(args, ctx);
   const durationMs = Date.now() - start;
@@ -127,7 +108,7 @@ export const timingMiddleware: ToolMiddleware = async (toolName, args, ctx, next
  * Error middleware — catches thrown errors and returns a normalized ToolResult
  * instead of crashing the request.
  */
-export const errorMiddleware: ToolMiddleware = async (toolName, args, ctx, next) => {
+const errorMiddleware: ToolMiddleware = async (toolName, args, ctx, next) => {
   try {
     return await next(args, ctx);
   } catch (e: any) {
@@ -139,7 +120,7 @@ export const errorMiddleware: ToolMiddleware = async (toolName, args, ctx, next)
 /**
  * Logging middleware — logs tool invocations with sanitized args.
  */
-export const loggingMiddleware: ToolMiddleware = async (toolName, args, ctx, next) => {
+const loggingMiddleware: ToolMiddleware = async (toolName, args, ctx, next) => {
   const sanitized = sanitizeToolArgs(args);
   log.info({ toolName, args: sanitized }, "tool called");
   return next(args, ctx);
@@ -149,7 +130,7 @@ export const loggingMiddleware: ToolMiddleware = async (toolName, args, ctx, nex
  * Audit middleware — fire-and-forget insert into toolCallsTable after execution.
  * Runs after the executor so it can capture the result and duration.
  */
-export const auditMiddleware: ToolMiddleware = async (toolName, args, ctx, next) => {
+const auditMiddleware: ToolMiddleware = async (toolName, args, ctx, next) => {
   const start = Date.now();
   const result = await next(args, ctx);
   const durationMs = Date.now() - start;
@@ -246,7 +227,7 @@ function isConfirmationTokenValid(token: string | undefined, toolName: string, a
  * already set `confirmed: true` in the context. Returns a structured
  * REQUIRES_CONFIRMATION result so the client can prompt the user.
  */
-export const confirmationMiddleware: ToolMiddleware = async (toolName, args, ctx, next) => {
+const confirmationMiddleware: ToolMiddleware = async (toolName, args, ctx, next) => {
   const noiseMode = ctx.noiseMode ?? "standard";
   const confirmed = ctx.confirmed ?? false;
 
@@ -316,7 +297,7 @@ const TOOL_ROLE_REQUIREMENTS: Record<string, Role> = {
  * Verifies that the active user's workspace role has sufficient privileges
  * to invoke the requested tool.
  */
-export const roleMiddleware: ToolMiddleware = async (toolName, args, ctx, next) => {
+const roleMiddleware: ToolMiddleware = async (toolName, args, ctx, next) => {
   const requiredRole = TOOL_ROLE_REQUIREMENTS[toolName];
   if (requiredRole) {
     const userRole = ctx.userRole;

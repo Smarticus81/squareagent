@@ -30,7 +30,7 @@ export function squareHeaders(token: string) {
   };
 }
 
-export const SQUARE_FETCH_TIMEOUT_MS = 10_000;
+const SQUARE_FETCH_TIMEOUT_MS = 10_000;
 
 /**
  * fetch wrapper for Square API calls with a hard timeout. Raw fetch has no

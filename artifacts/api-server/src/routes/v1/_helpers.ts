@@ -14,7 +14,7 @@ export const v1RequireAuth = requireAuth;
 export const ROLES = ["owner", "admin", "manager", "operator"] as const;
 export type Role = typeof ROLES[number];
 
-export const ROLE_HIERARCHY: Record<Role, number> = {
+const ROLE_HIERARCHY: Record<Role, number> = {
   owner: 4,
   admin: 3,
   manager: 2,

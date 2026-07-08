@@ -81,7 +81,7 @@ function isCircuitOpen(key: string): boolean {
 
 // ── Error extraction ────────────────────────────────────────────────────────
 
-export interface SquareError {
+interface SquareError {
   status: number;
   message: string;
   code?: string;

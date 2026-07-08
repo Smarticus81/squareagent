@@ -10,7 +10,7 @@ const getHeaders = () => {
   };
 };
 
-export interface Venue {
+interface Venue {
   id: number;
   serviceConnectionId: string | null;
   serviceConnectionStatus: string | null;

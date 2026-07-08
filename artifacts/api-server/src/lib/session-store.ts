@@ -98,45 +98,6 @@ export function getSession(sessionId: string): ManagedSession | undefined {
   return memoryStore.get(sessionId);
 }
 
-/**
- * Resume a session from the database (e.g., after server restart).
- */
-export async function resumeSession(sessionId: string): Promise<ManagedSession | null> {
-  // Check memory first
-  const inMemory = memoryStore.get(sessionId);
-  if (inMemory) return inMemory;
-
-  // Try DB
-  try {
-    const [row] = await db
-      .select()
-      .from(voiceSessionsTable)
-      .where(eq(voiceSessionsTable.id, sessionId));
-
-    if (!row || new Date(row.expiresAt) < new Date()) return null;
-
-    const session = (row.state as LiveSession) ?? { items: [] };
-    const managed: ManagedSession = {
-      session,
-      squareToken: "", // must be re-populated from credential cache
-      squareLocationId: "",
-      userId: row.userId,
-      venueId: row.venueId,
-      lastAccess: Date.now(),
-      dirty: false,
-    };
-    memoryStore.set(sessionId, managed);
-    return managed;
-  } catch {
-    return null;
-  }
-}
-
-/** Number of active sessions in memory. */
-export function sessionCount(): number {
-  return memoryStore.size;
-}
-
 // ── Background persistence ──────────────────────────────────────────────────
 
 async function persistDirtySessions(): Promise<void> {
