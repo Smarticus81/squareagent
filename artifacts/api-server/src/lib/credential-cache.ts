@@ -143,17 +143,6 @@ export function invalidateCredentials(userId: number, venueId: number): void {
   }
 }
 
-/**
- * Invalidate all cached credentials for a user.
- * Call this after user deletion or broad credential changes.
- */
-export function invalidateUserCredentials(userId: number): void {
-  const userPrefix = `user-${userId}:`;
-  for (const key of cache.keys()) {
-    if (key.startsWith(userPrefix)) cache.delete(key);
-  }
-}
-
 /** Number of cached entries (for diagnostics). */
 export function credentialCacheSize(): number {
   return cache.size;

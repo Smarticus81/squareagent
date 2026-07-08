@@ -108,9 +108,4 @@ export function listVoicePipelineProviders(): VoicePipelineProviderMetadata[] {
   return Object.values(VOICE_PIPELINE_PROVIDERS);
 }
 
-export function getVoicePipelineProviderMetadata(
-  provider: VoicePipelineProvider,
-): VoicePipelineProviderMetadata {
-  return VOICE_PIPELINE_PROVIDERS[provider];
-}
 

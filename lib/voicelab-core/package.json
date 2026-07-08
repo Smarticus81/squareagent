@@ -20,9 +20,6 @@
     "typecheck": "tsc --build",
     "test": "vitest run"
   },
-  "dependencies": {
-    "zod": "catalog:"
-  },
   "devDependencies": {
     "@types/node": "catalog:",
     "vitest": "^2.1.9"

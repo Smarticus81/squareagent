@@ -10,7 +10,7 @@ import type { NoiseMode } from "@workspace/voicelab-core/noise";
 
 // ── OpenAI Realtime tool schema (JSON-Schema subset) ──────────────────────────
 
-export interface ToolParameter {
+interface ToolParameter {
   type: string;
   description?: string;
   default?: unknown;

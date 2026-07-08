@@ -12,13 +12,13 @@ import {
   matchWakeWord,
 } from "@/lib/voice-termination";
 
-export const WAKE_WORDS = ["hey voyce", "hey voicelab", "hey voycelab", "voycelab"];
+const WAKE_WORDS = ["hey voyce", "hey voicelab", "hey voycelab", "voycelab"];
 
 /** Soft termination — back to wake listening after closing live agent session */
-export const STOP_PHRASES = [...SOFT_BACK_TO_WAKE_PHRASES];
+const STOP_PHRASES = [...SOFT_BACK_TO_WAKE_PHRASES];
 
 /** Hard shutdown — stop all ambient listening until user taps to resume */
-export const SHUTDOWN_PHRASES = [...HARD_SHUTDOWN_PHRASES];
+const SHUTDOWN_PHRASES = [...HARD_SHUTDOWN_PHRASES];
 
 const DEBUG_WAKE_EVENTS = import.meta.env.DEV;
 

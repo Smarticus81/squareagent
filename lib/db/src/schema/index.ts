@@ -1,6 +1,4 @@
 import { pgTable, text, serial, timestamp, integer, index, jsonb, boolean, uuid, customType } from "drizzle-orm/pg-core";
-import { createInsertSchema } from "drizzle-zod";
-import { z } from "zod/v4";
 
 export const vector = customType<{ data: number[]; driverParam: string }>({
   dataType() {
@@ -29,8 +27,6 @@ export const usersTable = pgTable("users", {
   index("users_clerk_user_idx").on(table.clerkUserId),
 ]);
 
-export const insertUserSchema = createInsertSchema(usersTable).omit({ id: true, createdAt: true, updatedAt: true });
-export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof usersTable.$inferSelect;
 
 // ── Organizations ─────────────────────────────────────────────────────────────
@@ -64,7 +60,6 @@ export const organizationMembershipsTable = pgTable("organization_memberships", 
   index("org_memberships_org_idx").on(table.organizationId),
 ]);
 
-export type OrganizationMembership = typeof organizationMembershipsTable.$inferSelect;
 
 // ── Venues ────────────────────────────────────────────────────────────────────
 // Square credential columns kept for back-compat with the legacy /dashboard
@@ -91,8 +86,6 @@ export const venuesTable = pgTable("venues", {
   index("venues_organization_idx").on(table.organizationId),
 ]);
 
-export const insertVenueSchema = createInsertSchema(venuesTable).omit({ id: true, createdAt: true, updatedAt: true });
-export type InsertVenue = z.infer<typeof insertVenueSchema>;
 export type Venue = typeof venuesTable.$inferSelect;
 
 // ── Service Connections ───────────────────────────────────────────────────────
@@ -119,7 +112,6 @@ export const serviceConnectionsTable = pgTable("service_connections", {
   index("service_connections_provider_idx").on(table.provider),
 ]);
 
-export type ServiceConnectionRow = typeof serviceConnectionsTable.$inferSelect;
 
 // ── Agent Profiles ────────────────────────────────────────────────────────────
 
@@ -170,8 +162,6 @@ export const subscriptionsTable = pgTable("subscriptions", {
   index("subscriptions_org_id_idx").on(table.organizationId),
 ]);
 
-export const insertSubscriptionSchema = createInsertSchema(subscriptionsTable).omit({ id: true, createdAt: true, updatedAt: true });
-export type InsertSubscription = z.infer<typeof insertSubscriptionSchema>;
 export type Subscription = typeof subscriptionsTable.$inferSelect;
 
 // ── Sessions ──────────────────────────────────────────────────────────────────
@@ -201,7 +191,6 @@ export const passwordResetTokensTable = pgTable("password_reset_tokens", {
   index("password_reset_tokens_expires_idx").on(table.expiresAt),
 ]);
 
-export type PasswordResetToken = typeof passwordResetTokensTable.$inferSelect;
 
 // ── Exchange Codes ────────────────────────────────────────────────────────────
 
@@ -214,7 +203,6 @@ export const exchangeCodesTable = pgTable("exchange_codes", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
-export type ExchangeCode = typeof exchangeCodesTable.$inferSelect;
 
 // ── Voice Sessions ────────────────────────────────────────────────────────────
 
@@ -237,7 +225,6 @@ export const voiceSessionsTable = pgTable("voice_sessions", {
   index("voice_sessions_agent_profile_idx").on(table.agentProfileId),
 ]);
 
-export type VoiceSession = typeof voiceSessionsTable.$inferSelect;
 
 // ── Tool Calls ────────────────────────────────────────────────────────────────
 
@@ -306,7 +293,6 @@ export const knowledgeDocumentsTable = pgTable("knowledge_documents", {
   index("knowledge_documents_venue_idx").on(table.venueId),
 ]);
 
-export type KnowledgeDocument = typeof knowledgeDocumentsTable.$inferSelect;
 
 export const knowledgeChunksTable = pgTable("knowledge_chunks", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -324,7 +310,6 @@ export const knowledgeChunksTable = pgTable("knowledge_chunks", {
   index("knowledge_chunks_org_idx").on(table.organizationId),
 ]);
 
-export type KnowledgeChunk = typeof knowledgeChunksTable.$inferSelect;
 
 // -- External Postgres Connections ---------------------------------------------
 // Organization-scoped read-only Postgres connection strings exposed to the
@@ -347,7 +332,6 @@ export const externalDbConnectionsTable = pgTable("external_db_connections", {
   index("external_db_connections_org_idx").on(table.organizationId),
 ]);
 
-export type ExternalDbConnection = typeof externalDbConnectionsTable.$inferSelect;
 
 // -- Email Credentials ---------------------------------------------------------
 // Per-user outbound email config. Supports Resend (api_key), Gmail via SMTP
@@ -376,4 +360,3 @@ export const emailCredentialsTable = pgTable("email_credentials", {
   index("email_credentials_org_idx").on(table.organizationId),
 ]);
 
-export type EmailCredential = typeof emailCredentialsTable.$inferSelect;

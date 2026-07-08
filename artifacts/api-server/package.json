@@ -24,7 +24,6 @@
     "@workspace/db": "workspace:*",
     "@workspace/voicelab-core": "workspace:*",
     "bcryptjs": "^3.0.3",
-    "cookie-parser": "^1.4.7",
     "cors": "^2",
     "drizzle-orm": "catalog:",
     "express": "^5",
@@ -35,7 +34,6 @@
     "mammoth": "^1.8.0",
     "multer": "^2.1.1",
     "nodemailer": "^8.0.7",
-    "openai": "^6.29.0",
     "pdf-parse": "^1.1.1",
     "pg": "^8.20.0",
     "pino": "^10.3.1",
@@ -44,8 +42,6 @@
     "ws": "^8.19.0"
   },
   "devDependencies": {
-    "@types/bcryptjs": "^3.0.0",
-    "@types/cookie-parser": "^1.4.10",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",

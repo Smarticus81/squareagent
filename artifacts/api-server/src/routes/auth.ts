@@ -54,7 +54,7 @@ export function isAdminEmail(email: string | null | undefined): boolean {
  * caught up yet. Stored shape matches `subscriptionsTable.$inferSelect`
  * for downstream consumers (ws-relay, requirePlan, agent-profiles).
  */
-export function buildAdminSubscription(userId: number): {
+function buildAdminSubscription(userId: number): {
   id: number;
   userId: number;
   organizationId: string | null;
@@ -228,7 +228,7 @@ const AUTH_CACHE_TTL_MS = Number(process.env.AUTH_CACHE_TTL_MS ?? 30_000);
 const authCache = new Map<string, CachedAuth>();
 
 /** Drop a cached auth context (call on logout or when entitlements change). */
-export function invalidateAuthCache(sessionId: string): void {
+function invalidateAuthCache(sessionId: string): void {
   authCache.delete(sessionId);
 }
 
@@ -366,7 +366,7 @@ function verifyToken(token: string): { sub: number; sid: string } | null {
   }
 }
 
-export function extractToken(req: Request): string | null {
+function extractToken(req: Request): string | null {
   const auth = req.headers.authorization;
   if (auth?.startsWith("Bearer ")) return auth.slice(7);
   return null;

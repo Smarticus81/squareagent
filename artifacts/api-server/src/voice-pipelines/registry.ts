@@ -3,12 +3,7 @@ import type {
   VoicePipelineEnvContext,
   VoicePipelineProvider,
 } from "@workspace/voicelab-core/voice-pipeline";
-import {
-  VOICE_PIPELINE_PROVIDERS,
-  recommendVoicePipeline,
-  type VoicePipelineRecommendationInput,
-  type VoicePipelineRecommendation,
-} from "@workspace/voicelab-core/voice-pipeline";
+import { VOICE_PIPELINE_PROVIDERS } from "@workspace/voicelab-core/voice-pipeline";
 import { OpenAiRealtimeWebRtcAdapter } from "./openai/realtime-webrtc";
 import { OpenAiRealtimeServerWsAdapter } from "./openai/realtime-server-ws";
 import { GoogleGeminiLiveAdapter, GEMINI_LIVE_ADAPTER_SPECS } from "./google/gemini-live";
@@ -35,7 +30,7 @@ export function getVoicePipelineAdapter(provider: VoicePipelineProvider): VoiceP
   return a;
 }
 
-export function listVoicePipelineAdapters(): VoicePipelineAdapter[] {
+function listVoicePipelineAdapters(): VoicePipelineAdapter[] {
   return Array.from(adapters.values());
 }
 
@@ -55,7 +50,7 @@ export function readVoicePipelineEnvCredentials(): Record<string, boolean> {
   return out;
 }
 
-export interface PipelineAvailabilityReport {
+interface PipelineAvailabilityReport {
   provider: VoicePipelineProvider;
   displayName: string;
   category: string;
@@ -109,8 +104,3 @@ export async function getAllPipelineAvailability(): Promise<PipelineAvailability
   return reports;
 }
 
-export function recommend(
-  input: VoicePipelineRecommendationInput,
-): VoicePipelineRecommendation {
-  return recommendVoicePipeline(input);
-}

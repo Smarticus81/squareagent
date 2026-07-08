@@ -1,7 +1,7 @@
 import { motion, useReducedMotion } from "framer-motion";
 import { cn } from "@/lib/utils";
 
-export type RailState =
+type RailState =
   | "offline"
   | "ready"
   | "listening"

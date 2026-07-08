@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import { decrypt, encrypt } from "./secrets";
 
-export interface PendingSquareOAuthToken {
+interface PendingSquareOAuthToken {
   token: string;
   merchantId: string;
   timestamp: number;

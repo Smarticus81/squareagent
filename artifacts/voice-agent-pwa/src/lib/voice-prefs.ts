@@ -1,8 +1,6 @@
 export {
   VOICES,
   SPEEDS,
-  type VoiceId,
-  type VoicePrefsStorage,
   getVoicePrefs,
   setVoicePref,
   setSpeedPref,

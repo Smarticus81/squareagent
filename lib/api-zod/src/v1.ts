@@ -7,7 +7,7 @@ import { z } from "zod";
 
 // ── Connected service providers ───────────────────────────────────────────────
 
-export const ConnectedServiceProvider = z.enum([
+const ConnectedServiceProvider = z.enum([
   "square",
   "toast",
   "clover",
@@ -22,7 +22,7 @@ export const ConnectedServiceProvider = z.enum([
 
 // ── Voice pipelines ───────────────────────────────────────────────────────────
 
-export const VoicePipelineProvider = z.enum([
+const VoicePipelineProvider = z.enum([
   "openai_realtime_webrtc",
   "openai_realtime_server_ws",
   "google_gemini_3_1_flash_live",
@@ -32,7 +32,7 @@ export const VoicePipelineProvider = z.enum([
   "text_only_fallback",
 ]);
 
-export const NoiseMode = z.enum([
+const NoiseMode = z.enum([
   "standard",
   "loud",
   "push_to_talk",
@@ -53,13 +53,6 @@ export const RecommendVoicePipelineRequest = z.object({
   requiresBestVoiceQuality: z.boolean().default(false),
   requiresLowestLatency: z.boolean().default(false),
   requiresEnterpriseObservability: z.boolean().default(false),
-});
-
-export const RecommendVoicePipelineResponse = z.object({
-  recommendedProvider: VoicePipelineProvider,
-  fallbackProviders: z.array(VoicePipelineProvider),
-  reason: z.string(),
-  warnings: z.array(z.string()),
 });
 
 // ── Agent profiles ────────────────────────────────────────────────────────────
@@ -101,21 +94,3 @@ export const CreateRealtimeSessionRequest = z.object({
   pipelineOverride: VoicePipelineProvider.optional(),
 });
 
-// ── Tool calls ────────────────────────────────────────────────────────────────
-
-export const ExecuteToolCallRequest = z.object({
-  sessionId: z.string(),
-  agentProfileId: z.string().uuid(),
-  toolName: z.string(),
-  args: z.record(z.unknown()).default({}),
-  /** Set when the user has already confirmed at the client. */
-  confirmation: z
-    .object({ token: z.string(), confirmedAt: z.string() })
-    .optional(),
-});
-
-export type CreateAgentProfileBody = z.infer<typeof CreateAgentProfileRequest>;
-export type UpdateAgentProfileBody = z.infer<typeof UpdateAgentProfileRequest>;
-export type RecommendVoicePipelineBody = z.infer<typeof RecommendVoicePipelineRequest>;
-export type CreateRealtimeSessionBody = z.infer<typeof CreateRealtimeSessionRequest>;
-export type ExecuteToolCallBody = z.infer<typeof ExecuteToolCallRequest>;

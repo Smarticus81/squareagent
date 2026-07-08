@@ -131,11 +131,6 @@ async function probeGeminiAccess(): Promise<ProbeVerdict> {
   }
 }
 
-/** Reset the probe cache. Useful after the operator updates the key. */
-export function invalidateGeminiAccessProbe(): void {
-  probeCache = null;
-}
-
 export class GoogleGeminiLiveAdapter implements VoicePipelineAdapter {
   readonly provider: VoicePipelineProvider;
   readonly category = "native_realtime_speech_to_speech" as const;
@@ -400,15 +395,13 @@ export function buildGeminiLiveSetupMessage(opts: GeminiSetupOptions): Record<st
   return { setup };
 }
 
-export function geminiLiveEndpoint(apiVersion: "v1alpha" | "v1beta" = "v1beta"): string {
+function geminiLiveEndpoint(apiVersion: "v1alpha" | "v1beta" = "v1beta"): string {
   // Test/proxy hook: lets the relay smoke test stand up a local fake
   // upstream without touching Google. Never set in normal deployments.
   const override = process.env.GEMINI_LIVE_ENDPOINT_OVERRIDE?.trim();
   if (override) return override;
   return `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.${apiVersion}.GenerativeService.BidiGenerateContent`;
 }
-
-export const GEMINI_LIVE_ENDPOINT = geminiLiveEndpoint("v1beta");
 
 export function buildGeminiLiveUrl(apiVersion: "v1alpha" | "v1beta" = "v1beta"): string {
   const apiKey = readApiKey();

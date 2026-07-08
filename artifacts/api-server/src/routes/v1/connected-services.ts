@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { listConnectedServiceProviders } from "@workspace/voicelab-core/connected-service";
-import { listImplementedProviders } from "../../connectors";
+import { listImplementedProviders } from "../../connectors/registry";
 import { requireAuth } from "../auth";
 
 const router = Router();
