@@ -122,9 +122,11 @@ Risk levels are defined in `lib/voicelab-core/src/confirmation/types.ts` (`TOOL_
 ## Noise Modes
 
 Each agent profile has a `noiseMode` (collapsed to 3 modes: standard, loud, push_to_talk). This maps to OpenAI Realtime turn_detection settings via `buildRealtimeSessionConfig`:
-- standard: semantic_vad, eagerness auto (tuned for low latency between commands)
-- loud: server_vad, threshold 0.6, silence 600ms
+- standard: semantic_vad, eagerness auto (tuned for low latency between commands), near_field noise reduction
+- loud: server_vad, threshold 0.6, silence 600ms, far_field noise reduction
 - push_to_talk: turn_detection null
+
+All OpenAI Realtime session payloads are built through `api-server/src/lib/openai-realtime.ts` (shared by the WebRTC token mint, the WS relay, the pipeline adapter, and the live check scripts). It defaults to `gpt-realtime-2.1` (override with `OPENAI_REALTIME_MODEL`), only sends `reasoning` on the reasoning-capable `gpt-realtime-2.x` family, uses `gpt-4o-mini-transcribe` for input transcription (override with `OPENAI_REALTIME_TRANSCRIPTION_MODEL`; `gpt-realtime-whisper` cannot be used because it requires `turn_detection: null`), and sanitizes voice/speed so a stale profile value (e.g. a Gemini voice name) can never fail the session mint with a parameter error.
 
 Realtime sessions default `reasoning.effort` to "minimal" for the fastest first-audio latency (override with `OPENAI_REALTIME_REASONING_EFFORT`). Prompts instruct the agent to call tools silently and bridge lookup time with speculative talk instead of announcing "one sec, checking now".
 

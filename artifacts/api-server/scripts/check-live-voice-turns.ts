@@ -1,12 +1,12 @@
 import WebSocket from "ws";
 import { readServerApiKey, requiredApiKeyEnv } from "../src/lib/api-keys";
+import { OPENAI_REALTIME_MODEL, buildRealtimeSessionPayload } from "../src/lib/openai-realtime";
 import {
   buildGeminiLiveSetupMessage,
   buildGeminiLiveUrl,
 } from "../src/voice-pipelines/google/gemini-live";
 
 const TIMEOUT_MS = Number(process.env.VOICE_PROVIDER_TURN_TIMEOUT_MS ?? 30000);
-const OPENAI_REALTIME_MODEL = process.env.OPENAI_REALTIME_MODEL ?? "gpt-realtime-2";
 const GEMINI_LIVE_MODEL = process.env.GEMINI_LIVE_CHECK_MODEL ?? "gemini-3.1-flash-live-preview";
 
 interface TurnResult {
@@ -83,26 +83,22 @@ async function checkOpenAiAudioTurn(): Promise<TurnResult> {
     }
 
     ws.on("open", () => {
-      ws.send(JSON.stringify({
-        type: "session.update",
-        session: {
-          type: "realtime",
-          instructions: "Live audio-turn verification. Keep the response to one spoken word.",
-          output_modalities: ["audio"],
-          audio: {
-            input: {
-              format: { type: "audio/pcm", rate: 24000 },
-              transcription: { model: "gpt-realtime-whisper" },
-              turn_detection: null,
-            },
-            output: {
-              format: { type: "audio/pcm", rate: 24000 },
-              voice: "ash",
-              speed: 1,
-            },
-          },
+      // Mirror the production session shape (semantic_vad + transcription +
+      // reasoning) so this check fails on any parameter the real sessions
+      // would trip over — a turn_detection:null probe once passed while every
+      // production session was rejected.
+      const { model: _model, ...session } = buildRealtimeSessionPayload({
+        instructions: "Live audio-turn verification. Keep the response to one spoken word.",
+        voice: "ash",
+        speed: 1,
+        turnDetection: {
+          type: "semantic_vad",
+          eagerness: "auto",
+          create_response: true,
+          interrupt_response: true,
         },
-      }));
+      });
+      ws.send(JSON.stringify({ type: "session.update", session }));
     });
 
     ws.on("message", (data) => {

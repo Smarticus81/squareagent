@@ -9,10 +9,7 @@ import type {
   VoicePipelineInterruptContext,
 } from "@workspace/voicelab-core/voice-pipeline";
 import { readServerApiKey, requireServerApiKey, requiredApiKeyEnv } from "../../lib/api-keys";
-
-const REALTIME_MODEL = process.env.OPENAI_REALTIME_MODEL ?? "gpt-realtime-2";
-const REALTIME_REASONING_EFFORT =
-  (process.env.OPENAI_REALTIME_REASONING_EFFORT as "minimal" | "low" | "medium" | "high" | undefined) ?? "minimal";
+import { OPENAI_REALTIME_MODEL, buildRealtimeSessionPayload } from "../../lib/openai-realtime";
 
 function readApiKey(): string {
   return readServerApiKey("openai")?.value ?? "";
@@ -61,34 +58,18 @@ export class OpenAiRealtimeWebRtcAdapter implements VoicePipelineAdapter {
 
   async createSession(ctx: VoicePipelineSessionContext): Promise<VoicePipelineSession> {
     const apiKey = requireServerApiKey("openai").value;
-    const voice = (ctx.providerOptions.voice as string | undefined) ?? "ash";
-    const speed = (ctx.providerOptions.speed as number | undefined) ?? 1.0;
-    const session = {
-      type: "realtime" as const,
-      model: REALTIME_MODEL,
+    const session = buildRealtimeSessionPayload({
       instructions: ctx.instructions,
       tools: ctx.providerOptions.tools as unknown[] | undefined,
-      tool_choice: "auto" as const,
-      output_modalities: ["audio" as const],
-      reasoning: { effort: REALTIME_REASONING_EFFORT },
-      audio: {
-        input: {
-          format: { type: "audio/pcm" as const, rate: 24000 as const },
-          transcription: { model: "whisper-1" },
-          turn_detection: {
-            type: "semantic_vad" as const,
-            eagerness: "auto" as const,
-            create_response: true,
-            interrupt_response: true,
-          },
-        },
-        output: {
-          format: { type: "audio/pcm" as const, rate: 24000 as const },
-          voice,
-          speed,
-        },
+      voice: ctx.providerOptions.voice ?? "ash",
+      speed: ctx.providerOptions.speed,
+      turnDetection: {
+        type: "semantic_vad",
+        eagerness: "auto",
+        create_response: true,
+        interrupt_response: true,
       },
-    };
+    });
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15000);
@@ -113,7 +94,7 @@ export class OpenAiRealtimeWebRtcAdapter implements VoicePipelineAdapter {
         clientHandshake: {
           kind: "ephemeral_token",
           expiresAt: data.expires_at,
-          payload: { value: data.value, model: REALTIME_MODEL },
+          payload: { value: data.value, model: OPENAI_REALTIME_MODEL },
         },
         capabilities: {
           nativeAudio: true,

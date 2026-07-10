@@ -47,8 +47,8 @@ import type { NoiseMode } from "@workspace/voicelab-core/noise";
 import { planAllowsPipeline } from "@workspace/voicelab-core/pricing";
 import type { VoicePipelineProvider } from "@workspace/voicelab-core/voice-pipeline";
 import { isAdminEmail, JWT_SECRET } from "./auth";
+import { OPENAI_REALTIME_MODEL, buildRealtimeSessionPayload } from "../lib/openai-realtime";
 
-const OPENAI_REALTIME_MODEL = process.env.OPENAI_REALTIME_MODEL ?? "gpt-realtime-2";
 const SENSITIVE_LOG_KEY_RE = /(token|secret|password|pass|credential|authorization|email|recipient|subject|body|message|text|query|sql|connection|string|address|phone|name)/i;
 const relayLog = createComponentLogger("ws-relay");
 
@@ -754,37 +754,23 @@ export function attachWebSocketRelay(server: Server): void {
       relayLog.info({ scope: "openai", userId: ctx.userId }, "upstream connected");
       openaiReady = true;
 
-      // Configure session
-      const voice = ctx.query.voice || "ash";
-      const speed = Number.isFinite(Number(ctx.query.speed)) ? Number(ctx.query.speed) : 1;
-      const sessionConfig = {
-        type: "session.update",
-        session: {
-          type: "realtime",
-          instructions: buildInstructions(ctx, catalog, order, assistantKind),
-          tools: relayTools,
-          tool_choice: "auto",
-          output_modalities: ["audio"],
-          audio: {
-            input: {
-              format: { type: "audio/pcm", rate: 24000 },
-              transcription: { model: "gpt-realtime-whisper" },
-              turn_detection: {
-                type: "semantic_vad",
-                eagerness: "auto",
-                create_response: true,
-                interrupt_response: true,
-              },
-            },
-            output: {
-              format: { type: "audio/pcm", rate: 24000 },
-              voice,
-              speed,
-            },
-          },
+      // Configure session. The model is fixed by the connection URL, so strip
+      // it from the session.update payload; voice/speed arrive as raw query
+      // params and are sanitized inside the builder.
+      const { model: _model, ...session } = buildRealtimeSessionPayload({
+        instructions: buildInstructions(ctx, catalog, order, assistantKind),
+        tools: relayTools,
+        voice: ctx.query.voice || "ash",
+        speed: ctx.query.speed,
+        turnDetection: {
+          type: "semantic_vad",
+          eagerness: "auto",
+          create_response: true,
+          interrupt_response: true,
         },
-      };
-      openaiWs.send(JSON.stringify(sessionConfig));
+        noiseMode: ctx.noiseMode,
+      });
+      openaiWs.send(JSON.stringify({ type: "session.update", session }));
 
       // Flush any messages that arrived before OpenAI was ready
       for (const msg of pendingFromClient) {

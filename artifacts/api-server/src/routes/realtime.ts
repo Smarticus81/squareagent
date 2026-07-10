@@ -54,16 +54,9 @@ import {
   removeSession,
 } from "../lib/session-store";
 import { readServerApiKey, requiredApiKeyEnv } from "../lib/api-keys";
+import { OPENAI_REALTIME_MODEL, buildRealtimeSessionPayload } from "../lib/openai-realtime";
 
 const router = Router();
-
-const OPENAI_REALTIME_MODEL = process.env.OPENAI_REALTIME_MODEL ?? "gpt-realtime-2";
-// gpt-realtime-2 — GA speech-to-speech model with reasoning support.
-// We default reasoning.effort to "minimal" for the lowest first-audio
-// latency; bump via OPENAI_REALTIME_REASONING_EFFORT if tool-call quality
-// ever needs the extra thinking time.
-const OPENAI_REALTIME_REASONING_EFFORT =
-  (process.env.OPENAI_REALTIME_REASONING_EFFORT as "minimal" | "low" | "medium" | "high" | undefined) ?? "minimal";
 
 // Master switch for acoustic (full-duplex) barge-in. Off by default because
 // browser echo cancellation does not reliably suppress the agent's own voice
@@ -313,40 +306,26 @@ function clientIp(req: { headers: Record<string, string | string[] | undefined>;
 }
 
 function buildDemoRealtimeSessionConfig(voice: string, speed: number) {
-  return {
-    type: "realtime" as const,
-    model: OPENAI_REALTIME_MODEL,
+  return buildRealtimeSessionPayload({
     instructions: VOYCELAB_DEMO_INSTRUCTIONS,
-    output_modalities: ["audio" as const],
-    // Realtime prompting guide: keep reasoning low for snappy demo Q&A.
-    reasoning: { effort: OPENAI_REALTIME_REASONING_EFFORT },
-    audio: {
-      input: {
-        format: { type: "audio/pcm" as const, rate: 24000 as const },
-        transcription: { model: "gpt-realtime-whisper" },
-        // semantic_vad uses a model to detect natural turn ends rather than
-        // a fixed silence timer. eagerness="auto" commits the turn as soon
-        // as the model judges the user finished — "low" added a long silence
-        // tail that made every exchange feel laggy, while semantic detection
-        // still tolerates mid-sentence pauses far better than the old
-        // server_vad 180ms timer that clipped every breath.
-        // interrupt_response follows ACOUSTIC_BARGE_IN_ENABLED: off by default
-        // so the agent's own audio on speaker / Bluetooth can't truncate the
-        // reply. The demo client half-duplex-gates the mic during playback.
-        turn_detection: {
-          type: "semantic_vad" as const,
-          eagerness: "auto" as const,
-          create_response: true,
-          interrupt_response: ACOUSTIC_BARGE_IN_ENABLED,
-        },
-      },
-      output: {
-        format: { type: "audio/pcm" as const, rate: 24000 as const },
-        voice,
-        speed,
-      },
+    voice,
+    speed,
+    // semantic_vad uses a model to detect natural turn ends rather than
+    // a fixed silence timer. eagerness="auto" commits the turn as soon
+    // as the model judges the user finished — "low" added a long silence
+    // tail that made every exchange feel laggy, while semantic detection
+    // still tolerates mid-sentence pauses far better than the old
+    // server_vad 180ms timer that clipped every breath.
+    // interrupt_response follows ACOUSTIC_BARGE_IN_ENABLED: off by default
+    // so the agent's own audio on speaker / Bluetooth can't truncate the
+    // reply. The demo client half-duplex-gates the mic during playback.
+    turnDetection: {
+      type: "semantic_vad",
+      eagerness: "auto",
+      create_response: true,
+      interrupt_response: ACOUSTIC_BARGE_IN_ENABLED,
     },
-  };
+  });
 }
 
 function buildTurnDetection(noiseMode: NoiseMode): Record<string, unknown> | null {
@@ -398,29 +377,14 @@ function buildRealtimeSessionConfig(voice: string, speed: number, catalog: Catal
     instructions = `${instructions}\n\nORDER HANDLING: This venue reviews orders at close-out. When you submit an order, it is held as an open ticket on the POS for the team to settle later — payment is NOT taken now. After submitting, confirm with phrasing like "Sent to the POS for review" or "Added to the tab for close-out". Never say it was paid, charged, or completed.`;
   }
 
-  const turnDetection = buildTurnDetection(noiseMode);
-
-  return {
-    type: "realtime" as const,
-    model: OPENAI_REALTIME_MODEL,
+  return buildRealtimeSessionPayload({
     instructions,
     tools,
-    tool_choice: "auto" as const,
-    output_modalities: ["audio" as const],
-    reasoning: { effort: OPENAI_REALTIME_REASONING_EFFORT },
-    audio: {
-      input: {
-        format: { type: "audio/pcm" as const, rate: 24000 as const },
-        transcription: { model: "gpt-realtime-whisper" },
-        turn_detection: turnDetection,
-      },
-      output: {
-        format: { type: "audio/pcm" as const, rate: 24000 as const },
-        voice,
-        speed,
-      },
-    },
-  };
+    voice,
+    speed,
+    turnDetection: buildTurnDetection(noiseMode),
+    noiseMode,
+  });
 }
 
 // ── Mock bar demo data ────────────────────────────────────────────────────────
@@ -684,32 +648,18 @@ async function handleDemoSession(req: any, res: any) {
   const isBar = mode === "bar";
   const instructions = isBar ? MOCK_BAR_PERSONA : VOYCELAB_DEMO_INSTRUCTIONS;
   const sessionConfig = isBar
-    ? {
-        type: "realtime" as const,
-        model: OPENAI_REALTIME_MODEL,
+    ? buildRealtimeSessionPayload({
         instructions,
         tools: MOCK_BAR_TOOLS,
-        tool_choice: "auto" as const,
-        output_modalities: ["audio" as const],
-        reasoning: { effort: OPENAI_REALTIME_REASONING_EFFORT },
-        audio: {
-          input: {
-            format: { type: "audio/pcm" as const, rate: 24000 as const },
-            transcription: { model: "gpt-realtime-whisper" },
-            turn_detection: {
-              type: "semantic_vad" as const,
-              eagerness: "auto" as const,
-              create_response: true,
-              interrupt_response: true,
-            },
-          },
-          output: {
-            format: { type: "audio/pcm" as const, rate: 24000 as const },
-            voice: voiceStr,
-            speed: speedNum,
-          },
+        voice: voiceStr,
+        speed: speedNum,
+        turnDetection: {
+          type: "semantic_vad",
+          eagerness: "auto",
+          create_response: true,
+          interrupt_response: true,
         },
-      }
+      })
     : buildDemoRealtimeSessionConfig(voiceStr, speedNum);
 
   try {
