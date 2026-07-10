@@ -266,7 +266,7 @@ export default function App() {
 
   const onWakePermissionDenied = useCallback(() => {
     // Without this the orb sits at "Waking up" forever with no explanation.
-    setMicError("Microphone blocked. Enable it in your browser site settings, then tap the orb.");
+    setMicError("Microphone blocked. Enable it in your browser site settings, then tap the wave.");
     setMode("idle");
   }, []);
 
@@ -472,38 +472,16 @@ export default function App() {
           <Menu size={18} />
         </button>
         <div className="brand-row">
-          <svg width="46" height="26" viewBox="0 0 184 104" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-            <defs>
-              <clipPath id="vl-top-clip">
-                <rect x="0" y="39" width="22" height="54" rx="11"/>
-                <rect x="27" y="25" width="22" height="76" rx="11"/>
-                <rect x="54" y="10" width="22" height="94" rx="11"/>
-                <rect x="81" y="0" width="22" height="104" rx="11"/>
-                <rect x="108" y="18" width="22" height="82" rx="11"/>
-                <rect x="135" y="26" width="22" height="66" rx="11"/>
-                <rect x="162" y="37" width="22" height="53" rx="11"/>
-              </clipPath>
-              <linearGradient id="vl-top-wave" x1="0" y1="0" x2="0" y2="104" gradientUnits="userSpaceOnUse">
-                <stop offset="0%" stopColor="#AD91D8"/>
-                <stop offset="32%" stopColor="#E44B9A"/>
-                <stop offset="62%" stopColor="#FF6245"/>
-                <stop offset="100%" stopColor="#FDBA2E"/>
-              </linearGradient>
-            </defs>
-            <rect x="0" y="39" width="22" height="54" rx="11" fill="url(#vl-top-wave)" opacity="0.72"/>
-            <rect x="27" y="25" width="22" height="76" rx="11" fill="url(#vl-top-wave)"/>
-            <rect x="54" y="10" width="22" height="94" rx="11" fill="url(#vl-top-wave)"/>
-            <rect x="81" y="0" width="22" height="104" rx="11" fill="url(#vl-top-wave)"/>
-            <rect x="108" y="18" width="22" height="82" rx="11" fill="url(#vl-top-wave)"/>
-            <rect x="135" y="26" width="22" height="66" rx="11" fill="url(#vl-top-wave)"/>
-            <rect x="162" y="37" width="22" height="53" rx="11" fill="url(#vl-top-wave)"/>
-            <g clipPath="url(#vl-top-clip)">
-              <ellipse cx="13" cy="61" rx="25" ry="24" fill="#E2C7E8" fillOpacity="0.62"/>
-              <ellipse cx="55" cy="73" rx="63" ry="31" fill="#E52F8E" fillOpacity="0.46"/>
-              <ellipse cx="98" cy="78" rx="45" ry="31" fill="#FF6B37" fillOpacity="0.45"/>
-              <ellipse cx="144" cy="49" rx="18" ry="18" fill="#F2A0C6" fillOpacity="0.58"/>
-              <ellipse cx="166" cy="72" rx="19" ry="22" fill="#FDB62F" fillOpacity="0.76"/>
-            </g>
+          {/* Waveform mark traced from brand/voycelab-logo.png — bar positions and
+              heights match the original asset (solid orange, no gradient). */}
+          <svg width="42" height="26" viewBox="0 0 675 418" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <rect x="0" y="179" width="79" height="141" rx="39.5" fill="#EC5B2C"/>
+            <rect x="100" y="205" width="79" height="213" rx="39.5" fill="#EC5B2C"/>
+            <rect x="199" y="152" width="79" height="168" rx="39.5" fill="#EC5B2C"/>
+            <rect x="299" y="96" width="79" height="272" rx="39.5" fill="#EC5B2C"/>
+            <rect x="398" y="0" width="79" height="418" rx="39.5" fill="#EC5B2C"/>
+            <rect x="497" y="205" width="79" height="115" rx="39.5" fill="#EC5B2C"/>
+            <rect x="596" y="179" width="79" height="141" rx="39.5" fill="#EC5B2C"/>
           </svg>
           <span className="brand-text" style={{ color: "var(--logo-text)" }}>
             Voycelab
@@ -580,8 +558,8 @@ export default function App() {
                 {!sqAuthToken
                   ? "Sign in to connect your venue and start the real-time operations console."
                   : assistantKind === "general"
-                    ? "Tap the orb and speak. I can handle email, look things up, and answer questions. Connect Square in settings to unlock POS commands."
-                    : "Tap the orb and speak to execute orders, adjust inventory levels, or generate reporting summaries."}
+                    ? "Tap the wave and speak. I can handle email, look things up, and answer questions. Connect Square in settings to unlock POS commands."
+                    : "Tap the wave and speak to execute orders, adjust inventory levels, or generate reporting summaries."}
               </p>
               {!sqAuthToken ? (
                 <div className="suggestion-row">

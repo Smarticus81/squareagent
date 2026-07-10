@@ -406,7 +406,7 @@ function screenWakeHint(status: WakeLockStatus, screenWakeSupported: boolean): s
   switch (status) {
     case "unsupported": return "This browser does not support keeping the screen awake.";
     case "blocked": return "The device denied screen lock. Check battery or browser settings.";
-    default: return "Tap the orb to turn the assistant on.";
+    default: return "Tap the wave to turn the assistant on.";
   }
 }
 
