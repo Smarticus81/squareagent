@@ -33,9 +33,13 @@ const SPEED_KEY = "voycelab_speed";
 export function getVoicePrefs(storage: VoicePrefsStorage = localStorage): { voice: string; speed: number } {
   const v = storage.getItem(VOICE_KEY);
   const s = storage.getItem(SPEED_KEY);
+  // A corrupted stored value would parse to NaN, serialize to JSON null in
+  // the session request, and fail the OpenAI session mint with a parameter
+  // error. The server clamps too; this just keeps the client honest.
+  const parsedSpeed = s ? parseFloat(s) : NaN;
   return {
     voice: v && SUPPORTED.has(v as VoiceId) ? v : DEFAULT_VOICE,
-    speed: s ? parseFloat(s) : DEFAULT_SPEED,
+    speed: Number.isFinite(parsedSpeed) ? parsedSpeed : DEFAULT_SPEED,
   };
 }
 
