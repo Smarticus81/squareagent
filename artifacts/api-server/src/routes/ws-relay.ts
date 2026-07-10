@@ -47,7 +47,12 @@ import type { NoiseMode } from "@workspace/voicelab-core/noise";
 import { planAllowsPipeline } from "@workspace/voicelab-core/pricing";
 import type { VoicePipelineProvider } from "@workspace/voicelab-core/voice-pipeline";
 import { isAdminEmail, JWT_SECRET } from "./auth";
-import { OPENAI_REALTIME_MODEL, buildRealtimeSessionPayload } from "../lib/openai-realtime";
+import {
+  OPENAI_REALTIME_MODEL,
+  buildRealtimeSessionPayload,
+  sanitizeRealtimeVoice,
+  sanitizeRealtimeSpeed,
+} from "../lib/openai-realtime";
 
 const SENSITIVE_LOG_KEY_RE = /(token|secret|password|pass|credential|authorization|email|recipient|subject|body|message|text|query|sql|connection|string|address|phone|name)/i;
 const relayLog = createComponentLogger("ws-relay");
@@ -890,14 +895,19 @@ export function attachWebSocketRelay(server: Server): void {
         if (Array.isArray(event.catalog)) catalog = event.catalog as CatalogItem[];
         if (Array.isArray(event.order)) order = event.order as OrderItem[];
 
-        const voice = event.voice ? String(event.voice) : undefined;
-        const speed = typeof event.speed === "number" && Number.isFinite(event.speed) ? event.speed : undefined;
+        const voice = event.voice ? sanitizeRealtimeVoice(event.voice) : undefined;
+        const speed = typeof event.speed === "number" && Number.isFinite(event.speed)
+          ? sanitizeRealtimeSpeed(event.speed)
+          : undefined;
 
         // Send updated instructions to OpenAI
         if (openaiReady) {
           openaiWs.send(JSON.stringify({
             type: "session.update",
             session: {
+              // GA session objects are discriminated on `type`; updates
+              // without it are rejected as invalid.
+              type: "realtime",
               instructions: buildInstructions(ctx, catalog, order, assistantKind),
               ...(voice || speed
                 ? {
@@ -928,6 +938,25 @@ export function attachWebSocketRelay(server: Server): void {
           return;
         }
         pendingConfirmationCallIds.delete(functionOutputCallId);
+      }
+
+      // Client audio frames carry a non-standard `sample_rate` hint because a
+      // browser AudioContext may not honor the requested 24kHz rate. The GA
+      // API rejects unknown parameters ("Unknown parameter: 'sample_rate'"),
+      // so resample to the session's 24kHz PCM here and forward a clean event.
+      if (event.type === "input_audio_buffer.append" && typeof event.audio === "string") {
+        const rawRate = Number(event.sample_rate ?? event.sampleRate ?? 24000);
+        const inputRate = Number.isFinite(rawRate) && rawRate > 0 ? rawRate : 24000;
+        const payload = JSON.stringify({
+          type: "input_audio_buffer.append",
+          audio: resamplePcm16Base64(event.audio, inputRate, 24000),
+        });
+        if (openaiReady) {
+          openaiWs.send(payload);
+        } else {
+          pendingFromClient.push(payload);
+        }
+        return;
       }
 
       // Forward standard Realtime API messages to OpenAI
