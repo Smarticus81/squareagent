@@ -1236,7 +1236,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
         if (standbyRef.current) return; // dc.onclose recycles standby quietly
         debugVoiceLog("[WebRTC] Connection failed mid-session");
         closeTransportRef.current?.();
-        setError("Connection lost. Tap the orb to reconnect.");
+        setError("Connection lost. Tap the wave to reconnect.");
         setAgentState("error");
       };
 

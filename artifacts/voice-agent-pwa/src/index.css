@@ -1075,13 +1075,14 @@ html[data-theme="dark"] .welcome-signin { background: #FFFFFF; color: var(--ink)
   .status-chips {
     flex-wrap: nowrap !important;
     overflow-x: auto !important;
-    width: 100vw !important;
-    padding: 4px 24px !important;
-    margin-left: -24px !important;
-    margin-right: -24px !important;
-    justify-content: flex-start !important;
+    padding: 4px 16px !important;
     scrollbar-width: none !important;
   }
+  /* Auto margins keep the chip group centered when it fits, while still
+     letting the leading chip scroll into view if the row overflows —
+     `justify-content: center` would clip it. */
+  .status-chips > :first-child { margin-left: auto !important; }
+  .status-chips > :last-child { margin-right: auto !important; }
   .status-chips::-webkit-scrollbar {
     display: none !important;
   }
