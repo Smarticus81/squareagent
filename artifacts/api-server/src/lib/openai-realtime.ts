@@ -24,10 +24,10 @@ import type { NoiseMode } from "@workspace/voicelab-core/noise";
 // ── Model selection ────────────────────────────────────────────────────────────
 
 /**
- * gpt-realtime-2.1 — current SOTA speech-to-speech reasoning model
+ * gpt-realtime-2.1 — current production speech-to-speech reasoning model
  * (improved alphanumeric recognition, noise handling, and interruption
- * behavior over gpt-realtime-2, with lower p95 latency). Override with
- * OPENAI_REALTIME_MODEL for older models or the mini tier.
+ * behavior over gpt-realtime-2). Override with OPENAI_REALTIME_MODEL only for
+ * a deliberate compatibility or cost test.
  */
 export const OPENAI_REALTIME_MODEL = process.env.OPENAI_REALTIME_MODEL ?? "gpt-realtime-2.1";
 
@@ -45,14 +45,16 @@ export type RealtimeReasoningEffort = "minimal" | "low" | "medium" | "high" | "x
 const REASONING_EFFORTS: ReadonlySet<string> = new Set(["minimal", "low", "medium", "high", "xhigh"]);
 
 /**
- * Default reasoning.effort is "minimal" for the lowest first-audio latency;
- * bump via OPENAI_REALTIME_REASONING_EFFORT if tool-call quality ever needs
- * the extra thinking time. An unrecognized env value falls back to "minimal"
- * instead of being forwarded to the API.
+ * OpenAI recommends reasoning.effort="low" as the production starting point
+ * for Realtime 2 voice agents. It preserves fast first-audio latency while
+ * giving tool selection, entity capture, and multi-step requests more headroom
+ * than the minimum setting. Override with OPENAI_REALTIME_REASONING_EFFORT when
+ * a measured workload needs a different latency/quality trade-off. An
+ * unrecognized env value falls back to "low" instead of reaching the API.
  */
 export const OPENAI_REALTIME_REASONING_EFFORT: RealtimeReasoningEffort = (() => {
   const raw = process.env.OPENAI_REALTIME_REASONING_EFFORT?.trim().toLowerCase();
-  return raw && REASONING_EFFORTS.has(raw) ? (raw as RealtimeReasoningEffort) : "minimal";
+  return raw && REASONING_EFFORTS.has(raw) ? (raw as RealtimeReasoningEffort) : "low";
 })();
 
 /**
