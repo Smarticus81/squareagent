@@ -1053,14 +1053,22 @@ html[data-theme="dark"] .welcome-signin { background: #FFFFFF; color: var(--ink)
     flex-wrap: nowrap !important;
     overflow-x: auto !important;
     -webkit-overflow-scrolling: touch !important;
+    /* Bleed to the screen edges: the row sits inside centered, padded
+       containers (.convo-area + .welcome), so a fixed -36px margin both
+       overshot the right edge and left-pinned the content. Since the row
+       is viewport-centered, (100% - 100vw) / 2 bleeds each side exactly. */
     width: 100vw !important;
-    padding: 8px 36px 16px !important;
-    margin-left: -36px !important; /* Bleed out to screen edge */
-    margin-right: -36px !important;
+    margin-left: calc((100% - 100vw) / 2) !important;
+    margin-right: calc((100% - 100vw) / 2) !important;
+    padding: 8px 24px 16px !important;
     gap: 10px !important;
-    justify-content: flex-start !important;
     scrollbar-width: none !important;
   }
+  /* Auto margins center the content when it fits (e.g. the lone
+     "Sign in to get started" button) and collapse to 0 when the chip
+     row overflows, leaving it scrollable from the leading edge. */
+  .suggestion-row > :first-child { margin-left: auto !important; }
+  .suggestion-row > :last-child { margin-right: auto !important; }
   .suggestion-row::-webkit-scrollbar {
     display: none !important;
   }
