@@ -86,7 +86,7 @@ app.use(["/api/realtime/session"], rateLimit({
   message: { error: "Rate limit exceeded. Please wait before starting a new session." },
 }));
 
-app.use(["/api/realtime", "/api/realtime/gemini"], rateLimit({
+app.use(["/api/realtime", "/api/realtime/gemini", "/api/realtime/xai"], rateLimit({
   windowMs: 60 * 1000,
   max: Number(process.env.REALTIME_RATE_MAX ?? 240),
   standardHeaders: true,

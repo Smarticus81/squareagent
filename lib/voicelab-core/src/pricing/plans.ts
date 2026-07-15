@@ -97,6 +97,7 @@ const PIPELINES_PAID: VoicePipelineProvider[] = [
   "openai_realtime_server_ws",
   "google_gemini_3_1_flash_live",
   "google_gemini_2_5_flash_native_audio",
+  "xai_grok_realtime_ws",
   ...PIPELINES_FALLBACK,
 ];
 

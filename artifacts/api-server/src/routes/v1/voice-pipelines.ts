@@ -62,6 +62,7 @@ const SAMPLE_VOICE_OPTIONS: Record<string, string[]> = {
   openai_realtime_server_ws: ["ash", "alloy", "ballad", "coral", "sage", "verse"],
   google_gemini_3_1_flash_live: ["Kore", "Aoede", "Puck", "Charon", "Leda", "Fenrir"],
   google_gemini_2_5_flash_native_audio: ["Aoede", "Kore", "Puck", "Zephyr", "Charon", "Leda"],
+  xai_grok_realtime_ws: ["eve", "ara", "leo", "rex", "sal"],
 };
 
 const SAMPLE_DEFAULT_VOICE: Record<string, string> = {
@@ -69,6 +70,7 @@ const SAMPLE_DEFAULT_VOICE: Record<string, string> = {
   openai_realtime_server_ws: "ash",
   google_gemini_3_1_flash_live: "Kore",
   google_gemini_2_5_flash_native_audio: "Aoede",
+  xai_grok_realtime_ws: "eve",
 };
 
 // Provider kind for the sample renderer. Native realtime providers have

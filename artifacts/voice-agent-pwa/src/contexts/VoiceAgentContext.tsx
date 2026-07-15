@@ -195,6 +195,7 @@ const DEFAULT_GREETING_INSTRUCTIONS =
   "The user just summoned you with your wake phrase. Immediately say one short, warm greeting (under eight words), then stop speaking and wait for their request.";
 const GEMINI_PROVIDER_PREFIX = "google_gemini_";
 const OPENAI_SERVER_WS_PROVIDER = "openai_realtime_server_ws";
+const XAI_REALTIME_WS_PROVIDER = "xai_grok_realtime_ws";
 const GEMINI_INPUT_SAMPLE_RATE = 16000;
 const OPENAI_RELAY_INPUT_SAMPLE_RATE = 24000;
 const WS_OUTPUT_SAMPLE_RATE = 24000;
@@ -1168,7 +1169,8 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
     try {
       if (
         voicePipelineProviderRef.current.startsWith(GEMINI_PROVIDER_PREFIX) ||
-        voicePipelineProviderRef.current === OPENAI_SERVER_WS_PROVIDER
+        voicePipelineProviderRef.current === OPENAI_SERVER_WS_PROVIDER ||
+        voicePipelineProviderRef.current === XAI_REALTIME_WS_PROVIDER
       ) {
         if (standby) { standbyRef.current = false; return; }
         await connectRelaySession(voice, speed, baseUrl);
@@ -1400,6 +1402,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
     if (!authTokenRef.current) return;
     // Only the browser-direct OpenAI WebRTC pipeline supports hot standby.
     if (voicePipelineProviderRef.current.startsWith(GEMINI_PROVIDER_PREFIX)) return;
+    if (voicePipelineProviderRef.current === XAI_REALTIME_WS_PROVIDER) return;
     if (isRunning.current || pcRef.current || prewarmingRef.current) return;
     wantStandbyRef.current = true;
     prewarmingRef.current = true;

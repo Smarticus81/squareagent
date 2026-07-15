@@ -1,4 +1,4 @@
-type ApiKeyProvider = "openai" | "gemini";
+type ApiKeyProvider = "openai" | "gemini" | "xai";
 
 interface ApiKeySpec {
   canonicalEnv: string;
@@ -14,9 +14,13 @@ const API_KEY_SPECS: Record<ApiKeyProvider, ApiKeySpec> = {
     canonicalEnv: "GOOGLE_GEMINI_API_KEY",
     aliases: ["GOOGLE_API_KEY"],
   },
+  xai: {
+    canonicalEnv: "XAI_API_KEY",
+    aliases: ["GROK_API_KEY"],
+  },
 };
 
-const PLACEHOLDER_KEY_PATTERN = /\b(?:change-?me|replace-?me|your[_-]?(?:openai|gemini|google)?[_-]?(?:api[_-]?)?key|example|placeholder|todo)\b/i;
+const PLACEHOLDER_KEY_PATTERN = /\b(?:change-?me|replace-?me|your[_-]?(?:openai|gemini|google|xai|grok)?[_-]?(?:api[_-]?)?key|example|placeholder|todo)\b/i;
 
 export interface ServerApiKey {
   provider: ApiKeyProvider;

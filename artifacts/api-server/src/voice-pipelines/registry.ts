@@ -7,6 +7,7 @@ import { VOICE_PIPELINE_PROVIDERS } from "@workspace/voicelab-core/voice-pipelin
 import { OpenAiRealtimeWebRtcAdapter } from "./openai/realtime-webrtc";
 import { OpenAiRealtimeServerWsAdapter } from "./openai/realtime-server-ws";
 import { GoogleGeminiLiveAdapter, GEMINI_LIVE_ADAPTER_SPECS } from "./google/gemini-live";
+import { XaiGrokRealtimeWsAdapter } from "./xai/realtime-server-ws";
 import { BrowserSpeechApiAdapter } from "./fallback/browser-speech-api";
 import { PushToTalkTextAdapter, TextOnlyAdapter } from "./fallback/push-to-talk";
 import { readServerApiKeyPresence } from "../lib/api-keys";
@@ -20,6 +21,7 @@ function register(adapter: VoicePipelineAdapter): void {
 register(new OpenAiRealtimeWebRtcAdapter());
 register(new OpenAiRealtimeServerWsAdapter());
 for (const spec of GEMINI_LIVE_ADAPTER_SPECS) register(new GoogleGeminiLiveAdapter(spec));
+register(new XaiGrokRealtimeWsAdapter());
 register(new BrowserSpeechApiAdapter());
 register(new PushToTalkTextAdapter());
 register(new TextOnlyAdapter());

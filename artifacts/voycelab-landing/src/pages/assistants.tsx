@@ -445,6 +445,7 @@ function useDeleteAssistant() {
 function pipelineLabel(provider: string): string {
   if (provider === "google_gemini_3_1_flash_live") return "Gemini 3.1 Flash Live";
   if (provider === "google_gemini_2_5_flash_native_audio") return "Gemini 2.5 Native Audio";
+  if (provider === "xai_grok_realtime_ws") return "xAI Grok Voice";
   if (provider.includes("gemini")) return "Unsupported Gemini engine";
   if (provider.includes("browser_speech")) return "Browser Speech";
   if (provider.includes("push_to_talk")) return "Push-to-talk";

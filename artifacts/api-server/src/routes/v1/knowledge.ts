@@ -28,7 +28,29 @@ import pg from "pg";
 
 const { Client } = pg;
 
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+const MAX_UPLOAD_MB = 25;
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_UPLOAD_MB * 1024 * 1024 } });
+
+/**
+ * multer.single wrapper that turns size/upload failures into a friendly JSON
+ * response instead of a raw 500. Uploading a large phone photo or scan should
+ * tell the user the limit, not throw a cryptic error.
+ */
+function uploadSingleFile(req: Request, res: Response, next: () => void): void {
+  upload.single("file")(req as never, res as never, (err: unknown) => {
+    if (err) {
+      if (err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE") {
+        res.status(413).json({
+          error: `That file is too large. The maximum upload size is ${MAX_UPLOAD_MB} MB — try a smaller file or compress it before uploading.`,
+        });
+        return;
+      }
+      res.status(400).json({ error: "We couldn't read that file. Please try a different file." });
+      return;
+    }
+    next();
+  });
+}
 
 /** Per-user write limiter: protects upload + DB-config + email-config write paths. */
 const writeLimiter = rateLimit({
@@ -412,7 +434,7 @@ router.post(
   "/documents/upload",
   requireMinRole("manager"),
   uploadLimiter,
-  upload.single("file"),
+  uploadSingleFile,
   async (req: Request, res: Response): Promise<void> => {
     const userId = (req as any).user.id as number;
     const organizationId = await currentOrganizationId(req);

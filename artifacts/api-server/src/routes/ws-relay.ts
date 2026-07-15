@@ -57,7 +57,13 @@ import {
 const SENSITIVE_LOG_KEY_RE = /(token|secret|password|pass|credential|authorization|email|recipient|subject|body|message|text|query|sql|connection|string|address|phone|name)/i;
 const relayLog = createComponentLogger("ws-relay");
 
-type RelayKind = "openai" | "gemini";
+// xAI Grok Voice (Realtime) upstream. xAI's realtime protocol mirrors the
+// OpenAI Realtime event model, so the relay reuses the same tool-call and
+// context handling and only normalizes xAI's GA event names for the client.
+const XAI_REALTIME_MODEL = process.env.XAI_REALTIME_MODEL ?? "grok-voice-latest";
+const XAI_REALTIME_REASONING_EFFORT = process.env.XAI_REALTIME_REASONING_EFFORT ?? "none";
+
+type RelayKind = "openai" | "gemini" | "xai";
 
 type RelayScope =
   | {
@@ -449,6 +455,10 @@ async function validateRelayScope(
         default:
           return { ok: false, status: 400 };
       }
+    } else if (kind === "xai") {
+      if (profile.voicePipelineProvider !== "xai_grok_realtime_ws") {
+        return { ok: false, status: 400 };
+      }
     } else if (
       profile.voicePipelineProvider !== "openai_realtime_server_ws" &&
       profile.voicePipelineProvider !== "openai_realtime_webrtc"
@@ -469,7 +479,7 @@ async function validateRelayScope(
       if (!connection) return { ok: false, status: 403 };
       if (connection.provider !== "square") usesSquareService = false;
     }
-  } else if (kind === "gemini") {
+  } else if (kind === "gemini" || kind === "xai") {
     return { ok: false, status: 400 };
   }
 
@@ -572,6 +582,7 @@ export function attachWebSocketRelay(server: Server): void {
     switch (url.pathname) {
       case "/api/realtime": kind = "openai"; break;
       case "/api/realtime/gemini": kind = "gemini"; break;
+      case "/api/realtime/xai": kind = "xai"; break;
       default:
         socket.destroy();
         return;
@@ -710,6 +721,10 @@ export function attachWebSocketRelay(server: Server): void {
   wss.on("connection", (clientWs: WebSocket, _req: IncomingMessage, ctx: RelayCtx) => {
     if (ctx.kind === "gemini") {
       handleGeminiRelay(clientWs, ctx);
+      return;
+    }
+    if (ctx.kind === "xai") {
+      handleXaiRelay(clientWs, ctx);
       return;
     }
     const apiKey = readServerApiKey("openai")?.value ?? "";
@@ -1003,7 +1018,7 @@ export function attachWebSocketRelay(server: Server): void {
     });
   });
 
-  relayLog.info({ paths: ["/api/realtime", "/api/realtime/gemini"] }, "websocket relay attached");
+  relayLog.info({ paths: ["/api/realtime", "/api/realtime/gemini", "/api/realtime/xai"] }, "websocket relay attached");
 }
 
 // -- Gemini Live relay (BidiGenerateContent over WebSocket) ---
@@ -1317,5 +1332,277 @@ export function handleGeminiRelay(clientWs: WebSocket, ctx: RelayCtx): void {
   clientWs.on("error", (err) => {
     relayLog.error({ scope: "gemini", userId: ctx.userId, modelId, err: err.message }, "client websocket error");
     if (upstream.readyState === WebSocket.OPEN) upstream.close();
+  });
+}
+
+// -- xAI Grok Voice relay (OpenAI-compatible Realtime over WebSocket) ---
+//
+// xAI's realtime API mirrors the OpenAI Realtime event model, so this relay
+// reuses the same server-side tool execution, confirmation gating, and context
+// handling as the OpenAI path. The only provider-specific pieces are the
+// upstream URL/auth, the classic-shape session.update, and normalizing xAI's
+// GA event names (response.output_audio.delta, etc.) back to the classic names
+// the PWA already understands.
+
+/** Map xAI GA server event names to the classic Realtime names the PWA handles. */
+function normalizeXaiServerEvent(event: Record<string, unknown>): Record<string, unknown> {
+  switch (event.type) {
+    case "response.output_audio.delta":
+      return { ...event, type: "response.audio.delta" };
+    case "response.output_audio_transcript.delta":
+      return { ...event, type: "response.audio_transcript.delta" };
+    case "response.output_audio_transcript.done":
+      return { ...event, type: "response.audio_transcript.done" };
+    case "response.output_text.delta":
+      return { ...event, type: "response.text.delta" };
+    default:
+      return event;
+  }
+}
+
+export function handleXaiRelay(clientWs: WebSocket, ctx: RelayCtx): void {
+  const apiKey = readServerApiKey("xai")?.value ?? "";
+  if (!apiKey) {
+    clientWs.send(JSON.stringify({ type: "error", error: { message: `${requiredApiKeyEnv("xai")} not configured` } }));
+    clientWs.close();
+    return;
+  }
+
+  const connectionStartMs = Date.now();
+  let catalog: CatalogItem[] = [];
+  let order: OrderItem[] = [];
+  const session: LiveSession = { items: [] };
+  const sessionSquareToken = ctx.squareToken;
+  const sessionLocationId = ctx.squareLocationId;
+  const assistantKind: "venue" | "general" = sessionSquareToken ? "venue" : "general";
+  const relayTools = buildRelayTools(ctx.plan, assistantKind, ctx.allowedToolNames, ctx.includeGeneralTools);
+
+  relayLog.info(
+    {
+      scope: "xai",
+      userId: ctx.userId,
+      organizationId: ctx.organizationId,
+      venueId: ctx.venueId,
+      agentProfileId: ctx.agentProfileId,
+      provider: ctx.voicePipelineProvider ?? "xai_grok_realtime_ws",
+      activeTools: relayTools.length,
+      totalTools: toolCount(),
+    },
+    "relay connected",
+  );
+
+  const upstreamUrl = (() => {
+    const params = new URLSearchParams({ model: XAI_REALTIME_MODEL });
+    params.set("reasoning.effort", XAI_REALTIME_REASONING_EFFORT);
+    return `wss://api.x.ai/v1/realtime?${params.toString()}`;
+  })();
+  const xaiWs = new WebSocket(upstreamUrl, {
+    headers: { Authorization: `Bearer ${apiKey}` },
+  });
+
+  let xaiReady = false;
+  let pendingFromClient: string[] = [];
+  const pendingConfirmationCallIds = new Set<string>();
+
+  function buildXaiSessionUpdate(voice: string): Record<string, unknown> {
+    return {
+      type: "session.update",
+      session: {
+        instructions: buildInstructions(ctx, catalog, order, assistantKind),
+        voice: voice || "eve",
+        modalities: ["audio", "text"],
+        input_audio_format: "pcm16",
+        output_audio_format: "pcm16",
+        input_audio_transcription: { model: "grok-transcribe" },
+        turn_detection: {
+          type: "server_vad",
+          threshold: 0.5,
+          prefix_padding_ms: 300,
+          silence_duration_ms: 500,
+          create_response: true,
+          interrupt_response: true,
+        },
+        tools: relayTools,
+        tool_choice: "auto",
+      },
+    };
+  }
+
+  xaiWs.on("open", () => {
+    relayLog.info({ scope: "xai", userId: ctx.userId }, "upstream connected");
+    xaiReady = true;
+    xaiWs.send(JSON.stringify(buildXaiSessionUpdate(ctx.query.voice || "eve")));
+    for (const msg of pendingFromClient) xaiWs.send(msg);
+    pendingFromClient = [];
+  });
+
+  xaiWs.on("message", async (data) => {
+    const raw = data.toString();
+    let event: Record<string, unknown>;
+    try { event = JSON.parse(raw); } catch { clientWs.send(raw); return; }
+
+    if (event.type === "response.function_call_arguments.done") {
+      const toolName = String(event.name ?? "");
+      let args: Record<string, unknown> = {};
+      try { args = JSON.parse(String(event.arguments ?? "{}")); } catch {}
+      const callId = String(event.call_id ?? "");
+
+      logToolCall("xai", ctx, toolName, args);
+
+      try {
+        if (!isRelayToolAllowed(toolName, relayTools)) {
+          throw new Error(`Command not allowed in this assistant: ${toolName}`);
+        }
+        const { result, command } = await executeToolCall(
+          toolName, args,
+          {
+            catalog,
+            order,
+            squareToken: sessionSquareToken,
+            squareLocationId: sessionLocationId,
+            session,
+            requestId: callId || undefined,
+            userId: ctx.userId,
+            userRole: ctx.userRole,
+            organizationId: ctx.organizationId,
+            venueId: ctx.venueId ?? undefined,
+            assistantKind,
+            noiseMode: ctx.noiseMode,
+          },
+        );
+        const pendingConfirmation = parsePendingConfirmation(result);
+        if (pendingConfirmation && clientWs.readyState === WebSocket.OPEN) {
+          if (callId) pendingConfirmationCallIds.add(callId);
+          clientWs.send(JSON.stringify({
+            type: "x.pending_confirmation",
+            confirmation: pendingConfirmation,
+            call_id: callId,
+          }));
+          return;
+        }
+
+        xaiWs.send(JSON.stringify({
+          type: "conversation.item.create",
+          item: { type: "function_call_output", call_id: callId, output: result },
+        }));
+        xaiWs.send(JSON.stringify({ type: "response.create" }));
+
+        if (command) {
+          clientWs.send(JSON.stringify({ type: "x.order_command", command }));
+        }
+      } catch (e: any) {
+        relayLog.error({ scope: "xai", userId: ctx.userId, toolName, err: e.message }, "relay tool error");
+        xaiWs.send(JSON.stringify({
+          type: "conversation.item.create",
+          item: { type: "function_call_output", call_id: callId, output: `Error: ${e.message}` },
+        }));
+        xaiWs.send(JSON.stringify({ type: "response.create" }));
+      }
+      return;
+    }
+
+    // Forward all other events to the client, normalizing xAI's GA event names.
+    if (clientWs.readyState === WebSocket.OPEN) {
+      clientWs.send(JSON.stringify(normalizeXaiServerEvent(event)));
+    }
+  });
+
+  xaiWs.on("error", (err) => {
+    relayLog.error({ scope: "xai", userId: ctx.userId, err: err.message }, "upstream websocket error");
+    clientWs.send(JSON.stringify({ type: "error", error: { message: "Voice service connection failed" } }));
+    clientWs.close();
+  });
+
+  xaiWs.on("close", () => {
+    relayLog.info({ scope: "xai", userId: ctx.userId }, "upstream websocket closed");
+    if (clientWs.readyState === WebSocket.OPEN) clientWs.close();
+  });
+
+  clientWs.on("message", (data) => {
+    const raw = data.toString();
+    let event: Record<string, unknown>;
+    try { event = JSON.parse(raw); } catch { return; }
+
+    if (event.type === "x.context_update") {
+      if (Array.isArray(event.catalog)) catalog = event.catalog as CatalogItem[];
+      if (Array.isArray(event.order)) order = event.order as OrderItem[];
+      const voice = event.voice ? String(event.voice) : undefined;
+      if (xaiReady) {
+        xaiWs.send(JSON.stringify({
+          type: "session.update",
+          session: {
+            instructions: buildInstructions(ctx, catalog, order, assistantKind),
+            ...(voice ? { voice } : {}),
+          },
+        }));
+      }
+      return;
+    }
+
+    if (isOpenAiFunctionOutputEvent(event)) {
+      const functionOutputCallId = getOpenAiFunctionOutputCallId(event);
+      if (
+        !functionOutputCallId ||
+        !canForwardConfirmedToolOutput([functionOutputCallId], pendingConfirmationCallIds)
+      ) {
+        relayLog.warn(
+          { scope: "xai", userId: ctx.userId, callId: functionOutputCallId ?? null },
+          "blocked untrusted client tool output",
+        );
+        return;
+      }
+      pendingConfirmationCallIds.delete(functionOutputCallId);
+    }
+
+    // Client audio frames carry a non-standard `sample_rate` hint; resample to
+    // the session's 24kHz PCM and forward a clean event.
+    if (event.type === "input_audio_buffer.append" && typeof event.audio === "string") {
+      const rawRate = Number(event.sample_rate ?? event.sampleRate ?? 24000);
+      const inputRate = Number.isFinite(rawRate) && rawRate > 0 ? rawRate : 24000;
+      const payload = JSON.stringify({
+        type: "input_audio_buffer.append",
+        audio: resamplePcm16Base64(event.audio, inputRate, 24000),
+      });
+      if (xaiReady) xaiWs.send(payload);
+      else pendingFromClient.push(payload);
+      return;
+    }
+
+    if (xaiReady) xaiWs.send(raw);
+    else pendingFromClient.push(raw);
+  });
+
+  clientWs.on("close", () => {
+    relayLog.info({ scope: "xai", userId: ctx.userId }, "client disconnected");
+    if (session.squareOrderId) {
+      cancelLiveOrder(session, sessionSquareToken, sessionLocationId).catch(() => {});
+    }
+    if (xaiWs.readyState === WebSocket.OPEN || xaiWs.readyState === WebSocket.CONNECTING) {
+      xaiWs.close();
+    }
+
+    const durationMs = Date.now() - connectionStartMs;
+    if (durationMs >= 1000) {
+      db.insert(usageEventsTable).values({
+        kind: "voice_minutes",
+        userId: ctx.userId,
+        organizationId: ctx.organizationId,
+        agentProfileId: ctx.agentProfileId,
+        quantity: Math.ceil(durationMs / 60000),
+        occurredAt: new Date(),
+        metadata: {
+          durationMs,
+          provider: ctx.voicePipelineProvider ?? "xai_grok_realtime_ws",
+          venueId: ctx.venueId || null,
+        },
+      }).catch((err: any) => {
+        relayLog.error({ err: err.message }, "failed to write usage event for closed xai relay session");
+      });
+    }
+  });
+
+  clientWs.on("error", (err) => {
+    relayLog.error({ scope: "xai", userId: ctx.userId, err: err.message }, "client websocket error");
+    if (xaiWs.readyState === WebSocket.OPEN) xaiWs.close();
   });
 }

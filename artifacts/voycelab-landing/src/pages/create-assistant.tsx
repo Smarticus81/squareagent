@@ -33,6 +33,14 @@ const GEMINI_VOICES = [
   { id: "Fenrir", label: "Fenrir", gender: "male" },
 ] as const;
 
+const XAI_VOICES = [
+  { id: "eve", label: "Eve", gender: "female" },
+  { id: "ara", label: "Ara", gender: "female" },
+  { id: "leo", label: "Leo", gender: "male" },
+  { id: "rex", label: "Rex", gender: "male" },
+  { id: "sal", label: "Sal", gender: "neutral" },
+] as const;
+
 type VoiceEngineId = string;
 
 interface VoiceEngine {
@@ -101,6 +109,12 @@ const FALLBACK_VOICE_ENGINES: VoiceEngine[] = [
     description: "Stable native audio over the low-latency relay.",
     defaultVoice: "Aoede",
   },
+  {
+    id: "xai_grok_realtime_ws",
+    label: "xAI Grok Voice",
+    description: "xAI's premium Grok realtime voice with expressive native audio.",
+    defaultVoice: "eve",
+  },
 ] as const;
 
 const SAMPLE_LINE = "Hey, ready when you are. Two ranch waters and a Bud heavy?";
@@ -111,6 +125,7 @@ function defaultVoiceForPipeline(provider: string, sampleVoices?: string[]): str
   }
   if (provider === "google_gemini_3_1_flash_live") return sampleVoices?.[0] ?? "Kore";
   if (provider.startsWith("google_gemini_")) return sampleVoices?.[0] ?? "Aoede";
+  if (provider === "xai_grok_realtime_ws") return sampleVoices?.[0] ?? "eve";
   return sampleVoices?.[0] ?? "verse";
 }
 
@@ -118,12 +133,17 @@ function isSelectableVoicePipeline(provider: string): boolean {
   return (
     provider === "openai_realtime_webrtc" ||
     provider === "openai_realtime_server_ws" ||
+    provider === "xai_grok_realtime_ws" ||
     provider.startsWith("google_gemini_")
   );
 }
 
 function voiceOptionsForEngine(engine: VoiceEngine | undefined) {
-  const fallback = engine?.id.startsWith("google_gemini_") ? GEMINI_VOICES : VOICES;
+  const fallback = engine?.id.startsWith("google_gemini_")
+    ? GEMINI_VOICES
+    : engine?.id === "xai_grok_realtime_ws"
+      ? XAI_VOICES
+      : VOICES;
   const sampleVoices = engine?.sampleVoices?.length ? engine.sampleVoices : null;
   if (!sampleVoices) return fallback;
   return sampleVoices.map((voiceId) => {
@@ -207,7 +227,8 @@ export default function CreateAssistant() {
           profile.voicePipelineProvider === "openai_realtime_webrtc" ||
           profile.voicePipelineProvider === "openai_realtime_server_ws" ||
           profile.voicePipelineProvider === "google_gemini_3_1_flash_live" ||
-          profile.voicePipelineProvider === "google_gemini_2_5_flash_native_audio"
+          profile.voicePipelineProvider === "google_gemini_2_5_flash_native_audio" ||
+          profile.voicePipelineProvider === "xai_grok_realtime_ws"
         ) {
           setVoicePipelineProvider(profile.voicePipelineProvider);
         }

@@ -71,6 +71,17 @@ export const VOICE_PIPELINE_PROVIDERS: Record<
     notes:
       "Model gemini-2.5-flash-native-audio-preview-12-2025. Recommended when proactive listening and affective dialogue matter more than the absolute newest preview.",
   },
+  xai_grok_realtime_ws: {
+    provider: "xai_grok_realtime_ws",
+    category: "native_realtime_speech_to_speech",
+    displayName: "xAI Grok Voice (Realtime)",
+    shortDescription:
+      "xAI's premium Grok realtime speech-to-speech over a server WebSocket relay. Expressive native audio, server VAD barge-in, and realtime tool calling.",
+    recommendedFor: ["best_voice_quality", "best_turn_taking", "enterprise_observability"],
+    requiredCredentials: ["XAI_API_KEY"],
+    notes:
+      "Model grok-voice-latest via wss://api.x.ai/v1/realtime. Server-controlled relay, 24kHz PCM in/out, native barge-in. Set XAI_API_KEY to enable.",
+  },
   // -- Fallbacks ---
   browser_speech_api_fallback: {
     provider: "browser_speech_api_fallback",

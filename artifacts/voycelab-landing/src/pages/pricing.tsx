@@ -399,7 +399,7 @@ export default function Pricing() {
             <Tile
               kicker="No surprises"
               title="Switch engines without re-pricing"
-              body="OpenAI Realtime, Gemini 3.1 Flash Live, Gemini 2.5 Native Audio — same minute, same price to you. We absorb provider differences so you can pick the best voice for the room without watching cost."
+              body="OpenAI Realtime, Gemini 3.1 Flash Live, Gemini 2.5 Native Audio, and xAI Grok Voice — same minute, same price to you. We absorb provider differences so you can pick the best voice for the room without watching cost."
             />
           </div>
         </section>

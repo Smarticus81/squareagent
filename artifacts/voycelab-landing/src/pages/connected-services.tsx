@@ -797,6 +797,14 @@ function KnowledgeSection() {
   };
 
   const submitFile = async (file: File) => {
+    const maxMb = 25;
+    if (file.size > maxMb * 1024 * 1024) {
+      setMsg({
+        tone: "error",
+        text: `"${file.name}" is ${(file.size / (1024 * 1024)).toFixed(1)} MB. The maximum upload size is ${maxMb} MB — try a smaller file or compress it.`,
+      });
+      return;
+    }
     setBusy(true);
     setMsg(null);
     try {
@@ -866,7 +874,7 @@ function KnowledgeSection() {
         <label className="flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-black/12 bg-white/56 p-6 transition hover:border-black/25 hover:bg-white/76">
           <Upload className="w-6 h-6 mb-2" style={{ color: "var(--color-vl-accent)" }} />
           <div className="text-sm" style={{ color: "var(--color-vl-ink)" }}>Upload a file</div>
-          <div className="text-xs mt-1" style={{ color: "rgba(10,10,11,0.52)" }}>PDF, DOCX, TXT, MD, HTML - up to 10 MB</div>
+          <div className="text-xs mt-1" style={{ color: "rgba(10,10,11,0.52)" }}>PDF, DOCX, TXT, MD, HTML - up to 25 MB</div>
           <input
             type="file"
             accept=".pdf,.docx,.txt,.md,.markdown,.html,.htm,.csv,.json,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/html,text/markdown"
