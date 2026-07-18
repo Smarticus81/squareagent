@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from "express";
+import WebSocket from "ws";
 import { v1 } from "@workspace/api-zod";
 import {
   getAllPipelineAvailability,
@@ -74,12 +75,14 @@ const SAMPLE_DEFAULT_VOICE: Record<string, string> = {
 };
 
 // Provider kind for the sample renderer. Native realtime providers have
-// their own TTS endpoints (openai/gemini).
-const SAMPLE_PROVIDER_KIND: Record<string, "openai" | "gemini"> = {
+// their own TTS endpoints (openai/gemini) or a realtime session that can
+// speak the line directly (xai).
+const SAMPLE_PROVIDER_KIND: Record<string, "openai" | "gemini" | "xai"> = {
   openai_realtime_webrtc: "openai",
   openai_realtime_server_ws: "openai",
   google_gemini_3_1_flash_live: "gemini",
   google_gemini_2_5_flash_native_audio: "gemini",
+  xai_grok_realtime_ws: "xai",
 };
 
 // Voice label -> OpenAI voice fallback for synthesis (currently unused
@@ -254,6 +257,108 @@ async function synthesizeGeminiSample(voice: string, text: string): Promise<{ by
   }
 }
 
+// xAI has no standalone TTS endpoint; Grok voices only exist inside the
+// realtime API. Render the sample by opening a short-lived realtime session
+// (same upstream the live relay uses), asking the model to speak the line
+// verbatim, and collecting the PCM16 audio deltas into a WAV.
+const XAI_REALTIME_MODEL = process.env.XAI_REALTIME_MODEL ?? "grok-voice-latest";
+const XAI_SAMPLE_RATE = 24000;
+
+async function synthesizeXaiSample(voice: string, text: string): Promise<{ bytes: Buffer; contentType: string }> {
+  const apiKey = readServerApiKey("xai")?.value;
+  if (!apiKey) {
+    throw new Error(
+      `${requiredApiKeyEnv("xai")} is not configured on the server, so Grok voice previews cannot be synthesized. Set ${requiredApiKeyEnv("xai")} to enable them.`,
+    );
+  }
+  const params = new URLSearchParams({ model: XAI_REALTIME_MODEL });
+  params.set("reasoning.effort", process.env.XAI_REALTIME_REASONING_EFFORT ?? "none");
+  const upstreamUrl = `wss://api.x.ai/v1/realtime?${params.toString()}`;
+
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket(upstreamUrl, { headers: { Authorization: `Bearer ${apiKey}` } });
+    const chunks: Buffer[] = [];
+    let settled = false;
+
+    const timeout = setTimeout(() => {
+      fail(new Error("xAI voice sample timed out"));
+    }, 25000);
+
+    function finish(result: { bytes: Buffer; contentType: string }) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      try { ws.close(); } catch { /* already closed */ }
+      resolve(result);
+    }
+
+    function fail(err: Error) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      try { ws.close(); } catch { /* already closed */ }
+      reject(err);
+    }
+
+    ws.on("open", () => {
+      ws.send(JSON.stringify({
+        type: "session.update",
+        session: {
+          instructions: "You are a voice assistant recording a short voice sample.",
+          voice,
+          modalities: ["audio", "text"],
+          output_audio_format: "pcm16",
+          turn_detection: null,
+        },
+      }));
+      ws.send(JSON.stringify({
+        type: "response.create",
+        response: {
+          modalities: ["audio", "text"],
+          instructions: `Say exactly this, warmly and naturally, with nothing added before or after: "${text}"`,
+        },
+      }));
+    });
+
+    ws.on("message", (data) => {
+      let event: Record<string, unknown>;
+      try { event = JSON.parse(data.toString()); } catch { return; }
+      const type = String(event.type ?? "");
+      // xAI's GA event name is response.output_audio.delta; accept the classic
+      // OpenAI name too since the protocol mirrors it.
+      if ((type === "response.output_audio.delta" || type === "response.audio.delta") && typeof event.delta === "string") {
+        chunks.push(Buffer.from(event.delta, "base64"));
+        return;
+      }
+      if (type === "response.done") {
+        const pcm = Buffer.concat(chunks);
+        if (pcm.length === 0) {
+          fail(new Error("xAI realtime session returned no audio"));
+          return;
+        }
+        finish({ bytes: pcm16ToWav(pcm, XAI_SAMPLE_RATE, 1), contentType: "audio/wav" });
+        return;
+      }
+      if (type === "error") {
+        const err = event.error as { message?: string } | undefined;
+        fail(new Error(`xAI realtime error: ${err?.message ?? "unknown"}`));
+      }
+    });
+
+    ws.on("error", (err) => fail(new Error(`xAI realtime connection failed: ${err.message}`)));
+    ws.on("close", () => {
+      if (!settled) {
+        const pcm = Buffer.concat(chunks);
+        if (pcm.length > 0) {
+          finish({ bytes: pcm16ToWav(pcm, XAI_SAMPLE_RATE, 1), contentType: "audio/wav" });
+        } else {
+          fail(new Error("xAI realtime session closed before returning audio"));
+        }
+      }
+    });
+  });
+}
+
 router.get("/:provider/sample", async (req: Request, res: Response) => {
   if (!sampleRateLimitOk(req)) {
     res.status(429).json({
@@ -300,7 +405,9 @@ router.get("/:provider/sample", async (req: Request, res: Response) => {
     const isNativeOpenAi = provider === "openai_realtime_webrtc" || provider === "openai_realtime_server_ws";
     const isNativeGemini = provider.startsWith("google_gemini_");
     const synth =
-      kind === "openai" && !isNativeOpenAi
+      kind === "xai"
+        ? await synthesizeXaiSample(voice, SAMPLE_LINE)
+        : kind === "openai" && !isNativeOpenAi
         ? await synthesizeOpenAISample(PREVIEW_VOICE_FALLBACK[voice] ?? "alloy", SAMPLE_LINE)
         : kind === "openai"
         ? await synthesizeOpenAISample(voice, SAMPLE_LINE)
@@ -345,7 +452,8 @@ router.get("/:provider/sample", async (req: Request, res: Response) => {
       "voice sample synthesis failed",
     );
     const message =
-      e instanceof Error && /access to Gemini audio previews/i.test(e.message)
+      e instanceof Error &&
+      (/access to Gemini audio previews/i.test(e.message) || /XAI_API_KEY/.test(e.message))
         ? e.message
         : "Voice preview could not be generated right now. The assistant can still use the selected voice when the provider is configured.";
     res.status(502).json({ error: { code: "sample_failed", message } });
