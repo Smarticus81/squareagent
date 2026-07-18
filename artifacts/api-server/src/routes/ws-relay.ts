@@ -1344,6 +1344,25 @@ export function handleGeminiRelay(clientWs: WebSocket, ctx: RelayCtx): void {
 // GA event names (response.output_audio.delta, etc.) back to the classic names
 // the PWA already understands.
 
+/**
+ * Translate an xAI handshake rejection into a message the venue operator can
+ * act on. Shown in the PWA error banner, so no internals beyond the status.
+ */
+function xaiHandshakeErrorMessage(statusCode: number | undefined): string {
+  switch (statusCode) {
+    case 401:
+      return "xAI rejected the server's API key (401). Update XAI_API_KEY on the server and redeploy.";
+    case 403:
+      return "xAI declined the connection (403). Check that the xAI account has voice access and credits.";
+    case 404:
+      return `xAI voice model not found (404). Check XAI_REALTIME_MODEL (currently "${XAI_REALTIME_MODEL}").`;
+    case 429:
+      return "xAI rate or credit limit reached (429). Wait a moment and try again.";
+    default:
+      return `xAI rejected the voice connection${statusCode ? ` (${statusCode})` : ""}. Please try again.`;
+  }
+}
+
 /** Map xAI GA server event names to the classic Realtime names the PWA handles. */
 function normalizeXaiServerEvent(event: Record<string, unknown>): Record<string, unknown> {
   switch (event.type) {
@@ -1508,10 +1527,37 @@ export function handleXaiRelay(clientWs: WebSocket, ctx: RelayCtx): void {
     }
   });
 
+  // A non-101 handshake response (401 bad key, 403 no access/credits, 404 bad
+  // model) is the most common production failure. With this listener attached,
+  // ws suppresses the generic "Unexpected server response" error, so the
+  // status code and response body can be logged and a specific, actionable
+  // message forwarded to the PWA instead of "connection failed".
+  xaiWs.on("unexpected-response", (_req, res) => {
+    let body = "";
+    res.on("data", (chunk) => {
+      if (body.length < 2048) body += String(chunk);
+    });
+    res.on("end", () => {
+      relayLog.error(
+        { scope: "xai", userId: ctx.userId, statusCode: res.statusCode, body: body.slice(0, 512) },
+        "upstream handshake rejected",
+      );
+      if (clientWs.readyState === WebSocket.OPEN) {
+        const message = xaiHandshakeErrorMessage(res.statusCode);
+        clientWs.send(JSON.stringify({ type: "error", error: { message } }));
+        clientWs.close(1011, message);
+      }
+      // With this listener attached ws leaves the request open — tear it down.
+      _req.destroy();
+    });
+    res.resume();
+  });
+
   xaiWs.on("error", (err) => {
     relayLog.error({ scope: "xai", userId: ctx.userId, err: err.message }, "upstream websocket error");
     if (clientWs.readyState === WebSocket.OPEN) {
-      clientWs.send(JSON.stringify({ type: "error", error: { message: "Voice service connection failed" } }));
+      const message = `Voice service connection failed (${err.message})`;
+      clientWs.send(JSON.stringify({ type: "error", error: { message } }));
       clientWs.close(1011, "Voice service connection failed");
     }
   });
