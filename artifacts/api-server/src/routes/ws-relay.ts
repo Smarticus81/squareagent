@@ -1346,10 +1346,17 @@ export function handleGeminiRelay(clientWs: WebSocket, ctx: RelayCtx): void {
 
 /**
  * Translate an xAI handshake rejection into a message the venue operator can
- * act on. Shown in the PWA error banner, so no internals beyond the status.
+ * act on. Shown in the PWA error banner. For a 400 the status alone can't say
+ * which request parameter xAI objected to, so a sanitized excerpt of the
+ * provider's error body is included — it contains only our own request's
+ * validation failure, never credentials.
  */
-function xaiHandshakeErrorMessage(statusCode: number | undefined): string {
+function xaiHandshakeErrorMessage(statusCode: number | undefined, body: string): string {
   switch (statusCode) {
+    case 400: {
+      const excerpt = body.replace(/[^\x20-\x7E]+/g, " ").trim().slice(0, 200);
+      return `xAI rejected the voice connection (400)${excerpt ? `: ${excerpt}` : ""}`;
+    }
     case 401:
       return "xAI rejected the server's API key (401). Update XAI_API_KEY on the server and redeploy.";
     case 403:
@@ -1544,7 +1551,7 @@ export function handleXaiRelay(clientWs: WebSocket, ctx: RelayCtx): void {
         "upstream handshake rejected",
       );
       if (clientWs.readyState === WebSocket.OPEN) {
-        const message = xaiHandshakeErrorMessage(res.statusCode);
+        const message = xaiHandshakeErrorMessage(res.statusCode, body);
         clientWs.send(JSON.stringify({ type: "error", error: { message } }));
         clientWs.close(1011, message);
       }
