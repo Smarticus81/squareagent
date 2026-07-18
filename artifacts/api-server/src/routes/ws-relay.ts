@@ -1411,11 +1411,9 @@ export function handleXaiRelay(clientWs: WebSocket, ctx: RelayCtx): void {
     "relay connected",
   );
 
-  const upstreamUrl = (() => {
-    const params = new URLSearchParams({ model: XAI_REALTIME_MODEL });
-    params.set("reasoning.effort", XAI_REALTIME_REASONING_EFFORT);
-    return `wss://api.x.ai/v1/realtime?${params.toString()}`;
-  })();
+  // Only `model` is a valid query parameter — xAI 400s the handshake on any
+  // other. Reasoning effort is configured via session.update after connect.
+  const upstreamUrl = `wss://api.x.ai/v1/realtime?${new URLSearchParams({ model: XAI_REALTIME_MODEL }).toString()}`;
   const xaiWs = new WebSocket(upstreamUrl, {
     headers: { Authorization: `Bearer ${apiKey}` },
   });
@@ -1434,6 +1432,9 @@ export function handleXaiRelay(clientWs: WebSocket, ctx: RelayCtx): void {
         input_audio_format: "pcm16",
         output_audio_format: "pcm16",
         input_audio_transcription: { model: "grok-transcribe" },
+        // Disabled by default for the fastest first-audio latency; "high" is
+        // xAI's other supported value (XAI_REALTIME_REASONING_EFFORT override).
+        reasoning: { effort: XAI_REALTIME_REASONING_EFFORT },
         turn_detection: {
           type: "server_vad",
           threshold: 0.5,
