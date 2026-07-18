@@ -1363,8 +1363,9 @@ function normalizeXaiServerEvent(event: Record<string, unknown>): Record<string,
 export function handleXaiRelay(clientWs: WebSocket, ctx: RelayCtx): void {
   const apiKey = readServerApiKey("xai")?.value ?? "";
   if (!apiKey) {
-    clientWs.send(JSON.stringify({ type: "error", error: { message: `${requiredApiKeyEnv("xai")} not configured` } }));
-    clientWs.close();
+    const message = `${requiredApiKeyEnv("xai")} not configured`;
+    clientWs.send(JSON.stringify({ type: "error", error: { message } }));
+    clientWs.close(1011, message);
     return;
   }
 
@@ -1509,13 +1510,26 @@ export function handleXaiRelay(clientWs: WebSocket, ctx: RelayCtx): void {
 
   xaiWs.on("error", (err) => {
     relayLog.error({ scope: "xai", userId: ctx.userId, err: err.message }, "upstream websocket error");
-    clientWs.send(JSON.stringify({ type: "error", error: { message: "Voice service connection failed" } }));
-    clientWs.close();
+    if (clientWs.readyState === WebSocket.OPEN) {
+      clientWs.send(JSON.stringify({ type: "error", error: { message: "Voice service connection failed" } }));
+      clientWs.close(1011, "Voice service connection failed");
+    }
   });
 
-  xaiWs.on("close", () => {
-    relayLog.info({ scope: "xai", userId: ctx.userId }, "upstream websocket closed");
-    if (clientWs.readyState === WebSocket.OPEN) clientWs.close();
+  xaiWs.on("close", (code, reason) => {
+    const providerReason = reason.toString();
+    relayLog.info(
+      { scope: "xai", userId: ctx.userId, code, reason: providerReason.slice(0, 256) },
+      "upstream websocket closed",
+    );
+    if (clientWs.readyState === WebSocket.OPEN) {
+      const clientMessage = xaiReady
+        ? "Voice service session ended. Please reconnect."
+        : "Voice service rejected the connection. Please try again.";
+      const clientCloseCode = code >= 1000 && code < 5000 && code !== 1005 && code !== 1006 ? code : 1011;
+      clientWs.send(JSON.stringify({ type: "error", error: { message: clientMessage } }));
+      clientWs.close(clientCloseCode, clientMessage);
+    }
   });
 
   clientWs.on("message", (data) => {
