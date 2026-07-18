@@ -1085,14 +1085,41 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
     wsRef.current = ws;
     setAgentState("connecting");
 
+    // The relay reports fatal setup failures (provider key missing, upstream
+    // provider rejected the connection) as a single {type:"error"} frame
+    // followed by an immediate close. That frame and the close can land while
+    // onopen is still awaiting mic setup, so both handlers must be attached
+    // before the open await — otherwise the error is dropped, ws.send() hits a
+    // closed socket, and the UI hangs on "connecting" with no message.
+    let relaySetupError: string | null = null;
+    const captureRelayError = (raw: string) => {
+      try {
+        const parsed = JSON.parse(raw) as Record<string, unknown>;
+        if (parsed.type === "error") {
+          const message = (parsed.error as Record<string, unknown> | undefined)?.message ?? parsed.message;
+          if (typeof message === "string" && message) relaySetupError = message;
+        }
+      } catch {
+        // Not JSON — ignore during connect.
+      }
+    };
+
     await new Promise<void>((resolve, reject) => {
       const failTimer = window.setTimeout(() => reject(new Error("Voice relay connection timed out")), 15000);
+      ws.onmessage = (event) => captureRelayError(String(event.data));
+      ws.onclose = (event) => {
+        window.clearTimeout(failTimer);
+        reject(new Error(relaySetupError || event.reason || "Voice relay connection closed before the session started"));
+      };
       ws.onopen = async () => {
         window.clearTimeout(failTimer);
         isRunning.current = true;
         sessionStartTsRef.current = Date.now();
         try {
           await startWsMicStreaming(ws, isGemini ? GEMINI_INPUT_SAMPLE_RATE : OPENAI_RELAY_INPUT_SAMPLE_RATE);
+          if (ws.readyState !== WebSocket.OPEN) {
+            throw new Error(relaySetupError || "Voice relay connection closed before the session started");
+          }
           ws.send(JSON.stringify({
             type: "x.context_update",
             catalog: catalogRef.current,
@@ -1112,7 +1139,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
       };
       ws.onerror = () => {
         window.clearTimeout(failTimer);
-        reject(new Error("Voice relay connection failed"));
+        reject(new Error(relaySetupError || "Voice relay connection failed"));
       };
     });
 
@@ -1341,6 +1368,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
         pendingActivationRef.current = null;
       }
       // Cleanup on failure
+      isRunning.current = false;
       cancelMicReopen();
       pcRef.current?.getSenders().forEach((sender) => sender.track?.stop());
       micTrackRef.current = null;
@@ -1349,13 +1377,16 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
       pcRef.current?.close();
       pcRef.current = null;
       dcRef.current = null;
+      wsRef.current?.close();
+      wsRef.current = null;
+      cleanupWsAudio();
       if (audioElRef.current) {
         audioElRef.current.srcObject = null;
         audioElRef.current.remove();
         audioElRef.current = null;
       }
     }
-  }, [handleDcEvent, cancelMicReopen, connectRelaySession, createStandbyAudioTrack, openLiveMic, scheduleStandbyExpire, startHeartbeat, stopStandbyAudio]);
+  }, [handleDcEvent, cancelMicReopen, cleanupWsAudio, connectRelaySession, createStandbyAudioTrack, openLiveMic, scheduleStandbyExpire, startHeartbeat, stopStandbyAudio]);
 
   connectInternalRef.current = connectInternal;
 
