@@ -39,6 +39,24 @@ interface SquareLocationOption {
   address?: string;
 }
 
+/**
+ * Server-verified login state. A stored token alone is never trusted:
+ * - "checking": verification against /api/auth/me is still in flight
+ * - "authenticated": the server accepted the token this app session
+ * - "unauthenticated": no token, or the server rejected it
+ * - "offline": the server is unreachable and the token was never verified
+ */
+export type SessionStatus = "checking" | "authenticated" | "unauthenticated" | "offline";
+
+/**
+ * Server-verified Square connection state for the active venue:
+ * - "checking": venue credentials are still being verified
+ * - "connected": the server returned live Square credentials
+ * - "disconnected": a venue is attached but its Square connection failed
+ * - "none": no venue attached (general assistant — Square not required)
+ */
+export type SquareStatus = "checking" | "connected" | "disconnected" | "none";
+
 interface SquareContextType {
   locationId: string | null;
   venueId: string | null;
@@ -47,6 +65,10 @@ interface SquareContextType {
   isConfigured: boolean;
   /** True once the boot sequence (stored session, launch code, OAuth return) has resolved. */
   credentialsReady: boolean;
+  /** Server-verified login state — gate voice on "authenticated", not on a stored token. */
+  sessionStatus: SessionStatus;
+  /** Server-verified Square connection state for the active venue. */
+  squareStatus: SquareStatus;
   isLoadingCatalog: boolean;
   catalogError: string | null;
   connectionError: string | null;
@@ -164,7 +186,15 @@ async function redeemExchangeCode(code: string): Promise<{ venueId?: string; aut
 }
 
 export function SquareProvider({ children }: { children: ReactNode }) {
+  const initialHasExchangeCodeRef = useRef(new URLSearchParams(window.location.search).has("code"));
   const [locationId, setLocationId] = useState<string | null>(null);
+  const [sessionStatus, setSessionStatus] = useState<SessionStatus>(() =>
+    initialHasExchangeCodeRef.current || localStorage.getItem(AUTH_TOKEN_KEY) ? "checking" : "unauthenticated",
+  );
+  const [squareStatus, setSquareStatus] = useState<SquareStatus>(() => {
+    if (initialHasExchangeCodeRef.current) return "checking";
+    return localStorage.getItem(AUTH_TOKEN_KEY) && localStorage.getItem(VENUE_ID_KEY) ? "checking" : "none";
+  });
   const [catalogItems, setCatalogItems] = useState<SquareCatalogItem[]>([]);
   const [isLoadingCatalog, setIsLoadingCatalog] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
@@ -186,7 +216,6 @@ export function SquareProvider({ children }: { children: ReactNode }) {
   const [orderHandlingMode, setOrderHandlingMode] = useState<OrderHandlingMode>(
     normalizeOrderHandlingMode(localStorage.getItem(ORDER_HANDLING_KEY)),
   );
-  const initialHasExchangeCodeRef = useRef(new URLSearchParams(window.location.search).has("code"));
 
   function applyVenueConnection(data: any, nextVenueId: string) {
     setLocationId(data.locationId ?? null);
@@ -195,6 +224,7 @@ export function SquareProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(VENUE_ID_KEY, nextVenueId);
     applyAgentLaunchInfo(data);
     setVenueId(nextVenueId);
+    setSquareStatus("connected");
     setConnectionError(null);
   }
 
@@ -338,6 +368,8 @@ export function SquareProvider({ children }: { children: ReactNode }) {
     setAgentProfileId(null);
     setWakePhrase(DEFAULT_WAKE_PHRASE);
     setWakeMode("ambient");
+    setSessionStatus("unauthenticated");
+    setSquareStatus("none");
     if (message) setConnectionError(message);
   }
 
@@ -494,10 +526,15 @@ export function SquareProvider({ children }: { children: ReactNode }) {
         if (!launch) {
           if (!cancelled) {
             setConnectionError("Launch link expired. Open the assistant from the dashboard.");
+            setSessionStatus("unauthenticated");
+            setSquareStatus("none");
             setCredentialsReady(true);
           }
           return;
         }
+        // The exchange code was just redeemed server-side, so this token is
+        // fresh — no separate /auth/me round-trip needed.
+        if (!cancelled) setSessionStatus("authenticated");
       }
 
       if (!exchangeCode && (params.has("token") || params.has("venue"))) {
@@ -536,6 +573,7 @@ export function SquareProvider({ children }: { children: ReactNode }) {
           if (!cancelled) {
             localStorage.removeItem(VENUE_ID_KEY);
             setVenueId(null);
+            setSquareStatus("none");
             setCredentialsReady(true);
           }
           return;
@@ -544,6 +582,7 @@ export function SquareProvider({ children }: { children: ReactNode }) {
           if (!cancelled) {
             localStorage.removeItem(VENUE_ID_KEY);
             setVenueId(null);
+            setSquareStatus("none");
             setCredentialsReady(true);
           }
           return;
@@ -580,12 +619,14 @@ export function SquareProvider({ children }: { children: ReactNode }) {
         if (launchedProfile) {
           localStorage.removeItem(VENUE_ID_KEY);
           setVenueId(null);
+          setSquareStatus("disconnected");
           setCredentialsReady(true);
           setConnectionError("Square is not connected for this assistant. The assistant is loaded without POS access.");
           return;
         }
         if (exchangeCode) {
           setConnectionError("Failed to load assistant launch. Open it again from the dashboard.");
+          setSquareStatus("disconnected");
           setCredentialsReady(true);
           return;
         }
@@ -639,30 +680,112 @@ export function SquareProvider({ children }: { children: ReactNode }) {
     return () => { cancelled = true; };
   }, []);
 
-  // On mount, restore user session if we have a stored auth token
-  useEffect(() => {
-    if (initialHasExchangeCodeRef.current) return;
+  const verifyInFlightRef = useRef(false);
+  const lastVerifyRef = useRef(0);
+
+  /**
+   * Verify the stored session against the server, then verify the active
+   * venue's Square connection. This is the single source of truth for
+   * sessionStatus / squareStatus outside the launch-code flow: it runs at
+   * boot, when the tab becomes visible again (a PWA left open overnight),
+   * and when another tab on this origin changes the shared auth token
+   * (e.g. the user signs in or out on the dashboard).
+   */
+  async function verifySession(): Promise<void> {
     const tok = localStorage.getItem(AUTH_TOKEN_KEY);
-    if (!tok) return;
-    (async () => {
+    if (!tok) {
+      setSessionStatus("unauthenticated");
+      setSquareStatus("none");
+      return;
+    }
+    if (verifyInFlightRef.current) return;
+    verifyInFlightRef.current = true;
+    try {
+      let res: Response;
       try {
-        const res = await fetch(`${getBaseUrl()}api/auth/me`, {
+        res = await fetch(`${getBaseUrl()}api/auth/me`, {
           headers: { Authorization: `Bearer ${tok}` },
         });
-        if (res.ok) {
-          const data = await res.json();
-          setAuthToken(tok);
-          setUserInfo(data.user);
-          await loadVenues(tok);
-          const urlProfileId = new URLSearchParams(window.location.search).get("agentProfileId");
-          const activeProfileId = (urlProfileId && urlProfileId.trim()) || readActiveProfileId();
-          if (activeProfileId) await loadAgentProfile(tok, activeProfileId);
-        } else if (res.status === 401) {
-          clearStoredLaunchSession("Session expired. Sign in or relaunch from the dashboard.");
-        }
-      } catch {}
-    })();
+      } catch {
+        // Unreachable server: a session that was already verified this app
+        // session stays usable; an unverified one blocks voice until a retry
+        // succeeds.
+        setSessionStatus((s) => (s === "authenticated" ? s : "offline"));
+        return;
+      }
+      lastVerifyRef.current = Date.now();
+      if (res.status === 401) {
+        clearStoredLaunchSession("Session expired. Sign in or relaunch from the dashboard.");
+        return;
+      }
+      if (!res.ok) {
+        setSessionStatus((s) => (s === "authenticated" ? s : "offline"));
+        return;
+      }
+      const data = await res.json();
+      setAuthToken(tok);
+      setUserInfo(data.user);
+      setSessionStatus("authenticated");
+      await loadVenues(tok);
+      const urlProfileId = new URLSearchParams(window.location.search).get("agentProfileId");
+      const activeProfileId = (urlProfileId && urlProfileId.trim()) || readActiveProfileId();
+      if (activeProfileId) await loadAgentProfile(tok, activeProfileId);
+      const vid = localStorage.getItem(VENUE_ID_KEY);
+      if (vid) {
+        // refreshCredentials settles squareStatus: "connected" on success,
+        // "disconnected" on failure, and clears the session on 401.
+        await refreshCredentials();
+      } else {
+        setSquareStatus("none");
+      }
+    } finally {
+      verifyInFlightRef.current = false;
+    }
+  }
+
+  // Listeners must always call the latest render's verifySession so it never
+  // closes over stale state.
+  const verifySessionRef = useRef(verifySession);
+  verifySessionRef.current = verifySession;
+
+  // Verify the stored session on mount. Launch-code boots are verified by the
+  // exchange redemption itself in the boot effect above.
+  useEffect(() => {
+    if (initialHasExchangeCodeRef.current) return;
+    void verifySessionRef.current();
   }, []);
+
+  // Re-verify when the PWA comes back into view — a venue tablet that sat in
+  // the background overnight must discover an expired session or dropped
+  // Square connection before the user starts talking, not mid-order.
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.hidden) return;
+      if (Date.now() - lastVerifyRef.current < 60_000) return;
+      void verifySessionRef.current();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, []);
+
+  // The dashboard shares this origin and auth-token key, so a sign-in or
+  // sign-out over there propagates to an open PWA tab immediately.
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== null && e.key !== AUTH_TOKEN_KEY) return;
+      lastVerifyRef.current = 0;
+      void verifySessionRef.current();
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
+  // While the server is unreachable and the session unverified, keep retrying.
+  useEffect(() => {
+    if (sessionStatus !== "offline") return;
+    const timer = setInterval(() => { void verifySessionRef.current(); }, 5000);
+    return () => clearInterval(timer);
+  }, [sessionStatus]);
 
   // Load catalog when credentials are available
   useEffect(() => {
@@ -710,6 +833,7 @@ export function SquareProvider({ children }: { children: ReactNode }) {
       localStorage.setItem(AUTH_TOKEN_KEY, data.token);
       setAuthToken(data.token);
       setUserInfo(data.user);
+      setSessionStatus("authenticated");
       await loadVenues(data.token);
       return null;
     } catch (e: any) {
@@ -730,6 +854,7 @@ export function SquareProvider({ children }: { children: ReactNode }) {
       localStorage.setItem(AUTH_TOKEN_KEY, data.token);
       setAuthToken(data.token);
       setUserInfo(data.user);
+      setSessionStatus("authenticated");
       setVenues([]);
       return null;
     } catch (e: any) {
@@ -761,6 +886,8 @@ export function SquareProvider({ children }: { children: ReactNode }) {
     setAgentProfileId(null);
     setWakePhrase(DEFAULT_WAKE_PHRASE);
     setWakeMode("ambient");
+    setSessionStatus("unauthenticated");
+    setSquareStatus("none");
   }
 
   async function connectSquare(): Promise<string | null> {
@@ -871,6 +998,7 @@ export function SquareProvider({ children }: { children: ReactNode }) {
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
         setConnectionError((errData as any).error || `Reconnection failed (${res.status})`);
+        setSquareStatus("disconnected");
         return false;
       }
 
@@ -883,9 +1011,13 @@ export function SquareProvider({ children }: { children: ReactNode }) {
       }
 
       setConnectionError("Square connection not found. Reconnect from the dashboard.");
+      setSquareStatus("disconnected");
       return false;
     } catch (e: any) {
       setConnectionError("Network error. Check your connection and try again.");
+      // A transient blip must not lock out an already-verified connection, but
+      // an unresolved boot check can't be left in "checking" forever.
+      setSquareStatus((s) => (s === "checking" ? "disconnected" : s));
       return false;
     } finally {
       setIsReconnecting(false);
@@ -955,6 +1087,7 @@ export function SquareProvider({ children }: { children: ReactNode }) {
   return (
     <SquareContext.Provider value={{
       locationId, venueId, authToken, catalogItems, isConfigured, credentialsReady,
+      sessionStatus, squareStatus,
       isLoadingCatalog, catalogError, connectionError, isConnectingSquare, isReconnecting,
       userInfo, venues, pendingSquareLocations, agentProfile, agentProfileId, wakePhrase, wakeMode, assistantKind,
       updateWakeSettings, orderHandlingMode, updateOrderHandlingMode,

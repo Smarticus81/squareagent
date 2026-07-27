@@ -114,6 +114,8 @@ export default function App() {
   const {
     isConfigured,
     credentialsReady,
+    sessionStatus,
+    squareStatus,
     catalogItems,
     isLoadingCatalog,
     catalogError,
@@ -139,6 +141,15 @@ export default function App() {
   const pushToTalkRequired = agentProfile?.noiseMode === "push_to_talk";
   const wakeEnabled = wakeMode !== "tap" && !pushToTalkRequired;
   const wakeWordAvailable = wakeEnabled && isWakeWordSupported();
+
+  // Voice gate: a stored token is never enough — the session must be verified
+  // against the server, and a venue-bound assistant must have a live Square
+  // connection, before any voice session can start. This prevents the "user
+  // starts ordering, agent says it can't access anything" failure mode.
+  const sessionVerified = sessionStatus === "authenticated";
+  const squareBlocked = squareStatus === "disconnected";
+  const bootChecking = !credentialsReady || sessionStatus === "checking" || squareStatus === "checking";
+  const voiceReady = sessionVerified && !squareBlocked && !bootChecking;
 
   // Venue mode is an always-on surface: keep the display awake whenever the
   // PWA is online, even before microphone permission has been granted.
@@ -296,16 +307,27 @@ export default function App() {
     return () => { cancelled = true; };
   }, []);
 
-  // If the app opens with a valid session and ambient wake is available, move
-  // straight into wake mode. Browsers that need mic permission will prompt or
-  // fall back to the existing tap flow.
+  // If the app opens with a server-verified session and ambient wake is
+  // available, move straight into wake mode. Browsers that need mic permission
+  // will prompt or fall back to the existing tap flow.
   useEffect(() => {
     // micError guard: after a permission denial, stay idle instead of
     // re-entering wake mode and re-triggering the denied mic loop.
-    if (mode === "idle" && sqAuthToken && wakeWordAvailable && !micError) {
+    if (mode === "idle" && voiceReady && wakeWordAvailable && !micError) {
       setMode("wake_word");
     }
-  }, [mode, sqAuthToken, wakeWordAvailable, micError]);
+  }, [mode, voiceReady, wakeWordAvailable, micError]);
+
+  // If the session or Square connection is lost while voice is armed (e.g. a
+  // re-check after the tab was backgrounded finds an expired login), drop out
+  // of wake/command mode instead of letting the next utterance fail.
+  useEffect(() => {
+    if (voiceReady) return;
+    if (mode === "wake_word" || mode === "command") {
+      setMode("idle");
+      void disconnect();
+    }
+  }, [voiceReady, mode, disconnect]);
 
   useEffect(() => {
     if (mode === "wake_word" && !wakeWordAvailable) {
@@ -392,9 +414,12 @@ export default function App() {
   // ── Rail tap / initial activation ─────────────────────────────
   async function handleRailTap() {
     debugAppLog("[App] rail tap", { mode, micGranted: micPermissionGranted, agentState });
-    if (!sqAuthToken) {
-      // Not signed in — voice sessions can't start. Send the user to the
-      // sign-in sheet instead of surfacing a connection error.
+    if (!voiceReady) {
+      // Still verifying the stored session — the welcome screen already says
+      // so; ignore the tap rather than starting a session that would fail.
+      if (bootChecking) return;
+      // Signed out or Square disconnected — voice sessions can't start. Send
+      // the user to the settings sheet instead of surfacing a mid-order error.
       openPanel("settings");
       return;
     }
@@ -468,7 +493,7 @@ export default function App() {
     <div className="app">
       {/* ── Top bar ──────────────────────────────────────────── */}
       <div className="top-bar">
-        <button className="hamburger" onClick={() => openPanel(sqAuthToken ? "order" : "settings")} aria-label="Open menu">
+        <button className="hamburger" onClick={() => openPanel(sessionVerified ? "order" : "settings")} aria-label="Open menu">
           <Menu size={18} />
         </button>
         <div className="brand-row">
@@ -497,12 +522,13 @@ export default function App() {
       {/* Status chips — assistant · connected service · room */}
       <div className="status-chips">
         <span className="vl-pill vl-pill-brass">{agentProfile?.displayName ?? "Assistant"}</span>
-        {assistantKind === "venue" && isConfigured && (
+        {squareBlocked ? (
+          <span className="vl-pill vl-pill-danger"><span className="vl-pill-dot" />Square disconnected</span>
+        ) : assistantKind === "venue" && isConfigured && squareStatus === "connected" ? (
           <span className="vl-pill vl-pill-success"><span className="vl-pill-dot" />Square synced</span>
-        )}
-        {assistantKind === "general" && (
+        ) : assistantKind === "general" && !bootChecking ? (
           <span className="vl-pill vl-pill-muted">Connect Square to unlock POS</span>
-        )}
+        ) : null}
       </div>
 
       {/* ── Resource Limits / Overage Banners ───────────────── */}
@@ -538,32 +564,45 @@ export default function App() {
       {/* ── Conversation area ────────────────────────────────── */}
       <div className="content">
         <div className="convo-area">
-          {!credentialsReady && msgs.length === 0 && (
-            // Boot is still resolving the stored session / launch code —
-            // don't flash "Offline / Sign in" at an already signed-in user.
+          {bootChecking && msgs.length === 0 && (
+            // Boot is still verifying the stored session / launch code with
+            // the server — don't flash "Offline / Sign in" at an already
+            // signed-in user, and don't offer voice that would fail.
             <div className="welcome">
               <span className="welcome-eyebrow">VoyceLab · Live</span>
               <h1 className="welcome-title">Waking <em>up</em>…</h1>
             </div>
           )}
-          {credentialsReady && msgs.length === 0 && !partialTranscript && (mode === "idle" || mode === "shutdown" || mode === "wake_word") && (
+          {!bootChecking && msgs.length === 0 && !partialTranscript && (mode === "idle" || mode === "shutdown" || mode === "wake_word") && (
             <div className="welcome">
               <span className="welcome-eyebrow">VoyceLab · Live</span>
               <h1 className="welcome-title">
-                {!sqAuthToken
+                {!sessionVerified
                   ? <>Voice Terminal <em>Offline</em>.</>
-                  : <>Voice Terminal <em>Online</em>.</>}
+                  : squareBlocked
+                    ? <>Square <em>disconnected</em>.</>
+                    : <>Voice Terminal <em>Online</em>.</>}
               </h1>
               <p className="welcome-sub">
-                {!sqAuthToken
-                  ? "Sign in to connect your venue and start the real-time operations console."
-                  : assistantKind === "general"
-                    ? "Tap the wave and speak. I can handle email, look things up, and answer questions. Connect Square in settings to unlock POS commands."
-                    : "Tap the wave and speak to execute orders, adjust inventory levels, or generate reporting summaries."}
+                {!sessionVerified
+                  ? sessionStatus === "offline"
+                    ? "Can't reach VoyceLab right now. Check the internet connection — retrying automatically."
+                    : "Sign in to connect your venue and start the real-time operations console."
+                  : squareBlocked
+                    ? "This assistant's Square connection needs attention. Reconnect it to take orders and run reports by voice."
+                    : assistantKind === "general"
+                      ? "Tap the wave and speak. I can handle email, look things up, and answer questions. Connect Square in settings to unlock POS commands."
+                      : "Tap the wave and speak to execute orders, adjust inventory levels, or generate reporting summaries."}
               </p>
-              {!sqAuthToken ? (
+              {!sessionVerified ? (
+                sessionStatus === "offline" ? null : (
+                  <div className="suggestion-row">
+                    <button className="welcome-signin" onClick={() => openPanel("settings")}>Sign in to get started</button>
+                  </div>
+                )
+              ) : squareBlocked ? (
                 <div className="suggestion-row">
-                  <button className="welcome-signin" onClick={() => openPanel("settings")}>Sign in to get started</button>
+                  <button className="welcome-signin" onClick={() => openPanel("settings")}>Reconnect Square</button>
                 </div>
               ) : (
                 <div className="suggestion-row">
