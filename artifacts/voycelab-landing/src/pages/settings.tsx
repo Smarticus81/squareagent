@@ -117,7 +117,7 @@ type AdminUserAccess = {
   };
 };
 
-type AdminAccessPatch = Partial<{ plan: string; status: string; role: string }>;
+type AdminAccessPatch = Partial<{ plan: string; status: string; role: string; resetMinutes: boolean }>;
 
 type AdminActionModalState =
   | {
@@ -527,7 +527,7 @@ export default function Settings() {
                       <div className="mt-5 border-t pt-4" style={{ borderColor: "rgba(10,10,11,0.06)" }}>
                         <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-slate-400">Launch Diagnostics</p>
                         <div className="flex flex-wrap gap-2.5">
-                          <BillingBadge tone={billingStatus.configured ? "ok" : "warn"} text={billingStatus.configured ? "Stripe Connected" : "Stripe Integration Needed"} />
+                          <BillingBadge tone={billingStatus.configured ? "ok" : "warn"} text={billingStatus.configured ? "Clerk Billing Connected" : "Clerk Billing Integration Needed"} />
                           <BillingBadge
                             tone={billingStatus.portalReady ? "ok" : "warn"}
                             text={
@@ -1710,10 +1710,6 @@ function AdminDiagnosticsModal({
                     <span style={{ color: "var(--color-vl-ink-muted)" }}>Active cached venues:</span>
                     <span className="tabular-nums" style={{ color: "var(--color-vl-coral-deep)" }}>{diagData.caches?.credentialsSize} credentials</span>
                   </div>
-                  <div className="flex justify-between text-[13px] font-bold mt-1.5">
-                    <span style={{ color: "var(--color-vl-ink-muted)" }}>Active cached menus:</span>
-                    <span className="tabular-nums" style={{ color: "var(--color-vl-coral-deep)" }}>{diagData.caches?.catalogSize} catalogs</span>
-                  </div>
                 </div>
               </div>
             </div>
@@ -2099,7 +2095,7 @@ function AdminControlCenterModal({
                       <AdminSelect
                         label="Subscription Tier"
                         value={selectedDraft?.plan || "trial"}
-                        options={["trial", "starter", "professional", "premium", "enterprise", "admin"]}
+                        options={["trial", "pro", "business", "admin"]}
                         onChange={(val) =>
                           setActionModal({
                             kind: "quick",
@@ -2132,7 +2128,7 @@ function AdminControlCenterModal({
                       <AdminSelect
                         label="Organization Role"
                         value={selectedDraft?.role || "owner"}
-                        options={["owner", "admin", "member"]}
+                        options={["owner", "admin", "manager", "operator"]}
                         onChange={(val) =>
                           setActionModal({
                             kind: "quick",

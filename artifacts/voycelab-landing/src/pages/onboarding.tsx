@@ -191,8 +191,8 @@ export default function Onboarding() {
         voicePipelineProvider: "openai_realtime_webrtc",
         voicePipelineConfig: { voice },
         noiseMode: "standard",
-        allowedTools: [],
-        confirmationPolicy: { approvals: {} },
+        // Omitted so the server applies its defaults (all tools allowed,
+        // DEFAULT_CONFIRMATION_POLICY) rather than persisting empty overrides.
       };
       if (selectedVenueId) body.venueId = selectedVenueId;
 

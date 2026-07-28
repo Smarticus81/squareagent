@@ -304,9 +304,15 @@ export default function CreateAssistant() {
   }, [venues, venueId, kind, editId]);
 
   useEffect(() => {
-    const availableVoices = voicePipelineProvider.startsWith("google_gemini_") ? GEMINI_VOICES : VOICES;
-    if (!availableVoices.some((v) => v.id === voice)) {
-      setVoice(voiceEngines.find((engine) => engine.id === voicePipelineProvider)?.defaultVoice ?? availableVoices[0].id);
+    // Use the same source the picker renders from (voiceOptionsForEngine),
+    // which resolves openai / gemini / xai voices — and prefers the server's
+    // sampleVoices. The old code only special-cased Gemini vs the default set,
+    // so selecting the xAI engine left an invalid voice (e.g. "verse")
+    // selected and submitted.
+    const engine = voiceEngines.find((e) => e.id === voicePipelineProvider);
+    const availableVoices = voiceOptionsForEngine(engine);
+    if (availableVoices.length > 0 && !availableVoices.some((v) => v.id === voice)) {
+      setVoice(engine?.defaultVoice ?? availableVoices[0].id);
     }
   }, [voiceEngines, voicePipelineProvider, voice]);
 
@@ -376,8 +382,11 @@ export default function CreateAssistant() {
         noiseMode,
         orderHandlingMode,
         personality,
-        allowedTools: [],
-        confirmationPolicy: { approvals: {} },
+        // allowedTools / confirmationPolicy are intentionally omitted: there is
+        // no editor for them in this wizard. On create, the server applies its
+        // defaults (all tools allowed, DEFAULT_CONFIRMATION_POLICY); on edit
+        // (PATCH), omitting them preserves whatever was already set instead of
+        // silently wiping it back to empty.
       };
       if (venueId) {
         body.venueId = venueId;

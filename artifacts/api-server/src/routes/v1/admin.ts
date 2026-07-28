@@ -11,7 +11,7 @@ import {
   venuesTable,
   type User,
 } from "@workspace/db";
-import { and, desc, eq, gte, sql } from "drizzle-orm";
+import { and, desc, eq, gte, isNull, sql } from "drizzle-orm";
 import { getAllPipelineAvailability } from "../../voice-pipelines";
 import { invalidateAuthCacheForUser, isAdminEmail } from "../auth";
 import { ensureUserOrganization, jsonError, requireDb, v1RequireAuth, ROLES, type Role } from "./_helpers";
@@ -475,7 +475,7 @@ router.patch("/users/:id/access", async (req: Request, res: Response) => {
     return;
   }
 
-  const { plan, status, role, organizationId } = req.body ?? {};
+  const { plan, status, role, organizationId, resetMinutes } = req.body ?? {};
   if (plan !== undefined && !isPlan(plan)) {
     jsonError(res, 400, "invalid_plan", `Plan must be one of: ${PLANS.join(", ")}.`);
     return;
@@ -488,8 +488,12 @@ router.patch("/users/:id/access", async (req: Request, res: Response) => {
     jsonError(res, 400, "invalid_role", `Role must be one of: ${ROLES.join(", ")}.`);
     return;
   }
-  if (plan === undefined && status === undefined && role === undefined) {
-    jsonError(res, 400, "no_changes", "Send plan, status, or role to update access.");
+  if (resetMinutes !== undefined && typeof resetMinutes !== "boolean") {
+    jsonError(res, 400, "invalid_reset_minutes", "resetMinutes must be a boolean.");
+    return;
+  }
+  if (plan === undefined && status === undefined && role === undefined && !resetMinutes) {
+    jsonError(res, 400, "no_changes", "Send plan, status, role, or resetMinutes to update access.");
     return;
   }
 
@@ -556,6 +560,19 @@ router.patch("/users/:id/access", async (req: Request, res: Response) => {
         .set({ role })
         .where(eq(organizationMembershipsTable.id, membership.id));
       invalidateAuthCacheForUser(userId);
+    }
+
+    if (resetMinutes) {
+      // Zero the voice-minute accumulator by deleting the usage events that
+      // /api/v1/usage/current sums. Scope matches that query: org-wide when the
+      // user belongs to an org, else the user's own org-less events.
+      const membershipForReset = await primaryMembershipForUser(user);
+      const scope = membershipForReset?.organizationId
+        ? eq(usageEventsTable.organizationId, membershipForReset.organizationId)
+        : and(eq(usageEventsTable.userId, userId), isNull(usageEventsTable.organizationId));
+      await db
+        .delete(usageEventsTable)
+        .where(and(eq(usageEventsTable.kind, "voice_minutes"), scope));
     }
 
     const membership = await primaryMembershipForUser(user);

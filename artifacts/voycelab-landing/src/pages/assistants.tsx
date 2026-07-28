@@ -52,6 +52,7 @@ export default function Assistants() {
     room: roomLabel(profile.noiseMode),
     wakePhrase: profile.wakePhrase,
     allowedCount: profile.allowedTools.length,
+    allowsAllTools: profile.allowedTools.length === 0,
     askFirstCount,
     state: !profile.venueId || venue?.squareLocationId ? ("ready" as const) : ("offline" as const),
   };
@@ -302,7 +303,7 @@ function AssistantDetailModal({
               </dl>
               <div className="mt-6 rounded-2xl px-4 py-3" style={{ background: "rgba(10,10,11,0.04)", border: "1px solid rgba(10,10,11,0.07)" }}>
                 <p className="text-[13px]" style={{ color: "var(--color-vl-ink-muted)" }}>
-                  Can do <strong style={{ color: "var(--color-vl-ink)" }}>{assistant.allowedCount}</strong> actions. Will ask before <strong style={{ color: "var(--color-vl-ink)" }}>{assistant.askFirstCount}</strong>.
+                  Can do <strong style={{ color: "var(--color-vl-ink)" }}>{assistant.allowsAllTools ? "all" : assistant.allowedCount}</strong> {assistant.allowsAllTools ? "available actions" : "actions"}. Will ask before <strong style={{ color: "var(--color-vl-ink)" }}>{assistant.askFirstCount}</strong>.
                 </p>
               </div>
             </div>
@@ -399,6 +400,8 @@ interface AssistantSummary {
   room: string;
   wakePhrase: string;
   allowedCount: number;
+  /** Empty allowedTools means every plan tool is available (server treats [] as "all"). */
+  allowsAllTools: boolean;
   askFirstCount: number;
   state: "ready" | "offline";
 }
