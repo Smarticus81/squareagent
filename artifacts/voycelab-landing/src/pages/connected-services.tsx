@@ -10,6 +10,7 @@ import {
   type SquareLocation,
 } from "@/hooks/use-venues";
 import {
+  AlertTriangle,
   ArrowLeft,
   ArrowRight,
   CheckCircle2,
@@ -493,7 +494,11 @@ export default function ConnectedServices() {
                 background: providerStatusTone(squareProvider) === "ok" ? "rgba(47,158,100,0.08)" : "rgba(253,224,71,0.16)",
               }}
             >
-              <CheckCircle2 className="h-3 w-3" />
+              {providerStatusTone(squareProvider) === "ok" ? (
+                <CheckCircle2 className="h-3 w-3" />
+              ) : (
+                <AlertTriangle className="h-3 w-3" />
+              )}
               Square adapter: {providerStatusText(squareProvider)}
             </span>
           </div>
@@ -587,17 +592,37 @@ export default function ConnectedServices() {
                       <span className="text-[14px] font-semibold truncate" style={{ color: "var(--color-vl-ink)" }}>
                         {v.squareLocationName ?? v.name ?? `Venue ${v.id}`}
                       </span>
-                      <span
-                        className="inline-flex items-center gap-1 rounded-lg border px-2 py-0.5 text-[10.5px] font-semibold tracking-wide uppercase"
-                        style={{
-                          color: "var(--color-vl-success)",
-                          borderColor: "rgba(47,158,100,0.20)",
-                          background: "rgba(47,158,100,0.08)",
-                        }}
-                      >
-                        <CheckCircle2 className="h-3 w-3" />
-                        Live
-                      </span>
+                      {(() => {
+                        // Reflect the real service-connection health instead of a
+                        // hardcoded "Live". A venue whose Square connection is
+                        // missing or not yet available must not read as connected.
+                        const live = v.serviceConnectionStatus === "available" && !!v.squareLocationId;
+                        return live ? (
+                          <span
+                            className="inline-flex items-center gap-1 rounded-lg border px-2 py-0.5 text-[10.5px] font-semibold tracking-wide uppercase"
+                            style={{
+                              color: "var(--color-vl-success)",
+                              borderColor: "rgba(47,158,100,0.20)",
+                              background: "rgba(47,158,100,0.08)",
+                            }}
+                          >
+                            <CheckCircle2 className="h-3 w-3" />
+                            Live
+                          </span>
+                        ) : (
+                          <span
+                            className="inline-flex items-center gap-1 rounded-lg border px-2 py-0.5 text-[10.5px] font-semibold tracking-wide uppercase"
+                            style={{
+                              color: "#B45309",
+                              borderColor: "rgba(217,119,6,0.24)",
+                              background: "rgba(217,119,6,0.08)",
+                            }}
+                          >
+                            <AlertTriangle className="h-3 w-3" />
+                            Needs attention
+                          </span>
+                        );
+                      })()}
                     </div>
                     {v.connectedAt && (
                       <p className="mt-1 text-[12px]" style={{ color: "rgba(10,10,11,0.42)" }}>
