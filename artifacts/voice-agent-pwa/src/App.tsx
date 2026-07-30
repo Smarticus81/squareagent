@@ -509,7 +509,7 @@ export default function App() {
             <rect x="596" y="179" width="79" height="141" rx="39.5" fill="#EC5B2C"/>
           </svg>
           <span className="brand-text" style={{ color: "var(--logo-text)" }}>
-            Voycelab
+            VoyceLab
           </span>
         </div>
         {orderCount > 0 && assistantKind === "venue" ? (
