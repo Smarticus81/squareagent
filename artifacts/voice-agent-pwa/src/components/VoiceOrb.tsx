@@ -19,49 +19,64 @@ interface Props {
 /**
  * VoiceOrb — pure waveform that mirrors the assistant's actual speech output.
  *
- * Rules of the design:
+ * Rules of the design (unchanged):
  *   • When the assistant is speaking AND audio is flowing, bars rise from FFT
  *     bands of the remote MediaStream. The wave is the speech, in real time.
  *   • In every other state — idle, wake, listening, thinking, connecting,
  *     error, or "speaking with no audio yet" — bars sit at a flat baseline.
  *     No procedural sine waves, no fake breathing. Silence is silent.
- *   • A faint thinking pulse (one bar travels across the row) is the only
- *     non-audio motion, and only during `thinking` / `connecting`, to signal
- *     liveness without imitating speech.
+ *   • A faint thinking pulse is the only non-audio motion, and only during
+ *     `thinking` / `connecting`, to signal liveness without imitating speech.
  *
- * Visually: 9 vertical capsule bars in a pastel rainbow gradient. No halo,
- * no reflection, no accent dots — the bars are the entire object.
+ * Visual layer aligned with the VoyceLab brand orb (see voycelab-landing's
+ * voice-orb.tsx): 9 capsule bars on a left-to-right pastel rainbow ramp
+ * (orange → pink → violet → blue), standing on a baseline over a soft
+ * peach/lilac halo, with a faded mirror reflection below and warm/cool
+ * accent dots closing each end.
+ *
+ * Bars grow UPWARD from the baseline (not symmetric about centre) so the
+ * reflection reads as a real reflection.
  */
 
 const BAR_COUNT = 9;
-// Symmetric pastel rainbow: low energy on the edges, hottest in the middle.
+
+/** Left-to-right pastel rainbow: warm at the left, cool at the right. */
 const BAR_COLORS: Array<[string, string]> = [
-  ["#7FCBF2", "#4FB1E8"], // sky
+  ["#FFB37A", "#FF9A5C"], // peach
+  ["#FFA08A", "#FF7A6B"], // melon
+  ["#FF8FA8", "#FF5C82"], // rose
+  ["#FF7DC0", "#E94CA0"], // pink
+  ["#E382E0", "#C45CC8"], // orchid
+  ["#B58CE6", "#8E64D8"], // violet
   ["#8C9CF0", "#5F73E0"], // indigo
-  ["#B58CE6", "#8E64D8"], // purple
-  ["#FF7AB6", "#FF4D8A"], // pink
-  ["#FF6B47", "#E04323"], // coral (center)
-  ["#FF7AB6", "#FF4D8A"],
-  ["#B58CE6", "#8E64D8"],
-  ["#8C9CF0", "#5F73E0"],
-  ["#7FCBF2", "#4FB1E8"],
+  ["#7AB7F0", "#4F95D8"], // azure
+  ["#7FD2F0", "#4FB7E8"], // sky
 ];
 
+const DOT_LEFT = "#FF8A4A";
+const DOT_RIGHT = "#5FB7E8";
+
 const VB_W = 240;
-const VB_H = 120;
-const CY = VB_H / 2;
+const VB_H = 150;
 const BAR_W = 8;
 const GAP = 10;
+const DOT_R = 4.5;
+const DOT_GAP = 11;
+
+const BASE_Y = 100; // bars stand on this line; reflection falls below it
+const FLAT_H = 5; // resting bar height = flat line of capsules
+const MAX_H = 84; // tallest peak
+const REFLECT_RATIO = 0.5; // reflection height relative to the bar
+
 const TOTAL_W = BAR_COUNT * BAR_W + (BAR_COUNT - 1) * GAP;
 const X_START = (VB_W - TOTAL_W) / 2;
-const FLAT_H = 5; // resting bar height = flat line of capsules
-const MAX_H = 84; // tallest peak (top half)
 
 export function VoiceOrb({ state, remoteStream, onTap, size = 240 }: Props) {
   const uid = useId().replace(/[:]/g, "");
 
   const rootRef = useRef<HTMLButtonElement | null>(null);
   const barRefs = useRef<Array<SVGRectElement | null>>([]);
+  const reflRefs = useRef<Array<SVGRectElement | null>>([]);
 
   const rafRef = useRef<number | null>(null);
   const ctxRef = useRef<AudioContext | null>(null);
@@ -160,8 +175,8 @@ export function VoiceOrb({ state, remoteStream, onTap, size = 240 }: Props) {
 
       if (!drivingFromAudio) {
         // Default = flat. The "thinking"/"connecting" states get a tiny
-        // travelling shimmer (~6px peak) so the surface still reads as
-        // "alive" without imitating speech.
+        // travelling shimmer so the surface still reads as "alive" without
+        // imitating speech.
         const showShimmer = s === "thinking" || s === "connecting";
         const peak = showShimmer ? 12 : 0;
         const headIdx = showShimmer ? (t * 2.4) % BAR_COUNT : -1;
@@ -186,12 +201,17 @@ export function VoiceOrb({ state, remoteStream, onTap, size = 240 }: Props) {
       for (let i = 0; i < BAR_COUNT; i++) {
         heights[i] += (targets[i] - heights[i]) * k;
         const h = Math.max(FLAT_H, heights[i]);
+
+        // Bar stands on the baseline and grows upward.
         const top = barRefs.current[i];
         if (top) {
-          // Symmetric capsule: grows up AND down from baseline so flat
-          // looks like a perfectly balanced equalizer line.
-          top.setAttribute("y", String(CY - h / 2));
+          top.setAttribute("y", String(BASE_Y - h));
           top.setAttribute("height", String(h));
+        }
+        // Reflection hangs below the baseline, at a fraction of the height.
+        const refl = reflRefs.current[i];
+        if (refl) {
+          refl.setAttribute("height", String(Math.max(FLAT_H, h * REFLECT_RATIO)));
         }
       }
 
@@ -207,6 +227,8 @@ export function VoiceOrb({ state, remoteStream, onTap, size = 240 }: Props) {
   const dimW = Math.round(size);
   const dimH = Math.round(size * (VB_H / VB_W));
 
+  const barX = (i: number) => X_START + i * (BAR_W + GAP);
+
   return (
     <button
       ref={rootRef}
@@ -216,7 +238,7 @@ export function VoiceOrb({ state, remoteStream, onTap, size = 240 }: Props) {
       style={{ width: dimW, height: dimH, background: "transparent", border: 0, padding: 0, cursor: "pointer" }}
       aria-label="Voice surface"
     >
-      <svg viewBox={`0 0 ${VB_W} ${VB_H}`} width={dimW} height={dimH} aria-hidden>
+      <svg className="orb-svg" viewBox={`0 0 ${VB_W} ${VB_H}`} width={dimW} height={dimH} aria-hidden>
         <defs>
           {BAR_COLORS.map(([light, dark], i) => (
             <linearGradient key={i} id={`bar-${uid}-${i}`} x1="0%" y1="0%" x2="0%" y2="100%">
@@ -224,14 +246,68 @@ export function VoiceOrb({ state, remoteStream, onTap, size = 240 }: Props) {
               <stop offset="100%" stopColor={dark} />
             </linearGradient>
           ))}
+
+          {/* Soft brand halo sitting behind the wave. */}
+          <radialGradient id={`halo-${uid}`} cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#FFD8C2" stopOpacity="0.55" />
+            <stop offset="32%" stopColor="#FFB7D0" stopOpacity="0.42" />
+            <stop offset="60%" stopColor="#C9B8EE" stopOpacity="0.32" />
+            <stop offset="100%" stopColor="#A6D5F2" stopOpacity="0" />
+          </radialGradient>
+          <filter id={`haloblur-${uid}`} x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="10" />
+          </filter>
+
+          {/* Reflection fades out as it falls away from the baseline. */}
+          <linearGradient id={`reflfade-${uid}`} x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor="#fff" stopOpacity="0.34" />
+            <stop offset="70%" stopColor="#fff" stopOpacity="0.05" />
+            <stop offset="100%" stopColor="#fff" stopOpacity="0" />
+          </linearGradient>
+          <mask id={`reflmask-${uid}`} maskUnits="userSpaceOnUse" x="0" y={BASE_Y} width={VB_W} height={VB_H - BASE_Y}>
+            <rect x="0" y={BASE_Y} width={VB_W} height={VB_H - BASE_Y} fill={`url(#reflfade-${uid})`} />
+          </mask>
         </defs>
+
+        {/* Halo */}
+        <ellipse
+          cx={VB_W / 2}
+          cy={BASE_Y - 26}
+          rx={TOTAL_W * 0.78}
+          ry={62}
+          fill={`url(#halo-${uid})`}
+          filter={`url(#haloblur-${uid})`}
+        />
+
+        {/* Mirrored reflection, scaled and faded below the baseline */}
+        <g mask={`url(#reflmask-${uid})`}>
+          {BAR_COLORS.map((_, i) => (
+            <rect
+              key={i}
+              ref={(el) => { reflRefs.current[i] = el; }}
+              x={barX(i)}
+              y={BASE_Y + 4}
+              width={BAR_W}
+              height={FLAT_H}
+              rx={BAR_W / 2}
+              ry={BAR_W / 2}
+              fill={`url(#bar-${uid}-${i})`}
+            />
+          ))}
+        </g>
+
+        {/* Accent dots closing each end of the wave */}
+        <circle cx={X_START - DOT_GAP} cy={BASE_Y - DOT_R} r={DOT_R} fill={DOT_LEFT} />
+        <circle cx={X_START + TOTAL_W + DOT_GAP} cy={BASE_Y - DOT_R} r={DOT_R} fill={DOT_RIGHT} />
+
+        {/* The wave itself */}
         <g>
           {BAR_COLORS.map((_, i) => (
             <rect
               key={i}
               ref={(el) => { barRefs.current[i] = el; }}
-              x={X_START + i * (BAR_W + GAP)}
-              y={CY - FLAT_H / 2}
+              x={barX(i)}
+              y={BASE_Y - FLAT_H}
               width={BAR_W}
               height={FLAT_H}
               rx={BAR_W / 2}
