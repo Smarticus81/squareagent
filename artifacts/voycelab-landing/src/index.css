@@ -1,14 +1,14 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&family=Montserrat:wght@700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
 @import "tailwindcss";
 @import "tw-animate-css";
 
 @plugin "@tailwindcss/typography";
 
 /* ──────────────────────────────────────────────────────────────
-   VoyceLab — Modern SaaS aesthetic (Chatbase-inspired)
+   VoyceLab — premium hospitality design system
    ──────────────────────────────────────────────────────────────
-  White paper. Near-black ink. Soft pastel gradient washes.
-   Clean Inter typography. Rounded-square controls. Minimal, refined.
+   Warm paper. Deep navy ink. Coral action color. Watercolor atmosphere.
+   Fraunces display type, Inter UI type, tactile controls, restrained motion.
    ────────────────────────────────────────────────────────────── */
 
 @theme inline {
@@ -41,65 +41,38 @@
   --color-destructive: hsl(var(--destructive));
   --color-destructive-foreground: hsl(var(--destructive-foreground));
 
-  /* ── Brand tokens — Modern SaaS palette ─────────────────────── */
+  /* ── Brand tokens ───────────────────────────────────────────── */
 
-  /* Paper backgrounds — pure white with a hint of warmth */
-  --color-vl-cream: #FFFFFF;
-  --color-vl-cream-warm: #FAFAF9;
-  --color-vl-cream-deep: #F4F4F5;
-  --color-vl-paper: #FFFFFF;
+  /* Paper backgrounds */
+  --color-vl-cream: #FBF7F1;
 
-  /* Ink — near-black for confident type */
-  --color-vl-ink: #0A0A0B;
-  --color-vl-ink-soft: #27272A;
-  --color-vl-ink-muted: #71717A;
-  --color-vl-ink-faint: #A1A1AA;
+  /* Ink */
+  --color-vl-ink: #0E1B2C;
+  --color-vl-ink-soft: #2C394A;
+  --color-vl-ink-muted: #657080;
+  --color-vl-ink-faint: #9299A3;
 
-  /* Primary — deep ink (chatbase-style dark CTA) */
-  --color-vl-coral: #0A0A0B;
-  --color-vl-coral-deep: #000000;
-  --color-vl-coral-soft: #3F3F46;
-  --color-vl-coral-tint: #F4F4F5;
+  /* Primary action */
+  --color-vl-coral: #FF6B47;
+  --color-vl-coral-deep: #E54F2D;
+  --color-vl-coral-tint: #FFF0EA;
 
   /* Accent — violet/indigo signature */
-  --color-vl-accent: #6366F1;
-  --color-vl-accent-deep: #4F46E5;
-  --color-vl-accent-soft: #A5B4FC;
-  --color-vl-accent-tint: #EEF2FF;
+  --color-vl-accent: #7C6EF5;
+  --color-vl-accent-deep: #6354DC;
+  --color-vl-accent-tint: #F0EDFF;
 
-  /* Painterly gradient stops — pastel washes for hero */
-  --color-vl-peach: #FBCFE8;
-  --color-vl-peach-soft: #FCE7F3;
-  --color-vl-sage: #A7F3D0;
-  --color-vl-sage-soft: #D1FAE5;
-  --color-vl-lilac: #C7D2FE;
-  --color-vl-lilac-soft: #E0E7FF;
-  --color-vl-honey: #FDE68A;
-  --color-vl-honey-soft: #FEF3C7;
+  /* Painterly support color */
+  --color-vl-lilac: #CFC8FF;
+  --color-vl-lilac-soft: #ECE9FF;
 
   /* Status */
   --color-vl-success: #10B981;
   --color-vl-warning: #F59E0B;
   --color-vl-danger: #EF4444;
 
-  /* Aliases retained for back-compat */
-  --color-vl-black: #0A0A0B;
-  --color-vl-graphite: #18181B;
-  --color-vl-graphite2: #27272A;
-  --color-vl-graphite3: #3F3F46;
-  --color-vl-ivory: #0A0A0B;
-  --color-vl-bone: #27272A;
-  --color-vl-sand: #71717A;
-  --color-vl-ash: #A1A1AA;
-  --color-vl-brass: #000000;
-  --color-vl-brass2: #0A0A0B;
-  --color-vl-ember: #6366F1;
-  --color-vl-voice: #C7D2FE;
-  --color-vl-voice2: #818CF8;
-
   --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
-  --font-display: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
-  --font-logo: 'Montserrat', 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-display: 'Fraunces', Georgia, serif;
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 
   --radius-sm: 0.5rem;
@@ -116,35 +89,35 @@
 :root.dark {
   color-scheme: light;
 
-  --background: 0 0% 100%;
-  --foreground: 240 6% 4%;
+  --background: 36 56% 96%;
+  --foreground: 216 52% 11%;
 
-  --card: 0 0% 100%;
-  --card-foreground: 240 6% 4%;
-  --card-border: 240 6% 10% / 8%;
+  --card: 36 100% 99%;
+  --card-foreground: 216 52% 11%;
+  --card-border: 216 52% 11% / 9%;
 
-  --popover: 0 0% 100%;
-  --popover-foreground: 240 6% 4%;
-  --popover-border: 240 6% 10% / 10%;
+  --popover: 36 100% 99%;
+  --popover-foreground: 216 52% 11%;
+  --popover-border: 216 52% 11% / 10%;
 
-  --primary: 240 6% 4%;
+  --primary: 11 100% 64%;
   --primary-foreground: 0 0% 100%;
 
-  --secondary: 240 5% 96%;
-  --secondary-foreground: 240 6% 4%;
+  --secondary: 34 50% 92%;
+  --secondary-foreground: 216 52% 11%;
 
-  --muted: 240 5% 96%;
-  --muted-foreground: 240 4% 46%;
+  --muted: 34 50% 92%;
+  --muted-foreground: 216 12% 45%;
 
-  --accent: 239 84% 67%;
+  --accent: 11 100% 64%;
   --accent-foreground: 0 0% 100%;
 
   --destructive: 0 84% 60%;
   --destructive-foreground: 0 0% 100%;
 
-  --border: 240 6% 90%;
-  --input: 240 6% 90%;
-  --ring: 239 84% 67%;
+  --border: 216 22% 85%;
+  --input: 216 22% 85%;
+  --ring: 11 100% 64%;
 
   --radius: 0.875rem;
 }
@@ -174,15 +147,14 @@
 
   body {
     @apply font-sans antialiased;
-    background-color: #FFFFFF;
-    /* Soft waveform wash and paper texture across product pages. */
+    background-color: #FBF7F1;
     background-image:
-      radial-gradient(ellipse 70% 50% at 10% 0%, rgba(251, 207, 232, 0.45), transparent 60%),
-      radial-gradient(ellipse 60% 45% at 95% 8%, rgba(199, 210, 254, 0.55), transparent 65%),
-      radial-gradient(ellipse 55% 40% at 90% 100%, rgba(167, 243, 208, 0.30), transparent 70%),
-      radial-gradient(ellipse 50% 40% at 5% 95%, rgba(253, 230, 138, 0.22), transparent 70%),
-      linear-gradient(135deg, rgba(10, 10, 11, 0.026) 1px, transparent 1px),
-      linear-gradient(45deg, rgba(99, 102, 241, 0.018) 1px, transparent 1px);
+      radial-gradient(ellipse 70% 50% at 10% 0%, rgba(255, 107, 71, 0.20), transparent 60%),
+      radial-gradient(ellipse 60% 45% at 95% 8%, rgba(124, 110, 245, 0.18), transparent 65%),
+      radial-gradient(ellipse 55% 40% at 90% 100%, rgba(191, 216, 197, 0.24), transparent 70%),
+      radial-gradient(ellipse 50% 40% at 5% 95%, rgba(251, 211, 147, 0.24), transparent 70%),
+      linear-gradient(135deg, rgba(14, 27, 44, 0.022) 1px, transparent 1px),
+      linear-gradient(45deg, rgba(255, 107, 71, 0.014) 1px, transparent 1px);
     background-size: auto, auto, auto, auto, 24px 24px, 32px 32px;
     background-attachment: fixed;
     text-rendering: optimizeLegibility;
@@ -191,7 +163,7 @@
 
   * {
     scrollbar-width: thin;
-    scrollbar-color: rgba(99, 102, 241, 0.34) rgba(10, 10, 11, 0.045);
+    scrollbar-color: rgba(255, 107, 71, 0.36) rgba(14, 27, 44, 0.045);
   }
 
   *::-webkit-scrollbar {
@@ -201,33 +173,33 @@
 
   *::-webkit-scrollbar-track {
     background:
-      linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(245, 247, 255, 0.72));
+      linear-gradient(180deg, rgba(255, 252, 248, 0.86), rgba(247, 240, 230, 0.78));
     border-radius: 14px;
   }
 
   *::-webkit-scrollbar-thumb {
     background:
-      linear-gradient(180deg, rgba(99, 102, 241, 0.42), rgba(236, 72, 153, 0.28));
-    border: 3px solid rgba(255, 255, 255, 0.72);
+      linear-gradient(180deg, rgba(255, 107, 71, 0.58), rgba(124, 110, 245, 0.34));
+    border: 3px solid rgba(251, 247, 241, 0.78);
     border-radius: 14px;
   }
 
   *::-webkit-scrollbar-thumb:hover {
     background:
-      linear-gradient(180deg, rgba(79, 70, 229, 0.56), rgba(236, 72, 153, 0.40));
+      linear-gradient(180deg, rgba(79, 70, 229, 0.56), rgba(255, 107, 71, 0.40));
   }
 
   h1, h2, h3, h4, h5, h6 {
     @apply tracking-tight;
     color: var(--color-vl-ink);
     font-feature-settings: "ss01", "ss02";
-    font-family: var(--font-sans);
+    font-family: var(--font-display);
     font-weight: 600;
     letter-spacing: -0.025em;
   }
 
   ::selection {
-    background: rgba(99, 102, 241, 0.20);
+    background: rgba(255, 107, 71, 0.22);
     color: var(--color-vl-ink);
   }
 
@@ -242,7 +214,7 @@
   /* ── Typography ─────────────────────────────────────────────── */
 
   .vl-display {
-    font-family: var(--font-sans);
+    font-family: var(--font-display);
     font-weight: 600;
     letter-spacing: -0.035em;
     line-height: 1.04;
@@ -251,12 +223,11 @@
   }
 
   /* Italic emphasis fragment in headlines — gradient text */
-  .vl-display em,
-  .vl-italic {
-    font-family: var(--font-sans);
-    font-style: normal;
+  .vl-display em {
+    font-family: var(--font-display);
+    font-style: italic;
     font-weight: 600;
-    background: linear-gradient(120deg, #6366F1 0%, #EC4899 50%, #F59E0B 100%);
+    background: linear-gradient(112deg, #E54F2D 0%, #FF6B47 42%, #7C6EF5 100%);
     -webkit-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent;
@@ -272,16 +243,8 @@
     color: var(--color-vl-ink-muted);
   }
 
-  .vl-section-eyebrow {
-    font-size: 12px;
-    font-weight: 500;
-    letter-spacing: 0.10em;
-    text-transform: uppercase;
-    color: var(--color-vl-ink-muted);
-  }
-
   .vl-section-heading {
-    font-family: var(--font-sans);
+    font-family: var(--font-display);
     font-weight: 600;
     font-size: clamp(2rem, 4.2vw, 3.5rem);
     letter-spacing: -0.035em;
@@ -292,131 +255,118 @@
   /* ── Surfaces ───────────────────────────────────────────────── */
 
   .vl-glass {
-    background: rgba(255, 255, 255, 0.78);
-    backdrop-filter: blur(16px) saturate(1.4);
-    -webkit-backdrop-filter: blur(16px) saturate(1.4);
-    border-bottom: 1px solid rgba(10, 10, 11, 0.06);
+    background: rgba(251, 247, 241, 0.76);
+    backdrop-filter: blur(22px) saturate(1.3);
+    -webkit-backdrop-filter: blur(22px) saturate(1.3);
+    border-bottom: 1px solid rgba(14, 27, 44, 0.07);
   }
 
   .vl-card {
     background:
-      linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(255, 255, 255, 0.82)),
-      radial-gradient(circle at 10% 0%, rgba(236, 72, 153, 0.055), transparent 34%),
-      radial-gradient(circle at 92% 12%, rgba(99, 102, 241, 0.065), transparent 36%);
-    border: 1px solid rgba(10, 10, 11, 0.07);
-    border-radius: 16px;
+      linear-gradient(160deg, rgba(255, 252, 248, 0.93), rgba(251, 247, 241, 0.75)),
+      radial-gradient(circle at 8% 0%, rgba(255, 107, 71, 0.075), transparent 36%),
+      radial-gradient(circle at 94% 10%, rgba(124, 110, 245, 0.075), transparent 38%);
+    border: 1px solid rgba(14, 27, 44, 0.075);
+    border-radius: 22px;
+    backdrop-filter: blur(18px) saturate(1.15);
     box-shadow:
-      0 1px 2px rgba(10, 10, 11, 0.04),
-      0 4px 16px rgba(10, 10, 11, 0.04);
+      0 1px 0 rgba(255, 255, 255, 0.72) inset,
+      0 18px 48px -36px rgba(14, 27, 44, 0.34),
+      0 3px 10px rgba(14, 27, 44, 0.035);
     transition: box-shadow .25s ease, transform .25s ease, border-color .25s ease;
   }
   .vl-card:hover {
-    border-color: rgba(10, 10, 11, 0.12);
+    border-color: rgba(255, 107, 71, 0.24);
     box-shadow:
-      0 2px 4px rgba(10, 10, 11, 0.05),
-      0 12px 32px rgba(10, 10, 11, 0.08);
+      0 1px 0 rgba(255, 255, 255, 0.76) inset,
+      0 22px 56px -34px rgba(14, 27, 44, 0.40),
+      0 8px 22px rgba(255, 107, 71, 0.08);
   }
 
   .vl-card-glass {
-    background: rgba(255, 255, 255, 0.80);
+    background: rgba(255, 252, 248, 0.76);
     backdrop-filter: blur(20px) saturate(1.3);
     -webkit-backdrop-filter: blur(20px) saturate(1.3);
-    border: 1px solid rgba(10, 10, 11, 0.08);
+    border: 1px solid rgba(14, 27, 44, 0.08);
     border-radius: 24px;
     box-shadow:
-      0 4px 24px rgba(10, 10, 11, 0.06),
-      0 1px 3px rgba(10, 10, 11, 0.04);
+      0 4px 24px rgba(14, 27, 44, 0.06),
+      0 1px 3px rgba(14, 27, 44, 0.04);
   }
 
   .vl-panel {
     background:
-      linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.78)),
-      radial-gradient(circle at 0% 0%, rgba(99, 102, 241, 0.045), transparent 32%),
-      radial-gradient(circle at 100% 100%, rgba(16, 185, 129, 0.04), transparent 34%);
-    border: 1px solid rgba(10, 10, 11, 0.07);
-    border-radius: 16px;
+      linear-gradient(160deg, rgba(255, 252, 248, 0.92), rgba(247, 240, 230, 0.76)),
+      radial-gradient(circle at 0% 0%, rgba(255, 107, 71, 0.055), transparent 32%),
+      radial-gradient(circle at 100% 100%, rgba(124, 110, 245, 0.045), transparent 34%);
+    border: 1px solid rgba(14, 27, 44, 0.075);
+    border-radius: 22px;
     box-shadow:
-      0 1px 2px rgba(10, 10, 11, 0.03),
-      0 18px 48px -38px rgba(10, 10, 11, 0.36);
+      0 1px 2px rgba(14, 27, 44, 0.03),
+      0 18px 48px -38px rgba(14, 27, 44, 0.36);
   }
 
-  .vl-panel-coral {
-    background: linear-gradient(180deg, #EEF2FF 0%, #FFFFFF 100%);
-    border: 1px solid rgba(99, 102, 241, 0.18);
-    border-radius: 16px;
-  }
-
-  .vl-edge-brass,
   .vl-edge-coral {
-    box-shadow: inset 0 1px 0 rgba(99, 102, 241, 0.30);
+    box-shadow: inset 0 2px 0 rgba(255, 107, 71, 0.34);
   }
 
   .vl-line {
-    background-image: linear-gradient(90deg, transparent, rgba(10, 10, 11, 0.10), transparent);
+    background-image: linear-gradient(90deg, transparent, rgba(14, 27, 44, 0.10), transparent);
     height: 1px;
   }
 
   /* ── Buttons ────────────────────────────────────────────────── */
 
-  /* Primary — solid black rounded-square control */
-  .vl-btn-primary,
-  .vl-btn-coral,
-  .vl-btn-blue {
-    background: #0A0A0B;
+  .vl-btn-primary {
+    background: linear-gradient(135deg, #FF7958 0%, #FF6B47 48%, #E75230 100%);
     color: #FFFFFF;
     font-family: var(--font-sans);
     font-weight: 500;
     font-size: 14px;
-    border-radius: 16px;
+    border-radius: 14px;
     padding: 0.72rem 1.4rem;
     transition: transform .15s ease, box-shadow .15s ease, background .15s ease;
     box-shadow:
-      0 1px 0 rgba(255, 255, 255, 0.10) inset,
-      0 8px 20px -8px rgba(10, 10, 11, 0.40),
-      0 2px 4px rgba(10, 10, 11, 0.10);
-    border: none;
+      0 1px 0 rgba(255, 255, 255, 0.28) inset,
+      0 10px 24px -10px rgba(229, 79, 45, 0.72),
+      0 2px 5px rgba(14, 27, 44, 0.11);
+    border: 1px solid rgba(180, 55, 29, 0.18);
     cursor: pointer;
     letter-spacing: -0.005em;
   }
-  .vl-btn-primary:hover,
-  .vl-btn-coral:hover,
-  .vl-btn-blue:hover {
+  .vl-btn-primary:hover {
     transform: translateY(-1px);
-    background: #1F1F23;
+    background: linear-gradient(135deg, #FF8668 0%, #FF6B47 44%, #DD4828 100%);
     box-shadow:
-      0 1px 0 rgba(255, 255, 255, 0.10) inset,
-      0 12px 28px -8px rgba(10, 10, 11, 0.45),
-      0 4px 8px rgba(10, 10, 11, 0.12);
+      0 1px 0 rgba(255, 255, 255, 0.30) inset,
+      0 15px 32px -10px rgba(229, 79, 45, 0.78),
+      0 5px 12px rgba(14, 27, 44, 0.12);
   }
-  .vl-btn-primary:active,
-  .vl-btn-coral:active,
-  .vl-btn-blue:active { transform: translateY(0); background: #000; }
-  .vl-btn-primary:disabled,
-  .vl-btn-coral:disabled,
-  .vl-btn-blue:disabled {
+  .vl-btn-primary:active { transform: translateY(0); background: #E54F2D; }
+  .vl-btn-primary:disabled {
     opacity: 0.45;
     cursor: not-allowed;
     transform: none;
   }
 
   .vl-btn-outline {
-    background: #FFFFFF;
+    background: rgba(255, 252, 248, 0.78);
     color: var(--color-vl-ink);
     font-family: var(--font-sans);
     font-weight: 500;
     font-size: 14px;
     border-radius: 16px;
     padding: 0.72rem 1.4rem;
-    border: 1px solid rgba(10, 10, 11, 0.14);
+    border: 1px solid rgba(14, 27, 44, 0.14);
     transition: background .2s ease, border-color .2s ease, box-shadow .2s ease;
     cursor: pointer;
     letter-spacing: -0.005em;
-    box-shadow: 0 1px 2px rgba(10, 10, 11, 0.03);
+    box-shadow: 0 1px 2px rgba(14, 27, 44, 0.03);
   }
   .vl-btn-outline:hover {
-    background: #FAFAF9;
-    border-color: rgba(10, 10, 11, 0.24);
-    box-shadow: 0 2px 8px rgba(10, 10, 11, 0.06);
+    background: #FFFCF8;
+    border-color: rgba(255, 107, 71, 0.38);
+    box-shadow: 0 2px 8px rgba(14, 27, 44, 0.06);
   }
 
   .vl-btn-ghost {
@@ -431,7 +381,7 @@
     cursor: pointer;
   }
   .vl-btn-ghost:hover {
-    background: rgba(10, 10, 11, 0.05);
+    background: rgba(255, 107, 71, 0.08);
   }
 
   /* ── Chips ──────────────────────────────────────────────────── */
@@ -446,8 +396,8 @@
     font-weight: 500;
     letter-spacing: -0.005em;
     color: var(--color-vl-ink-soft);
-    background: #FAFAF9;
-    border: 1px solid rgba(10, 10, 11, 0.08);
+    background: #F7F0E6;
+    border: 1px solid rgba(14, 27, 44, 0.08);
   }
 
   .vl-chip-light {
@@ -459,23 +409,9 @@
     font-size: 12px;
     font-weight: 500;
     color: var(--color-vl-ink-soft);
-    background: #FFFFFF;
-    border: 1px solid rgba(10, 10, 11, 0.08);
-    box-shadow: 0 1px 2px rgba(10, 10, 11, 0.03);
-  }
-
-  /* Indigo accent chip — used for hero callouts */
-  .vl-chip-coral {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    padding: 0.32rem 0.75rem;
-    border-radius: 12px;
-    font-size: 12px;
-    font-weight: 500;
-    color: var(--color-vl-accent-deep);
-    background: var(--color-vl-accent-tint);
-    border: 1px solid rgba(99, 102, 241, 0.20);
+    background: #FFFCF8;
+    border: 1px solid rgba(14, 27, 44, 0.08);
+    box-shadow: 0 1px 2px rgba(14, 27, 44, 0.03);
   }
 
   /* ── Inputs ─────────────────────────────────────────────────── */
@@ -485,17 +421,17 @@
     height: 46px;
     padding: 0 16px;
     border-radius: 12px;
-    background: #FFFFFF;
-    border: 1px solid rgba(10, 10, 11, 0.12);
+    background: rgba(255, 252, 248, 0.86);
+    border: 1px solid rgba(14, 27, 44, 0.12);
     color: var(--color-vl-ink);
     font-size: 15px;
     outline: none;
     transition: border-color .2s ease, box-shadow .2s ease;
   }
-  .vl-input::placeholder { color: rgba(10, 10, 11, 0.36); }
+  .vl-input::placeholder { color: rgba(14, 27, 44, 0.38); }
   .vl-input:focus {
-    border-color: var(--color-vl-accent);
-    box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.12);
+    border-color: var(--color-vl-coral);
+    box-shadow: 0 0 0 4px rgba(255, 107, 71, 0.13);
   }
 
   /* ── Layout helpers ─────────────────────────────────────────── */
@@ -503,14 +439,14 @@
   .vl-page-shell,
   .vl-auth-shell {
     position: relative;
-    background-color: #FFFFFF;
+    background-color: rgba(251, 247, 241, 0.48);
     background-image:
-      radial-gradient(ellipse 70% 48% at 8% 0%, rgba(251, 207, 232, 0.34), transparent 62%),
-      radial-gradient(ellipse 64% 42% at 96% 6%, rgba(199, 210, 254, 0.38), transparent 66%),
-      radial-gradient(ellipse 54% 38% at 92% 100%, rgba(167, 243, 208, 0.22), transparent 70%),
-      radial-gradient(ellipse 48% 35% at 3% 92%, rgba(253, 230, 138, 0.15), transparent 70%),
-      linear-gradient(135deg, rgba(10, 10, 11, 0.026) 1px, transparent 1px),
-      linear-gradient(45deg, rgba(99, 102, 241, 0.018) 1px, transparent 1px);
+      radial-gradient(ellipse 70% 48% at 8% 0%, rgba(255, 107, 71, 0.12), transparent 62%),
+      radial-gradient(ellipse 64% 42% at 96% 6%, rgba(124, 110, 245, 0.12), transparent 66%),
+      radial-gradient(ellipse 54% 38% at 92% 100%, rgba(191, 216, 197, 0.14), transparent 70%),
+      radial-gradient(ellipse 48% 35% at 3% 92%, rgba(251, 211, 147, 0.14), transparent 70%),
+      linear-gradient(135deg, rgba(14, 27, 44, 0.020) 1px, transparent 1px),
+      linear-gradient(45deg, rgba(255, 107, 71, 0.012) 1px, transparent 1px);
     background-size: auto, auto, auto, auto, 24px 24px, 32px 32px;
   }
 
@@ -522,9 +458,9 @@
     pointer-events: none;
     opacity: 0.38;
     background-image:
-      linear-gradient(90deg, transparent 0%, rgba(99, 102, 241, 0.055) 18%, transparent 36%),
-      linear-gradient(90deg, transparent 14%, rgba(236, 72, 153, 0.045) 32%, transparent 50%),
-      linear-gradient(90deg, transparent 48%, rgba(16, 185, 129, 0.04) 66%, transparent 84%);
+      linear-gradient(90deg, transparent 0%, rgba(255, 107, 71, 0.05) 18%, transparent 36%),
+      linear-gradient(90deg, transparent 14%, rgba(124, 110, 245, 0.04) 32%, transparent 50%),
+      linear-gradient(90deg, transparent 48%, rgba(191, 216, 197, 0.05) 66%, transparent 84%);
     background-size: 260px 100%, 340px 100%, 420px 100%;
     mask-image: linear-gradient(to bottom, transparent, #000 12%, #000 82%, transparent);
   }
@@ -532,6 +468,83 @@
   .vl-page-shell > *,
   .vl-auth-shell > * {
     position: relative;
+  }
+
+  .vl-app-shell {
+    isolation: isolate;
+    background: var(--color-vl-cream);
+  }
+
+  .vl-premium-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    overflow: hidden;
+    pointer-events: none;
+    background: linear-gradient(180deg, rgba(255,252,248,0.20), rgba(251,247,241,0.72));
+  }
+
+  .vl-premium-backdrop::before {
+    content: "";
+    position: absolute;
+    inset: -12%;
+    background: repeating-radial-gradient(ellipse at 50% 52%, transparent 0 44px, rgba(14,27,44,0.025) 45px, transparent 46px 76px);
+    mask-image: linear-gradient(to bottom, transparent 5%, #000 28%, #000 72%, transparent 96%);
+    transform: perspective(700px) rotateX(64deg) scale(1.35);
+    transform-origin: 50% 52%;
+    opacity: 0.72;
+    animation: vl-premium-rings 24s linear infinite;
+  }
+
+  .vl-premium-aura {
+    position: absolute;
+    display: block;
+    width: 46vw;
+    min-width: 420px;
+    aspect-ratio: 1;
+    border-radius: 42% 58% 65% 35% / 48% 42% 58% 52%;
+    filter: blur(76px);
+    mix-blend-mode: multiply;
+    opacity: 0.20;
+    will-change: transform;
+    animation: vl-premium-drift 22s ease-in-out infinite alternate;
+  }
+  .vl-premium-aura-coral { top: -22%; left: -13%; background: radial-gradient(circle at 44% 42%, #FF6B47, #FFC7B1 56%, transparent 74%); }
+  .vl-premium-aura-violet { top: -16%; right: -16%; background: radial-gradient(circle at 48% 46%, #7C6EF5, #CFC8FF 54%, transparent 74%); animation-delay: -8s; animation-duration: 28s; }
+  .vl-premium-aura-honey { bottom: -27%; left: 8%; background: radial-gradient(circle at 50% 46%, #FBD393, #FFF0CE 54%, transparent 74%); animation-delay: -13s; animation-duration: 31s; }
+  .vl-premium-aura-sage { right: -12%; bottom: -24%; background: radial-gradient(circle at 44% 44%, #BFD8C5, #E6F0E7 54%, transparent 74%); animation-delay: -17s; animation-duration: 26s; }
+
+  .vl-premium-horizon {
+    position: absolute;
+    left: -12%;
+    top: 48%;
+    width: 124%;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, rgba(255,107,71,0.25), rgba(124,110,245,0.30), transparent);
+    box-shadow: 0 0 28px rgba(255,107,71,0.18), 0 0 52px rgba(124,110,245,0.11);
+    animation: vl-premium-horizon 9s ease-in-out infinite;
+  }
+
+  .vl-premium-grain {
+    position: absolute;
+    inset: 0;
+    background-image:
+      radial-gradient(circle at 20% 30%, rgba(14,27,44,0.12) 0 0.45px, transparent 0.7px),
+      radial-gradient(circle at 72% 68%, rgba(14,27,44,0.08) 0 0.45px, transparent 0.75px);
+    background-size: 5px 5px, 7px 7px;
+    opacity: 0.16;
+    mix-blend-mode: multiply;
+  }
+
+  @keyframes vl-premium-drift {
+    0% { transform: translate3d(-2%, -1%, 0) rotate(-8deg) scale(0.94); }
+    52% { transform: translate3d(8%, 5%, 0) rotate(8deg) scale(1.06); }
+    100% { transform: translate3d(-4%, 9%, 0) rotate(-3deg) scale(1); }
+  }
+  @keyframes vl-premium-rings { from { background-position: 0 0; } to { background-position: 0 76px; } }
+  @keyframes vl-premium-horizon {
+    0%, 100% { transform: translate3d(-2%, -10px, 0) rotate(-2deg) scaleX(0.96); opacity: 0.42; }
+    50% { transform: translate3d(2%, 12px, 0) rotate(1deg) scaleX(1.03); opacity: 0.74; }
   }
 
   .vl-landing {
@@ -562,37 +575,18 @@
   }
 
   .vl-landing-header .vl-glass {
-    background: rgba(255, 255, 255, 0.78);
-    border-bottom: 1px solid rgba(10, 10, 11, 0.06);
+    background: rgba(251, 247, 241, 0.78);
+    border-bottom: 1px solid rgba(14, 27, 44, 0.07);
   }
 
   .vl-landing-footer {
-    background: #FAFAF9;
-    border-color: rgba(10, 10, 11, 0.08) !important;
-  }
-
-  /* ── Decorative scene helpers ───────────────────────────────── */
-
-  .vl-blob {
-    position: absolute;
-    border-radius: 9999px;
-    filter: blur(72px);
-    pointer-events: none;
-    opacity: 0.85;
-  }
-
-  .vl-orbit-ring {
-    position: absolute;
-    border-radius: 9999px;
-    border: 1px solid rgba(10, 10, 11, 0.06);
-    pointer-events: none;
+    background: rgba(247, 240, 230, 0.82);
+    border-color: rgba(14, 27, 44, 0.08) !important;
   }
 
   /* ── Mobile touch-target safeguards ──────────────────────────── */
   @media (max-width: 640px) {
     .vl-btn-primary,
-    .vl-btn-coral,
-    .vl-btn-blue,
     .vl-btn-outline,
     .vl-btn-ghost {
       min-height: 44px;
@@ -600,17 +594,9 @@
     }
   }
 
-  /* Subtle grid background — chatbase-style */
-  .vl-grid-bg {
-    background-image:
-      linear-gradient(rgba(10, 10, 11, 0.04) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(10, 10, 11, 0.04) 1px, transparent 1px);
-    background-size: 32px 32px;
-  }
-
   .vl-scroll {
     scrollbar-width: thin;
-    scrollbar-color: rgba(99, 102, 241, 0.34) rgba(10, 10, 11, 0.04);
+    scrollbar-color: rgba(255, 107, 71, 0.34) rgba(14, 27, 44, 0.04);
   }
 
   .vl-scroll::-webkit-scrollbar {
@@ -619,7 +605,7 @@
 
   /* Gradient text utility */
   .vl-gradient-text {
-    background: linear-gradient(120deg, #6366F1 0%, #EC4899 50%, #F59E0B 100%);
+    background: linear-gradient(112deg, #E54F2D 0%, #FF6B47 42%, #7C6EF5 100%);
     -webkit-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent;
@@ -627,49 +613,6 @@
   }
 
   /* ── Animations ─────────────────────────────────────────────── */
-
-  @keyframes vl-wave {
-    0%, 100% { height: 30%; }
-    50% { height: 100%; }
-  }
-
-  @keyframes vl-float-slow {
-    0%, 100% { transform: translateY(0px) rotate(0deg); }
-    50% { transform: translateY(-10px) rotate(0.5deg); }
-  }
-  @keyframes vl-float-medium {
-    0%, 100% { transform: translateY(0px) translateX(0px); }
-    50% { transform: translateY(-7px) translateX(3px); }
-  }
-  @keyframes vl-float-fast {
-    0%, 100% { transform: translateY(0px); }
-    50% { transform: translateY(-12px); }
-  }
-  .vl-float-slow { animation: vl-float-slow 7s ease-in-out infinite; }
-  .vl-float-medium { animation: vl-float-medium 5.5s ease-in-out infinite; }
-  .vl-float-fast { animation: vl-float-fast 4.5s ease-in-out infinite; }
-
-  @keyframes vl-pulse-soft {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.55; }
-  }
-  .vl-pulse-soft { animation: vl-pulse-soft 2.4s ease-in-out infinite; }
-
-  @keyframes vl-orbit-spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
-  }
-  .vl-orbit-spin { animation: vl-orbit-spin 60s linear infinite; }
-
-  @keyframes vl-aurora-drift {
-    0%   { transform: rotate(0deg) scale(1); opacity: 0.85; }
-    50%  { transform: rotate(180deg) scale(1.08); opacity: 1; }
-    100% { transform: rotate(360deg) scale(1); opacity: 0.85; }
-  }
-  .vl-orb-aurora { animation: vl-aurora-drift 28s ease-in-out infinite; will-change: transform, opacity; }
-
-  .scrollbar-hide::-webkit-scrollbar { display: none; }
-  .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
 
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {
@@ -680,27 +623,9 @@
   }
 
   /* ══════════════════════════════════════════════════════════════
-     LANDING WOW LAYER — light theme (.vl-lx scope)
-     Extends the site's white/pastel system with the pieces the
-     landing choreography needs: mono command rows, ticket rows,
-     and result stamps. Accent = indigo; ink = near-black.
+     LANDING DETAIL LAYER
+     Ticket rows and result stamps used by the voice-command scenes.
      ══════════════════════════════════════════════════════════════ */
-
-  .lx-command {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.65rem;
-    font-family: var(--font-mono);
-    font-size: 13px;
-    line-height: 1.55;
-    color: var(--color-vl-ink-soft);
-  }
-  .lx-command::before {
-    content: "›";
-    color: var(--color-vl-accent);
-    font-weight: 700;
-    flex-shrink: 0;
-  }
 
   .lx-ticket-row {
     display: flex;
@@ -708,7 +633,7 @@
     align-items: baseline;
     gap: 1rem;
     padding: 0.55rem 0;
-    border-bottom: 1px dashed rgba(10, 10, 11, 0.12);
+    border-bottom: 1px dashed rgba(14, 27, 44, 0.12);
     font-family: var(--font-mono);
     font-size: 13px;
   }
@@ -717,7 +642,7 @@
     display: inline-flex;
     align-items: center;
     gap: 0.5rem;
-    border: 1px solid rgba(99, 102, 241, 0.45);
+    border: 1px solid rgba(124, 110, 245, 0.45);
     border-radius: 10px;
     padding: 0.5rem 0.9rem;
     font-family: var(--font-mono);
@@ -737,15 +662,11 @@
     }
     
     /* Optimize padding classes commonly used to prevent huge vertical gaps */
-    .py-20, .py-24, .py-28, .py-32, .py-36 {
+    .py-20, .py-24, .py-28, .py-32 {
       padding-top: 3rem !important;
       padding-bottom: 3rem !important;
     }
-    .my-20, .my-24, .my-28, .my-32, .my-36 {
-      margin-top: 2.5rem !important;
-      margin-bottom: 2.5rem !important;
-    }
-    .gap-10, .gap-14, .gap-16 {
+    .gap-10 {
       gap: 1.5rem !important;
     }
   }

@@ -60,12 +60,12 @@ const FRAG = /* glsl */ `
     if (r > 0.5) discard;
     float soft = smoothstep(0.5, 0.12, r);
 
-    // Brand ramp on white paper: soft lilac floor -> indigo -> pink peaks
-    vec3 lilac  = vec3(0.780, 0.824, 0.996); // #C7D2FE
-    vec3 indigo = vec3(0.388, 0.400, 0.945); // #6366F1
-    vec3 pink   = vec3(0.925, 0.282, 0.600); // #EC4899
+    // Hospitality ramp on warm paper: honey floor -> coral -> plum peaks.
+    vec3 honey  = vec3(0.984, 0.827, 0.573); // #FBD393
+    vec3 coral  = vec3(1.000, 0.420, 0.278); // #FF6B47
+    vec3 plum   = vec3(0.486, 0.431, 0.961); // #7C6EF5
     float t = smoothstep(-0.4, 2.2, vHeight);
-    vec3 col = mix(mix(lilac, indigo, smoothstep(-1.2, 0.9, vHeight)), pink, t * t);
+    vec3 col = mix(mix(honey, coral, smoothstep(-1.2, 0.9, vHeight)), plum, t * t);
 
     // Fade the far edge of the field into the paper
     float edge = 1.0 - smoothstep(26.0, 46.0, vDist);

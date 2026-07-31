@@ -22,12 +22,12 @@ interface VoiceRailProps {
 
 const STATE_COLOR: Record<RailState, string> = {
   offline: "rgba(90, 101, 119, 0.45)",
-  ready: "#0A0A0B",
+  ready: "#0E1B2C",
   listening: "#A38EDC",
-  thinking: "#000000",
-  speaking: "#A5B4FC",
+  thinking: "#2C394A",
+  speaking: "#CFC8FF",
   confirming: "#FDE68A",
-  executing: "#0A0A0B",
+  executing: "#0E1B2C",
   synced: "#2F9E64",
   error: "#D7402E",
 };
@@ -36,7 +36,7 @@ const STATE_COLOR: Record<RailState, string> = {
  * VoiceRail — the brand signature.
  *
  * A thin horizontal strip of live sound that signals the system's mood:
- * ready (slow brass pulse), listening (violet bloom), thinking (ember scan),
+ * ready (slow ink pulse), listening (violet bloom), thinking (ember scan),
  * speaking (waveform), confirming (split), executing (sweep), synced (calm pulse),
  * error (fracture).
  */
@@ -140,7 +140,7 @@ export function VoiceRail({
           aria-hidden
           className="absolute top-1/2 -translate-y-1/2 h-[3px] w-32 rounded-full"
           style={{
-            background: `linear-gradient(90deg, transparent, #0A0A0B, transparent)`,
+            background: `linear-gradient(90deg, transparent, #0E1B2C, transparent)`,
           }}
           animate={{ left: ["-20%", "120%"] }}
           transition={{ duration: 0.8, repeat: Infinity, ease: "easeInOut" }}

@@ -177,7 +177,7 @@ function Hero({ reduceMotion }: { reduceMotion: boolean }) {
         className="absolute inset-0 pointer-events-none"
         style={{
           background:
-            "linear-gradient(180deg, rgba(255,255,255,0.82) 0%, rgba(255,255,255,0.30) 38%, rgba(255,255,255,0.30) 60%, rgba(255,255,255,0.92) 100%)",
+            "linear-gradient(180deg, rgba(251,247,241,0.86) 0%, rgba(251,247,241,0.28) 38%, rgba(251,247,241,0.28) 60%, rgba(251,247,241,0.94) 100%)",
         }}
       />
 
@@ -254,7 +254,7 @@ function Hero({ reduceMotion }: { reduceMotion: boolean }) {
         aria-label="Scroll to see what it does"
         className="relative mx-auto mb-7 flex h-10 w-10 items-center justify-center rounded-full"
         style={{
-          border: "1px solid rgba(10, 10, 11, 0.14)",
+          border: "1px solid rgba(14, 27, 44, 0.14)",
           color: "var(--color-vl-ink-muted)",
           background: "rgba(255,255,255,0.7)",
         }}
@@ -358,7 +358,7 @@ function HeroTicker({ reduceMotion }: { reduceMotion: boolean }) {
             key={i}
             className="h-0.75 flex-1 rounded-full transition-colors duration-300"
             style={{
-              background: i === idx ? "var(--color-vl-accent)" : "rgba(10, 10, 11, 0.10)",
+              background: i === idx ? "var(--color-vl-accent)" : "rgba(14, 27, 44, 0.10)",
             }}
           />
         ))}
@@ -476,7 +476,7 @@ function TeamSection() {
           className="mt-6 flex items-center gap-3 rounded-2xl px-5 py-4"
           style={{
             background: "rgba(255,255,255,0.7)",
-            border: "1px solid rgba(10, 10, 11, 0.07)",
+            border: "1px solid rgba(14, 27, 44, 0.07)",
           }}
         >
           <Volume2 className="w-4.5 h-4.5 shrink-0" style={{ color: "var(--color-vl-accent)" }} />
@@ -591,7 +591,7 @@ function TheaterScrub() {
           className="absolute left-0 top-0 w-0.5 origin-top"
           style={{
             height: "100%",
-            background: "linear-gradient(180deg, #6366F1, #EC4899)",
+            background: "linear-gradient(180deg, #FF6B47, #7C6EF5)",
             scaleY: scrollYProgress,
           }}
         />
@@ -1018,7 +1018,7 @@ function LiveDemo() {
               </div>
             )}
 
-            <div className="mt-7 pt-5" style={{ borderTop: "1px solid rgba(10, 10, 11, 0.07)" }}>
+            <div className="mt-7 pt-5" style={{ borderTop: "1px solid rgba(14, 27, 44, 0.07)" }}>
               <p className="vl-eyebrow mb-3" style={{ fontSize: 10 }}>
                 Try saying
               </p>
@@ -1061,7 +1061,7 @@ function DemoTicket({
     <div
       className="mt-6 rounded-2xl p-5"
       style={{
-        border: "1px solid rgba(10, 10, 11, 0.10)",
+        border: "1px solid rgba(14, 27, 44, 0.10)",
         background: "rgba(255,255,255,0.75)",
       }}
     >
@@ -1075,7 +1075,7 @@ function DemoTicket({
         >
           <span
             className={`h-1.5 w-1.5 rounded-full ${isLive ? "animate-pulse" : ""}`}
-            style={{ background: isLive ? "var(--color-vl-accent)" : "rgba(10,10,11,0.2)" }}
+            style={{ background: isLive ? "var(--color-vl-accent)" : "rgba(14, 27, 44,0.2)" }}
           />
           {isLive ? "LIVE" : "SESSION ENDED"}
         </span>
@@ -1113,7 +1113,7 @@ function DemoTicket({
         <>
           <div
             className="mt-3 flex items-center justify-between pt-3 text-[15px] font-semibold"
-            style={{ borderTop: "1px dashed rgba(10, 10, 11, 0.14)", color: "var(--color-vl-ink)" }}
+            style={{ borderTop: "1px dashed rgba(14, 27, 44, 0.14)", color: "var(--color-vl-ink)" }}
           >
             <span>Total</span>
             <span>${total.toFixed(2)}</span>
@@ -1250,7 +1250,7 @@ function ProofBand() {
               viewport={{ once: true, margin: "-60px" }}
               transition={{ duration: 0.55, delay: i * 0.08, ease: EASE }}
               className={i > 0 ? "md:pl-6 md:border-l" : ""}
-              style={i > 0 ? { borderColor: "rgba(10, 10, 11, 0.08)" } : undefined}
+              style={i > 0 ? { borderColor: "rgba(14, 27, 44, 0.08)" } : undefined}
             >
               <p className="vl-display vl-gradient-text text-[clamp(2.6rem,5vw,3.8rem)] leading-none">
                 {s.value}
@@ -1303,7 +1303,7 @@ function FinalCTA({
         className="absolute inset-0 pointer-events-none"
         style={{
           background:
-            "radial-gradient(ellipse 70% 60% at 50% 50%, rgba(251, 207, 232, 0.40), transparent 65%), radial-gradient(ellipse 50% 40% at 20% 90%, rgba(199, 210, 254, 0.35), transparent 65%), radial-gradient(ellipse 50% 40% at 80% 90%, rgba(167, 243, 208, 0.30), transparent 65%)",
+            "radial-gradient(ellipse 70% 60% at 50% 50%, rgba(255, 107, 71, 0.24), transparent 65%), radial-gradient(ellipse 50% 40% at 20% 90%, rgba(124, 110, 245, 0.24), transparent 65%), radial-gradient(ellipse 50% 40% at 80% 90%, rgba(191, 216, 197, 0.30), transparent 65%)",
         }}
       />
 

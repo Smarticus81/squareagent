@@ -80,7 +80,7 @@ function OrgPricingTable() {
   if (!isLoaded || (!orgId && !activationError)) {
     return (
       <div className="flex items-center gap-3 rounded-2xl border border-black/10 bg-white/55 p-6 text-[13px]" style={{ color: "var(--color-vl-ink-muted)" }}>
-        <Loader2 className="h-4 w-4 animate-spin" style={{ color: "var(--color-vl-brass2)" }} />
+        <Loader2 className="h-4 w-4 animate-spin" style={{ color: "var(--color-vl-coral)" }} />
         Activating your billing workspace…
       </div>
     );
@@ -335,7 +335,7 @@ export default function Pricing() {
                   </div>
                 ) : (
                   <div className="flex items-center gap-3 rounded-2xl border border-black/10 bg-white/55 p-6 text-[13px]" style={{ color: "var(--color-vl-ink-muted)" }}>
-                    <Loader2 className="h-4 w-4 animate-spin" style={{ color: "var(--color-vl-brass2)" }} />
+                    <Loader2 className="h-4 w-4 animate-spin" style={{ color: "var(--color-vl-coral)" }} />
                     Preparing your secure checkout…
                   </div>
                 )
@@ -357,7 +357,7 @@ export default function Pricing() {
         {/* Plan grid */}
         {loading ? (
           <div className="mt-12 vl-panel p-12 flex items-center justify-center gap-3">
-            <Loader2 className="w-5 h-5 animate-spin" style={{ color: "var(--color-vl-brass2)" }} />
+            <Loader2 className="w-5 h-5 animate-spin" style={{ color: "var(--color-vl-coral)" }} />
             <span className="text-[14px]" style={{ color: "var(--color-vl-ink-muted)" }}>Loading plans…</span>
           </div>
         ) : (
@@ -405,7 +405,7 @@ export default function Pricing() {
         </section>
 
         {/* ROI band */}
-        <section className="mt-20 vl-panel vl-edge-brass p-8 md:p-10">
+        <section className="mt-20 vl-panel vl-edge-coral p-8 md:p-10">
           <div className="grid md:grid-cols-[1fr_auto] gap-6 items-end">
             <div>
               <p className="vl-eyebrow">The math</p>
@@ -462,7 +462,7 @@ function CadenceToggle({ value, onChange }: { value: Cadence; onChange: (v: Cade
   return (
     <div
       className="inline-flex rounded-2xl border p-1"
-      style={{ borderColor: "rgba(10, 10, 11,0.12)", background: "rgba(255,255,255,0.5)" }}
+      style={{ borderColor: "rgba(14, 27, 44,0.12)", background: "rgba(255,255,255,0.5)" }}
       role="radiogroup"
     >
       {(["monthly", "yearly"] as Cadence[]).map((opt) => {
@@ -562,7 +562,7 @@ function PlanCard({
         </p>
       )}
 
-      <div className="my-5 h-px" style={{ background: "rgba(10, 10, 11,0.08)" }} />
+      <div className="my-5 h-px" style={{ background: "rgba(14, 27, 44,0.08)" }} />
 
       <ul className="space-y-2.5 flex-1">
         {plan.bullets.map((b, i) => (

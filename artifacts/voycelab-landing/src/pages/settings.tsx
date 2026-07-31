@@ -244,7 +244,7 @@ export default function Settings() {
       <div className="vl-page-shell flex min-h-screen flex-1 items-center justify-center">
         <div className="flex flex-col items-center gap-3">
           <Loader2 className="w-8 h-8 animate-spin" style={{ color: "var(--color-vl-coral)" }} />
-          <span className="text-sm font-medium text-slate-500">Loading settings...</span>
+          <span className="text-sm font-medium text-vl-ink-muted">Loading settings...</span>
         </div>
       </div>
     );
@@ -448,7 +448,7 @@ export default function Settings() {
 
         {auth.user.isAdmin && (
           <div className="mt-8 flex justify-start">
-            <div className="inline-flex rounded-2xl border bg-white/70 p-1.5 shadow-sm" role="tablist" aria-label="Account sections" style={{ borderColor: "rgba(10,10,11,0.08)" }}>
+            <div className="inline-flex rounded-2xl border bg-white/70 p-1.5 shadow-sm" role="tablist" aria-label="Account sections" style={{ borderColor: "rgba(14, 27, 44,0.08)" }}>
               <button
                 type="button"
                 role="tab"
@@ -458,7 +458,7 @@ export default function Settings() {
                 style={{
                   color: settingsTab === "account" ? "var(--color-vl-ink)" : "var(--color-vl-ink-muted)",
                   background: settingsTab === "account" ? "#fff" : "transparent",
-                  boxShadow: settingsTab === "account" ? "0 4px 12px rgba(10,10,11,0.05)" : "none",
+                  boxShadow: settingsTab === "account" ? "0 4px 12px rgba(14, 27, 44,0.05)" : "none",
                 }}
               >
                 <UserRound className="h-4 w-4" />
@@ -473,7 +473,7 @@ export default function Settings() {
                 style={{
                   color: settingsTab === "admin" ? "var(--color-vl-ink)" : "var(--color-vl-ink-muted)",
                   background: settingsTab === "admin" ? "#fff" : "transparent",
-                  boxShadow: settingsTab === "admin" ? "0 4px 12px rgba(10,10,11,0.05)" : "none",
+                  boxShadow: settingsTab === "admin" ? "0 4px 12px rgba(14, 27, 44,0.05)" : "none",
                 }}
               >
                 <ShieldCheck className="h-4 w-4" />
@@ -524,8 +524,8 @@ export default function Settings() {
                     )}
 
                     {auth.user.isAdmin && billingStatus && (
-                      <div className="mt-5 border-t pt-4" style={{ borderColor: "rgba(10,10,11,0.06)" }}>
-                        <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-slate-400">Launch Diagnostics</p>
+                      <div className="mt-5 border-t pt-4" style={{ borderColor: "rgba(14, 27, 44,0.06)" }}>
+                        <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-vl-ink-faint">Launch Diagnostics</p>
                         <div className="flex flex-wrap gap-2.5">
                           <BillingBadge tone={billingStatus.configured ? "ok" : "warn"} text={billingStatus.configured ? "Clerk Billing Connected" : "Clerk Billing Integration Needed"} />
                           <BillingBadge
@@ -552,7 +552,7 @@ export default function Settings() {
                       className={
                         trialExpired
                           ? "vl-btn-primary inline-flex items-center gap-2 text-[13.5px] shadow-sm transition-all duration-200 hover:shadow"
-                          : "vl-btn-ghost inline-flex items-center gap-2 text-[13.5px] transition-all duration-200 hover:bg-slate-50"
+                          : "vl-btn-ghost inline-flex items-center gap-2 text-[13.5px] transition-all duration-200 hover:bg-vl-cream"
                       }
                     >
                       {billingLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
@@ -567,7 +567,7 @@ export default function Settings() {
               {auth.user.isAdmin && (
                 <Section icon={<KeyRound className="h-5 w-5" />} title="Launch Readiness" description="Confirm the live product is ready for customers.">
                   <div className="grid gap-5 lg:grid-cols-[230px_minmax(0,1fr)]">
-                    <div className="rounded-[24px] border p-5" style={{ borderColor: "rgba(10,10,11,0.08)", background: "linear-gradient(135deg, rgba(124,110,245,0.12), rgba(255,107,71,0.10), rgba(79,184,255,0.10))" }}>
+                    <div className="rounded-[24px] border p-5" style={{ borderColor: "rgba(14, 27, 44,0.08)", background: "linear-gradient(135deg, rgba(124,110,245,0.12), rgba(255,107,71,0.10), rgba(79,184,255,0.10))" }}>
                       <p className="text-[11px] font-bold uppercase tracking-[0.16em]" style={{ color: "var(--color-vl-ink-faint)" }}>
                         Production score
                       </p>
@@ -596,7 +596,7 @@ export default function Settings() {
                   <Field label="Email Address">
                     <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="vl-compact-input shadow-sm" placeholder="Your email address" />
                   </Field>
-                  <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4" style={{ borderColor: "rgba(10,10,11,0.05)" }}>
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4" style={{ borderColor: "rgba(14, 27, 44,0.05)" }}>
                     <button
                       type="submit"
                       disabled={profileLoading || !profileDirty}
@@ -618,11 +618,11 @@ export default function Settings() {
                   <Field label="New Password">
                     <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} minLength={8} className="vl-compact-input shadow-sm" autoComplete="new-password" placeholder="Min 8 characters" />
                   </Field>
-                  <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4" style={{ borderColor: "rgba(10,10,11,0.05)" }}>
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4" style={{ borderColor: "rgba(14, 27, 44,0.05)" }}>
                     <button
                       type="submit"
                       disabled={pwLoading || !currentPassword || !newPassword}
-                      className="vl-btn-ghost inline-flex items-center gap-2 text-[13px] transition-all duration-200 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                      className="vl-btn-ghost inline-flex items-center gap-2 text-[13px] transition-all duration-200 hover:bg-vl-cream disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       {pwLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                       Update password
@@ -640,7 +640,7 @@ export default function Settings() {
                       <OrganizationSwitcher hidePersonal />
                       <Link
                         href="/billing"
-                        className="vl-btn-ghost inline-flex items-center gap-2 text-[13px] hover:bg-slate-50 transition-all duration-200"
+                        className="vl-btn-ghost inline-flex items-center gap-2 text-[13px] hover:bg-vl-cream transition-all duration-200"
                       >
                         Organization billing
                         <ArrowUpRight className="w-3.5 h-3.5" />
@@ -732,16 +732,16 @@ function Section({
           <button
             type="button"
             aria-label={`Close ${title}`}
-            className="absolute inset-0 bg-slate-950/35 backdrop-blur-sm"
+            className="absolute inset-0 bg-[rgba(14,27,44,0.38)] backdrop-blur-sm"
             onClick={() => setOpen(false)}
           />
           <section
             role="dialog"
             aria-modal="true"
             className="relative flex max-h-[88vh] w-full max-w-[960px] flex-col overflow-hidden rounded-[28px] border bg-white shadow-2xl"
-            style={{ borderColor: "rgba(10,10,11,0.10)" }}
+            style={{ borderColor: "rgba(14, 27, 44,0.10)" }}
           >
-            <div className="flex flex-wrap items-start justify-between gap-4 border-b p-6" style={{ borderColor: "rgba(10,10,11,0.08)" }}>
+            <div className="flex flex-wrap items-start justify-between gap-4 border-b p-6" style={{ borderColor: "rgba(14, 27, 44,0.08)" }}>
               <div className="flex min-w-0 items-start gap-4">
                 <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-orange-100 shadow-sm" style={{ background: "var(--color-vl-coral-tint)", color: "var(--color-vl-coral-deep)" }}>
                   {icon}
@@ -762,8 +762,8 @@ function Section({
               </div>
               <button
                 type="button"
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border bg-white/80 text-slate-500 transition hover:bg-white hover:text-slate-900"
-                style={{ borderColor: "rgba(10,10,11,0.10)" }}
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border bg-white/80 text-vl-ink-muted transition hover:bg-white hover:text-vl-ink"
+                style={{ borderColor: "rgba(14, 27, 44,0.10)" }}
                 onClick={() => setOpen(false)}
               >
                 <X className="h-4 w-4" />
@@ -1060,7 +1060,7 @@ function BillingBadge({ tone, text }: { tone: "ok" | "warn"; text: string }) {
 
 function ChecklistItem({ isCompleted, label, subtext }: { isCompleted: boolean; label: string; subtext: string }) {
   return (
-    <div className="flex items-start gap-3 rounded-2xl border bg-white/50 p-4 shadow-sm" style={{ borderColor: "rgba(10,10,11,0.06)" }}>
+    <div className="flex items-start gap-3 rounded-2xl border bg-white/50 p-4 shadow-sm" style={{ borderColor: "rgba(14, 27, 44,0.06)" }}>
       <div className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border ${isCompleted ? 'bg-emerald-50 border-emerald-200 text-emerald-600' : 'bg-amber-50 border-amber-200 text-amber-600'}`}>
         {isCompleted ? <Check className="h-3.5 w-3.5 font-bold" /> : <HelpCircle className="h-3.5 w-3.5" />}
       </div>
@@ -1163,7 +1163,7 @@ function AdminConsole({ token }: { token: string | null }) {
 
   if (loading) {
     return (
-      <div className="mt-10 flex items-center gap-3 py-6 justify-center rounded-2xl bg-white/40 border" style={{ borderColor: "rgba(10,10,11,0.06)" }}>
+      <div className="mt-10 flex items-center gap-3 py-6 justify-center rounded-2xl bg-white/40 border" style={{ borderColor: "rgba(14, 27, 44,0.06)" }}>
         <Loader2 className="h-5 w-5 animate-spin text-[#FF6B47]" />
         <span className="text-[13.5px] font-bold" style={{ color: "var(--color-vl-ink-muted)" }}>Loading secure admin workspace...</span>
       </div>
@@ -1368,7 +1368,7 @@ function AdminConsole({ token }: { token: string | null }) {
 
 function AdminStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl border bg-white/65 px-4 py-3 shadow-sm" style={{ borderColor: "rgba(10,10,11,0.06)" }}>
+    <div className="rounded-2xl border bg-white/65 px-4 py-3 shadow-sm" style={{ borderColor: "rgba(14, 27, 44,0.06)" }}>
       <p className="text-[10px] font-bold uppercase tracking-[0.15em]" style={{ color: "var(--color-vl-ink-faint)" }}>
         {label}
       </p>
@@ -1437,7 +1437,7 @@ function UsageMeter({ usage, compact = false }: { usage: AdminUserAccess["usage"
 
   return (
     <div className={compact ? "mt-2" : "mt-4"}>
-      <div className="h-2.5 overflow-hidden rounded-lg bg-slate-100">
+      <div className="h-2.5 overflow-hidden rounded-lg bg-[rgba(14,27,44,0.06)]">
         <div className="h-full rounded-lg" style={{ width: `${capWidth}%`, background: colors.bar }} />
       </div>
       {!compact && (
@@ -1519,16 +1519,16 @@ function AdminDiagnosticsModal({
       <button
         type="button"
         aria-label="Close diagnostics"
-        className="absolute inset-0 bg-slate-950/35 backdrop-blur-sm"
+        className="absolute inset-0 bg-[rgba(14,27,44,0.38)] backdrop-blur-sm"
         onClick={onClose}
       />
       <section
         role="dialog"
         aria-modal="true"
         className="relative flex max-h-[88vh] w-full max-w-[960px] flex-col overflow-hidden rounded-[28px] border bg-[#FBF7F1] shadow-2xl"
-        style={{ borderColor: "rgba(10,10,11,0.10)" }}
+        style={{ borderColor: "rgba(14, 27, 44,0.10)" }}
       >
-        <div className="flex flex-wrap items-start justify-between gap-4 border-b p-6 bg-white" style={{ borderColor: "rgba(10,10,11,0.08)" }}>
+        <div className="flex flex-wrap items-start justify-between gap-4 border-b p-6 bg-white" style={{ borderColor: "rgba(14, 27, 44,0.08)" }}>
           <div>
             <p className="text-[11px] font-bold uppercase tracking-[0.16em]" style={{ color: "var(--color-vl-ink-faint)" }}>
               Admin diagnostics
@@ -1552,8 +1552,8 @@ function AdminDiagnosticsModal({
             </button>
             <button
               type="button"
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border bg-white/80 text-slate-500 transition hover:bg-white hover:text-slate-900"
-              style={{ borderColor: "rgba(10,10,11,0.10)" }}
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border bg-white/80 text-vl-ink-muted transition hover:bg-white hover:text-vl-ink"
+              style={{ borderColor: "rgba(14, 27, 44,0.10)" }}
               onClick={onClose}
             >
               <X className="h-4 w-4" />
@@ -1575,7 +1575,7 @@ function AdminDiagnosticsModal({
           ) : (
             <div className="grid gap-6 md:grid-cols-2">
               {/* Service Latencies */}
-              <div className="rounded-[24px] border bg-white p-5 shadow-xs" style={{ borderColor: "rgba(10,10,11,0.06)" }}>
+              <div className="rounded-[24px] border bg-white p-5 shadow-xs" style={{ borderColor: "rgba(14, 27, 44,0.06)" }}>
                 <h3 className="text-[15px] font-black mb-4 flex items-center gap-2" style={{ color: "var(--color-vl-ink)" }}>
                   <Activity className="h-4.5 w-4.5 text-[#FF6B47]" />
                   Live API Latency
@@ -1585,7 +1585,7 @@ function AdminDiagnosticsModal({
                   <div className="flex items-center justify-between rounded-xl p-3" style={{ background: diagData.database?.status === "healthy" ? "rgba(16,185,129,0.05)" : "rgba(239,68,68,0.05)" }}>
                     <div>
                       <p className="text-[13px] font-bold">PostgreSQL Channel</p>
-                      <p className="text-[11px] font-semibold text-slate-400">Database select latency</p>
+                      <p className="text-[11px] font-semibold text-vl-ink-faint">Database select latency</p>
                     </div>
                     <div className="text-right">
                       <span className={`text-[11px] font-extrabold uppercase px-2 py-0.5 rounded-md ${diagData.database?.status === "healthy" ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-800"}`}>
@@ -1599,7 +1599,7 @@ function AdminDiagnosticsModal({
                   <div className="flex items-center justify-between rounded-xl p-3" style={{ background: diagData.squareApi?.status === "healthy" ? "rgba(16,185,129,0.05)" : "rgba(239,68,68,0.05)" }}>
                     <div>
                       <p className="text-[13px] font-bold">Square POS API</p>
-                      <p className="text-[11px] font-semibold text-slate-400">Locations lookup latency</p>
+                      <p className="text-[11px] font-semibold text-vl-ink-faint">Locations lookup latency</p>
                     </div>
                     <div className="text-right">
                       <span className={`text-[11px] font-extrabold uppercase px-2 py-0.5 rounded-md ${diagData.squareApi?.status === "healthy" ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-800"}`}>
@@ -1613,7 +1613,7 @@ function AdminDiagnosticsModal({
                   <div className="flex items-center justify-between rounded-xl p-3" style={{ background: diagData.openaiApi?.status === "healthy" ? "rgba(16,185,129,0.05)" : "rgba(239,68,68,0.05)" }}>
                     <div>
                       <p className="text-[13px] font-bold">OpenAI API Endpoint</p>
-                      <p className="text-[11px] font-semibold text-slate-400">Models metadata latency</p>
+                      <p className="text-[11px] font-semibold text-vl-ink-faint">Models metadata latency</p>
                     </div>
                     <div className="text-right">
                       <span className={`text-[11px] font-extrabold uppercase px-2 py-0.5 rounded-md ${diagData.openaiApi?.status === "healthy" ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-800"}`}>
@@ -1627,7 +1627,7 @@ function AdminDiagnosticsModal({
                   <div className="flex items-center justify-between rounded-xl p-3" style={{ background: diagData.geminiApi?.status === "healthy" ? "rgba(16,185,129,0.05)" : "rgba(239,68,68,0.05)" }}>
                     <div>
                       <p className="text-[13px] font-bold">Google Gemini API</p>
-                      <p className="text-[11px] font-semibold text-slate-400">BidiLive models latency</p>
+                      <p className="text-[11px] font-semibold text-vl-ink-faint">BidiLive models latency</p>
                     </div>
                     <div className="text-right">
                       <span className={`text-[11px] font-extrabold uppercase px-2 py-0.5 rounded-md ${diagData.geminiApi?.status === "healthy" ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-800"}`}>
@@ -1642,7 +1642,7 @@ function AdminDiagnosticsModal({
                     <div className="flex items-center justify-between rounded-xl p-3" style={{ background: diagData.clerkApi.status === "healthy" ? "rgba(16,185,129,0.05)" : diagData.clerkApi.status === "unconfigured" ? "rgba(100,116,139,0.05)" : "rgba(239,68,68,0.05)" }}>
                       <div>
                         <p className="text-[13px] font-bold">Clerk Billing API</p>
-                        <p className="text-[11px] font-semibold text-slate-400">
+                        <p className="text-[11px] font-semibold text-vl-ink-faint">
                           {diagData.clerkApi.status === "unconfigured" ? "Not Configured" : "Identity lookup latency"}
                         </p>
                         {diagData.clerkApi.status === "unhealthy" && (
@@ -1650,7 +1650,7 @@ function AdminDiagnosticsModal({
                         )}
                       </div>
                       <div className="text-right">
-                        <span className={`text-[11px] font-extrabold uppercase px-2 py-0.5 rounded-md ${diagData.clerkApi.status === "healthy" ? "bg-emerald-100 text-emerald-800" : diagData.clerkApi.status === "unconfigured" ? "bg-slate-100 text-slate-800" : "bg-red-100 text-red-800"}`}>
+                        <span className={`text-[11px] font-extrabold uppercase px-2 py-0.5 rounded-md ${diagData.clerkApi.status === "healthy" ? "bg-emerald-100 text-emerald-800" : diagData.clerkApi.status === "unconfigured" ? "bg-[rgba(14,27,44,0.06)] text-vl-ink-soft" : "bg-red-100 text-red-800"}`}>
                           {diagData.clerkApi.status}
                         </span>
                         {diagData.clerkApi.status === "healthy" && (
@@ -1663,49 +1663,49 @@ function AdminDiagnosticsModal({
               </div>
 
               {/* Environment Checklist */}
-              <div className="rounded-[24px] border bg-white p-5 shadow-xs flex flex-col justify-between" style={{ borderColor: "rgba(10,10,11,0.06)" }}>
+              <div className="rounded-[24px] border bg-white p-5 shadow-xs flex flex-col justify-between" style={{ borderColor: "rgba(14, 27, 44,0.06)" }}>
                 <div>
                   <h3 className="text-[15px] font-black mb-4 flex items-center gap-2" style={{ color: "var(--color-vl-ink)" }}>
                     <ShieldCheck className="h-4.5 w-4.5 text-emerald-600" />
                     Environment Credentials
                   </h3>
-                  <div className="grid grid-cols-2 gap-2 text-[12.5px] font-semibold text-slate-700">
-                    <div className="flex items-center gap-2 rounded-xl border p-3 bg-slate-50" style={{ borderColor: "rgba(10,10,11,0.04)" }}>
+                  <div className="grid grid-cols-2 gap-2 text-[12.5px] font-semibold text-vl-ink-soft">
+                    <div className="flex items-center gap-2 rounded-xl border p-3 bg-vl-cream" style={{ borderColor: "rgba(14, 27, 44,0.04)" }}>
                       <span className={`h-2.5 w-2.5 rounded-full ${diagData.env?.databaseUrlSet ? "bg-emerald-500" : "bg-red-500"}`} />
                       <span>DATABASE_URL</span>
                     </div>
-                    <div className="flex items-center gap-2 rounded-xl border p-3 bg-slate-50" style={{ borderColor: "rgba(10,10,11,0.04)" }}>
+                    <div className="flex items-center gap-2 rounded-xl border p-3 bg-vl-cream" style={{ borderColor: "rgba(14, 27, 44,0.04)" }}>
                       <span className={`h-2.5 w-2.5 rounded-full ${diagData.env?.secretsEncryptionKeySet ? "bg-emerald-500" : "bg-red-500"}`} />
                       <span>ENCRYPTION_KEY</span>
                     </div>
-                    <div className="flex items-center gap-2 rounded-xl border p-3 bg-slate-50" style={{ borderColor: "rgba(10,10,11,0.04)" }}>
+                    <div className="flex items-center gap-2 rounded-xl border p-3 bg-vl-cream" style={{ borderColor: "rgba(14, 27, 44,0.04)" }}>
                       <span className={`h-2.5 w-2.5 rounded-full ${diagData.env?.openaiApiKeySet ? "bg-emerald-500" : "bg-red-500"}`} />
                       <span>OPENAI_API_KEY</span>
                     </div>
-                    <div className="flex items-center gap-2 rounded-xl border p-3 bg-slate-50" style={{ borderColor: "rgba(10,10,11,0.04)" }}>
+                    <div className="flex items-center gap-2 rounded-xl border p-3 bg-vl-cream" style={{ borderColor: "rgba(14, 27, 44,0.04)" }}>
                       <span className={`h-2.5 w-2.5 rounded-full ${diagData.env?.googleGeminiApiKeySet ? "bg-emerald-500" : "bg-red-500"}`} />
                       <span>GEMINI_API_KEY</span>
                     </div>
-                    <div className="flex items-center gap-2 rounded-xl border p-3 bg-slate-50" style={{ borderColor: "rgba(10,10,11,0.04)" }}>
+                    <div className="flex items-center gap-2 rounded-xl border p-3 bg-vl-cream" style={{ borderColor: "rgba(14, 27, 44,0.04)" }}>
                       <span className={`h-2.5 w-2.5 rounded-full ${diagData.env?.squareAppIdSet ? "bg-emerald-500" : "bg-red-500"}`} />
                       <span>SQUARE_APP_ID</span>
                     </div>
-                    <div className="flex items-center gap-2 rounded-xl border p-3 bg-slate-50" style={{ borderColor: "rgba(10,10,11,0.04)" }}>
+                    <div className="flex items-center gap-2 rounded-xl border p-3 bg-vl-cream" style={{ borderColor: "rgba(14, 27, 44,0.04)" }}>
                       <span className={`h-2.5 w-2.5 rounded-full ${diagData.env?.squareAppSecretSet ? "bg-emerald-500" : "bg-red-500"}`} />
                       <span>SQUARE_SECRET</span>
                     </div>
-                    <div className="flex items-center gap-2 rounded-xl border p-3 bg-slate-50" style={{ borderColor: "rgba(10,10,11,0.04)" }}>
+                    <div className="flex items-center gap-2 rounded-xl border p-3 bg-vl-cream" style={{ borderColor: "rgba(14, 27, 44,0.04)" }}>
                       <span className={`h-2.5 w-2.5 rounded-full ${diagData.env?.clerkSecretKeySet ? "bg-emerald-500" : "bg-red-500"}`} />
                       <span>CLERK_SECRET_KEY</span>
                     </div>
-                    <div className="flex items-center gap-2 rounded-xl border p-3 bg-slate-50" style={{ borderColor: "rgba(10,10,11,0.04)" }}>
+                    <div className="flex items-center gap-2 rounded-xl border p-3 bg-vl-cream" style={{ borderColor: "rgba(14, 27, 44,0.04)" }}>
                       <span className={`h-2.5 w-2.5 rounded-full ${diagData.env?.clerkPublishableKeySet ? "bg-emerald-500" : "bg-red-500"}`} />
                       <span>CLERK_PUB_KEY</span>
                     </div>
                   </div>
                 </div>
 
-                <div className="mt-4 pt-4 border-t" style={{ borderColor: "rgba(10,10,11,0.04)" }}>
+                <div className="mt-4 pt-4 border-t" style={{ borderColor: "rgba(14, 27, 44,0.04)" }}>
                   <div className="flex justify-between text-[13px] font-bold">
                     <span style={{ color: "var(--color-vl-ink-muted)" }}>Active cached venues:</span>
                     <span className="tabular-nums" style={{ color: "var(--color-vl-coral-deep)" }}>{diagData.caches?.credentialsSize} credentials</span>
@@ -1732,16 +1732,16 @@ function AdminVoiceEnginesModal({
       <button
         type="button"
         aria-label="Close voice engines"
-        className="absolute inset-0 bg-slate-950/35 backdrop-blur-sm"
+        className="absolute inset-0 bg-[rgba(14,27,44,0.38)] backdrop-blur-sm"
         onClick={onClose}
       />
       <section
         role="dialog"
         aria-modal="true"
         className="relative flex max-h-[85vh] w-full max-w-[800px] flex-col overflow-hidden rounded-[28px] border bg-[#FBF7F1] shadow-2xl"
-        style={{ borderColor: "rgba(10,10,11,0.10)" }}
+        style={{ borderColor: "rgba(14, 27, 44,0.10)" }}
       >
-        <div className="flex flex-wrap items-start justify-between gap-4 border-b p-6 bg-white" style={{ borderColor: "rgba(10,10,11,0.08)" }}>
+        <div className="flex flex-wrap items-start justify-between gap-4 border-b p-6 bg-white" style={{ borderColor: "rgba(14, 27, 44,0.08)" }}>
           <div>
             <p className="text-[11px] font-bold uppercase tracking-[0.16em]" style={{ color: "var(--color-vl-ink-faint)" }}>
               Voice pipelines
@@ -1755,8 +1755,8 @@ function AdminVoiceEnginesModal({
           </div>
           <button
             type="button"
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border bg-white/80 text-slate-500 transition hover:bg-white hover:text-slate-900"
-            style={{ borderColor: "rgba(10,10,11,0.10)" }}
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border bg-white/80 text-vl-ink-muted transition hover:bg-white hover:text-vl-ink"
+            style={{ borderColor: "rgba(14, 27, 44,0.10)" }}
             onClick={onClose}
           >
             <X className="h-4 w-4" />
@@ -1768,16 +1768,16 @@ function AdminVoiceEnginesModal({
             {data.pipelines.map((pipeline) => {
               const isLive = pipeline.status === "available" || pipeline.status === "experimental";
               return (
-                <div key={pipeline.provider} className="rounded-2xl border bg-white p-4 flex flex-col justify-between" style={{ borderColor: "rgba(10,10,11,0.06)" }}>
+                <div key={pipeline.provider} className="rounded-2xl border bg-white p-4 flex flex-col justify-between" style={{ borderColor: "rgba(14, 27, 44,0.06)" }}>
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="truncate text-[14px] font-black" style={{ color: "var(--color-vl-ink)" }}>{pipeline.displayName}</p>
                       <p className="mt-0.5 truncate text-[10.5px] font-mono font-semibold uppercase tracking-wider" style={{ color: "var(--color-vl-ink-muted)" }}>{pipeline.provider}</p>
                     </div>
-                    <span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${isLive ? "bg-emerald-500" : "bg-slate-300"}`} />
+                    <span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${isLive ? "bg-emerald-500" : "bg-vl-ink-faint"}`} />
                   </div>
                   {pipeline.reason && (
-                    <p className="mt-3.5 border-t pt-3 text-[11.5px] leading-relaxed font-semibold" style={{ borderColor: "rgba(10,10,11,0.04)", color: "var(--color-vl-ink-muted)" }}>{pipeline.reason}</p>
+                    <p className="mt-3.5 border-t pt-3 text-[11.5px] leading-relaxed font-semibold" style={{ borderColor: "rgba(14, 27, 44,0.04)", color: "var(--color-vl-ink-muted)" }}>{pipeline.reason}</p>
                   )}
                 </div>
               );
@@ -1801,16 +1801,16 @@ function AdminRolesModal({
       <button
         type="button"
         aria-label="Close security roles"
-        className="absolute inset-0 bg-slate-950/35 backdrop-blur-sm"
+        className="absolute inset-0 bg-[rgba(14,27,44,0.38)] backdrop-blur-sm"
         onClick={onClose}
       />
       <section
         role="dialog"
         aria-modal="true"
         className="relative flex max-h-[85vh] w-full max-w-[800px] flex-col overflow-hidden rounded-[28px] border bg-[#FBF7F1] shadow-2xl"
-        style={{ borderColor: "rgba(10,10,11,0.10)" }}
+        style={{ borderColor: "rgba(14, 27, 44,0.10)" }}
       >
-        <div className="flex flex-wrap items-start justify-between gap-4 border-b p-6 bg-white" style={{ borderColor: "rgba(10,10,11,0.08)" }}>
+        <div className="flex flex-wrap items-start justify-between gap-4 border-b p-6 bg-white" style={{ borderColor: "rgba(14, 27, 44,0.08)" }}>
           <div>
             <p className="text-[11px] font-bold uppercase tracking-[0.16em]" style={{ color: "var(--color-vl-ink-faint)" }}>
               Access policy
@@ -1824,8 +1824,8 @@ function AdminRolesModal({
           </div>
           <button
             type="button"
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border bg-white/80 text-slate-500 transition hover:bg-white hover:text-slate-900"
-            style={{ borderColor: "rgba(10,10,11,0.10)" }}
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border bg-white/80 text-vl-ink-muted transition hover:bg-white hover:text-vl-ink"
+            style={{ borderColor: "rgba(14, 27, 44,0.10)" }}
             onClick={onClose}
           >
             <X className="h-4 w-4" />
@@ -1835,14 +1835,14 @@ function AdminRolesModal({
         <div className="vl-scroll overflow-y-auto p-6">
           <div className="grid gap-4 sm:grid-cols-2">
             {data.roles.map((role) => (
-              <div key={role.role} className="rounded-2xl border bg-white p-4" style={{ borderColor: "rgba(10,10,11,0.06)" }}>
+              <div key={role.role} className="rounded-2xl border bg-white p-4" style={{ borderColor: "rgba(14, 27, 44,0.06)" }}>
                 <div className="flex items-center gap-2.5 mb-2">
-                  <Lock className="h-4 w-4 text-slate-400" />
+                  <Lock className="h-4 w-4 text-vl-ink-faint" />
                   <p className="text-[14px] font-black" style={{ color: "var(--color-vl-ink)" }}>{role.label}</p>
                 </div>
-                <div className="flex flex-wrap gap-1.5 mt-2 pt-2 border-t" style={{ borderColor: "rgba(10,10,11,0.04)" }}>
+                <div className="flex flex-wrap gap-1.5 mt-2 pt-2 border-t" style={{ borderColor: "rgba(14, 27, 44,0.04)" }}>
                   {role.permissions.map((p) => (
-                    <span key={p} className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-50 border capitalize text-slate-500" style={{ borderColor: "rgba(10,10,11,0.04)" }}>
+                    <span key={p} className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-vl-cream border capitalize text-vl-ink-muted" style={{ borderColor: "rgba(14, 27, 44,0.04)" }}>
                       {p.replace(/_/g, " ")}
                     </span>
                   ))}
@@ -1908,16 +1908,16 @@ function AdminControlCenterModal({
       <button
         type="button"
         aria-label="Close platform control"
-        className="absolute inset-0 bg-slate-950/35 backdrop-blur-sm"
+        className="absolute inset-0 bg-[rgba(14,27,44,0.38)] backdrop-blur-sm"
         onClick={onClose}
       />
       <section
         role="dialog"
         aria-modal="true"
         className="relative flex max-h-[90vh] w-full max-w-[1240px] flex-col overflow-hidden rounded-[28px] border bg-[#FBF7F1] shadow-2xl"
-        style={{ borderColor: "rgba(10,10,11,0.10)" }}
+        style={{ borderColor: "rgba(14, 27, 44,0.10)" }}
       >
-        <div className="flex flex-wrap items-start justify-between gap-4 border-b p-6 bg-white" style={{ borderColor: "rgba(10,10,11,0.08)" }}>
+        <div className="flex flex-wrap items-start justify-between gap-4 border-b p-6 bg-white" style={{ borderColor: "rgba(14, 27, 44,0.08)" }}>
           <div>
             <p className="text-[11px] font-bold uppercase tracking-[0.16em]" style={{ color: "var(--color-vl-ink-faint)" }}>
               Admin console
@@ -1931,8 +1931,8 @@ function AdminControlCenterModal({
           </div>
           <button
             type="button"
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border bg-white/80 text-slate-500 transition hover:bg-white hover:text-slate-900"
-            style={{ borderColor: "rgba(10,10,11,0.10)" }}
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border bg-white/80 text-vl-ink-muted transition hover:bg-white hover:text-vl-ink"
+            style={{ borderColor: "rgba(14, 27, 44,0.10)" }}
             onClick={onClose}
           >
             <X className="h-4 w-4" />
@@ -1951,7 +1951,7 @@ function AdminControlCenterModal({
           {/* Accounts & Form */}
           <div className="grid gap-5 lg:grid-cols-[440px_minmax(0,1fr)] 2xl:grid-cols-[460px_minmax(0,1fr)] pb-2">
             {/* Accounts Panel */}
-            <div className="rounded-3xl border bg-white p-4 shadow-xs" style={{ borderColor: "rgba(10,10,11,0.06)" }}>
+            <div className="rounded-3xl border bg-white p-4 shadow-xs" style={{ borderColor: "rgba(14, 27, 44,0.06)" }}>
               <div className="mb-3 flex items-end justify-between gap-3">
                 <div>
                   <p className="text-[11px] font-black uppercase tracking-[0.16em]" style={{ color: "var(--color-vl-ink-faint)" }}>
@@ -1969,14 +1969,14 @@ function AdminControlCenterModal({
               </div>
 
               <div className="relative">
-                <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-vl-ink-faint" />
                 <input
                   type="text"
                   placeholder="Search name, email, plan, org..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="h-12 w-full rounded-2xl border bg-slate-50 pl-11 pr-4 text-[13px] outline-none transition-all duration-200 focus:border-[#FF6B47] focus:bg-white font-semibold"
-                  style={{ borderColor: "rgba(10,10,11,0.08)", color: "var(--color-vl-ink)" }}
+                  className="h-12 w-full rounded-2xl border bg-vl-cream pl-11 pr-4 text-[13px] outline-none transition-all duration-200 focus:border-[#FF6B47] focus:bg-white font-semibold"
+                  style={{ borderColor: "rgba(14, 27, 44,0.08)", color: "var(--color-vl-ink)" }}
                 />
               </div>
 
@@ -1994,7 +1994,7 @@ function AdminControlCenterModal({
                     onClick={() => setUsageFilter(value === "over" ? "over_included" : value)}
                     className="rounded-xl border py-2 text-[10px] font-black uppercase tracking-[0.12em] transition hover:bg-white"
                     style={{
-                      borderColor: (value === "over" ? usageFilter === "over_included" : usageFilter === value) ? "rgba(255,107,71,0.34)" : "rgba(10,10,11,0.06)",
+                      borderColor: (value === "over" ? usageFilter === "over_included" : usageFilter === value) ? "rgba(255,107,71,0.34)" : "rgba(14, 27, 44,0.06)",
                       background: (value === "over" ? usageFilter === "over_included" : usageFilter === value) ? "rgba(255,107,71,0.08)" : "rgba(255,255,255,0.58)",
                       color: (value === "over" ? usageFilter === "over_included" : usageFilter === value) ? "var(--color-vl-coral-deep)" : "var(--color-vl-ink-muted)",
                     }}
@@ -2023,7 +2023,7 @@ function AdminControlCenterModal({
                         type="button"
                         className="w-full rounded-2xl border p-3.5 text-left transition hover:bg-white hover:shadow-xs"
                         style={{
-                          borderColor: isSelected ? "rgba(255,107,71,0.34)" : "rgba(10,10,11,0.06)",
+                          borderColor: isSelected ? "rgba(255,107,71,0.34)" : "rgba(14, 27, 44,0.06)",
                           background: isSelected ? "rgba(255,107,71,0.08)" : "rgba(255,255,255,0.66)",
                         }}
                         onClick={() => setSelectedUserId(user.id)}
@@ -2041,7 +2041,7 @@ function AdminControlCenterModal({
                             {status}
                           </span>
                         </div>
-                        <div className="mt-3.5 border-t pt-3 flex items-center justify-between text-[11px] font-bold" style={{ borderColor: "rgba(10,10,11,0.04)" }}>
+                        <div className="mt-3.5 border-t pt-3 flex items-center justify-between text-[11px] font-bold" style={{ borderColor: "rgba(14, 27, 44,0.04)" }}>
                           <span style={{ color: "var(--color-vl-ink-muted)" }}>
                             {user.organization?.name || "Personal Workspace"}
                           </span>
@@ -2057,10 +2057,10 @@ function AdminControlCenterModal({
             </div>
 
             {/* Account Details Form */}
-            <div className="rounded-3xl border bg-white p-5 shadow-xs flex flex-col justify-between" style={{ borderColor: "rgba(10,10,11,0.06)" }}>
+            <div className="rounded-3xl border bg-white p-5 shadow-xs flex flex-col justify-between" style={{ borderColor: "rgba(14, 27, 44,0.06)" }}>
               {selectedUser ? (
                 <div className="space-y-5">
-                  <div className="border-b pb-4 flex justify-between items-start gap-4" style={{ borderColor: "rgba(10,10,11,0.04)" }}>
+                  <div className="border-b pb-4 flex justify-between items-start gap-4" style={{ borderColor: "rgba(14, 27, 44,0.04)" }}>
                     <div>
                       <h3 className="text-[17px] font-black" style={{ color: "var(--color-vl-ink)" }}>
                         {selectedUser.name || "User Details"}
@@ -2090,7 +2090,7 @@ function AdminControlCenterModal({
                     <AdminStat label="Total Voice Minutes" value={`${selectedUser.usage.voiceMinutes} mins utilized`} />
                   </div>
 
-                  <div className="border-t pt-4 space-y-4" style={{ borderColor: "rgba(10,10,11,0.04)" }}>
+                  <div className="border-t pt-4 space-y-4" style={{ borderColor: "rgba(14, 27, 44,0.04)" }}>
                     <div className="grid gap-4 sm:grid-cols-2">
                       <AdminSelect
                         label="Subscription Tier"
@@ -2147,8 +2147,8 @@ function AdminControlCenterModal({
                         <div className="flex gap-2">
                           <button
                             type="button"
-                            className="vl-btn-outline w-full py-2.5 rounded-xl font-bold text-[12px] inline-flex items-center justify-center gap-1 bg-slate-50 hover:bg-white text-slate-700"
-                            style={{ borderColor: "rgba(10,10,11,0.06)" }}
+                            className="vl-btn-outline w-full py-2.5 rounded-xl font-bold text-[12px] inline-flex items-center justify-center gap-1 bg-vl-cream hover:bg-white text-vl-ink-soft"
+                            style={{ borderColor: "rgba(14, 27, 44,0.06)" }}
                             onClick={() =>
                               setActionModal({
                                 kind: "quick",
@@ -2177,7 +2177,7 @@ function AdminControlCenterModal({
               )}
 
               {selectedUser && (
-                <div className="mt-6 pt-4 border-t flex justify-end gap-2" style={{ borderColor: "rgba(10,10,11,0.04)" }}>
+                <div className="mt-6 pt-4 border-t flex justify-end gap-2" style={{ borderColor: "rgba(14, 27, 44,0.04)" }}>
                   {selectedDraft?.status !== "active" ? (
                     <button
                       type="button"
@@ -2262,7 +2262,7 @@ function AdminActionTile({
       type="button"
       className="group flex min-h-28 flex-col rounded-3xl border bg-white/72 p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:bg-white hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
       style={{
-        borderColor: danger ? "rgba(215,64,46,0.20)" : "rgba(10,10,11,0.08)",
+        borderColor: danger ? "rgba(215,64,46,0.20)" : "rgba(14, 27, 44,0.08)",
         color: danger ? "var(--color-vl-danger)" : "var(--color-vl-ink)",
       }}
       disabled={disabled}
@@ -2325,19 +2325,19 @@ function AdminAccessModal({
       <button
         type="button"
         aria-label="Close admin action"
-        className="absolute inset-0 bg-slate-950/35 backdrop-blur-sm"
+        className="absolute inset-0 bg-[rgba(14,27,44,0.38)] backdrop-blur-sm"
         onClick={onClose}
       />
       <section
         role="dialog"
         aria-modal="true"
         className="relative w-full max-w-150 overflow-hidden rounded-[28px] border bg-white shadow-2xl"
-        style={{ borderColor: "rgba(10,10,11,0.10)" }}
+        style={{ borderColor: "rgba(14, 27, 44,0.10)" }}
       >
-        <div className="relative border-b p-6" style={{ borderColor: "rgba(10,10,11,0.08)" }}>
+        <div className="relative border-b p-6" style={{ borderColor: "rgba(14, 27, 44,0.08)" }}>
           <div className="pointer-events-none absolute inset-0 opacity-80" style={{
             background:
-              "radial-gradient(circle at 14% 18%, rgba(236,72,153,0.12), transparent 28%), radial-gradient(circle at 85% 5%, rgba(99,102,241,0.12), transparent 30%), radial-gradient(circle at 92% 88%, rgba(16,185,129,0.10), transparent 30%)",
+              "radial-gradient(circle at 14% 18%, rgba(255, 107, 71,0.12), transparent 28%), radial-gradient(circle at 85% 5%, rgba(124, 110, 245,0.12), transparent 30%), radial-gradient(circle at 92% 88%, rgba(16,185,129,0.10), transparent 30%)",
           }} />
           <div className="relative flex items-start justify-between gap-5">
             <div>
@@ -2353,8 +2353,8 @@ function AdminAccessModal({
             </div>
             <button
               type="button"
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border bg-white/80 text-slate-500 transition hover:bg-white hover:text-slate-900"
-              style={{ borderColor: "rgba(10,10,11,0.10)" }}
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border bg-white/80 text-vl-ink-muted transition hover:bg-white hover:text-vl-ink"
+              style={{ borderColor: "rgba(14, 27, 44,0.10)" }}
               onClick={onClose}
             >
               <X className="h-4 w-4" />
@@ -2382,7 +2382,7 @@ function AdminAccessModal({
               )}
             </div>
           ) : (
-            <div className="rounded-3xl border bg-slate-50/70 p-5" style={{ borderColor: "rgba(10,10,11,0.08)" }}>
+            <div className="rounded-3xl border bg-vl-cream/70 p-5" style={{ borderColor: "rgba(14, 27, 44,0.08)" }}>
               <p className="text-[11px] font-bold uppercase tracking-[0.15em]" style={{ color: "var(--color-vl-ink-faint)" }}>
                 This will apply
               </p>
@@ -2395,7 +2395,7 @@ function AdminAccessModal({
           )}
         </div>
 
-        <div className="flex flex-wrap items-center justify-end gap-3 border-t bg-slate-50/60 p-5" style={{ borderColor: "rgba(10,10,11,0.08)" }}>
+        <div className="flex flex-wrap items-center justify-end gap-3 border-t bg-vl-cream/60 p-5" style={{ borderColor: "rgba(14, 27, 44,0.08)" }}>
           <button type="button" className="vl-btn-ghost text-[13px]" onClick={onClose} disabled={saving}>
             Cancel
           </button>
@@ -2417,7 +2417,7 @@ function AdminAccessModal({
 
 function AdminMetricCard({ label, value, icon, bgColor, textColor, isFailure = false }: { label: string; value: number; icon: ReactNode; bgColor: string; textColor: string; isFailure?: boolean }) {
   return (
-    <div className="flex min-w-0 items-center gap-3 rounded-2xl border bg-white/70 p-3 shadow-sm transition duration-200 hover:bg-white hover:shadow" style={{ borderColor: "rgba(10,10,11,0.06)" }}>
+    <div className="flex min-w-0 items-center gap-3 rounded-2xl border bg-white/70 p-3 shadow-sm transition duration-200 hover:bg-white hover:shadow" style={{ borderColor: "rgba(14, 27, 44,0.06)" }}>
       <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl shadow-inner ${bgColor} ${textColor}`}>
         {icon}
       </div>
@@ -2434,7 +2434,7 @@ function AdminMetricCard({ label, value, icon, bgColor, textColor, isFailure = f
 function AdminSelect({ label, value, options, onChange }: { label: string; value: string; options: string[]; onChange: (value: string) => void }) {
   return (
     <Field label={label}>
-      <select value={value} onChange={(event) => onChange(event.target.value)} className="vl-compact-input shadow-inner font-semibold text-slate-700 bg-white">
+      <select value={value} onChange={(event) => onChange(event.target.value)} className="vl-compact-input shadow-inner font-semibold text-vl-ink-soft bg-white">
         {options.map((option) => (
           <option key={option} value={option}>{capitalize(option.replace(/_/g, " "))}</option>
         ))}
@@ -2572,7 +2572,7 @@ function UsageCard({ token, plan, isAdmin = false }: { token: string | null; pla
             {hasFiniteLimit ? (
               <div className="space-y-2">
                 <div className="relative">
-                  <div className="h-3 overflow-hidden rounded-full bg-slate-100 shadow-inner" style={{ border: "1px solid rgba(14,27,44,0.04)" }}>
+                  <div className="h-3 overflow-hidden rounded-full bg-[rgba(14,27,44,0.06)] shadow-inner" style={{ border: "1px solid rgba(14,27,44,0.04)" }}>
                     <div
                       className={`h-full rounded-full ${activeStatus.bar} transition-all duration-500`}
                       style={{
@@ -2582,7 +2582,7 @@ function UsageCard({ token, plan, isAdmin = false }: { token: string | null; pla
                   </div>
                   {/* Subtle marker at the included minutes mark (which is 1 / 1.5 = 66.6% of the hard cap bar) */}
                   <div
-                    className="absolute top-0 bottom-0 w-0.5 bg-slate-300 border-l border-dashed border-slate-400"
+                    className="absolute top-0 bottom-0 w-0.5 bg-vl-ink-faint border-l border-dashed border-vl-ink-faint"
                     style={{ left: "66.67%" }}
                     title="Included Minutes limit"
                   />
@@ -2590,20 +2590,20 @@ function UsageCard({ token, plan, isAdmin = false }: { token: string | null; pla
 
                 <div className="flex justify-between items-center text-[12px] font-bold">
                   <span className="tabular-nums" style={{ color: "var(--color-vl-ink)" }}>
-                    {used.toLocaleString()} min <span className="text-slate-400 font-medium">used</span>
+                    {used.toLocaleString()} min <span className="text-vl-ink-faint font-medium">used</span>
                   </span>
-                  <div className="flex gap-4 text-slate-500 font-semibold">
+                  <div className="flex gap-4 text-vl-ink-muted font-semibold">
                     <span title="Billed as standard monthly flat fee">
-                      Included: <strong className="text-slate-700">{limit} min</strong>
+                      Included: <strong className="text-vl-ink-soft">{limit} min</strong>
                     </span>
                     <span title="Overage cap: service suspends beyond this limit">
-                      Hard Cap: <strong className="text-slate-700">{hardCap} min</strong>
+                      Hard Cap: <strong className="text-vl-ink-soft">{hardCap} min</strong>
                     </span>
                   </div>
                 </div>
 
                 {/* Progress details */}
-                <div className="rounded-2xl border bg-slate-50/50 p-3 mt-3 flex justify-between items-center text-[12px] font-semibold" style={{ borderColor: "rgba(10,10,11,0.05)" }}>
+                <div className="rounded-2xl border bg-vl-cream/50 p-3 mt-3 flex justify-between items-center text-[12px] font-semibold" style={{ borderColor: "rgba(14, 27, 44,0.05)" }}>
                   <span style={{ color: "var(--color-vl-ink-muted)" }}>
                     {used > limit ? (
                       <>
@@ -2636,11 +2636,11 @@ function UsageCard({ token, plan, isAdmin = false }: { token: string | null; pla
                   const maxCount = Math.max(...(data?.topTools?.map((tool) => tool.count) ?? [1]));
                   const relativePct = Math.max(12, Math.round((t.count / maxCount) * 100));
                   return (
-                    <div key={t.toolName} className="relative overflow-hidden rounded-xl bg-slate-50 border px-4 py-2 flex justify-between items-center text-[13px]" style={{ borderColor: "rgba(14,27,44,0.04)" }}>
+                    <div key={t.toolName} className="relative overflow-hidden rounded-xl bg-vl-cream border px-4 py-2 flex justify-between items-center text-[13px]" style={{ borderColor: "rgba(14,27,44,0.04)" }}>
                       {/* background count bar */}
                       <div className="absolute left-0 top-0 bottom-0 bg-[#FF6B47]/5 transition-all duration-300" style={{ width: `${relativePct}%` }} />
                       <span className="font-bold capitalize z-10" style={{ color: "var(--color-vl-ink)" }}>{t.toolName.replace(/_/g, " ")}</span>
-                      <span className="tabular-nums font-bold text-slate-500 z-10">{t.count}</span>
+                      <span className="tabular-nums font-bold text-vl-ink-muted z-10">{t.count}</span>
                     </div>
                   );
                 })}

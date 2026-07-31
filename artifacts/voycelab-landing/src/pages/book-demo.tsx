@@ -74,7 +74,7 @@ export default function BookDemo() {
                 referrerPolicy="strict-origin-when-cross-origin"
               />
             ) : (
-              <div className="flex min-h-120 flex-col justify-center rounded-xl border border-dashed p-8 text-center" style={{ borderColor: "rgba(10,10,11,0.16)" }}>
+              <div className="flex min-h-120 flex-col justify-center rounded-xl border border-dashed p-8 text-center" style={{ borderColor: "rgba(14, 27, 44,0.16)" }}>
                 <p className="text-[15px] font-semibold" style={{ color: "var(--color-vl-ink)" }}>
                   Tell us when you would like to meet.
                 </p>

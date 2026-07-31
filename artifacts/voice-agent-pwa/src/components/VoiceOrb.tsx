@@ -30,8 +30,8 @@ interface Props {
  *
  * Visual layer aligned with the VoyceLab brand orb (see voycelab-landing's
  * voice-orb.tsx): 9 capsule bars on a left-to-right pastel rainbow ramp
- * (orange → pink → violet → blue), standing on a baseline over a soft
- * peach/lilac halo, with a faded mirror reflection below and warm/cool
+ * (honey → coral → plum → violet), standing on a baseline over a soft
+ * paper-toned halo, with a faded mirror reflection below and warm/cool
  * accent dots closing each end.
  *
  * Bars grow UPWARD from the baseline (not symmetric about centre) so the
@@ -40,21 +40,21 @@ interface Props {
 
 const BAR_COUNT = 9;
 
-/** Left-to-right pastel rainbow: warm at the left, cool at the right. */
+/** Hospitality spectrum: honey and coral resolve into plum, indigo, and sage. */
 const BAR_COLORS: Array<[string, string]> = [
-  ["#FFB37A", "#FF9A5C"], // peach
-  ["#FFA08A", "#FF7A6B"], // melon
-  ["#FF8FA8", "#FF5C82"], // rose
-  ["#FF7DC0", "#E94CA0"], // pink
-  ["#E382E0", "#C45CC8"], // orchid
-  ["#B58CE6", "#8E64D8"], // violet
-  ["#8C9CF0", "#5F73E0"], // indigo
-  ["#7AB7F0", "#4F95D8"], // azure
-  ["#7FD2F0", "#4FB7E8"], // sky
+  ["#FBD393", "#E7A94D"],
+  ["#FFC7B1", "#FF9B82"],
+  ["#FF9B82", "#FF6B47"],
+  ["#FF8EAF", "#E85E86"],
+  ["#C59BEA", "#9C69D4"],
+  ["#B9B1FF", "#7C6EF5"],
+  ["#98A8E8", "#6679C8"],
+  ["#BFD8C5", "#79AD88"],
+  ["#9CCDC2", "#5EAA9B"],
 ];
 
-const DOT_LEFT = "#FF8A4A";
-const DOT_RIGHT = "#5FB7E8";
+const DOT_LEFT = "#FF6B47";
+const DOT_RIGHT = "#7C6EF5";
 
 const VB_W = 240;
 const VB_H = 150;
@@ -249,10 +249,10 @@ export function VoiceOrb({ state, remoteStream, onTap, size = 240 }: Props) {
 
           {/* Soft brand halo sitting behind the wave. */}
           <radialGradient id={`halo-${uid}`} cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="#FFD8C2" stopOpacity="0.55" />
-            <stop offset="32%" stopColor="#FFB7D0" stopOpacity="0.42" />
-            <stop offset="60%" stopColor="#C9B8EE" stopOpacity="0.32" />
-            <stop offset="100%" stopColor="#A6D5F2" stopOpacity="0" />
+            <stop offset="0%" stopColor="#FBD393" stopOpacity="0.48" />
+            <stop offset="32%" stopColor="#FFC7B1" stopOpacity="0.42" />
+            <stop offset="60%" stopColor="#CFC8FF" stopOpacity="0.30" />
+            <stop offset="100%" stopColor="#BFD8C5" stopOpacity="0" />
           </radialGradient>
           <filter id={`haloblur-${uid}`} x="-50%" y="-50%" width="200%" height="200%">
             <feGaussianBlur stdDeviation="10" />

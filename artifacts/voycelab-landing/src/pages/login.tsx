@@ -64,7 +64,7 @@ export default function Login() {
         className="absolute inset-0 pointer-events-none"
         style={{
           background:
-            "radial-gradient(ellipse 60% 45% at 15% 20%, rgba(251, 207, 232,0.30), transparent 65%), radial-gradient(ellipse 50% 40% at 90% 80%, rgba(199, 210, 254,0.28), transparent 65%)",
+            "radial-gradient(ellipse 60% 45% at 15% 20%, rgba(255, 107, 71,0.18), transparent 65%), radial-gradient(ellipse 50% 40% at 90% 80%, rgba(124, 110, 245,0.18), transparent 65%)",
         }}
       />
 
@@ -73,7 +73,7 @@ export default function Login() {
           <Link
             href="/"
             className="inline-flex items-center gap-1.5 rounded-2xl border bg-white/70 px-3 py-2 text-[13px] font-semibold shadow-sm backdrop-blur transition hover:bg-white hover:shadow"
-            style={{ color: "var(--color-vl-ink-muted)", borderColor: "rgba(10,10,11,0.08)" }}
+            style={{ color: "var(--color-vl-ink-muted)", borderColor: "rgba(14, 27, 44,0.08)" }}
           >
             <ArrowLeft className="w-3.5 h-3.5" /> Back
           </Link>
@@ -291,27 +291,27 @@ export default function Login() {
       <style>{`
         .login-card {
           background: rgba(255, 255, 255, 0.92);
-          border-color: rgba(10, 10, 11, 0.08);
+          border-color: rgba(14, 27, 44, 0.08);
           box-shadow:
-            0 1px 2px rgba(10, 10, 11, 0.04),
-            0 18px 48px -32px rgba(10, 10, 11, 0.35);
+            0 1px 2px rgba(14, 27, 44, 0.04),
+            0 18px 48px -32px rgba(14, 27, 44, 0.35);
         }
         .login-input {
           background: #ffffff;
-          border-color: rgba(10, 10, 11, 0.14);
+          border-color: rgba(14, 27, 44, 0.14);
           color: var(--color-vl-ink);
-          box-shadow: inset 0 1px 0 rgba(10, 10, 11, 0.02);
+          box-shadow: inset 0 1px 0 rgba(14, 27, 44, 0.02);
         }
         .login-input:focus {
           border-color: var(--color-vl-accent);
           background: #ffffff;
-          box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.14);
+          box-shadow: 0 0 0 4px rgba(124, 110, 245, 0.14);
         }
         .login-input:-webkit-autofill,
         .login-input:-webkit-autofill:hover,
         .login-input:-webkit-autofill:focus {
           -webkit-text-fill-color: var(--color-vl-ink);
-          box-shadow: 0 0 0 1000px #ffffff inset, 0 0 0 4px rgba(99, 102, 241, 0.14);
+          box-shadow: 0 0 0 1000px #ffffff inset, 0 0 0 4px rgba(124, 110, 245, 0.14);
           transition: background-color 9999s ease-out 0s;
         }
       `}</style>

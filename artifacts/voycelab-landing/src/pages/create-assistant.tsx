@@ -430,7 +430,7 @@ export default function CreateAssistant() {
       <div className="vl-page-shell flex flex-1 items-center justify-center">
         <Loader2
           className="w-5 h-5 animate-spin"
-          style={{ color: "var(--color-vl-brass2)" }}
+          style={{ color: "var(--color-vl-coral)" }}
         />
       </div>
     );
@@ -529,7 +529,7 @@ export default function CreateAssistant() {
                   <Link
                     href="/services"
                     className="underline"
-                    style={{ color: "var(--color-vl-brass2)" }}
+                    style={{ color: "var(--color-vl-coral)" }}
                   >
                     Connect Square
                   </Link>{" "}
@@ -540,7 +540,7 @@ export default function CreateAssistant() {
                 <Link
                   href="/services"
                   className="inline-block mt-2 text-[12px] underline"
-                  style={{ color: "var(--color-vl-brass2)" }}
+                  style={{ color: "var(--color-vl-coral)" }}
                 >
                   Manage connections
                 </Link>
@@ -552,9 +552,9 @@ export default function CreateAssistant() {
             <div
               className="rounded-xl border p-4 text-[13px]"
               style={{
-                color: "rgba(10,10,11,0.62)",
-                background: "rgba(199,210,254,0.12)",
-                borderColor: "rgba(99,102,241,0.12)",
+                color: "rgba(14, 27, 44,0.62)",
+                background: "rgba(124,110,245,0.12)",
+                borderColor: "rgba(124, 110, 245,0.12)",
               }}
             >
               Your assistant starts without POS access. Connect Square anytime from{" "}
@@ -584,15 +584,15 @@ export default function CreateAssistant() {
               ))}
             </div>
             {!auth?.isAdmin && !auth?.user?.isAdmin && !allowedVoiceEngines.has("google_gemini_3_1_flash_live") && (
-              <p className="mt-2 text-[12px]" style={{ color: "rgba(10,10,11,0.52)" }}>
+              <p className="mt-2 text-[12px]" style={{ color: "rgba(14, 27, 44,0.52)" }}>
                 Gemini voices unlock on Pro and Business.{" "}
-                <Link href="/pricing" className="underline" style={{ color: "var(--color-vl-brass2)" }}>
+                <Link href="/pricing" className="underline" style={{ color: "var(--color-vl-coral)" }}>
                   View plans
                 </Link>
               </p>
             )}
             {!voiceEnginesLoaded && (
-              <p className="mt-2 text-[12px]" style={{ color: "rgba(10,10,11,0.52)" }}>
+              <p className="mt-2 text-[12px]" style={{ color: "rgba(14, 27, 44,0.52)" }}>
                 Using built-in engine defaults until server readiness loads.
               </p>
             )}
@@ -631,7 +631,7 @@ export default function CreateAssistant() {
                     style={{ color: "var(--color-vl-ink-faint)" }}
                   />
                 </div>
-                <p className="mt-1.5 text-[11.5px]" style={{ color: "rgba(10,10,11,0.42)" }}>
+                <p className="mt-1.5 text-[11.5px]" style={{ color: "rgba(14, 27, 44,0.42)" }}>
                   Controls how aggressively the assistant filters background noise and when it starts listening.
                 </p>
               </label>
@@ -667,7 +667,7 @@ export default function CreateAssistant() {
                         style={{
                           borderColor: wakeMode === option.id
                             ? "rgba(124,110,245,0.6)"
-                            : "rgba(10, 10, 11,0.10)",
+                            : "rgba(14, 27, 44,0.10)",
                           background: wakeMode === option.id ? "rgba(124,110,245,0.06)" : "#FFFFFF",
                           opacity: disabled ? 0.48 : 1,
                           cursor: disabled ? "not-allowed" : "pointer",
@@ -676,7 +676,7 @@ export default function CreateAssistant() {
                         <span className="block text-[13px] font-semibold" style={{ color: "var(--color-vl-ink)" }}>
                           {option.label}
                         </span>
-                        <span className="mt-1 block text-[11.5px]" style={{ color: "rgba(10,10,11,0.48)" }}>
+                        <span className="mt-1 block text-[11.5px]" style={{ color: "rgba(14, 27, 44,0.48)" }}>
                           {disabled ? "Disabled for push to talk" : option.hint}
                         </span>
                       </button>
@@ -701,7 +701,7 @@ export default function CreateAssistant() {
                         style={{
                           borderColor: orderHandlingMode === option.id
                             ? "rgba(124,110,245,0.6)"
-                            : "rgba(10, 10, 11,0.10)",
+                            : "rgba(14, 27, 44,0.10)",
                           background: orderHandlingMode === option.id ? "rgba(124,110,245,0.06)" : "#FFFFFF",
                           cursor: "pointer",
                         }}
@@ -709,13 +709,13 @@ export default function CreateAssistant() {
                         <span className="block text-[13px] font-semibold" style={{ color: "var(--color-vl-ink)" }}>
                           {option.label}
                         </span>
-                        <span className="mt-1 block text-[11.5px]" style={{ color: "rgba(10,10,11,0.48)" }}>
+                        <span className="mt-1 block text-[11.5px]" style={{ color: "rgba(14, 27, 44,0.48)" }}>
                           {option.hint}
                         </span>
                       </button>
                     ))}
                   </div>
-                  <p className="mt-1.5 text-[11.5px]" style={{ color: "rgba(10,10,11,0.42)" }}>
+                  <p className="mt-1.5 text-[11.5px]" style={{ color: "rgba(14, 27, 44,0.42)" }}>
                     Hold for review parks submitted orders on the POS as open tickets so the team can settle them at close-out. No payment is taken at submit.
                   </p>
                 </fieldset>
@@ -775,7 +775,7 @@ export default function CreateAssistant() {
                   rows={3}
                   style={{ height: "auto", padding: "12px 16px" }}
                 />
-                <p className="mt-1.5 text-[11.5px]" style={{ color: "rgba(10,10,11,0.42)" }}>
+                <p className="mt-1.5 text-[11.5px]" style={{ color: "rgba(14, 27, 44,0.42)" }}>
                   Add custom instructions the assistant will follow during every conversation.
                 </p>
               </label>
@@ -845,17 +845,17 @@ export default function CreateAssistant() {
           padding: 0 16px;
           border-radius: 14px;
           background: rgba(255,255,255,0.78);
-          border: 1px solid rgba(10, 10, 11,0.12);
+          border: 1px solid rgba(14, 27, 44,0.12);
           color: var(--color-vl-ink);
           font-size: 15px;
           outline: none;
           transition: border-color .2s ease, background .2s ease, box-shadow .2s ease;
         }
-        .vl-input::placeholder { color: rgba(10, 10, 11,0.36); }
+        .vl-input::placeholder { color: rgba(14, 27, 44,0.36); }
         .vl-input:focus {
           border-color: var(--color-vl-coral);
           background: #fff;
-          box-shadow: 0 0 0 3px rgba(99, 102, 241,0.14);
+          box-shadow: 0 0 0 3px rgba(124, 110, 245,0.14);
         }
       `}</style>
     </div>
@@ -864,7 +864,7 @@ export default function CreateAssistant() {
 
 function SummaryRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl border bg-white/70 px-4 py-3" style={{ borderColor: "rgba(10,10,11,0.06)" }}>
+    <div className="rounded-2xl border bg-white/70 px-4 py-3" style={{ borderColor: "rgba(14, 27, 44,0.06)" }}>
       <p className="text-[10px] font-bold uppercase tracking-[0.14em]" style={{ color: "var(--color-vl-ink-faint)" }}>
         {label}
       </p>
@@ -907,16 +907,16 @@ function AdvancedSettingsCard({ children }: { children: ReactNode }) {
           <button
             type="button"
             aria-label="Close advanced settings"
-            className="absolute inset-0 bg-slate-950/35 backdrop-blur-sm"
+            className="absolute inset-0 bg-[rgba(14,27,44,0.38)] backdrop-blur-sm"
             onClick={() => setOpen(false)}
           />
           <section
             role="dialog"
             aria-modal="true"
             className="relative flex max-h-[88vh] w-full max-w-[860px] flex-col overflow-hidden rounded-[28px] border bg-white shadow-2xl"
-            style={{ borderColor: "rgba(10,10,11,0.10)" }}
+            style={{ borderColor: "rgba(14, 27, 44,0.10)" }}
           >
-            <div className="grid gap-5 border-b p-6 lg:grid-cols-[220px_minmax(0,1fr)_auto]" style={{ borderColor: "rgba(10,10,11,0.08)" }}>
+            <div className="grid gap-5 border-b p-6 lg:grid-cols-[220px_minmax(0,1fr)_auto]" style={{ borderColor: "rgba(14, 27, 44,0.08)" }}>
               <AssistantSetupArt compact />
               <div>
                 <p className="text-[11px] font-bold uppercase tracking-[0.16em]" style={{ color: "var(--color-vl-ink-faint)" }}>
@@ -931,8 +931,8 @@ function AdvancedSettingsCard({ children }: { children: ReactNode }) {
               </div>
               <button
                 type="button"
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border bg-white/80 text-slate-500 transition hover:bg-white hover:text-slate-900"
-                style={{ borderColor: "rgba(10,10,11,0.10)" }}
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border bg-white/80 text-vl-ink-muted transition hover:bg-white hover:text-vl-ink"
+                style={{ borderColor: "rgba(14, 27, 44,0.10)" }}
                 onClick={() => setOpen(false)}
               >
                 <X className="h-4 w-4" />
@@ -1023,8 +1023,8 @@ function VoiceEngineCard({
         borderColor: selected
           ? "rgba(124,110,245,0.6)"
             : disabled
-            ? "rgba(10,10,11,0.08)"
-            : "rgba(10, 10, 11,0.10)",
+            ? "rgba(14, 27, 44,0.08)"
+            : "rgba(14, 27, 44,0.10)",
         background: selected ? "rgba(124,110,245,0.06)" : "#FFFFFF",
         opacity: disabled ? 0.6 : 1,
         cursor: disabled ? "not-allowed" : "pointer",
@@ -1038,8 +1038,8 @@ function VoiceEngineCard({
           <span
             className="inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em]"
             style={{
-              color: statusLabel === "Ready" ? "var(--color-vl-success)" : "rgba(10,10,11,0.52)",
-              background: statusLabel === "Ready" ? "rgba(16,185,129,0.10)" : "rgba(10,10,11,0.06)",
+              color: statusLabel === "Ready" ? "var(--color-vl-success)" : "rgba(14, 27, 44,0.52)",
+              background: statusLabel === "Ready" ? "rgba(16,185,129,0.10)" : "rgba(14, 27, 44,0.06)",
             }}
           >
             {locked && <Lock className="h-3 w-3" />}
@@ -1047,7 +1047,7 @@ function VoiceEngineCard({
           </span>
         )}
       </span>
-      <span className="mt-1 block text-[12px]" style={{ color: "rgba(10,10,11,0.52)" }}>
+      <span className="mt-1 block text-[12px]" style={{ color: "rgba(14, 27, 44,0.52)" }}>
         {locked
           ? "Upgrade to use this voice engine."
           : needsConfig
@@ -1075,14 +1075,14 @@ function ToggleCard({
       onClick={() => onChange(!checked)}
       className="vl-card flex min-h-[88px] items-start gap-3 p-3 text-left transition-colors"
       style={{
-        borderColor: checked ? "rgba(124,110,245,0.6)" : "rgba(10,10,11,0.10)",
+        borderColor: checked ? "rgba(124,110,245,0.6)" : "rgba(14, 27, 44,0.10)",
         background: checked ? "rgba(124,110,245,0.06)" : "#FFFFFF",
       }}
       aria-pressed={checked}
     >
       <span
           className="mt-0.5 inline-flex h-5 w-9 shrink-0 items-center rounded-xl p-0.5 transition-colors"
-        style={{ background: checked ? "var(--color-vl-coral)" : "rgba(10,10,11,0.16)" }}
+        style={{ background: checked ? "var(--color-vl-coral)" : "rgba(14, 27, 44,0.16)" }}
       >
         <span
           className="block h-4 w-4 rounded-lg bg-white transition-transform"
@@ -1093,7 +1093,7 @@ function ToggleCard({
         <span className="block text-[13px] font-semibold" style={{ color: "var(--color-vl-ink)" }}>
           {label}
         </span>
-        <span className="mt-1 block text-[11.5px] leading-snug" style={{ color: "rgba(10,10,11,0.48)" }}>
+        <span className="mt-1 block text-[11.5px] leading-snug" style={{ color: "rgba(14, 27, 44,0.48)" }}>
           {hint}
         </span>
       </span>
@@ -1191,7 +1191,7 @@ function VoiceOption({
       style={{
         borderColor: selected
           ? "rgba(124,110,245,0.6)"
-          : "rgba(10, 10, 11,0.10)",
+          : "rgba(14, 27, 44,0.10)",
         background: selected ? "rgba(124,110,245,0.06)" : undefined,
       }}
     >
@@ -1223,7 +1223,7 @@ function VoiceOption({
         style={{
           borderColor: isPlaying
             ? "rgba(124,110,245,0.6)"
-            : "rgba(10, 10, 11,0.12)",
+            : "rgba(14, 27, 44,0.12)",
           background: isPlaying
             ? "var(--color-vl-coral-tint)"
             : "rgba(255,255,255,0.55)",

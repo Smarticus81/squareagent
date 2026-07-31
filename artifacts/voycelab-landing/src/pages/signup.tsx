@@ -29,7 +29,7 @@ export default function Signup() {
         className="absolute inset-0 pointer-events-none"
         style={{
           background:
-            "radial-gradient(ellipse 60% 45% at 15% 15%, rgba(251, 207, 232,0.30), transparent 65%), radial-gradient(ellipse 50% 40% at 85% 85%, rgba(167, 243, 208,0.26), transparent 65%), radial-gradient(ellipse 40% 35% at 90% 15%, rgba(199, 210, 254,0.25), transparent 65%)",
+            "radial-gradient(ellipse 60% 45% at 15% 15%, rgba(255, 107, 71,0.18), transparent 65%), radial-gradient(ellipse 50% 40% at 85% 85%, rgba(191, 216, 197,0.30), transparent 65%), radial-gradient(ellipse 40% 35% at 90% 15%, rgba(124, 110, 245,0.18), transparent 65%)",
         }}
       />
 
@@ -38,7 +38,7 @@ export default function Signup() {
           <Link
             href="/"
             className="inline-flex items-center gap-1.5 rounded-2xl border bg-white/70 px-3 py-2 text-[13px] font-semibold shadow-sm backdrop-blur transition hover:bg-white hover:shadow"
-            style={{ color: "var(--color-vl-ink-muted)", borderColor: "rgba(10,10,11,0.08)" }}
+            style={{ color: "var(--color-vl-ink-muted)", borderColor: "rgba(14, 27, 44,0.08)" }}
           >
             <ArrowLeft className="w-3.5 h-3.5" /> Back
           </Link>

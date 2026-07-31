@@ -23,21 +23,6 @@ const assetUrl = (path: string) => `${import.meta.env.BASE_URL}${path}`.replace(
 type AppMode = "idle" | "wake_word" | "command" | "shutdown";
 
 
-/* ── Rail state CSS class ────────────────────────────────────── */
-function railClass(state: AgentState, mode: AppMode, wakeWordActive: boolean): string {
-  if (mode === "idle" || mode === "shutdown") return "rail-idle";
-  if (mode === "wake_word" && wakeWordActive) return "rail-ambient";
-  if (mode === "wake_word" && !wakeWordActive) return "rail-idle";
-  switch (state) {
-    case "listening":  return "rail-listening";
-    case "speaking":   return "rail-speaking";
-    case "thinking":   return "rail-thinking";
-    case "connecting": return "rail-connecting";
-    case "error":      return "rail-error";
-    default:           return "rail-idle";
-  }
-}
-
 /**
  * User-facing voice surface labels.
  * Internal engineering states map to plain-language words the user can read.
@@ -84,17 +69,6 @@ function GhostLine({ msg, rank }: { msg: ConversationMessage; rank: number }) {
     ? (isUser ? "msg msg-user" : "msg msg-agent")
     : rank === 1 ? "msg msg-old" : "msg msg-oldest";
   return <p className={cls}>{msg.content}</p>;
-}
-
-/* ── Waveform bars for rail ───────────────────────────────────── */
-function RailWaveform({ active }: { active: boolean }) {
-  return (
-    <div className={`rail-waveform ${active ? "rail-waveform-active" : ""}`}>
-      {Array.from({ length: 24 }).map((_, i) => (
-        <div key={i} className="rail-bar" style={{ animationDelay: `${i * 0.06}s` }} />
-      ))}
-    </div>
-  );
 }
 
 /* ── Main App ─────────────────────────────────────────────────── */
@@ -486,11 +460,16 @@ export default function App() {
   const msgs = conversation.slice(-3);
   const orderCount = currentOrder?.items.length ?? 0;
   const label = stateLabel(agentState, mode, wakeWordListening);
-  const railCls = railClass(agentState, mode, wakeWordListening);
-  const showWaveform = agentState === "speaking" || agentState === "listening";
-
   return (
     <div className="app">
+      <div className="premium-backdrop" aria-hidden="true">
+        <span className="premium-aura premium-aura-coral" />
+        <span className="premium-aura premium-aura-violet" />
+        <span className="premium-aura premium-aura-honey" />
+        <span className="premium-aura premium-aura-sage" />
+        <span className="premium-horizon" />
+        <span className="premium-grain" />
+      </div>
       {/* ── Top bar ──────────────────────────────────────────── */}
       <div className="top-bar">
         <button className="hamburger" onClick={() => openPanel(sessionVerified ? "order" : "settings")} aria-label="Open menu">
@@ -521,7 +500,7 @@ export default function App() {
 
       {/* Status chips — assistant · connected service · room */}
       <div className="status-chips">
-        <span className="vl-pill vl-pill-brass">{agentProfile?.displayName ?? "Assistant"}</span>
+        <span className="vl-pill vl-pill-coral">{agentProfile?.displayName ?? "Assistant"}</span>
         {squareBlocked ? (
           <span className="vl-pill vl-pill-danger"><span className="vl-pill-dot" />Square disconnected</span>
         ) : assistantKind === "venue" && isConfigured && squareStatus === "connected" ? (

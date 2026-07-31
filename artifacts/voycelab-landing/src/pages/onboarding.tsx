@@ -264,7 +264,7 @@ export default function Onboarding() {
       <div className="vl-page-shell flex flex-1 items-center justify-center">
         <Loader2
           className="w-5 h-5 animate-spin"
-          style={{ color: "var(--color-vl-brass2)" }}
+          style={{ color: "var(--color-vl-coral)" }}
         />
       </div>
     );
@@ -272,22 +272,6 @@ export default function Onboarding() {
 
   return (
     <div className="vl-page-shell relative flex-1 overflow-hidden px-4 pb-20 pt-16 sm:px-6 lg:px-10">
-      {/* Background blobs */}
-      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
-        <div
-          className="absolute left-[-12%] top-[-18%] h-95 w-140 rounded-[42%] blur-3xl"
-          style={{ background: "rgba(251, 207, 232, 0.42)" }}
-        />
-        <div
-          className="absolute right-[-14%] top-[5%] h-120 w-150 rounded-[42%] blur-3xl"
-          style={{ background: "rgba(199, 210, 254, 0.30)" }}
-        />
-        <div
-          className="absolute bottom-[-18%] right-[12%] h-105 w-170 rounded-[42%] blur-3xl"
-          style={{ background: "rgba(167, 243, 208, 0.23)" }}
-        />
-      </div>
-
       <div className="mx-auto w-full max-w-xl">
         {/* Step indicator */}
         <div className="flex items-center justify-center gap-3 mb-10">
@@ -307,10 +291,10 @@ export default function Onboarding() {
                         ? "var(--color-vl-ink)"
                         : "transparent",
                   color:
-                    n <= step ? "#fff" : "rgba(10,10,11,0.35)",
+                    n <= step ? "#fff" : "rgba(14, 27, 44,0.35)",
                   border:
                     n > step
-                      ? "1.5px solid rgba(10,10,11,0.18)"
+                      ? "1.5px solid rgba(14, 27, 44,0.18)"
                       : "1.5px solid transparent",
                   cursor: n < step ? "pointer" : "default",
                 }}
@@ -322,7 +306,7 @@ export default function Onboarding() {
                   className="w-10 h-px"
                   style={{
                     background:
-                      n < step ? "var(--color-vl-coral)" : "rgba(10,10,11,0.12)",
+                      n < step ? "var(--color-vl-coral)" : "rgba(14, 27, 44,0.12)",
                   }}
                 />
               )}
@@ -389,7 +373,7 @@ export default function Onboarding() {
             <div className="mt-8">
               {connecting && (
                 <div className="vl-card p-6 flex items-center justify-center gap-3">
-                  <Loader2 className="w-5 h-5 animate-spin" style={{ color: "var(--color-vl-brass2)" }} />
+                  <Loader2 className="w-5 h-5 animate-spin" style={{ color: "var(--color-vl-coral)" }} />
                   <span className="text-[14px]" style={{ color: "var(--color-vl-ink-muted)" }}>
                     Connecting to Square...
                   </span>
@@ -406,7 +390,7 @@ export default function Onboarding() {
                     <p className="text-[14px] font-semibold" style={{ color: "var(--color-vl-ink)" }}>
                       {connectedLocationName ?? "Square connected"}
                     </p>
-                    <p className="text-[12px] mt-0.5" style={{ color: "rgba(10,10,11,0.55)" }}>
+                    <p className="text-[12px] mt-0.5" style={{ color: "rgba(14, 27, 44,0.55)" }}>
                       Square POS connected successfully
                     </p>
                   </div>
@@ -449,13 +433,13 @@ export default function Onboarding() {
                           {loc.name}
                         </p>
                         {loc.address && (
-                          <p className="text-[12px] truncate mt-0.5" style={{ color: "rgba(10,10,11,0.50)" }}>
+                          <p className="text-[12px] truncate mt-0.5" style={{ color: "rgba(14, 27, 44,0.50)" }}>
                             {loc.address}
                           </p>
                         )}
                       </div>
                       {saveVenue.isPending && (
-                        <Loader2 className="w-4 h-4 animate-spin" style={{ color: "var(--color-vl-brass2)" }} />
+                        <Loader2 className="w-4 h-4 animate-spin" style={{ color: "var(--color-vl-coral)" }} />
                       )}
                     </button>
                   ))}
@@ -557,16 +541,16 @@ export default function Onboarding() {
           padding: 0 16px;
           border-radius: 14px;
           background: #FFFFFF;
-          border: 1px solid rgba(10, 10, 11,0.12);
+          border: 1px solid rgba(14, 27, 44,0.12);
           color: var(--color-vl-ink);
           font-size: 15px;
           outline: none;
           transition: border-color .2s ease, background .2s ease, box-shadow .2s ease;
         }
-        .vl-input::placeholder { color: rgba(10, 10, 11,0.36); }
+        .vl-input::placeholder { color: rgba(14, 27, 44,0.36); }
         .vl-input:focus {
           border-color: var(--color-vl-coral);
-          box-shadow: 0 0 0 3px rgba(99, 102, 241,0.14);
+          box-shadow: 0 0 0 3px rgba(124, 110, 245,0.14);
         }
       `}</style>
     </div>
@@ -663,7 +647,7 @@ function VoiceOption({
       style={{
         borderColor: selected
           ? "rgba(124,110,245,0.6)"
-          : "rgba(10, 10, 11,0.10)",
+          : "rgba(14, 27, 44,0.10)",
         background: selected ? "rgba(124,110,245,0.06)" : undefined,
       }}
     >
@@ -695,7 +679,7 @@ function VoiceOption({
         style={{
           borderColor: isPlaying
             ? "rgba(124,110,245,0.6)"
-            : "rgba(10, 10, 11,0.12)",
+            : "rgba(14, 27, 44,0.12)",
           background: isPlaying
             ? "var(--color-vl-coral-tint)"
             : "rgba(255,255,255,0.55)",

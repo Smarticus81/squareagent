@@ -30,7 +30,7 @@ export default function Assistants() {
   if (isLoading || (venuesLoading && !venuesError) || (profilesLoading && !profilesError)) {
     return (
       <div className="vl-page-shell flex flex-1 items-center justify-center">
-        <Loader2 className="w-5 h-5 animate-spin" style={{ color: "var(--color-vl-brass2)" }} />
+        <Loader2 className="w-5 h-5 animate-spin" style={{ color: "var(--color-vl-coral)" }} />
       </div>
     );
   }
@@ -127,7 +127,7 @@ export default function Assistants() {
                 </div>
 
                 <div className="grid gap-2">
-                  <div className="rounded-2xl bg-white/70 px-4 py-3 text-[12.5px] font-semibold shadow-sm" style={{ color: "var(--color-vl-ink)", border: "1px solid rgba(10,10,11,0.06)" }}>
+                  <div className="rounded-2xl bg-white/70 px-4 py-3 text-[12.5px] font-semibold shadow-sm" style={{ color: "var(--color-vl-ink)", border: "1px solid rgba(14, 27, 44,0.06)" }}>
                     {a.service} · {a.voice}
                   </div>
                   <span className="text-[12px] font-bold" style={{ color: "var(--color-vl-coral-deep)" }}>
@@ -173,7 +173,7 @@ export default function Assistants() {
 
 function Row({ k, v }: { k: string; v: string }) {
   return (
-    <div className="rounded-2xl bg-white/72 px-4 py-3 shadow-sm" style={{ border: "1px solid rgba(10, 10, 11,0.06)" }}>
+    <div className="rounded-2xl bg-white/72 px-4 py-3 shadow-sm" style={{ border: "1px solid rgba(14, 27, 44,0.06)" }}>
       <dt className="text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: "var(--color-vl-ink-faint)" }}>{k}</dt>
       <dd className="mt-1 text-[13px] font-medium" style={{ color: "var(--color-vl-ink)" }}>{v}</dd>
     </div>
@@ -262,16 +262,16 @@ function AssistantDetailModal({
       <button
         type="button"
         aria-label={`Close ${assistant.name}`}
-        className="absolute inset-0 bg-slate-950/35 backdrop-blur-sm"
+        className="absolute inset-0 bg-[rgba(14,27,44,0.38)] backdrop-blur-sm"
         onClick={onClose}
       />
       <section
         role="dialog"
         aria-modal="true"
         className="relative flex max-h-[88vh] w-full max-w-[920px] flex-col overflow-hidden rounded-[28px] border bg-white shadow-2xl"
-        style={{ borderColor: "rgba(10,10,11,0.10)" }}
+        style={{ borderColor: "rgba(14, 27, 44,0.10)" }}
       >
-        <div className="grid gap-5 border-b p-6 lg:grid-cols-[240px_minmax(0,1fr)_auto]" style={{ borderColor: "rgba(10,10,11,0.08)" }}>
+        <div className="grid gap-5 border-b p-6 lg:grid-cols-[240px_minmax(0,1fr)_auto]" style={{ borderColor: "rgba(14, 27, 44,0.08)" }}>
           <AssistantArt assistant={assistant} compact />
           <div className="flex min-w-0 items-start gap-4">
             <div className="min-w-0">
@@ -283,8 +283,8 @@ function AssistantDetailModal({
           </div>
           <button
             type="button"
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border bg-white/80 text-slate-500 transition hover:bg-white hover:text-slate-900"
-            style={{ borderColor: "rgba(10,10,11,0.10)" }}
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border bg-white/80 text-vl-ink-muted transition hover:bg-white hover:text-vl-ink"
+            style={{ borderColor: "rgba(14, 27, 44,0.10)" }}
             onClick={onClose}
           >
             <X className="h-4 w-4" />
@@ -301,14 +301,14 @@ function AssistantDetailModal({
                 <Row k="Room setting" v={assistant.room} />
                 <Row k="Wake phrase" v={assistant.wakePhrase} />
               </dl>
-              <div className="mt-6 rounded-2xl px-4 py-3" style={{ background: "rgba(10,10,11,0.04)", border: "1px solid rgba(10,10,11,0.07)" }}>
+              <div className="mt-6 rounded-2xl px-4 py-3" style={{ background: "rgba(14, 27, 44,0.04)", border: "1px solid rgba(14, 27, 44,0.07)" }}>
                 <p className="text-[13px]" style={{ color: "var(--color-vl-ink-muted)" }}>
                   Can do <strong style={{ color: "var(--color-vl-ink)" }}>{assistant.allowsAllTools ? "all" : assistant.allowedCount}</strong> {assistant.allowsAllTools ? "available actions" : "actions"}. Will ask before <strong style={{ color: "var(--color-vl-ink)" }}>{assistant.askFirstCount}</strong>.
                 </p>
               </div>
             </div>
 
-            <div className="grid gap-3 self-start rounded-[24px] border bg-white/70 p-4" style={{ borderColor: "rgba(10,10,11,0.08)" }}>
+            <div className="grid gap-3 self-start rounded-[24px] border bg-white/70 p-4" style={{ borderColor: "rgba(14, 27, 44,0.08)" }}>
               <button
                 type="button"
                 onClick={onLaunch}
