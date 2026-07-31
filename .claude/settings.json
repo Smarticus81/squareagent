@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm install)",
+      "Bash(pnpm build)",
+      "Bash(pnpm typecheck)",
+      "Bash(pnpm typecheck:libs)",
+      "Bash(pnpm -r --if-present run typecheck)",
+      "Bash(cd artifacts/api-server && pnpm typecheck)",
+      "Bash(cd artifacts/api-server && pnpm build)",
+      "Bash(cd artifacts/api-server && pnpm dev)",
+      "Bash(cd artifacts/voycelab-landing && pnpm typecheck)",
+      "Bash(cd artifacts/voice-agent-pwa && pnpm typecheck)",
+      "Bash(cd lib/db && pnpm push)"
+    ],
+    "deny": [
+      "Bash(rm -rf *)",
+      "Bash(*DROP TABLE*)",
+      "Bash(*--force*)"
+    ]
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compileOnSave": false,
+  "files": [],
+  "references": [
+    {
+      "path": "./lib/voicelab-core"
+    },
+    {
+      "path": "./lib/voicelab-client"
+    },
+    {
+      "path": "./lib/db"
+    },
+    {
+      "path": "./lib/api-zod"
+    }
+  ]
+}

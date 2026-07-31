@@ -1,0 +1,12 @@
+packages:
+  "framer-motion": "For dreamy, subtle pulse and waveform animations"
+  "clsx": "For conditional tailwind classes in UI components"
+  "tailwind-merge": "For merging tailwind classes safely"
+  "@hookform/resolvers": "For Zod form validation"
+  "react-hook-form": "For robust auth forms"
+  "lucide-react": "For crisp, modern icons"
+
+notes:
+  - Assumes /api/auth/* endpoints are available on the same domain (or proxy)
+  - Uses localStorage for JWT persistence
+  - Implements ultra-dark luxury minimal aesthetic

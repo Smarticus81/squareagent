@@ -1,0 +1,70 @@
+# EAS Build ignore — keeps the upload focused on the Expo app.
+#
+# Why this exists:
+# Without this file, EAS uploads the entire pnpm workspace and runs
+#   `pnpm install --frozen-lockfile` at the repo root. That fails with
+#     EACCES: permission denied, mkdir 'artifacts/api-server/node_modules'
+# because the EAS Linux worker can't symlink workspace deps into peer
+# package node_modules.
+#
+# Strategy:
+# - Keep pnpm-workspace.yaml so EAS detects pnpm (not yarn) and so pnpm can
+#   resolve the `catalog:` versions used by the Expo app.
+# - Drop pnpm-lock.yaml. The lockfile lists every workspace importer
+#   (api-server, voycelab-landing, etc.). Once those packages are removed
+#   from the upload, --frozen-lockfile would fail with "lockfile out of sync".
+#   The eas-build-pre-install hook in artifacts/square-voice-agent regenerates
+#   a clean lockfile against the slimmed-down workspace before EAS runs its
+#   own install.
+# - Drop the unrelated workspace artifacts and libraries.
+# - Drop dev-only env files, caches, build outputs, and tooling.
+
+# Force a clean, partial-workspace install on EAS workers
+pnpm-lock.yaml
+
+# Other workspace artifacts (server, web, PWA) — not used by the Expo app
+artifacts/api-server/
+artifacts/voycelab-landing/
+artifacts/voice-agent-pwa/
+
+# Server-only libraries (square-voice-agent has zero @workspace/* deps)
+/lib/
+
+# Caches and build outputs
+node_modules/
+**/node_modules/
+**/dist/
+**/build/
+**/.expo/
+**/.next/
+**/.cache/
+
+# Local environment and secrets
+.env
+.env.*
+
+# Tooling
+.git/
+.cursor/
+.claude/
+.vscode/
+
+# Logs and OS junk
+*.log
+*.tsbuildinfo
+.DS_Store
+Thumbs.db
+
+# Repo-level docs / scripts unused by the Expo build. Anchor with a
+# leading slash so we only exclude root-level `scripts/`, not the Expo
+# app's own `artifacts/square-voice-agent/scripts/` directory (which
+# contains eas-pre-install.js).
+CLAUDE.md
+RAILWAY.md
+README.md
+railway.json
+nixpacks.toml
+start-all.bat
+tsconfig.base.json
+tsconfig.json
+/scripts/

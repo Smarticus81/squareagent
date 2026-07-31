@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192" viewBox="0 0 192 192" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="192" y2="192" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FBF7F1"/>
+      <stop offset="100%" stop-color="#F1E9DA"/>
+    </linearGradient>
+    <clipPath id="vl-clip">
+      <rect x="0" y="39" width="22" height="54" rx="11" />
+      <rect x="27" y="25" width="22" height="76" rx="11" />
+      <rect x="54" y="10" width="22" height="94" rx="11" />
+      <rect x="81" y="0" width="22" height="104" rx="11" />
+      <rect x="108" y="18" width="22" height="82" rx="11" />
+      <rect x="135" y="26" width="22" height="66" rx="11" />
+      <rect x="162" y="37" width="22" height="53" rx="11" />
+    </clipPath>
+    <linearGradient id="vl" x1="0" y1="0" x2="0" y2="104" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#AD91D8"/>
+      <stop offset="32%" stop-color="#E44B9A"/>
+      <stop offset="62%" stop-color="#FF6245"/>
+      <stop offset="100%" stop-color="#FDBA2E"/>
+    </linearGradient>
+  </defs>
+  <rect width="192" height="192" rx="38" fill="url(#bg)"/>
+  <g transform="translate(16 51) scale(0.87)">
+    <rect x="0" y="39" width="22" height="54" rx="11" fill="url(#vl)" opacity="0.72"/>
+    <rect x="27" y="25" width="22" height="76" rx="11" fill="url(#vl)"/>
+    <rect x="54" y="10" width="22" height="94" rx="11" fill="url(#vl)"/>
+    <rect x="81" y="0" width="22" height="104" rx="11" fill="url(#vl)"/>
+    <rect x="108" y="18" width="22" height="82" rx="11" fill="url(#vl)"/>
+    <rect x="135" y="26" width="22" height="66" rx="11" fill="url(#vl)"/>
+    <rect x="162" y="37" width="22" height="53" rx="11" fill="url(#vl)"/>
+    <g clip-path="url(#vl-clip)">
+      <ellipse cx="13" cy="61" rx="25" ry="24" fill="#E2C7E8" fill-opacity="0.62"/>
+      <ellipse cx="55" cy="73" rx="63" ry="31" fill="#E52F8E" fill-opacity="0.46"/>
+      <ellipse cx="98" cy="78" rx="45" ry="31" fill="#FF6B37" fill-opacity="0.45"/>
+      <ellipse cx="144" cy="49" rx="18" ry="18" fill="#F2A0C6" fill-opacity="0.58"/>
+      <ellipse cx="166" cy="72" rx="19" ry="22" fill="#FDB62F" fill-opacity="0.76"/>
+    </g>
+  </g>
+</svg>

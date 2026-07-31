@@ -1,0 +1,906 @@
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&family=Montserrat:wght@700;800;900&display=swap');
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@plugin "@tailwindcss/typography";
+
+/* ──────────────────────────────────────────────────────────────
+   VoyceLab — Modern SaaS aesthetic (Chatbase-inspired)
+   ──────────────────────────────────────────────────────────────
+  White paper. Near-black ink. Soft pastel gradient washes.
+   Clean Inter typography. Rounded-square controls. Minimal, refined.
+   ────────────────────────────────────────────────────────────── */
+
+@theme inline {
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-card-border: hsl(var(--card-border));
+
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+  --color-popover-border: hsl(var(--popover-border));
+
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+
+  /* ── Brand tokens — Modern SaaS palette ─────────────────────── */
+
+  /* Paper backgrounds — pure white with a hint of warmth */
+  --color-vl-cream: #FBF7F1;
+  --color-vl-cream-warm: #F7F0E6;
+  --color-vl-cream-deep: #EFE4D6;
+  --color-vl-paper: #FFFCF8;
+
+  /* Ink — near-black for confident type */
+  --color-vl-ink: #0E1B2C;
+  --color-vl-ink-soft: #2C394A;
+  --color-vl-ink-muted: #657080;
+  --color-vl-ink-faint: #9299A3;
+
+  /* Primary — deep ink (chatbase-style dark CTA) */
+  --color-vl-coral: #FF6B47;
+  --color-vl-coral-deep: #E54F2D;
+  --color-vl-coral-soft: #FF9B82;
+  --color-vl-coral-tint: #FFF0EA;
+
+  /* Accent — violet/indigo signature */
+  --color-vl-accent: #7C6EF5;
+  --color-vl-accent-deep: #6354DC;
+  --color-vl-accent-soft: #B9B1FF;
+  --color-vl-accent-tint: #F0EDFF;
+
+  /* Painterly gradient stops — pastel washes for hero */
+  --color-vl-peach: #FFC7B1;
+  --color-vl-peach-soft: #FFE5DA;
+  --color-vl-sage: #BFD8C5;
+  --color-vl-sage-soft: #E6F0E7;
+  --color-vl-lilac: #CFC8FF;
+  --color-vl-lilac-soft: #ECE9FF;
+  --color-vl-honey: #FBD393;
+  --color-vl-honey-soft: #FFF0CE;
+
+  /* Status */
+  --color-vl-success: #10B981;
+  --color-vl-warning: #F59E0B;
+  --color-vl-danger: #EF4444;
+
+  /* Aliases retained for back-compat */
+  --color-vl-black: #0E1B2C;
+  --color-vl-graphite: #1A2A3D;
+  --color-vl-graphite2: #2C394A;
+  --color-vl-graphite3: #495668;
+  --color-vl-ivory: #0E1B2C;
+  --color-vl-bone: #2C394A;
+  --color-vl-sand: #657080;
+  --color-vl-ash: #9299A3;
+  --color-vl-brass: #E54F2D;
+  --color-vl-brass2: #FF6B47;
+  --color-vl-ember: #FF6B47;
+  --color-vl-voice: #CFC8FF;
+  --color-vl-voice2: #7C6EF5;
+
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-display: 'Fraunces', Georgia, serif;
+  --font-logo: 'Montserrat', 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.25rem;
+  --radius-2xl: 1.5rem;
+  --radius-3xl: 2rem;
+}
+
+/* Single light theme — flagship */
+:root,
+:root.light,
+:root.dark {
+  color-scheme: light;
+
+  --background: 36 56% 96%;
+  --foreground: 216 52% 11%;
+
+  --card: 36 100% 99%;
+  --card-foreground: 216 52% 11%;
+  --card-border: 216 52% 11% / 9%;
+
+  --popover: 36 100% 99%;
+  --popover-foreground: 216 52% 11%;
+  --popover-border: 216 52% 11% / 10%;
+
+  --primary: 11 100% 64%;
+  --primary-foreground: 0 0% 100%;
+
+  --secondary: 34 50% 92%;
+  --secondary-foreground: 216 52% 11%;
+
+  --muted: 34 50% 92%;
+  --muted-foreground: 216 12% 45%;
+
+  --accent: 11 100% 64%;
+  --accent-foreground: 0 0% 100%;
+
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 100%;
+
+  --border: 216 22% 85%;
+  --input: 216 22% 85%;
+  --ring: 11 100% 64%;
+
+  --radius: 0.875rem;
+}
+
+@layer base {
+  * { @apply border-border; }
+
+  html, body {
+    background: hsl(var(--background));
+    color: hsl(var(--foreground));
+    /* Prevent rogue horizontal scroll from absolute-positioned decorative
+       elements on mobile. `clip` instead of `hidden`: hidden turns body into
+       a nested scroll container, which silently breaks position: sticky
+       everywhere (the landing page's pinned sections rely on it). */
+    overflow-x: hidden;
+  }
+  @supports (overflow-x: clip) {
+    html, body {
+      overflow-x: clip;
+    }
+  }
+
+  /* Friendlier text wrapping on small screens — long words/URLs won't blow out layouts. */
+  body {
+    overflow-wrap: break-word;
+  }
+
+  body {
+    @apply font-sans antialiased;
+    background-color: #FBF7F1;
+    /* Warm watercolor wash and paper texture across product pages. */
+    background-image:
+      radial-gradient(ellipse 70% 50% at 10% 0%, rgba(255, 107, 71, 0.20), transparent 60%),
+      radial-gradient(ellipse 60% 45% at 95% 8%, rgba(124, 110, 245, 0.18), transparent 65%),
+      radial-gradient(ellipse 55% 40% at 90% 100%, rgba(191, 216, 197, 0.24), transparent 70%),
+      radial-gradient(ellipse 50% 40% at 5% 95%, rgba(251, 211, 147, 0.24), transparent 70%),
+      linear-gradient(135deg, rgba(14, 27, 44, 0.022) 1px, transparent 1px),
+      linear-gradient(45deg, rgba(255, 107, 71, 0.014) 1px, transparent 1px);
+    background-size: auto, auto, auto, auto, 24px 24px, 32px 32px;
+    background-attachment: fixed;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: "ss01", "cv11";
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 107, 71, 0.36) rgba(14, 27, 44, 0.045);
+  }
+
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background:
+      linear-gradient(180deg, rgba(255, 252, 248, 0.86), rgba(247, 240, 230, 0.78));
+    border-radius: 14px;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background:
+      linear-gradient(180deg, rgba(255, 107, 71, 0.58), rgba(124, 110, 245, 0.34));
+    border: 3px solid rgba(251, 247, 241, 0.78);
+    border-radius: 14px;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background:
+      linear-gradient(180deg, rgba(229, 79, 45, 0.68), rgba(124, 110, 245, 0.48));
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply tracking-tight;
+    color: var(--color-vl-ink);
+    font-feature-settings: "ss01", "ss02";
+    font-family: var(--font-display);
+    font-weight: 600;
+    letter-spacing: -0.03em;
+  }
+
+  ::selection {
+    background: rgba(255, 107, 71, 0.22);
+    color: var(--color-vl-ink);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-vl-accent);
+    outline-offset: 2px;
+    border-radius: 8px;
+  }
+}
+
+@layer utilities {
+  /* ── Typography ─────────────────────────────────────────────── */
+
+  .vl-display {
+    font-family: var(--font-display);
+    font-weight: 600;
+    letter-spacing: -0.035em;
+    line-height: 1.04;
+    font-optical-sizing: auto;
+    color: var(--color-vl-ink);
+  }
+
+  /* Italic emphasis fragment in headlines — gradient text */
+  .vl-display em,
+  .vl-italic {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-weight: 600;
+    background: linear-gradient(112deg, #E54F2D 0%, #FF6B47 38%, #7C6EF5 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+  }
+
+  .vl-eyebrow {
+    font-family: var(--font-display);
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.10em;
+    text-transform: uppercase;
+    color: var(--color-vl-ink-muted);
+  }
+
+  .vl-section-eyebrow {
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.10em;
+    text-transform: uppercase;
+    color: var(--color-vl-ink-muted);
+  }
+
+  .vl-section-heading {
+    font-family: var(--font-sans);
+    font-weight: 600;
+    font-size: clamp(2rem, 4.2vw, 3.5rem);
+    letter-spacing: -0.035em;
+    line-height: 1.05;
+    color: var(--color-vl-ink);
+  }
+
+  /* ── Surfaces ───────────────────────────────────────────────── */
+
+  .vl-glass {
+    background: rgba(251, 247, 241, 0.76);
+    backdrop-filter: blur(22px) saturate(1.3);
+    -webkit-backdrop-filter: blur(22px) saturate(1.3);
+    border-bottom: 1px solid rgba(14, 27, 44, 0.07);
+  }
+
+  .vl-card {
+    background:
+      linear-gradient(160deg, rgba(255, 252, 248, 0.93), rgba(251, 247, 241, 0.75)),
+      radial-gradient(circle at 8% 0%, rgba(255, 107, 71, 0.075), transparent 36%),
+      radial-gradient(circle at 94% 10%, rgba(124, 110, 245, 0.075), transparent 38%);
+    border: 1px solid rgba(14, 27, 44, 0.075);
+    border-radius: 22px;
+    backdrop-filter: blur(18px) saturate(1.15);
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.72) inset,
+      0 18px 48px -36px rgba(14, 27, 44, 0.34),
+      0 3px 10px rgba(14, 27, 44, 0.035);
+    transition: box-shadow .25s ease, transform .25s ease, border-color .25s ease;
+  }
+  .vl-card:hover {
+    border-color: rgba(255, 107, 71, 0.24);
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.76) inset,
+      0 22px 56px -34px rgba(14, 27, 44, 0.40),
+      0 8px 22px rgba(255, 107, 71, 0.08);
+  }
+
+  .vl-card-glass {
+    background: rgba(255, 252, 248, 0.76);
+    backdrop-filter: blur(20px) saturate(1.3);
+    -webkit-backdrop-filter: blur(20px) saturate(1.3);
+    border: 1px solid rgba(14, 27, 44, 0.08);
+    border-radius: 24px;
+    box-shadow:
+      0 4px 24px rgba(10, 10, 11, 0.06),
+      0 1px 3px rgba(10, 10, 11, 0.04);
+  }
+
+  .vl-panel {
+    background:
+      linear-gradient(160deg, rgba(255, 252, 248, 0.92), rgba(247, 240, 230, 0.76)),
+      radial-gradient(circle at 0% 0%, rgba(255, 107, 71, 0.055), transparent 32%),
+      radial-gradient(circle at 100% 100%, rgba(124, 110, 245, 0.045), transparent 34%);
+    border: 1px solid rgba(14, 27, 44, 0.075);
+    border-radius: 22px;
+    box-shadow:
+      0 1px 2px rgba(10, 10, 11, 0.03),
+      0 18px 48px -38px rgba(10, 10, 11, 0.36);
+  }
+
+  .vl-panel-coral {
+    background: linear-gradient(180deg, #FFF0EA 0%, #FFFCF8 100%);
+    border: 1px solid rgba(255, 107, 71, 0.20);
+    border-radius: 22px;
+  }
+
+  .vl-edge-brass,
+  .vl-edge-coral {
+    box-shadow: inset 0 1px 0 rgba(99, 102, 241, 0.30);
+  }
+
+  .vl-line {
+    background-image: linear-gradient(90deg, transparent, rgba(10, 10, 11, 0.10), transparent);
+    height: 1px;
+  }
+
+  /* ── Buttons ────────────────────────────────────────────────── */
+
+  /* Primary — solid black rounded-square control */
+  .vl-btn-primary,
+  .vl-btn-coral,
+  .vl-btn-blue {
+    background: linear-gradient(135deg, #FF7958 0%, #FF6B47 48%, #E75230 100%);
+    color: #FFFFFF;
+    font-family: var(--font-sans);
+    font-weight: 500;
+    font-size: 14px;
+    border-radius: 14px;
+    padding: 0.72rem 1.4rem;
+    transition: transform .15s ease, box-shadow .15s ease, background .15s ease;
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.28) inset,
+      0 10px 24px -10px rgba(229, 79, 45, 0.72),
+      0 2px 5px rgba(14, 27, 44, 0.11);
+    border: 1px solid rgba(180, 55, 29, 0.18);
+    cursor: pointer;
+    letter-spacing: -0.005em;
+  }
+  .vl-btn-primary:hover,
+  .vl-btn-coral:hover,
+  .vl-btn-blue:hover {
+    transform: translateY(-1px);
+    background: linear-gradient(135deg, #FF8668 0%, #FF6B47 44%, #DD4828 100%);
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.30) inset,
+      0 15px 32px -10px rgba(229, 79, 45, 0.78),
+      0 5px 12px rgba(14, 27, 44, 0.12);
+  }
+  .vl-btn-primary:active,
+  .vl-btn-coral:active,
+  .vl-btn-blue:active { transform: translateY(0); background: #E54F2D; }
+  .vl-btn-primary:disabled,
+  .vl-btn-coral:disabled,
+  .vl-btn-blue:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  .vl-btn-outline {
+    background: rgba(255, 252, 248, 0.78);
+    color: var(--color-vl-ink);
+    font-family: var(--font-sans);
+    font-weight: 500;
+    font-size: 14px;
+    border-radius: 16px;
+    padding: 0.72rem 1.4rem;
+    border: 1px solid rgba(14, 27, 44, 0.14);
+    transition: background .2s ease, border-color .2s ease, box-shadow .2s ease;
+    cursor: pointer;
+    letter-spacing: -0.005em;
+    box-shadow: 0 1px 2px rgba(10, 10, 11, 0.03);
+  }
+  .vl-btn-outline:hover {
+    background: #FFFCF8;
+    border-color: rgba(255, 107, 71, 0.38);
+    box-shadow: 0 2px 8px rgba(10, 10, 11, 0.06);
+  }
+
+  .vl-btn-ghost {
+    background: transparent;
+    color: var(--color-vl-ink);
+    border: 1px solid transparent;
+    border-radius: 16px;
+    padding: 0.72rem 1.4rem;
+    font-weight: 500;
+    font-size: 14px;
+    transition: background .2s ease;
+    cursor: pointer;
+  }
+  .vl-btn-ghost:hover {
+    background: rgba(10, 10, 11, 0.05);
+  }
+
+  /* ── Chips ──────────────────────────────────────────────────── */
+
+  .vl-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.32rem 0.7rem;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: -0.005em;
+    color: var(--color-vl-ink-soft);
+    background: #FAFAF9;
+    border: 1px solid rgba(10, 10, 11, 0.08);
+  }
+
+  .vl-chip-light {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.28rem 0.7rem;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--color-vl-ink-soft);
+    background: #FFFFFF;
+    border: 1px solid rgba(10, 10, 11, 0.08);
+    box-shadow: 0 1px 2px rgba(10, 10, 11, 0.03);
+  }
+
+  /* Indigo accent chip — used for hero callouts */
+  .vl-chip-coral {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.32rem 0.75rem;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--color-vl-accent-deep);
+    background: var(--color-vl-accent-tint);
+    border: 1px solid rgba(99, 102, 241, 0.20);
+  }
+
+  /* ── Inputs ─────────────────────────────────────────────────── */
+
+  .vl-input {
+    width: 100%;
+    height: 46px;
+    padding: 0 16px;
+    border-radius: 12px;
+    background: rgba(255, 252, 248, 0.86);
+    border: 1px solid rgba(14, 27, 44, 0.12);
+    color: var(--color-vl-ink);
+    font-size: 15px;
+    outline: none;
+    transition: border-color .2s ease, box-shadow .2s ease;
+  }
+  .vl-input::placeholder { color: rgba(14, 27, 44, 0.38); }
+  .vl-input:focus {
+    border-color: var(--color-vl-coral);
+    box-shadow: 0 0 0 4px rgba(255, 107, 71, 0.13);
+  }
+
+  /* ── Layout helpers ─────────────────────────────────────────── */
+
+  .vl-page-shell,
+  .vl-auth-shell {
+    position: relative;
+    background-color: rgba(251, 247, 241, 0.48);
+    background-image:
+      radial-gradient(ellipse 70% 48% at 8% 0%, rgba(255, 107, 71, 0.12), transparent 62%),
+      radial-gradient(ellipse 64% 42% at 96% 6%, rgba(124, 110, 245, 0.12), transparent 66%),
+      radial-gradient(ellipse 54% 38% at 92% 100%, rgba(191, 216, 197, 0.14), transparent 70%),
+      radial-gradient(ellipse 48% 35% at 3% 92%, rgba(251, 211, 147, 0.14), transparent 70%),
+      linear-gradient(135deg, rgba(14, 27, 44, 0.020) 1px, transparent 1px),
+      linear-gradient(45deg, rgba(255, 107, 71, 0.012) 1px, transparent 1px);
+    background-size: auto, auto, auto, auto, 24px 24px, 32px 32px;
+  }
+
+  .vl-page-shell::before,
+  .vl-auth-shell::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.38;
+    background-image:
+      linear-gradient(90deg, transparent 0%, rgba(255, 107, 71, 0.05) 18%, transparent 36%),
+      linear-gradient(90deg, transparent 14%, rgba(124, 110, 245, 0.04) 32%, transparent 50%),
+      linear-gradient(90deg, transparent 48%, rgba(191, 216, 197, 0.05) 66%, transparent 84%);
+    background-size: 260px 100%, 340px 100%, 420px 100%;
+    mask-image: linear-gradient(to bottom, transparent, #000 12%, #000 82%, transparent);
+  }
+
+  .vl-page-shell > *,
+  .vl-auth-shell > * {
+    position: relative;
+  }
+
+  /* Ambient brand atmosphere shared by the marketing site and dashboard. */
+  .vl-app-shell {
+    isolation: isolate;
+    background: var(--color-vl-cream);
+  }
+
+  .vl-premium-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    overflow: hidden;
+    pointer-events: none;
+    background:
+      linear-gradient(180deg, rgba(255, 252, 248, 0.22), rgba(251, 247, 241, 0.72)),
+      var(--color-vl-cream);
+  }
+
+  .vl-premium-backdrop::before {
+    content: "";
+    position: absolute;
+    inset: -12%;
+    background:
+      repeating-radial-gradient(ellipse at 50% 52%, transparent 0 44px, rgba(14, 27, 44, 0.025) 45px, transparent 46px 76px);
+    mask-image: linear-gradient(to bottom, transparent 5%, #000 28%, #000 72%, transparent 96%);
+    transform: perspective(700px) rotateX(64deg) scale(1.35);
+    transform-origin: 50% 52%;
+    opacity: 0.72;
+    animation: vl-premium-rings 24s linear infinite;
+  }
+
+  .vl-premium-aura {
+    position: absolute;
+    display: block;
+    width: 46vw;
+    min-width: 420px;
+    aspect-ratio: 1;
+    border-radius: 42% 58% 65% 35% / 48% 42% 58% 52%;
+    filter: blur(76px);
+    mix-blend-mode: multiply;
+    opacity: 0.20;
+    will-change: transform;
+    animation: vl-premium-drift 22s ease-in-out infinite alternate;
+  }
+
+  .vl-premium-aura-coral {
+    top: -22%;
+    left: -13%;
+    background: radial-gradient(circle at 44% 42%, #FF6B47, #FFC7B1 56%, transparent 74%);
+  }
+
+  .vl-premium-aura-violet {
+    top: -16%;
+    right: -16%;
+    background: radial-gradient(circle at 48% 46%, #7C6EF5, #CFC8FF 54%, transparent 74%);
+    animation-delay: -8s;
+    animation-duration: 28s;
+  }
+
+  .vl-premium-aura-honey {
+    bottom: -27%;
+    left: 8%;
+    background: radial-gradient(circle at 50% 46%, #FBD393, #FFF0CE 54%, transparent 74%);
+    animation-delay: -13s;
+    animation-duration: 31s;
+  }
+
+  .vl-premium-aura-sage {
+    right: -12%;
+    bottom: -24%;
+    background: radial-gradient(circle at 44% 44%, #BFD8C5, #E6F0E7 54%, transparent 74%);
+    animation-delay: -17s;
+    animation-duration: 26s;
+  }
+
+  .vl-premium-horizon {
+    position: absolute;
+    left: -12%;
+    top: 48%;
+    width: 124%;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, rgba(255, 107, 71, 0.25), rgba(124, 110, 245, 0.30), transparent);
+    box-shadow:
+      0 0 28px rgba(255, 107, 71, 0.18),
+      0 0 52px rgba(124, 110, 245, 0.11);
+    opacity: 0.66;
+    transform: rotate(-2deg);
+    animation: vl-premium-horizon 9s ease-in-out infinite;
+  }
+
+  .vl-premium-grain {
+    position: absolute;
+    inset: 0;
+    background-image:
+      radial-gradient(circle at 20% 30%, rgba(14, 27, 44, 0.12) 0 0.45px, transparent 0.7px),
+      radial-gradient(circle at 72% 68%, rgba(14, 27, 44, 0.08) 0 0.45px, transparent 0.75px);
+    background-size: 5px 5px, 7px 7px;
+    opacity: 0.16;
+    mix-blend-mode: multiply;
+  }
+
+  @keyframes vl-premium-drift {
+    0% { transform: translate3d(-2%, -1%, 0) rotate(-8deg) scale(0.94); }
+    52% { transform: translate3d(8%, 5%, 0) rotate(8deg) scale(1.06); }
+    100% { transform: translate3d(-4%, 9%, 0) rotate(-3deg) scale(1); }
+  }
+
+  @keyframes vl-premium-rings {
+    from { background-position: 0 0; }
+    to { background-position: 0 76px; }
+  }
+
+  @keyframes vl-premium-horizon {
+    0%, 100% { transform: translate3d(-2%, -10px, 0) rotate(-2deg) scaleX(0.96); opacity: 0.42; }
+    50% { transform: translate3d(2%, 12px, 0) rotate(1deg) scaleX(1.03); opacity: 0.74; }
+  }
+
+  .vl-landing {
+    background: transparent;
+    color: var(--color-vl-ink);
+    min-height: 100vh;
+  }
+
+  .section-container {
+    width: 100%;
+    max-width: 1200px;
+    margin-left: auto;
+    margin-right: auto;
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+  }
+  @media (min-width: 768px) {
+    .section-container {
+      padding-left: 2.5rem;
+      padding-right: 2.5rem;
+    }
+  }
+  @media (min-width: 1280px) {
+    .section-container {
+      padding-left: 3rem;
+      padding-right: 3rem;
+    }
+  }
+
+  .vl-landing-header .vl-glass {
+    background: rgba(251, 247, 241, 0.78);
+    border-bottom: 1px solid rgba(14, 27, 44, 0.07);
+  }
+
+  .vl-landing-footer {
+    background: rgba(247, 240, 230, 0.82);
+    border-color: rgba(14, 27, 44, 0.08) !important;
+  }
+
+  /* ── Decorative scene helpers ───────────────────────────────── */
+
+  .vl-blob {
+    position: absolute;
+    border-radius: 9999px;
+    filter: blur(72px);
+    pointer-events: none;
+    opacity: 0.85;
+  }
+
+  .vl-orbit-ring {
+    position: absolute;
+    border-radius: 9999px;
+    border: 1px solid rgba(10, 10, 11, 0.06);
+    pointer-events: none;
+  }
+
+  /* ── Mobile touch-target safeguards ──────────────────────────── */
+  @media (max-width: 640px) {
+    .vl-btn-primary,
+    .vl-btn-coral,
+    .vl-btn-blue,
+    .vl-btn-outline,
+    .vl-btn-ghost {
+      min-height: 44px;
+      padding: 0.75rem 1.25rem;
+    }
+  }
+
+  /* Subtle grid background — chatbase-style */
+  .vl-grid-bg {
+    background-image:
+      linear-gradient(rgba(10, 10, 11, 0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(10, 10, 11, 0.04) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+
+  .vl-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(99, 102, 241, 0.34) rgba(10, 10, 11, 0.04);
+  }
+
+  .vl-scroll::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  /* Gradient text utility */
+  .vl-gradient-text {
+    background: linear-gradient(112deg, #E54F2D 0%, #FF6B47 42%, #7C6EF5 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+  }
+
+  /* ── Animations ─────────────────────────────────────────────── */
+
+  @keyframes vl-wave {
+    0%, 100% { height: 30%; }
+    50% { height: 100%; }
+  }
+
+  @keyframes vl-float-slow {
+    0%, 100% { transform: translateY(0px) rotate(0deg); }
+    50% { transform: translateY(-10px) rotate(0.5deg); }
+  }
+  @keyframes vl-float-medium {
+    0%, 100% { transform: translateY(0px) translateX(0px); }
+    50% { transform: translateY(-7px) translateX(3px); }
+  }
+  @keyframes vl-float-fast {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-12px); }
+  }
+  .vl-float-slow { animation: vl-float-slow 7s ease-in-out infinite; }
+  .vl-float-medium { animation: vl-float-medium 5.5s ease-in-out infinite; }
+  .vl-float-fast { animation: vl-float-fast 4.5s ease-in-out infinite; }
+
+  @keyframes vl-pulse-soft {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.55; }
+  }
+  .vl-pulse-soft { animation: vl-pulse-soft 2.4s ease-in-out infinite; }
+
+  @keyframes vl-orbit-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+  .vl-orbit-spin { animation: vl-orbit-spin 60s linear infinite; }
+
+  @keyframes vl-aurora-drift {
+    0%   { transform: rotate(0deg) scale(1); opacity: 0.85; }
+    50%  { transform: rotate(180deg) scale(1.08); opacity: 1; }
+    100% { transform: rotate(360deg) scale(1); opacity: 0.85; }
+  }
+  .vl-orb-aurora { animation: vl-aurora-drift 28s ease-in-out infinite; will-change: transform, opacity; }
+
+  .scrollbar-hide::-webkit-scrollbar { display: none; }
+  .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  /* ══════════════════════════════════════════════════════════════
+     LANDING WOW LAYER — light theme (.vl-lx scope)
+     Extends the site's white/pastel system with the pieces the
+     landing choreography needs: mono command rows, ticket rows,
+     and result stamps. Accent = indigo; ink = near-black.
+     ══════════════════════════════════════════════════════════════ */
+
+  .lx-command {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.65rem;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--color-vl-ink-soft);
+  }
+  .lx-command::before {
+    content: "›";
+    color: var(--color-vl-accent);
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  .lx-ticket-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 1rem;
+    padding: 0.55rem 0;
+    border-bottom: 1px dashed rgba(10, 10, 11, 0.12);
+    font-family: var(--font-mono);
+    font-size: 13px;
+  }
+
+  .lx-stamp {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    border: 1px solid rgba(99, 102, 241, 0.45);
+    border-radius: 10px;
+    padding: 0.5rem 0.9rem;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    color: var(--color-vl-accent-deep);
+    background: var(--color-vl-accent-tint);
+  }
+
+  /* ── iPad Mini & iPhone Layout and Spacing Optimizations ────── */
+
+  /* Prevent over-scrolling and reduce massive empty spaces on mobile/tablet */
+  @media (max-width: 768px) {
+    .vl-page-shell {
+      padding-top: 4.5rem !important;
+      padding-bottom: 3.5rem !important;
+    }
+    
+    /* Optimize padding classes commonly used to prevent huge vertical gaps */
+    .py-20, .py-24, .py-28, .py-32, .py-36 {
+      padding-top: 3rem !important;
+      padding-bottom: 3rem !important;
+    }
+    .my-20, .my-24, .my-28, .my-32, .my-36 {
+      margin-top: 2.5rem !important;
+      margin-bottom: 2.5rem !important;
+    }
+    .gap-10, .gap-14, .gap-16 {
+      gap: 1.5rem !important;
+    }
+  }
+
+  /* Native full-screen sheets for Settings & Create Assistant modals on iPhones */
+  @media (max-width: 640px) {
+    /* Dialog position reset to full bleed */
+    .fixed.inset-0.z-80.flex.items-center.justify-center {
+      padding: 0 !important;
+    }
+    
+    /* Form Modal main container transformation */
+    .relative.flex.max-h-\[88vh\].w-full.max-w-\[960px\].flex-col {
+      max-height: 100vh !important;
+      height: 100vh !important;
+      border-radius: 0px !important;
+      border: none !important;
+      box-shadow: none !important;
+    }
+    
+    /* Header optimization for native phone feel */
+    .flex.flex-wrap.items-start.justify-between.gap-4.border-b.p-6 {
+      padding: 1rem 1.25rem !important;
+      flex-wrap: nowrap !important;
+      align-items: center !important;
+    }
+    
+    /* Scale down titles inside dialogs on small mobile screens */
+    .text-\[28px\].font-bold.leading-tight {
+      font-size: 20px !important;
+    }
+    
+    /* Scroll container inside dialogs - expands fully */
+    .vl-scroll.overflow-y-auto.p-6 {
+      padding: 1.25rem !important;
+      flex: 1 !important;
+    }
+  }
+}

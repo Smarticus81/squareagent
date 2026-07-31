@@ -1,0 +1,29 @@
+{
+  "name": "@workspace/voice-agent-pwa",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "packageManager": "pnpm@9.15.9",
+  "engines": {
+    "node": "22"
+  },
+  "scripts": {
+    "dev": "vite --port 8081",
+    "build": "tsc && vite build",
+    "preview": "vite preview --port 8081",
+    "smoke:browser-voice-relays": "node ./scripts/smoke-browser-voice-relays.cjs"
+  },
+  "dependencies": {
+    "@workspace/voicelab-client": "workspace:*",
+    "lucide-react": "^0.460.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "~5.9.0",
+    "vite": "^7.3.0"
+  }
+}
