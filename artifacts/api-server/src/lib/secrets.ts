@@ -75,8 +75,19 @@ export function assertSecretsEncryptionKey(): void {
 
 const PREFIX = "enc:v1:";
 
+// Key derivation is a synchronous HMAC-SHA256 that never changes for a given
+// process (it is a pure function of the resolved env-var key source). Deriving
+// it on every encrypt/decrypt added avoidable CPU to the credential
+// decrypt-on-read path. Memoize the derived key, re-deriving only if the
+// underlying key source changes (e.g. env swapped in a test).
+let cachedKey: { source: string; key: Buffer } | null = null;
+
 function encryptionKey(): Buffer {
-  return crypto.createHmac("sha256", keyStatus().keySource).update("voycelab-secrets-v1").digest();
+  const source = keyStatus().keySource;
+  if (cachedKey && cachedKey.source === source) return cachedKey.key;
+  const key = crypto.createHmac("sha256", source).update("voycelab-secrets-v1").digest();
+  cachedKey = { source, key };
+  return key;
 }
 
 export function encrypt(plain: string): string {
