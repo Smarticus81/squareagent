@@ -95,7 +95,10 @@ export default function Assistants() {
         )}
 
         {list.length === 0 ? (
-          <EmptyState onCreate={() => setLocation("/assistants/new")} />
+          <EmptyState
+            onGuided={() => setLocation("/onboarding")}
+            onCreate={() => setLocation("/assistants/new")}
+          />
         ) : (
           <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
             {list.map((a) => (
@@ -360,7 +363,7 @@ function AssistantDetailModal({
   );
 }
 
-function EmptyState({ onCreate }: { onCreate: () => void }) {
+function EmptyState({ onGuided, onCreate }: { onGuided: () => void; onCreate: () => void }) {
   return (
     <div className="vl-panel p-10 text-center md:p-12">
       <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl" style={{ background: "var(--color-vl-coral-tint)", color: "var(--color-vl-coral-deep)" }}>
@@ -372,9 +375,18 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
       <p className="mx-auto mt-3 max-w-md text-[14px] leading-relaxed" style={{ color: "var(--color-vl-ink-muted)" }}>
         Name it, connect a service, choose what it can do, and test a command before you launch.
       </p>
-      <button onClick={onCreate} className="vl-btn-primary inline-flex items-center gap-2 mt-7">
-        <Plus className="w-4 h-4" /> Create your assistant
+      <button onClick={onGuided} className="vl-btn-primary inline-flex items-center gap-2 mt-7">
+        <Plus className="w-4 h-4" /> Guided setup — 3 minutes
       </button>
+      <div className="mt-3">
+        <button
+          onClick={onCreate}
+          className="text-[13px] transition-opacity hover:opacity-70"
+          style={{ color: "var(--color-vl-ink-muted)" }}
+        >
+          or use advanced setup
+        </button>
+      </div>
     </div>
   );
 }

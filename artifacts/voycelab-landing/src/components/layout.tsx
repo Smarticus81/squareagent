@@ -39,7 +39,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const canonicalPath = normalizeAppPath(location);
-  const isAuthPage = canonicalPath === "/login" || canonicalPath === "/signup";
+  // Onboarding is a full-screen guided flow — it renders its own minimal
+  // chrome, so it gets the same bare shell as the auth pages.
+  const isAuthPage =
+    canonicalPath === "/login" ||
+    canonicalPath === "/signup" ||
+    canonicalPath === "/onboarding";
   const isLanding = canonicalPath === "/";
 
   const showAppShellNav = Boolean(auth?.user) && !isLanding && !isAuthPage;
