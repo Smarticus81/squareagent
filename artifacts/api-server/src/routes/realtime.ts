@@ -18,9 +18,6 @@ import {
   db,
   serviceConnectionsTable,
   usageEventsTable,
-  emailCredentialsTable,
-  knowledgeDocumentsTable,
-  externalDbConnectionsTable,
 } from "@workspace/db";
 import {
   PLANS,
@@ -30,7 +27,7 @@ import {
 import { getPlan, planAllowsPipeline, buildUsageLimitSnapshot } from "@workspace/voicelab-core/pricing";
 import { getNoiseModeBehavior, type NoiseMode } from "@workspace/voicelab-core/noise";
 import { normalizeOrderHandlingMode } from "@workspace/voicelab-core/agent-profile";
-import { eq, sql, and, gte, isNull, or } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import {
   type CatalogItem,
   type OrderItem,
@@ -55,6 +52,8 @@ import {
 } from "../lib/session-store";
 import { readServerApiKey, requiredApiKeyEnv } from "../lib/api-keys";
 import { OPENAI_REALTIME_MODEL, buildRealtimeSessionPayload } from "../lib/openai-realtime";
+import { getCachedVoiceMinutes, invalidateUsage } from "../lib/usage-cache";
+import { hasGeneralConnectedSystemsCached } from "../lib/connected-systems-cache";
 
 const router = Router();
 
@@ -75,15 +74,13 @@ async function currentOrganizationId(req: any): Promise<string | null> {
   const existing = req.organization?.id;
   if (existing) return existing;
   if (!req.user) return null;
+  // Memoize on the request: the /tools handler resolves the org id in both the
+  // overage check and the main body, and ensureUserOrganization can write on a
+  // cold path. Resolving once per request avoids the duplicate round trip.
+  if (req._resolvedOrganizationId !== undefined) return req._resolvedOrganizationId;
   const org = await ensureUserOrganization(req.user);
+  req._resolvedOrganizationId = org.id;
   return org.id;
-}
-
-function tenantWhere(table: { organizationId: any; userId: any }, userId: number, organizationId: string) {
-  return or(
-    eq(table.organizationId, organizationId),
-    and(eq(table.userId, userId), isNull(table.organizationId)),
-  );
 }
 
 function parseOptionalVenueId(raw: unknown): number | null | "invalid" {
@@ -127,32 +124,6 @@ function orderSnapshotToSessionItems(rawOrder: unknown, catalog: CatalogItem[]):
   }
 
   return [...items.values()];
-}
-
-async function hasGeneralConnectedSystems(userId: number, organizationId: string | null): Promise<boolean> {
-  if (!organizationId) return false;
-  try {
-    const [[email], [document], [database]] = await Promise.all([
-      db
-        .select({ id: emailCredentialsTable.id })
-        .from(emailCredentialsTable)
-        .where(tenantWhere(emailCredentialsTable, userId, organizationId))
-        .limit(1),
-      db
-        .select({ id: knowledgeDocumentsTable.id })
-        .from(knowledgeDocumentsTable)
-        .where(tenantWhere(knowledgeDocumentsTable, userId, organizationId))
-        .limit(1),
-      db
-        .select({ id: externalDbConnectionsTable.id })
-        .from(externalDbConnectionsTable)
-        .where(tenantWhere(externalDbConnectionsTable, userId, organizationId))
-        .limit(1),
-    ]);
-    return Boolean(email || document || database);
-  } catch {
-    return false;
-  }
 }
 
 function formatLimit(value: number, label: string): string {
@@ -742,21 +713,7 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
   let usageLimits: any = null;
 
   try {
-    const periodStart = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-    const [usage] = await db
-      .select({ total: sql<number>`coalesce(sum(${usageEventsTable.quantity}), 0)` })
-      .from(usageEventsTable)
-      .where(and(
-        organizationId
-          ? or(
-              eq(usageEventsTable.organizationId, organizationId),
-              and(eq(usageEventsTable.userId, req.user.id), isNull(usageEventsTable.organizationId)),
-            )
-          : eq(usageEventsTable.userId, req.user.id),
-        eq(usageEventsTable.kind, "voice_minutes"),
-        gte(usageEventsTable.occurredAt, periodStart),
-      ));
-    usedMinutes = Number(usage?.total ?? 0);
+    usedMinutes = await getCachedVoiceMinutes(req.user.id, organizationId);
     usageLimits = buildUsageLimitSnapshot(req.isAdmin ? "admin" : plan, usedMinutes);
 
     if (!req.isAdmin && usageLimits.risk === "blocked") {
@@ -865,7 +822,7 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
   // venue sessions so Square plus email/knowledge/database workflows can run
   // in one assistant.
   const includeGeneralTools =
-    assistantKind === "venue" && (await hasGeneralConnectedSystems(req.user.id, organizationId));
+    assistantKind === "venue" && (await hasGeneralConnectedSystemsCached(req.user.id, organizationId));
 
   const skills = getSkillsForSession(plan, { kind: assistantKind, includeGeneralTools });
 
@@ -985,22 +942,7 @@ router.post("/tools", requireAuth as any, requirePlan() as any, async (req: any,
     try {
       const plan = req.subscription?.plan ?? "trial";
       const organizationId = await currentOrganizationId(req);
-      const periodStart = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-      const [usage] = await db
-        .select({ total: sql<number>`coalesce(sum(${usageEventsTable.quantity}), 0)` })
-        .from(usageEventsTable)
-        .where(and(
-          organizationId
-            ? or(
-                eq(usageEventsTable.organizationId, organizationId),
-                and(eq(usageEventsTable.userId, req.user.id), isNull(usageEventsTable.organizationId)),
-              )
-            : eq(usageEventsTable.userId, req.user.id),
-          eq(usageEventsTable.kind, "voice_minutes"),
-          gte(usageEventsTable.occurredAt, periodStart),
-        ));
-      
-      const used = Number(usage?.total ?? 0);
+      const used = await getCachedVoiceMinutes(req.user.id, organizationId);
       const limits = buildUsageLimitSnapshot(plan, used);
       if (limits.risk === "blocked") {
         res.json({
@@ -1099,7 +1041,7 @@ router.post("/tools", requireAuth as any, requirePlan() as any, async (req: any,
     const squareClient = squareToken ? new SquareClient(squareToken, squareLocationId) : undefined;
     const assistantKind: "venue" | "general" = squareToken ? "venue" : "general";
     const includeGeneralTools =
-      assistantKind === "venue" && (await hasGeneralConnectedSystems(req.user.id, organizationId));
+      assistantKind === "venue" && (await hasGeneralConnectedSystemsCached(req.user.id, organizationId));
     const toolDefinitions = buildToolsFromSkills(getSkillsForSession(
       (req.subscription?.plan as string | undefined) ?? "trial",
       { kind: assistantKind, includeGeneralTools },
@@ -1192,6 +1134,7 @@ setInterval(async () => {
               autoFlushed: true,
             },
           });
+          invalidateUsage(entry.userId, entry.organizationId);
           console.log(`[Realtime] Autoflushed stale session ${sessionId}: ${entry.lastHeartbeatMs}ms`);
         } catch (err: any) {
           console.error(`[Realtime] Failed to autoflush stale session ${sessionId}:`, err.message);
@@ -1278,6 +1221,7 @@ router.post("/session/:id/end", requireAuth as any, async (req: any, res: any) =
         quantity: Math.ceil(effectiveDuration / 60000),
         metadata: { durationMs: effectiveDuration, provider: effectiveProvider, venueId: venueId || null },
       });
+      invalidateUsage(req.user.id, organizationId);
     } catch {
       // non-critical — don't fail the response
     }
