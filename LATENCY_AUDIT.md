@@ -110,3 +110,71 @@ Blockers for horizontal scaling (unchanged by Phase 1, to be addressed in Phase 
 _Phase 1 reduces per-call DB load and CPU on the hot path without touching the
 scaling blockers, which are structural and gated behind the "ask before infra"
 rule._
+
+---
+
+## Phase 2 — Database & Drizzle Efficiency
+
+> Phase 1 merged to `master` (PR #56). This phase branches fresh from the updated
+> `master`, per the merged-PR workflow.
+
+### Findings
+
+| # | Location | Issue | Verdict |
+|---|----------|-------|---------|
+| 2.1 | `routes/v1/usage.ts` `GET /usage/current` | Three **independent** reads (voice-minutes SUM, top-tools GROUP BY, recent-errors) ran **serially** — three round trips of wall-clock for a dashboard render. | **Fixed** — `Promise.all`. |
+| 2.2 | `lib/db/src/index.ts` | `pg.Pool` `max` hard-coded to 20 with no saturation visibility. On multi-instance Railway, `instances × 20` can blow the Postgres `max_connections` budget silently. | **Fixed** — env-tunable `DATABASE_POOL_MAX` + opt-in `waitingCount`/`idle`/`total` metrics. |
+| 2.3 | `tools/middleware.ts` `auditMiddleware` | `tool_calls` write. | **OK** — already `setImmediate` fire-and-forget, off the response path. |
+| 2.4 | `routes/realtime.ts` `usage_events` writes | Session-end + stale-session autoflush inserts. | **OK** — not on the tool hot path (session lifecycle only); await is fine there. |
+| 2.5 | `tools/general/knowledge.ts` vector search | HNSW `<=>` cosine search with `ORDER BY distance LIMIT` — uses the index correctly. Index built out-of-band (`scripts/enable-pgvector.ts`) with `m=16, ef_construction=200` (sound). Query-time `hnsw.ef_search` is **unset** (defaults to 40). | **OK / documented** — see proposals. |
+| 2.6 | `routes/realtime.ts` | Agent-profile + service-connection + credentials fetched as separate reads on the hot path. | **Mitigated in Phase 1** (all cached). Folding the `service_connections.provider` read into the profile cache via a join is a further win — proposed below. |
+
+### Changes
+
+1. **`routes/v1/usage.ts`** — the three dashboard queries now run under a single
+   `Promise.all`. Response shape unchanged. Wall-clock ≈ slowest single query
+   instead of the sum of all three (~3× fewer serial round trips on this route).
+2. **`lib/db/src/index.ts`** — `max` reads `DATABASE_POOL_MAX` (default 20);
+   added opt-in pool-saturation logging (`DATABASE_POOL_METRICS=1`,
+   interval `DATABASE_POOL_METRICS_MS`, default 60s; timer `unref`'d). This is
+   the instrument needed before any horizontal-scale decision on pool sizing.
+
+### Proposals (no infra change made — flagged for approval)
+
+- **Usage rollup / counter cache (2.3-scale).** `GET /usage/current` and the
+  hot-path cap check both `SUM` over a growing `usage_events` window. Phase 1
+  caches the hot-path total (15s TTL); at higher scale a **PostgreSQL-only**
+  daily rollup table (or a per-organization `voice_minutes_used` counter column
+  updated on each usage-event insert) removes the aggregate entirely. No Redis
+  required — this is the Railway-compatible fallback path. **Deferred pending
+  approval** (schema change + migration).
+- **`ef_search` tuning (2.5).** If recall on knowledge search needs raising,
+  wrap the query in a transaction with `SET LOCAL hnsw.ef_search = 64` (a plain
+  pooled `query` can't carry a session `SET`). `ivfflat` is **not** recommended
+  unless HNSW memory pressure appears — HNSW gives better recall/latency at this
+  corpus size. Measurement-gated; no change made.
+- **Profile-join for service provider (2.6).** Extend `agent-profile-cache` to
+  carry the bound connection's `provider`, eliminating the per-`/session` and
+  per-`/tools` `service_connections` lookup. Small cache-shape change; deferred
+  to keep this phase incremental.
+
+### Risk
+
+**Low.** `Promise.all` parallelization is behavior-preserving (independent
+queries, same result assembly). Pool `max` defaults to the previous value 20
+when the env var is unset; metrics are opt-in and `unref`'d so they never hold
+the process open. No response shapes, gating, or server-authoritative behavior
+changed. No new infrastructure.
+
+### Validation
+
+`pnpm typecheck` ✅ · `pnpm build` ✅ (all four artifacts, exit 0).
+
+### Scale Readiness Score: **6 / 10**
+
+Up from 5: pool sizing is now tunable **and observable** (the prerequisite for a
+safe horizontal-scale cutover), and the dashboard read path is parallelized.
+Unchanged blockers remain the in-memory session/heartbeat state and the
+single-process WS relay (Phase 3), plus the still-growing `usage_events`
+aggregate whose scale-proof fix (rollup/counter) is proposed above and awaits
+approval.

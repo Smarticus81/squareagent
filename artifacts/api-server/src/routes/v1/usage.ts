@@ -39,43 +39,46 @@ router.get("/current", v1RequireAuth as any, async (req: any, res: any) => {
       ? new Date(new Date(req.subscription.currentPeriodEnd).getTime() - 30 * 24 * 60 * 60 * 1000)
       : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
-    const [minutesResult] = await db
-      .select({ total: sql<number>`coalesce(sum(${usageEventsTable.quantity}), 0)` })
-      .from(usageEventsTable)
-      .where(and(
-        usageTenantWhere(userId, organizationId),
-        eq(usageEventsTable.kind, "voice_minutes"),
-        gte(usageEventsTable.occurredAt, periodStart),
-      ));
-
-    const topTools = await db
-      .select({
-        toolName: toolCallsTable.toolName,
-        count: sql<number>`count(*)::int`,
-      })
-      .from(toolCallsTable)
-      .where(and(
-        toolTenantWhere(userId, organizationId),
-        gte(toolCallsTable.createdAt, periodStart),
-      ))
-      .groupBy(toolCallsTable.toolName)
-      .orderBy(sql`count(*) desc`)
-      .limit(5);
-
-    const recentErrors = await db
-      .select({
-        toolName: toolCallsTable.toolName,
-        errorMessage: toolCallsTable.errorMessage,
-        createdAt: toolCallsTable.createdAt,
-      })
-      .from(toolCallsTable)
-      .where(and(
-        toolTenantWhere(userId, organizationId),
-        eq(toolCallsTable.status, "failed"),
-        gte(toolCallsTable.createdAt, periodStart),
-      ))
-      .orderBy(sql`${toolCallsTable.createdAt} desc`)
-      .limit(10);
+    // These three reads are independent; run them concurrently so the dashboard
+    // endpoint costs one round-trip's worth of wall-clock instead of three
+    // serial ones.
+    const [[minutesResult], topTools, recentErrors] = await Promise.all([
+      db
+        .select({ total: sql<number>`coalesce(sum(${usageEventsTable.quantity}), 0)` })
+        .from(usageEventsTable)
+        .where(and(
+          usageTenantWhere(userId, organizationId),
+          eq(usageEventsTable.kind, "voice_minutes"),
+          gte(usageEventsTable.occurredAt, periodStart),
+        )),
+      db
+        .select({
+          toolName: toolCallsTable.toolName,
+          count: sql<number>`count(*)::int`,
+        })
+        .from(toolCallsTable)
+        .where(and(
+          toolTenantWhere(userId, organizationId),
+          gte(toolCallsTable.createdAt, periodStart),
+        ))
+        .groupBy(toolCallsTable.toolName)
+        .orderBy(sql`count(*) desc`)
+        .limit(5),
+      db
+        .select({
+          toolName: toolCallsTable.toolName,
+          errorMessage: toolCallsTable.errorMessage,
+          createdAt: toolCallsTable.createdAt,
+        })
+        .from(toolCallsTable)
+        .where(and(
+          toolTenantWhere(userId, organizationId),
+          eq(toolCallsTable.status, "failed"),
+          gte(toolCallsTable.createdAt, periodStart),
+        ))
+        .orderBy(sql`${toolCallsTable.createdAt} desc`)
+        .limit(10),
+    ]);
 
     const usedMinutes = Number(minutesResult?.total ?? 0);
     const planId = req.isAdmin ? "admin" : (req.subscription?.plan ?? "trial");
