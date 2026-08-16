@@ -178,3 +178,118 @@ Unchanged blockers remain the in-memory session/heartbeat state and the
 single-process WS relay (Phase 3), plus the still-growing `usage_events`
 aggregate whose scale-proof fix (rollup/counter) is proposed above and awaits
 approval.
+
+---
+
+## Phase 3 — Scalability & State Assumptions
+
+> **Audit + documentation phase.** Per the project rule ("no new infrastructure
+> without asking first"), this phase makes **no infra change** — it maps the
+> stateful assumptions, flags each horizontal-scaling blocker, and proposes both
+> a **PostgreSQL-only** path and a Redis alternative for approval. The current
+> single-instance Railway deployment is correct as-is; everything below is about
+> what a *multi-instance* cutover would require.
+
+### Two distinct runtime surfaces
+
+The platform has two voice transports with **different** state profiles:
+
+1. **WebRTC (browser PWA)** — `POST /session` mints a token (stateless), then
+   the browser talks **directly** to OpenAI. Tool calls come back to
+   `POST /tools`. This surface is *almost* stateless per request; its only
+   server state is `SessionStore` (the live order being built).
+2. **WS relay (native / Expo)** — `ws-relay.ts` holds the entire session
+   (catalog, order, upstream provider socket) in a **per-process closure** for
+   the connection's lifetime.
+
+### Findings — per-process state inventory
+
+| State | Location | Under multi-instance | Severity |
+|-------|----------|----------------------|----------|
+| `SessionStore.memoryStore` | `lib/session-store.ts` | Write-through to `voice_sessions` exists, but `getSession()` is **memory-only** ("no DB fallback for now"). A `/tools` call routed to a different instance — or any instance after a restart — sees an empty session and rebuilds the order from scratch, losing the in-flight `squareOrderId` / items. | **Blocker** |
+| WS relay closure | `routes/ws-relay.ts` | The client WS is pinned to the instance that accepted the `upgrade`. Inherent to WS relays — needs **load-balancer session affinity**; not a code defect. | **Blocker (affinity)** |
+| `heartbeatMap` + autoflush sweeper | `routes/realtime.ts` | Voice-minute accrual is per-process; heartbeats for one session landing on different instances **split/undercount** minutes, and each sweeper only flushes its own map. | **High (metering)** |
+| `endedSessions` dedup | `routes/realtime.ts` | Per-process; a duplicate `/end` (pagehide + beforeunload) hitting a *different* instance can **double-bill**. | **Moderate** |
+| `demoSessionHits` | `routes/realtime.ts` | Per-process demo rate-limit → effective limit multiplies by instance count. | **Low** |
+| `mockBarOrders` | `routes/realtime.ts` | Demo-only order store; demo tool calls must hit the same instance. | **Low (demo)** |
+| New Phase 1/2 caches | `usage-cache`, `connected-systems-cache`, credential/catalog/profile caches | Per-process, but **degrade to extra DB reads, never incorrectness** — no coordination needed. | **None** |
+
+**Filesystem / local state:** none required to serve a request. Static asset
+serving (landing at `/`, PWA at `/agent/`) is read-only and horizontally safe.
+Express sessions use `connect-pg-simple` (Postgres-backed), not local memory —
+good.
+
+### State-tier map
+
+```
+Request-serving state
+├── Stateless (horizontally safe today)
+│   ├── POST /session mint (token + instructions)
+│   ├── Static file serving (landing, PWA)
+│   ├── Auth / plan gating (JWT + Postgres session table)
+│   └── L1 caches (credential/catalog/usage/connected-systems/profile)
+│         → per-process, self-healing: miss = DB read, never wrong
+├── Per-process, correctness-affecting under multi-instance
+│   ├── SessionStore live order   → needs DB rehydrate (see proposal)
+│   ├── heartbeatMap metering     → needs shared counter / sticky
+│   └── endedSessions dedup       → needs shared set / sticky
+└── Connection-pinned by nature
+    └── WS relay session          → needs LB session affinity
+```
+
+### Proposals (nothing implemented — awaiting approval)
+
+**PostgreSQL-only path (no new infrastructure — preferred for Railway):**
+1. **Rehydrate `SessionStore` from `voice_sessions` on memory miss.** The
+   write-through already persists `state` + `squareOrderId`; add an async
+   `getSessionOrRehydrate(sessionId)` that falls back to a single indexed
+   `SELECT` when `memoryStore` misses. Wiring it into `/tools` (that call site
+   becomes `await`) makes the WebRTC surface **restart-safe and instance-
+   agnostic** with zero new infra. *Cost:* one DB read on cold-session tool
+   calls (rare — only first call after a restart / on a new instance).
+2. **Session affinity for the WS relay.** Enable sticky sessions at the Railway
+   edge / LB keyed on the session identifier so a native voice connection stays
+   on one instance. No code change; a deploy-config change.
+3. **Metering via usage_events, not `heartbeatMap`.** Flush heartbeat deltas to
+   `usage_events` on a short cadence (or rely on the existing session-end write)
+   and dedup `/end` via a short-TTL `voice_sessions.ended_at` column instead of
+   the in-memory `endedSessions` set. Removes the split-metering and double-bill
+   risks with a Postgres-only mechanism.
+
+**Redis alternative (only if approved):** a shared KV for SessionStore + a
+pub/sub fan-out for the WS relay would remove the affinity requirement entirely
+and give O(1) shared counters for metering/rate-limit/dedup. **Not recommended
+as the first step** — the Postgres-only path above unblocks horizontal scaling
+without adding a dependency, and the rule requires a Railway-compatible fallback
+regardless.
+
+### Bundle audit (`artifacts/api-server/build.ts`)
+
+`bundle: true` + `minify: true` + `define process.env.NODE_ENV="production"`
+means esbuild tree-shakes and dead-code-eliminates by default. The `external`
+list is computed as *all deps + devDeps minus a curated runtime allowlist minus
+workspace packages*, so **dev dependencies (typescript, tsx, esbuild) are marked
+external and never enter the bundle**. Output is a single ~2.0 MB minified
+`index.cjs`. No type-definition or dev-tool leakage found. Minor future option:
+prune the runtime `external` set further to bundle a few more hot deps for fewer
+`openat(2)` syscalls at cold start — marginal, not pursued.
+
+### Changes
+
+**None (code).** Documentation + proposals only, per the "ask before infra"
+rule. No files modified outside this audit entry.
+
+### Risk
+
+**None** — no code changed. The proposals are sequenced so the Postgres-only
+path can land incrementally (rehydration first, then metering) behind approval,
+each independently testable, with no rewrite of the existing single-instance
+behavior.
+
+### Scale Readiness Score: **6 / 10** (unchanged)
+
+The score holds: Phase 3 clarifies *exactly* what blocks horizontal scaling and
+shows a no-new-infra route to raise it, but until the SessionStore rehydration +
+session affinity + metering externalization actually land, the platform remains
+**single-instance-correct only**. Reaching 8+/10 requires implementing the
+PostgreSQL-only proposals above — **held for approval before proceeding**.
