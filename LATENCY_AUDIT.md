@@ -293,3 +293,118 @@ shows a no-new-infra route to raise it, but until the SessionStore rehydration +
 session affinity + metering externalization actually land, the platform remains
 **single-instance-correct only**. Reaching 8+/10 requires implementing the
 PostgreSQL-only proposals above — **held for approval before proceeding**.
+
+---
+
+## Phase 4 — Caching Strategy
+
+### Finding: the documented `CatalogCache` did not exist
+
+`CLAUDE.md` describes a "Catalog Cache (5-min TTL per-venue catalog cache)", but
+**no such module was in the codebase** (`lib/catalog-cache.ts` was absent). The
+reality:
+
+- `GET /api/venues/:id/catalog` (`routes/venues.ts`) **paginated the venue's
+  entire Square ITEM catalog and reshaped it on every call** — no caching.
+- The reshaped list is then handed to the client, which passes it back into
+  `POST /session` / `POST /tools` in the request body. So the voice hot path
+  itself does not re-fetch the catalog (good), but the catalog **load**
+  endpoint the PWA hits on open / refresh had no cache and could be a multi-page
+  Square round trip each time.
+
+### Change: implement the missing cache with stale-while-revalidate
+
+New `lib/catalog-cache.ts` — per-venue cache of the reshaped catalog:
+
+| Entry age | Behavior |
+|-----------|----------|
+| `< TTL` (5m, `CATALOG_CACHE_TTL_MS`) | served from memory, **no Square call** |
+| `TTL .. HARD_TTL` (30m, `CATALOG_CACHE_HARD_TTL_MS`) | **stale copy served immediately**, single background refresh kicked off |
+| `≥ HARD_TTL` / cold | loader runs, caller awaits |
+
+`routes/venues.ts` `GET /:id/catalog` refactored: the Square fetch+reshape is
+now a `loadCatalog()` closure passed to `getCachedCatalog(venueId, loader)`. A
+typed `CatalogFetchError` preserves the original Square status/detail so error
+responses are unchanged. **Response shape (`{ items, count }`) is identical.**
+
+Invalidation (so edits show up without waiting for TTL):
+- `tools/catalog.ts` — `create_item` / `update_item` / `delete_item` call
+  `invalidateCatalog(ctx.venueId)` on success.
+- `routes/venues.ts` — paired `invalidateCatalog` with every existing
+  `invalidateCredentials` (OAuth reconnect, venue update, disconnect), since a
+  credential/location change changes the catalog source.
+
+Tenancy is safe: the route verifies venue ownership + credentials *before*
+consulting the cache, and `venueId` is a globally-unique owned PK, so a cached
+entry can only ever be served to owners of that venue.
+
+### Multi-tier cache strategy
+
+```
+L1  In-process, per-instance (implemented)
+    ├── credential-cache        5m   (Square token, decrypted)
+    ├── catalog-cache           5m + SWR to 30m   ← NEW this phase
+    ├── agent-profile-cache     60s
+    ├── usage-cache             15s  (Phase 1)
+    ├── connected-systems-cache 60s  (Phase 1)
+    └── session-store           30m  (live order)
+    Property: every L1 miss falls back to source of truth; never returns
+    wrong data, so no cross-instance coordination is required.
+
+L2  Shared tier (PROPOSAL — not implemented; needs approval)
+    • PostgreSQL materialized views / rollup tables for usage aggregates
+      (see Phase 2 proposal), OR Redis for a shared catalog/session tier.
+    Purpose: survive restarts + share across instances. Postgres-only path
+    is preferred and Railway-compatible; Redis only if approved.
+
+L3  Square API with conditional requests (INVESTIGATED)
+    • Square Catalog supports catalog *version* checks
+      (`catalog/list` returns objects with `version`; `CatalogInfo` /
+      `catalog.version.updated` webhook signals changes). Square does NOT
+      expose HTTP ETag/If-None-Match on catalog/list, so true 304 conditional
+      GETs aren't available; the webhook-driven invalidation below is the
+      correct equivalent.
+```
+
+### Square webhook invalidation
+
+**Finding:** no Square webhook handler exists (the only webhooks wired are Clerk
+billing). Catalog edits made *in the Square dashboard* (not via our tools) are
+therefore only picked up when the 5m TTL lapses.
+
+**Proposal (an API route, not new infrastructure — implementable without infra
+approval, deferred here to keep the phase incremental):** add
+`POST /api/square/webhooks` that verifies the `x-square-hmacsha256-signature`
+against `SQUARE_WEBHOOK_SIGNATURE_KEY` and, on `catalog.version.updated`, maps
+the event's merchant/location to the affected `venueId`(s) and calls
+`invalidateCatalog(venueId)`. This closes the dashboard-edit staleness window to
+near-zero. Requires a Square webhook subscription + signature key in env; no new
+service. **Flagged for the next iteration / approval.**
+
+### Before / After
+
+| Scenario | Before | After |
+|----------|--------|-------|
+| PWA catalog reload, warm (<5m) | full paginated Square fetch every call | 0 Square calls (memory) |
+| Catalog reload, 5–30m stale | full fetch, request blocks on it | stale served instantly, refresh in background |
+| Catalog item created/edited via voice | next load re-fetched anyway | cache invalidated → next load fresh |
+| Dashboard edit | up to 5m stale | up to 5m stale (→ ~0 once webhook lands) |
+
+### Risk
+
+**Low.** Response shape and error mapping preserved. Cache is per-venue with
+ownership verified upstream; TTL + explicit invalidation bound staleness; SWR
+failures fall back to serving the last-good copy and log a warning. Background
+refresh is fire-and-forget and cannot reject the request. No new infrastructure.
+
+### Validation
+
+`pnpm typecheck` ✅ · `pnpm build` ✅ (all four artifacts, exit 0).
+
+### Scale Readiness Score: **6 / 10** (unchanged)
+
+Catalog caching cuts Square API load and tail latency on the catalog-load path,
+but it is a per-instance L1 cache — it improves efficiency, not the horizontal-
+scaling blockers (still SessionStore/metering/WS-affinity from Phase 3). The
+L2 shared tier and the Square webhook handler are the items that would move this
+number, and both are proposed above pending approval.

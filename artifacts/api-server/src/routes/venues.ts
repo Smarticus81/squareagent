@@ -15,6 +15,7 @@ import { eq, and, desc, inArray, isNull, or } from "drizzle-orm";
 import { requireAuth } from "./auth";
 import { ensureUserOrganization } from "./v1/_helpers";
 import { getCachedCredentials, invalidateCredentials } from "../lib/credential-cache";
+import { getCachedCatalog, invalidateCatalog } from "../lib/catalog-cache";
 import { encrypt, decrypt } from "../lib/secrets";
 import { claimPendingSquareOAuthToken } from "../lib/square-oauth-claims";
 import { squareFetch } from "../lib/square-helpers";
@@ -289,6 +290,7 @@ router.post("/", requireAuth as any, async (req: Request, res: Response): Promis
         locationName: locationName || updated.squareLocationName,
       });
       invalidateCredentials(user.id, updated.id);
+      invalidateCatalog(updated.id);
 
       res.json({
         venue: {
@@ -329,6 +331,7 @@ router.post("/", requireAuth as any, async (req: Request, res: Response): Promis
         locationName: locationName || updated.squareLocationName,
       });
       invalidateCredentials(user.id, updated.id);
+      invalidateCatalog(updated.id);
 
       res.json({
         venue: {
@@ -370,6 +373,7 @@ router.post("/", requireAuth as any, async (req: Request, res: Response): Promis
       locationName: locationName || venue.squareLocationName,
     });
     invalidateCredentials(user.id, venue.id);
+    invalidateCatalog(venue.id);
 
     res.json({
       venue: {
@@ -443,6 +447,7 @@ router.delete("/:id", requireAuth as any, async (req: Request, res: Response): P
 
     await db.delete(venuesTable).where(venueIdTenantWhere(venueId, user.id, organizationId));
     invalidateCredentials(user.id, venueId);
+    invalidateCatalog(venueId);
     res.json({ ok: true });
   } catch (e: any) {
     console.error("[Venues] Delete error:", e.message);
@@ -563,59 +568,82 @@ router.get("/:id/catalog", requireAuth as any, async (req: Request, res: Respons
     }
 
     const plainToken = creds.squareToken;
-    const items: any[] = [];
-    let cursor: string | undefined;
 
-    do {
-      const url = `${SQUARE_BASE}/catalog/list?types=ITEM&include_deleted_objects=false${cursor ? `&cursor=${cursor}` : ""}`;
-      const response = await squareFetch(url, { headers: squareHeaders(plainToken) });
-      const data = (await response.json()) as any;
-
-      if (!response.ok) {
-        res.status(response.status).json({ error: data.errors?.[0]?.detail || "Failed to load catalog" });
-        return;
+    // A recoverable Square error inside the loader is surfaced by throwing this
+    // typed error so the route can map it back to the original status/detail
+    // instead of a generic 500.
+    class CatalogFetchError extends Error {
+      constructor(public status: number, public detail: string) {
+        super(detail);
       }
+    }
 
-      for (const obj of data.objects || []) {
-        if (obj.type !== "ITEM") continue;
-        const itemData = obj.item_data;
-        if (!itemData) continue;
-        const variations = itemData.variations || [];
-        if (variations.length === 0) continue;
+    // Authoritative Square fetch + reshape. Cached per venue with
+    // stale-while-revalidate, so a busy venue reloading its catalog doesn't
+    // re-paginate Square every time.
+    const loadCatalog = async (): Promise<any[]> => {
+      const items: any[] = [];
+      let cursor: string | undefined;
+      do {
+        const url = `${SQUARE_BASE}/catalog/list?types=ITEM&include_deleted_objects=false${cursor ? `&cursor=${cursor}` : ""}`;
+        const response = await squareFetch(url, { headers: squareHeaders(plainToken) });
+        const data = (await response.json()) as any;
 
-        if (variations.length === 1) {
-          const varData = variations[0].item_variation_data;
-          items.push({
-            id: obj.id,
-            variationId: variations[0].id,
-            name: itemData.name,
-            price: varData?.price_money ? varData.price_money.amount / 100 : 0,
-            category: itemData.category_id,
-            description: itemData.description || "",
-          });
-        } else {
-          for (const variation of variations) {
-            const varData = variation.item_variation_data;
-            if (!varData) continue;
-            const varName =
-              varData.name && varData.name !== "Regular"
-                ? `${itemData.name} (${varData.name})`
-                : itemData.name;
+        if (!response.ok) {
+          throw new CatalogFetchError(response.status, data.errors?.[0]?.detail || "Failed to load catalog");
+        }
+
+        for (const obj of data.objects || []) {
+          if (obj.type !== "ITEM") continue;
+          const itemData = obj.item_data;
+          if (!itemData) continue;
+          const variations = itemData.variations || [];
+          if (variations.length === 0) continue;
+
+          if (variations.length === 1) {
+            const varData = variations[0].item_variation_data;
             items.push({
               id: obj.id,
-              variationId: variation.id,
-              name: varName,
-              price: varData.price_money ? varData.price_money.amount / 100 : 0,
+              variationId: variations[0].id,
+              name: itemData.name,
+              price: varData?.price_money ? varData.price_money.amount / 100 : 0,
               category: itemData.category_id,
               description: itemData.description || "",
             });
+          } else {
+            for (const variation of variations) {
+              const varData = variation.item_variation_data;
+              if (!varData) continue;
+              const varName =
+                varData.name && varData.name !== "Regular"
+                  ? `${itemData.name} (${varData.name})`
+                  : itemData.name;
+              items.push({
+                id: obj.id,
+                variationId: variation.id,
+                name: varName,
+                price: varData.price_money ? varData.price_money.amount / 100 : 0,
+                category: itemData.category_id,
+                description: itemData.description || "",
+              });
+            }
           }
         }
-      }
-      cursor = data.cursor;
-    } while (cursor);
+        cursor = data.cursor;
+      } while (cursor);
+      return items;
+    };
 
-    res.json({ items, count: items.length });
+    try {
+      const items = await getCachedCatalog(venueId, loadCatalog);
+      res.json({ items, count: items.length });
+    } catch (err) {
+      if (err instanceof CatalogFetchError) {
+        res.status(err.status).json({ error: err.detail });
+        return;
+      }
+      throw err;
+    }
   } catch (e: any) {
     console.error("[Venues] Catalog error:", e.message);
     res.status(500).json({ error: "Failed to load catalog" });
