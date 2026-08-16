@@ -12,6 +12,7 @@ import {
   squareFetch,
   squareHeaders,
 } from "../lib/square-helpers";
+import { invalidateCatalog } from "../lib/catalog-cache";
 
 // ── Definitions ───────────────────────────────────────────────────────────────
 
@@ -107,6 +108,7 @@ async function createItem(args: Record<string, unknown>, ctx: ToolContext): Prom
   const priceCents = Math.round(price * 100);
   const { ok, itemId, error } = await createCatalogItem(ctx.squareToken, ctx.squareLocationId, itemName, priceCents);
   if (!ok) return { result: `Failed to create item: ${error}` };
+  if (ctx.venueId) invalidateCatalog(ctx.venueId);
   return { result: `Created "${itemName}" at $${price.toFixed(2)}. Catalog ID: ${itemId}. It's now available on the POS.` };
 }
 
@@ -121,6 +123,7 @@ async function updateItem(args: Record<string, unknown>, ctx: ToolContext): Prom
   if (!updates.name && updates.priceCents === undefined) return { result: "No changes specified." };
   const { ok, error } = await updateCatalogItem(ctx.squareToken, match.id, updates);
   if (!ok) return { result: `Failed to update: ${error}` };
+  if (ctx.venueId) invalidateCatalog(ctx.venueId);
   const changes = [];
   if (updates.name) changes.push(`name → "${updates.name}"`);
   if (updates.priceCents !== undefined) changes.push(`price → $${(updates.priceCents / 100).toFixed(2)}`);
@@ -134,6 +137,7 @@ async function deleteItem(args: Record<string, unknown>, ctx: ToolContext): Prom
   if (!ctx.squareToken) return { result: "Square not connected." };
   const { ok, error } = await deleteCatalogItem(ctx.squareToken, match.id);
   if (!ok) return { result: `Failed to delete: ${error}` };
+  if (ctx.venueId) invalidateCatalog(ctx.venueId);
   return { result: `Deleted "${match.name}" from the catalog. It's been removed from the POS.` };
 }
 
