@@ -8,6 +8,7 @@
  * to DuckDuckGo's HTML endpoint (best-effort, may rate-limit).
  */
 
+import { safeFetch } from "../../lib/ssrf-guard";
 import type { ToolDefinition, ToolExecutor, ToolResult } from "../types";
 
 export const definitions: ToolDefinition[] = [
@@ -104,13 +105,7 @@ async function fetchUrlExec(args: Record<string, unknown>): Promise<ToolResult> 
     return { result: "fetch_url: a valid http(s) URL is required." };
   }
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 10_000);
-    const res = await fetch(url, {
-      headers: { "User-Agent": "Mozilla/5.0 VoyceLab" },
-      signal: controller.signal,
-    });
-    clearTimeout(timer);
+    const res = await safeFetch(url, { maxRedirects: 3, maxBytes: 8000 });
     if (!res.ok) {
       return { result: `fetch_url: HTTP ${res.status} from ${url}` };
     }
@@ -120,7 +115,10 @@ async function fetchUrlExec(args: Record<string, unknown>): Promise<ToolResult> 
     const trimmed = text.trim().slice(0, 8000);
     return { result: `Fetched ${url} (${ct || "unknown"}):\n\n${trimmed}` };
   } catch (e: any) {
-    return { result: `fetch_url error: ${e.message}` };
+    const code = e.message === "blocked_ip" || e.message === "blocked_host"
+      ? "That URL points to a private network address and cannot be fetched."
+      : e.message;
+    return { result: `fetch_url error: ${code}` };
   }
 }
 

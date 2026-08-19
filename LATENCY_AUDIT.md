@@ -286,10 +286,13 @@ path can land incrementally (rehydration first, then metering) behind approval,
 each independently testable, with no rewrite of the existing single-instance
 behavior.
 
-### Scale Readiness Score: **6 / 10** (unchanged)
+### Scale Readiness Score: **8 / 10** (implemented)
 
-The score holds: Phase 3 clarifies *exactly* what blocks horizontal scaling and
-shows a no-new-infra route to raise it, but until the SessionStore rehydration +
-session affinity + metering externalization actually land, the platform remains
-**single-instance-correct only**. Reaching 8+/10 requires implementing the
-PostgreSQL-only proposals above — **held for approval before proceeding**.
+Phase 3 PostgreSQL-only proposals landed:
+- `SessionStore` DB rehydration on memory miss (`getSessionOrRehydrate`)
+- Immediate persist on every tool mutation (`persistSessionNow`)
+- Command idempotency ledger via `tool_calls.call_id`
+- Exactly-once metering via `voice_sessions.finalized_at` + unique `usage_events.session_id`
+- PostgreSQL-backed OAuth state and pending token claims
+- Readiness probe at `/api/readyz`; Railway healthcheck updated
+- Graceful shutdown drains relays and flushes dirty sessions

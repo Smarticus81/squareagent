@@ -17,7 +17,6 @@ import { requireAuth, requirePlan } from "./auth";
 import {
   db,
   serviceConnectionsTable,
-  usageEventsTable,
 } from "@workspace/db";
 import {
   PLANS,
@@ -45,17 +44,30 @@ import {
   skillSummary,
 } from "../skills";
 import {
-  getOrCreateSession,
   getSession,
+  getSessionOrRehydrate,
   markDirty,
+  persistSessionNow,
   removeSession,
+  withSessionLock,
 } from "../lib/session-store";
 import { readServerApiKey, requiredApiKeyEnv } from "../lib/api-keys";
 import { OPENAI_REALTIME_MODEL, buildRealtimeSessionPayload } from "../lib/openai-realtime";
-import { getCachedVoiceMinutes, invalidateUsage } from "../lib/usage-cache";
+import { getCachedVoiceMinutes } from "../lib/usage-cache";
 import { hasGeneralConnectedSystemsCached } from "../lib/connected-systems-cache";
+import { beginCommandExecution, completeCommandExecution } from "../lib/command-ledger";
+import {
+  registerVoiceSession,
+  recordVoiceHeartbeat,
+  finalizeVoiceSessionUsage,
+  startVoiceSessionSweeper,
+} from "../lib/voice-session-metering";
+import { sendSanitizedError } from "../lib/error-sanitizer";
 
 const router = Router();
+
+// Start PostgreSQL-backed stale session sweeper
+startVoiceSessionSweeper();
 
 // Master switch for acoustic (full-duplex) barge-in. Off by default because
 // browser echo cancellation does not reliably suppress the agent's own voice
@@ -724,7 +736,10 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
       return;
     }
   } catch {
-    // non-critical — allow session to proceed if usage check fails
+    if (process.env.USAGE_CHECK_FAIL_OPEN !== "1") {
+      res.status(503).json({ error: "usage_check_unavailable", code: "usage_check_unavailable" });
+      return;
+    }
   }
 
   const { voice = "ash", speed = 1.0, catalog = [], order = [], venueId, agentProfileId } = req.body ?? {};
@@ -874,9 +889,24 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
     }
 
     const data = (await response.json()) as any;
-    // Tell the client how to drive the mic. Acoustic (full-duplex) barge-in is
-    // opt-in per noise mode AND gated by ACOUSTIC_BARGE_IN_ENABLED; the safe
-    // default is half-duplex mic gating during playback with tap-to-interrupt.
+    const transportSessionId = data.session?.id ?? "";
+    const ephemeralExpiresAt = data.expires_at ?? null;
+
+    // Register durable voice session for metering and order recovery
+    const logicalSessionId = transportSessionId;
+    try {
+      await registerVoiceSession({
+        id: logicalSessionId,
+        userId: req.user.id,
+        organizationId,
+        venueId: effectiveVenueId,
+        agentProfileId: agentProfileId ? String(agentProfileId) : null,
+        pipelineProvider: provider,
+      });
+    } catch (regErr: any) {
+      console.warn("[Realtime] Session registration failed:", regErr.message);
+    }
+
     const behavior = getNoiseModeBehavior(noiseMode);
     const acousticBargeIn = ACOUSTIC_BARGE_IN_ENABLED && behavior.bargeInEnabled;
     // Server-authoritative wake greeting: the client fires this verbatim as
@@ -885,8 +915,8 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
     const greetingPersona = profileDisplayName ? ` You are ${profileDisplayName}.` : "";
     const greeting = `The user just summoned you with your wake phrase.${greetingPersona} Immediately say one short, warm greeting — under eight words, e.g. "Hey! What can I do for you?". Do not list capabilities or mention commands. Then stop speaking and wait for their request.`;
     res.json({
-      id: data.session?.id ?? "",
-      client_secret: { value: data.value, expires_at: data.expires_at },
+      id: transportSessionId,
+      client_secret: { value: data.value, expires_at: ephemeralExpiresAt },
       instructions: sessionConfig.instructions,
       greeting,
       assistantKind,
@@ -895,6 +925,9 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
         bargeIn: acousticBargeIn,
         pushToTalk: behavior.pushToTalkRequired,
         orderHandlingMode,
+        logicalSessionId,
+        sessionRotateRecommendedMs: 420_000,
+        ephemeralExpiresAt,
         usage: usageLimits ? {
           used: usedMinutes,
           limit: usageLimits.includedMinutes,
@@ -905,7 +938,7 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
     });
   } catch (e: any) {
     console.error("[Realtime] Session error:", e.message);
-    res.status(500).json({ error: e.message });
+    sendSanitizedError(res, 500, "session_mint_failed", e);
   }
 });
 
@@ -915,6 +948,7 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
 router.post("/tools", requireAuth as any, requirePlan() as any, async (req: any, res: any) => {
   const {
     session_id,
+    call_id,
     tool_name,
     arguments: args = {},
     catalog = [],
@@ -937,7 +971,6 @@ router.post("/tools", requireAuth as any, requirePlan() as any, async (req: any,
     return;
   }
 
-  // Check overage cap on tool execution to prevent runaway loops
   if (!req.isAdmin) {
     try {
       const plan = req.subscription?.plan ?? "trial";
@@ -951,13 +984,13 @@ router.post("/tools", requireAuth as any, requirePlan() as any, async (req: any,
         return;
       }
     } catch {
-      // non-critical — proceed if db check fails
+      if (process.env.USAGE_CHECK_FAIL_OPEN !== "1") {
+        res.status(503).json({ error: "usage_check_unavailable", code: "usage_check_unavailable" });
+        return;
+      }
     }
   }
 
-  // venueId is optional: general-assistant tools (web/knowledge/email/db) don't
-  // need a Square-connected venue. We still try to load credentials when one
-  // is provided so venue-mode tools keep working.
   let squareToken = "";
   let squareLocationId = "";
   const organizationId = await currentOrganizationId(req);
@@ -1017,10 +1050,11 @@ router.post("/tools", requireAuth as any, requirePlan() as any, async (req: any,
     }
   }
 
-  // Use a stable fallback so multiple tool calls in one conversation share the same session
   const sessionId = String(session_id || `rt-${req.user.id}-${effectiveVenueId ?? "general"}`);
-  const existingSession = getSession(sessionId);
+  const callId = typeof call_id === "string" ? call_id : "";
   const numericVenueId = effectiveVenueId ?? 0;
+
+  const existingSession = getSession(sessionId);
   if (
     existingSession &&
     (existingSession.userId !== req.user.id || existingSession.venueId !== numericVenueId)
@@ -1028,207 +1062,173 @@ router.post("/tools", requireAuth as any, requirePlan() as any, async (req: any,
     res.status(403).json({ error: "session_forbidden" });
     return;
   }
-  const session = getOrCreateSession(sessionId, squareToken, squareLocationId, req.user.id, numericVenueId);
-  if (!existingSession && session.items.length === 0) {
-    const initialItems = orderSnapshotToSessionItems(order, catalog);
-    if (initialItems.length > 0) {
-      session.items.push(...initialItems);
-      markDirty(sessionId);
-    }
+
+  // Command idempotency ledger
+  const ledger = await beginCommandExecution({
+    sessionId,
+    callId,
+    toolName: String(tool_name),
+    args: args as Record<string, unknown>,
+    userId: req.user.id,
+    organizationId,
+    venueId: effectiveVenueId ?? undefined,
+    agentProfileId: agentProfileId ? String(agentProfileId) : null,
+  });
+
+  if (ledger.action === "replay" && ledger.entry) {
+    res.json({ result: ledger.entry.result ?? "Command completed.", command: ledger.entry.command ?? null });
+    return;
+  }
+  if (ledger.action === "wait") {
+    res.status(409).json({ error: "command_in_progress", code: "command_in_progress" });
+    return;
   }
 
+  const toolStart = Date.now();
+
   try {
-    const squareClient = squareToken ? new SquareClient(squareToken, squareLocationId) : undefined;
-    const assistantKind: "venue" | "general" = squareToken ? "venue" : "general";
-    const includeGeneralTools =
-      assistantKind === "venue" && (await hasGeneralConnectedSystemsCached(req.user.id, organizationId));
-    const toolDefinitions = buildToolsFromSkills(getSkillsForSession(
-      (req.subscription?.plan as string | undefined) ?? "trial",
-      { kind: assistantKind, includeGeneralTools },
-    ));
-    const allowedToolSet = new Set(toolDefinitions.map((tool) => tool.name));
-    if (profileAllowedTools && profileAllowedTools.length > 0) {
-      const profileAllowedSet = new Set(profileAllowedTools);
-      for (const name of [...allowedToolSet]) {
-        if (name !== "wait_for_user" && !profileAllowedSet.has(name)) allowedToolSet.delete(name);
-      }
-    }
-    if (!allowedToolSet.has(String(tool_name))) {
-      res.status(403).json({ error: "tool_not_allowed", detail: `Command not allowed in this assistant: ${tool_name}` });
-      return;
-    }
-    const { result, command } = await executeToolCall(
-      tool_name,
-      args,
-      {
-        catalog,
-        order,
+    const result = await withSessionLock(sessionId, async () => {
+      const session = await getSessionOrRehydrate(
+        sessionId,
         squareToken,
         squareLocationId,
-        session,
-        squareClient,
-        requestId: sessionId,
-        userId: req.user.id,
-        userRole: req.organization?.role,
-        organizationId,
-        venueId: effectiveVenueId ?? undefined,
-        assistantKind,
-        noiseMode,
-        orderHandlingMode:
-          orderHandlingModeOverride === "auto_complete" || orderHandlingModeOverride === "hold_for_review"
-            ? orderHandlingModeOverride
-            : profileOrderHandlingMode,
-        confirmed: confirmed === true,
-        confirmationToken: typeof confirmationToken === "string" ? confirmationToken : undefined,
-      },
-    );
+        { userId: req.user.id, organizationId, venueId: numericVenueId },
+        agentProfileId ? String(agentProfileId) : null,
+      );
 
-    if (session.items.length === 0 && !session.squareOrderId) {
+      if (session.items.length === 0) {
+        const initialItems = orderSnapshotToSessionItems(order, catalog);
+        if (initialItems.length > 0) {
+          session.items.push(...initialItems);
+          markDirty(sessionId);
+        }
+      }
+
+      const squareClient = squareToken ? new SquareClient(squareToken, squareLocationId) : undefined;
+      const assistantKind: "venue" | "general" = squareToken ? "venue" : "general";
+      const includeGeneralTools =
+        assistantKind === "venue" && (await hasGeneralConnectedSystemsCached(req.user.id, organizationId));
+      const toolDefinitions = buildToolsFromSkills(getSkillsForSession(
+        (req.subscription?.plan as string | undefined) ?? "trial",
+        { kind: assistantKind, includeGeneralTools },
+      ));
+      const allowedToolSet = new Set(toolDefinitions.map((tool) => tool.name));
+      if (profileAllowedTools && profileAllowedTools.length > 0) {
+        const profileAllowedSet = new Set(profileAllowedTools);
+        for (const name of [...allowedToolSet]) {
+          if (name !== "wait_for_user" && !profileAllowedSet.has(name)) allowedToolSet.delete(name);
+        }
+      }
+      if (!allowedToolSet.has(String(tool_name))) {
+        throw Object.assign(new Error("tool_not_allowed"), { statusCode: 403 });
+      }
+
+      return executeToolCall(
+        tool_name,
+        args,
+        {
+          catalog,
+          order,
+          squareToken,
+          squareLocationId,
+          session,
+          squareClient,
+          requestId: sessionId,
+          callId,
+          userId: req.user.id,
+          userRole: req.organization?.role,
+          organizationId,
+          venueId: effectiveVenueId ?? undefined,
+          assistantKind,
+          noiseMode,
+          orderHandlingMode:
+            orderHandlingModeOverride === "auto_complete" || orderHandlingModeOverride === "hold_for_review"
+              ? orderHandlingModeOverride
+              : profileOrderHandlingMode,
+          confirmed: confirmed === true,
+          confirmationToken: typeof confirmationToken === "string" ? confirmationToken : undefined,
+        },
+      );
+    });
+
+    const managed = getSession(sessionId);
+    if (managed && managed.session.items.length === 0 && !managed.session.squareOrderId) {
       removeSession(sessionId);
     } else {
-      markDirty(sessionId);
+      await persistSessionNow(sessionId);
     }
 
-    res.json({ result, command: command ?? null });
+    const durationMs = Date.now() - toolStart;
+    await completeCommandExecution({
+      sessionId,
+      callId,
+      status: "succeeded",
+      result: result.result,
+      command: result.command,
+      durationMs,
+    });
+
+    res.json({ result: result.result, command: result.command ?? null });
   } catch (e: any) {
+    const durationMs = Date.now() - toolStart;
+    await completeCommandExecution({
+      sessionId,
+      callId,
+      status: "failed",
+      result: `Tool error: ${e.message}`,
+      durationMs,
+      errorMessage: e.message,
+    }).catch(() => {});
+
     console.error(`[Realtime] Tool error (${tool_name}):`, e.message);
-    res.status(500).json({ error: e.message });
+    if (e.statusCode === 403) {
+      res.status(403).json({ error: "tool_not_allowed", code: "tool_not_allowed" });
+      return;
+    }
+    sendSanitizedError(res, 500, "tool_execution_failed", e);
   }
 });
 
-// ── Voice-minute metering ─────────────────────────────────────────────────────
-
-interface HeartbeatEntry {
-  userId: number;
-  organizationId: string | null;
-  venueId: number;
-  provider?: string;
-  agentProfileId?: string | null;
-  lastHeartbeatMs: number;
-  startMs: number;
-  lastUpdatedMs: number;
-}
-
-const heartbeatMap = new Map<string, HeartbeatEntry>();
-
-// Sweeper for stale heartbeats to handle abrupt crashes
-setInterval(async () => {
-  const now = Date.now();
-  for (const [sessionId, entry] of heartbeatMap.entries()) {
-    if (now - entry.lastUpdatedMs > 120000) { // 2 minutes stale
-      heartbeatMap.delete(sessionId);
-      endedSessions.set(sessionId, now);
-      if (entry.lastHeartbeatMs > 0) {
-        try {
-          await db.insert(usageEventsTable).values({
-            kind: "voice_minutes",
-            userId: entry.userId,
-            organizationId: entry.organizationId,
-            agentProfileId: entry.agentProfileId,
-            quantity: Math.ceil(entry.lastHeartbeatMs / 60000),
-            occurredAt: new Date(),
-            metadata: {
-              durationMs: entry.lastHeartbeatMs,
-              provider: entry.provider ?? "openai_realtime_webrtc",
-              venueId: entry.venueId || null,
-              autoFlushed: true,
-            },
-          });
-          invalidateUsage(entry.userId, entry.organizationId);
-          console.log(`[Realtime] Autoflushed stale session ${sessionId}: ${entry.lastHeartbeatMs}ms`);
-        } catch (err: any) {
-          console.error(`[Realtime] Failed to autoflush stale session ${sessionId}:`, err.message);
-        }
-      }
-    }
-  }
-}, 60000); // Check every minute
+// ── Voice-minute metering (PostgreSQL-backed) ─────────────────────────────────
 
 router.post("/session/:id/heartbeat", requireAuth as any, async (req: any, res: any) => {
   const sessionId = req.params.id;
   const { elapsedMs, provider, agentProfileId } = req.body ?? {};
   const organizationId = await currentOrganizationId(req);
 
-  const existing = heartbeatMap.get(sessionId);
-  if (existing) {
-    if (existing.userId !== req.user.id || existing.organizationId !== organizationId) {
-      res.status(403).json({ error: "session_forbidden" });
-      return;
-    }
-    existing.lastHeartbeatMs = typeof elapsedMs === "number" ? elapsedMs : Date.now() - existing.startMs;
-    existing.lastUpdatedMs = Date.now();
-    if (typeof provider === "string" && provider) existing.provider = provider;
-    if (typeof agentProfileId === "string" && agentProfileId) existing.agentProfileId = agentProfileId;
-  } else {
-    heartbeatMap.set(sessionId, {
-      userId: req.user.id,
-      organizationId,
-      venueId: Number(req.body?.venueId ?? 0),
-      provider: typeof provider === "string" && provider ? provider : undefined,
-      agentProfileId: typeof agentProfileId === "string" && agentProfileId ? agentProfileId : null,
-      lastHeartbeatMs: typeof elapsedMs === "number" ? elapsedMs : 0,
-      startMs: Date.now(),
-      lastUpdatedMs: Date.now(),
-    });
+  const ok = await recordVoiceHeartbeat({
+    sessionId,
+    userId: req.user.id,
+    organizationId,
+    elapsedMs: typeof elapsedMs === "number" ? elapsedMs : 0,
+    venueId: Number(req.body?.venueId ?? 0),
+    provider: typeof provider === "string" ? provider : undefined,
+    agentProfileId: typeof agentProfileId === "string" ? agentProfileId : null,
+  });
+
+  if (!ok) {
+    res.status(403).json({ error: "session_forbidden", code: "session_forbidden" });
+    return;
   }
 
   res.sendStatus(200);
 });
 
-// Sessions already finalized — the client may legitimately POST /end more than
-// once (pagehide + beforeunload both fire); without this a retry re-bills the
-// body durationMs a second time.
-const endedSessions = new Map<string, number>();
-setInterval(() => {
-  const cutoff = Date.now() - 10 * 60_000;
-  for (const [id, endedAt] of endedSessions.entries()) {
-    if (endedAt < cutoff) endedSessions.delete(id);
-  }
-}, 60_000);
-
 router.post("/session/:id/end", requireAuth as any, async (req: any, res: any) => {
   const sessionId = req.params.id;
   const { durationMs, provider, agentProfileId } = req.body ?? {};
-  if (endedSessions.has(sessionId)) {
-    res.sendStatus(200);
-    return;
-  }
-  const entry = heartbeatMap.get(sessionId);
   const organizationId = await currentOrganizationId(req);
-  if (entry && (entry.userId !== req.user.id || entry.organizationId !== organizationId)) {
-    res.status(403).json({ error: "session_forbidden" });
-    return;
-  }
-  const venueId = entry?.venueId ?? Number(req.body?.venueId ?? 0);
-  const effectiveProvider = typeof provider === "string" && provider
-    ? provider
-    : entry?.provider ?? "openai_realtime_webrtc";
-  const effectiveAgentProfileId = typeof agentProfileId === "string" && agentProfileId
-    ? agentProfileId
-    : entry?.agentProfileId ?? null;
 
-  const effectiveDuration = typeof durationMs === "number" && durationMs > 0
-    ? durationMs
-    : entry?.lastHeartbeatMs ?? 0;
+  await finalizeVoiceSessionUsage({
+    sessionId,
+    userId: req.user.id,
+    organizationId,
+    durationMs: typeof durationMs === "number" ? durationMs : 0,
+    provider: typeof provider === "string" ? provider : undefined,
+    venueId: Number(req.body?.venueId ?? 0),
+    agentProfileId: typeof agentProfileId === "string" ? agentProfileId : null,
+  });
 
-  if (effectiveDuration > 0) {
-    try {
-      await db.insert(usageEventsTable).values({
-        kind: "voice_minutes",
-        userId: req.user.id,
-        organizationId,
-        agentProfileId: effectiveAgentProfileId,
-        quantity: Math.ceil(effectiveDuration / 60000),
-        metadata: { durationMs: effectiveDuration, provider: effectiveProvider, venueId: venueId || null },
-      });
-      invalidateUsage(req.user.id, organizationId);
-    } catch {
-      // non-critical — don't fail the response
-    }
-  }
-
-  endedSessions.set(sessionId, Date.now());
-  heartbeatMap.delete(sessionId);
   res.sendStatus(200);
 });
 

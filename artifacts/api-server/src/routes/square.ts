@@ -1,5 +1,7 @@
 import { Router, type IRouter, Request, Response } from "express";
 import crypto from "crypto";
+import { db, squareOAuthStatesTable } from "@workspace/db";
+import { eq, lt } from "drizzle-orm";
 import { requireAuth } from "./auth";
 import { ensureUserOrganization } from "./v1/_helpers";
 import {
@@ -91,11 +93,49 @@ interface PendingState {
 }
 const pendingStates = new Map<string, PendingState>();
 
+async function storeOAuthState(state: string, pending: PendingState): Promise<void> {
+  await db.insert(squareOAuthStatesTable).values({
+    state,
+    userId: pending.userId,
+    organizationId: pending.organizationId,
+    redirectUri: pending.redirectUri,
+    mode: pending.mode ?? null,
+    returnUrl: pending.returnUrl ?? null,
+    returnOrigin: pending.returnOrigin ?? null,
+    expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+  }).catch(() => {});
+  pendingStates.set(state, pending);
+}
+
+async function loadOAuthState(state: string): Promise<PendingState | undefined> {
+  const cached = pendingStates.get(state);
+  if (cached) return cached;
+  const [row] = await db.select().from(squareOAuthStatesTable).where(eq(squareOAuthStatesTable.state, state)).limit(1);
+  if (!row || row.expiresAt < new Date()) return undefined;
+  const pending: PendingState = {
+    timestamp: row.createdAt.getTime(),
+    redirectUri: row.redirectUri,
+    userId: row.userId,
+    organizationId: row.organizationId,
+    mode: row.mode ?? undefined,
+    returnUrl: row.returnUrl ?? undefined,
+    returnOrigin: row.returnOrigin ?? undefined,
+  };
+  pendingStates.set(state, pending);
+  return pending;
+}
+
+async function deleteOAuthState(state: string): Promise<void> {
+  pendingStates.delete(state);
+  await db.delete(squareOAuthStatesTable).where(eq(squareOAuthStatesTable.state, state)).catch(() => {});
+}
+
 // Clean up stale entries every 5 minutes
 setInterval(() => {
   const cutoff = Date.now() - 10 * 60 * 1000;
   for (const [k, v] of pendingStates) if (v.timestamp < cutoff) pendingStates.delete(k);
-  purgeExpiredSquareOAuthTokens();
+  void purgeExpiredSquareOAuthTokens();
+  void db.delete(squareOAuthStatesTable).where(lt(squareOAuthStatesTable.expiresAt, new Date())).catch(() => {});
 }, 5 * 60 * 1000);
 
 // ── OAuth routes ──────────────────────────────────────────────────────────────
@@ -136,7 +176,7 @@ router.get("/oauth/authorize", requireAuth as any, async (req: Request, res: Res
     pendingState.returnUrl = returnUrl;
     pendingState.returnOrigin = getBrowserOrigin(req) || undefined;
   }
-  pendingStates.set(state, pendingState);
+  await storeOAuthState(state, pendingState);
 
   const params = new URLSearchParams({
     client_id: appId,
@@ -168,7 +208,7 @@ router.get("/oauth/callback", async (req: Request, res: Response): Promise<void>
   const { code, state, error } = req.query as Record<string, string>;
 
   // Retrieve the pending state to check mode
-  const pendingOAuthState = state ? pendingStates.get(state) : undefined;
+  const pendingOAuthState = state ? await loadOAuthState(state) : undefined;
   const isRedirectMode = pendingOAuthState?.mode === "redirect";
   const returnUrl = pendingOAuthState?.returnUrl ?? "/";
   const returnTarget = pendingOAuthState?.returnOrigin
@@ -177,7 +217,7 @@ router.get("/oauth/callback", async (req: Request, res: Response): Promise<void>
 
   if (error) {
     if (isRedirectMode) {
-      pendingStates.delete(state);
+      await deleteOAuthState(state);
       res.redirect(`${returnTarget}${returnTarget.includes("?") ? "&" : "?"}oauth_error=${encodeURIComponent(error)}`);
     } else {
       res.send(popupHtml(null, `Square authorization failed: ${error}`));
@@ -193,7 +233,7 @@ router.get("/oauth/callback", async (req: Request, res: Response): Promise<void>
     }
     return;
   }
-  pendingStates.delete(state);
+  await deleteOAuthState(state);
 
   const appId = process.env.SQUARE_APPLICATION_ID;
   const appSecret = process.env.SQUARE_APPLICATION_SECRET;
@@ -226,7 +266,7 @@ router.get("/oauth/callback", async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    const ts = storePendingSquareOAuthToken({
+    const ts = await storePendingSquareOAuthToken({
       token: data.access_token,
       merchantId: data.merchant_id ?? "",
       userId: pendingOAuthState.userId,
@@ -255,7 +295,7 @@ router.get("/oauth/token", requireAuth as any, async (req: Request, res: Respons
   const user = (req as any).user;
   const organizationId =
     (req as any).organization?.id ?? (await ensureUserOrganization(user)).id;
-  const pending = peekPendingSquareOAuthToken({ claimId: ts, userId: user.id, organizationId });
+  const pending = await peekPendingSquareOAuthToken({ claimId: ts, userId: user.id, organizationId });
   if (!pending) {
     res.status(404).json({ error: "Token not found, expired, or already claimed" });
     return;
@@ -332,7 +372,7 @@ router.get("/locations", async (req: Request, res: Response): Promise<void> => {
   const user = (req as any).user;
   const organizationId =
     (req as any).organization?.id ?? (await ensureUserOrganization(user)).id;
-  const pending = peekPendingSquareOAuthToken({ claimId, userId: user.id, organizationId });
+  const pending = await peekPendingSquareOAuthToken({ claimId, userId: user.id, organizationId });
   const token = pending?.token;
   if (!token) { res.status(404).json({ error: "Square connection expired. Please connect again." }); return; }
 

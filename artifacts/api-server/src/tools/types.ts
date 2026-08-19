@@ -66,6 +66,8 @@ export interface ToolContext {
   confirmationToken?: string;
   /** Server-internal bypass for trusted orchestrations such as workflows. */
   confirmationTrusted?: boolean;
+  /** Provider call_id for idempotent Square operations on retry. */
+  callId?: string;
 }
 
 // ── Result returned by every tool executor ────────────────────────────────────

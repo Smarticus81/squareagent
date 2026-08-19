@@ -237,7 +237,7 @@ router.post("/", requireAuth as any, async (req: Request, res: Response): Promis
     // Check if user already has a venue with this location — update instead of duplicate
     const organizationId = await currentOrganizationId(req);
     const claimedOAuth = squareOAuthClaim
-      ? claimPendingSquareOAuthToken({
+      ? await claimPendingSquareOAuthToken({
           claimId: String(squareOAuthClaim),
           userId: user.id,
           organizationId,

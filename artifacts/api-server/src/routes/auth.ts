@@ -31,11 +31,14 @@ const PASSWORD_RESET_RATE_MAX = 4;
  * (comma-separated). Compared case-insensitively.
  */
 const FAR_FUTURE = new Date("9999-12-31T23:59:59Z");
-const DEFAULT_ADMIN_EMAIL = "tmusoni@thinkertons.com,chris_brooks2174@yahoo.com";
-const ADMIN_EMAILS = (process.env.ADMIN_EMAILS ?? DEFAULT_ADMIN_EMAIL)
+const ADMIN_EMAILS = (process.env.ADMIN_EMAILS ?? "")
   .split(",")
   .map((s) => s.trim().toLowerCase())
   .filter(Boolean);
+
+if (process.env.NODE_ENV === "production" && ADMIN_EMAILS.length === 0) {
+  console.warn("[auth] WARN: ADMIN_EMAILS not set — no platform admins configured.");
+}
 
 if (process.env.NODE_ENV === "production" && process.env.ADMIN_EMAILS) {
   const invalidAdminEmail = ADMIN_EMAILS.find((email) => !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email));

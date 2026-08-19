@@ -1,4 +1,5 @@
-import { pgTable, text, serial, timestamp, integer, index, jsonb, boolean, uuid, customType } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, index, jsonb, boolean, uuid, customType, uniqueIndex } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 export const vector = customType<{ data: number[]; driverParam: string }>({
   dataType() {
@@ -205,24 +206,35 @@ export const exchangeCodesTable = pgTable("exchange_codes", {
 
 
 // ── Voice Sessions ────────────────────────────────────────────────────────────
+// Authoritative durable store for live voice order state, metering, and recovery.
 
-/** @deprecated In-memory session store is authoritative. DB write-through retained for future analytics only. */
 export const voiceSessionsTable = pgTable("voice_sessions", {
   id: text("id").primaryKey(),
   userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
-  venueId: integer("venue_id").notNull().references(() => venuesTable.id, { onDelete: "cascade" }),
+  organizationId: uuid("organization_id").references(() => organizationsTable.id, { onDelete: "cascade" }),
+  venueId: integer("venue_id").references(() => venuesTable.id, { onDelete: "cascade" }),
   agentProfileId: uuid("agent_profile_id").references(() => agentProfilesTable.id, { onDelete: "set null" }),
   pipelineProvider: text("pipeline_provider"),
   state: jsonb("state").notNull().default({}),
+  stateVersion: integer("state_version").notNull().default(0),
   squareOrderId: text("square_order_id"),
   externalOrderId: text("external_order_id"),
+  meteredDurationMs: integer("metered_duration_ms").notNull().default(0),
+  lastHeartbeatAt: timestamp("last_heartbeat_at"),
+  endedAt: timestamp("ended_at"),
+  finalizedAt: timestamp("finalized_at"),
+  finalizedDurationMs: integer("finalized_duration_ms"),
+  metadata: jsonb("metadata").notNull().default({}),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
   expiresAt: timestamp("expires_at").notNull(),
 }, (table) => [
   index("voice_sessions_user_id_idx").on(table.userId),
+  index("voice_sessions_org_idx").on(table.organizationId),
   index("voice_sessions_venue_id_idx").on(table.venueId),
   index("voice_sessions_agent_profile_idx").on(table.agentProfileId),
+  index("voice_sessions_finalized_idx").on(table.finalizedAt),
+  index("voice_sessions_stale_heartbeat_idx").on(table.lastHeartbeatAt, table.finalizedAt),
 ]);
 
 
@@ -234,6 +246,7 @@ export const toolCallsTable = pgTable("tool_calls", {
   userId: integer("user_id").references(() => usersTable.id, { onDelete: "set null" }),
   venueId: integer("venue_id").references(() => venuesTable.id, { onDelete: "set null" }),
   sessionId: text("session_id"),
+  callId: text("call_id"),
   agentProfileId: uuid("agent_profile_id").references(() => agentProfilesTable.id, { onDelete: "set null" }),
   connectedServiceId: uuid("connected_service_id").references(() => serviceConnectionsTable.id, { onDelete: "set null" }),
   toolName: text("tool_name").notNull(),
@@ -247,6 +260,7 @@ export const toolCallsTable = pgTable("tool_calls", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (table) => [
   index("tool_calls_session_idx").on(table.sessionId),
+  uniqueIndex("tool_calls_session_call_unique").on(table.sessionId, table.callId),
   index("tool_calls_agent_idx").on(table.agentProfileId),
   index("tool_calls_org_idx").on(table.organizationId),
   index("tool_calls_status_idx").on(table.status),
@@ -259,6 +273,7 @@ export const usageEventsTable = pgTable("usage_events", {
   id: uuid("id").defaultRandom().primaryKey(),
   organizationId: uuid("organization_id").references(() => organizationsTable.id, { onDelete: "cascade" }),
   userId: integer("user_id").references(() => usersTable.id, { onDelete: "set null" }),
+  sessionId: text("session_id"),
   agentProfileId: uuid("agent_profile_id").references(() => agentProfilesTable.id, { onDelete: "set null" }),
   kind: text("kind").notNull(), // voice_minutes | tool_call | session_start
   quantity: integer("quantity").notNull().default(1),
@@ -268,6 +283,51 @@ export const usageEventsTable = pgTable("usage_events", {
   index("usage_events_org_idx").on(table.organizationId),
   index("usage_events_kind_idx").on(table.kind),
   index("usage_events_user_kind_idx").on(table.userId, table.kind, table.occurredAt),
+  uniqueIndex("usage_events_voice_session_unique")
+    .on(table.sessionId)
+    .where(sql`${table.kind} = 'voice_minutes' AND ${table.sessionId} IS NOT NULL`),
+]);
+
+
+// ── Square OAuth State (durable) ──────────────────────────────────────────────
+
+export const squareOAuthStatesTable = pgTable("square_oauth_states", {
+  state: text("state").primaryKey(),
+  userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  organizationId: uuid("organization_id").references(() => organizationsTable.id, { onDelete: "cascade" }),
+  redirectUri: text("redirect_uri").notNull(),
+  mode: text("mode"),
+  returnUrl: text("return_url"),
+  returnOrigin: text("return_origin"),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("square_oauth_states_expires_idx").on(table.expiresAt),
+]);
+
+export const squareOAuthPendingTokensTable = pgTable("square_oauth_pending_tokens", {
+  claimId: uuid("claim_id").defaultRandom().primaryKey(),
+  userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  organizationId: uuid("organization_id").references(() => organizationsTable.id, { onDelete: "cascade" }),
+  encryptedToken: text("encrypted_token").notNull(),
+  merchantId: text("merchant_id").notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("square_oauth_pending_user_idx").on(table.userId),
+  index("square_oauth_pending_expires_idx").on(table.expiresAt),
+]);
+
+
+// ── Rate Limit Buckets (PostgreSQL-backed) ────────────────────────────────────
+
+export const rateLimitBucketsTable = pgTable("rate_limit_buckets", {
+  bucketKey: text("bucket_key").primaryKey(),
+  hitCount: integer("hit_count").notNull().default(1),
+  windowStart: timestamp("window_start").notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+}, (table) => [
+  index("rate_limit_buckets_expires_idx").on(table.expiresAt),
 ]);
 
 

@@ -146,6 +146,7 @@ export async function syncLiveOrderToSquare(
   session: LiveSession,
   squareToken: string,
   locationId: string,
+  idempotencyKey?: string,
 ): Promise<SyncResult> {
   if (!squareToken || !locationId) {
     console.warn("[LiveSync] Skipped — missing credentials", { hasToken: !!squareToken, hasLocation: !!locationId });
@@ -187,7 +188,7 @@ export async function syncLiveOrderToSquare(
         method: "POST",
         headers: squareHeaders(squareToken),
         body: JSON.stringify({
-          idempotency_key: `live-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          idempotency_key: idempotencyKey ?? `live-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
           order: orderPayload,
         }),
       });
@@ -314,6 +315,7 @@ export async function completeLiveOrder(
   session: LiveSession,
   squareToken: string,
   locationId: string,
+  idempotencyKey?: string,
 ): Promise<{ orderId: string; total: number; paymentId?: string; error?: string }> {
   if (!session.squareOrderId) throw new Error("No live order to complete");
 
@@ -325,7 +327,7 @@ export async function completeLiveOrder(
       method: "POST",
       headers: squareHeaders(squareToken),
       body: JSON.stringify({
-        idempotency_key: `pay-${orderId.slice(0, 22)}-${Date.now()}`,
+        idempotency_key: idempotencyKey ?? `pay-${orderId.slice(0, 22)}-${Date.now()}`,
         source_id: "EXTERNAL",
         amount_money: { amount: orderTotal, currency: "USD" },
         order_id: orderId,

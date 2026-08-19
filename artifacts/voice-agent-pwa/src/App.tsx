@@ -33,7 +33,7 @@ function stateLabel(state: AgentState, mode: AppMode, wakeWordActive: boolean): 
   if (mode === "wake_word" && wakeWordActive) return "Ready";
   if (mode === "wake_word" && !wakeWordActive) return "Waking up";
   switch (state) {
-    case "connecting": return "Connecting";
+    case "connecting": return mode === "command" ? "Reconnecting" : "Connecting";
     case "thinking":   return "Thinking";
     case "error":      return "Needs attention";
     case "listening":  return "Listening";
@@ -309,7 +309,8 @@ export default function App() {
     }
   }, [mode, wakeWordAvailable]);
 
-  // When agent disconnects naturally or via response, return to wake listening (unless fully shut down)
+  // When agent disconnects naturally or via response, return to wake listening
+  // (unless reconnecting or fully shut down)
   useEffect(() => {
     if (mode === "command" && agentState === "disconnected") {
       setMode(wakeWordAvailable ? "wake_word" : "idle");

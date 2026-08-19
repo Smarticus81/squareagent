@@ -190,6 +190,12 @@ const MIC_REOPEN_TAIL_MS = 250;
 // limit and its instructions stay fresh. No voice minutes are metered while
 // in standby — heartbeats only start at activation.
 const STANDBY_MAX_AGE_MS = 8 * 60_000;
+const RECONNECT_MAX_ATTEMPTS = 5;
+const RECONNECT_BASE_MS = 400;
+const RECONNECT_MAX_MS = 8_000;
+const STALL_SILENCE_MS = 45_000;
+const STALL_SPEAKING_MS = 12_000;
+const LIVE_SESSION_ROTATE_MS = 7 * 60_000;
 // Fallback only — the server returns the authoritative greeting instruction.
 const DEFAULT_GREETING_INSTRUCTIONS =
   "The user just summoned you with your wake phrase. Immediately say one short, warm greeting (under eight words), then stop speaking and wait for their request.";
@@ -277,7 +283,16 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
   const isRunning = useRef(false);
   const agentStateRef = useRef<AgentState>("disconnected");
   const sessionIdRef = useRef("");
+  const logicalSessionIdRef = useRef("");
   const sessionStartTsRef = useRef<number>(0);
+  const reconnectAttemptRef = useRef(0);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const userInitiatedDisconnectRef = useRef(false);
+  const iceRestartAttemptedRef = useRef(false);
+  const lastInboundAtRef = useRef(0);
+  const stallWatchdogRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const liveRotationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const ephemeralExpiresAtRef = useRef<number>(0);
   const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // Hot-standby session state (pre-connected while in wake-word mode).
   const standbyRef = useRef(false);            // connection is warm but mic-gated + unmetered
@@ -607,7 +622,8 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
         method: "POST",
         headers,
         body: JSON.stringify({
-          session_id: sessionIdRef.current,
+          session_id: logicalSessionIdRef.current || sessionIdRef.current,
+          call_id: callId,
           tool_name: toolName,
           arguments: args,
           catalog: catalogRef.current,
@@ -741,6 +757,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
   }, [reopenMic]);
 
   const handleDcEvent = useCallback((raw: string) => {
+    lastInboundAtRef.current = Date.now();
     let event: Record<string, unknown>;
     try { event = JSON.parse(raw); } catch { return; }
 
@@ -960,6 +977,53 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
   }, [cancelMicReopen, cleanupWsAudio, stopStandbyAudio, resetResponseGuard]);
 
   closeTransportRef.current = closeTransport;
+
+  const clearReconnectTimer = useCallback(() => {
+    if (reconnectTimerRef.current) {
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
+  }, []);
+
+  const clearStallWatchdog = useCallback(() => {
+    if (stallWatchdogRef.current) {
+      clearInterval(stallWatchdogRef.current);
+      stallWatchdogRef.current = null;
+    }
+  }, []);
+
+  const scheduleReconnect = useCallback((reason: string) => {
+    if (userInitiatedDisconnectRef.current || standbyRef.current) return;
+    if (reconnectAttemptRef.current >= RECONNECT_MAX_ATTEMPTS) {
+      setError("Connection lost after several tries. Tap the wave to reconnect.");
+      setAgentState("error");
+      return;
+    }
+    clearReconnectTimer();
+    const attempt = reconnectAttemptRef.current;
+    const delay = Math.min(RECONNECT_MAX_MS, RECONNECT_BASE_MS * 2 ** attempt);
+    reconnectAttemptRef.current += 1;
+    debugVoiceLog(`[WebRTC] Scheduling reconnect (${reason}) attempt ${attempt + 1} in ${delay}ms`);
+    setAgentState("connecting");
+    reconnectTimerRef.current = setTimeout(() => {
+      reconnectTimerRef.current = null;
+      void connectInternalRef.current(false);
+    }, delay);
+  }, [clearReconnectTimer]);
+
+  const startStallWatchdog = useCallback(() => {
+    clearStallWatchdog();
+    lastInboundAtRef.current = Date.now();
+    stallWatchdogRef.current = setInterval(() => {
+      if (!isRunning.current || standbyRef.current) return;
+      const threshold = agentStateRef.current === "speaking" ? STALL_SPEAKING_MS : STALL_SILENCE_MS;
+      if (Date.now() - lastInboundAtRef.current > threshold) {
+        debugVoiceLog("[WebRTC] Stall watchdog triggered");
+        closeTransportRef.current?.();
+        scheduleReconnect("stall");
+      }
+    }, 5_000);
+  }, [clearStallWatchdog, scheduleReconnect]);
 
   const playWsAudioDelta = useCallback((base64Pcm: string) => {
     let ctx = wsOutputCtxRef.current;
@@ -1189,6 +1253,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
     }
 
     if (!standby) setAgentState("connecting");
+    if (!standby) userInitiatedDisconnectRef.current = false;
 
     const { voice, speed } = getVoicePrefs();
     const baseUrl = getBaseUrl();
@@ -1243,6 +1308,24 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
       }
       // Extract session ID immediately to avoid race with session.created event
       if (sessionData.id) sessionIdRef.current = String(sessionData.id);
+      if (sessionData?.voicelab?.logicalSessionId) {
+        logicalSessionIdRef.current = String(sessionData.voicelab.logicalSessionId);
+      } else if (!logicalSessionIdRef.current) {
+        logicalSessionIdRef.current = sessionIdRef.current;
+      }
+      if (sessionData?.voicelab?.ephemeralExpiresAt) {
+        ephemeralExpiresAtRef.current = new Date(sessionData.voicelab.ephemeralExpiresAt).getTime();
+      }
+      if (sessionData?.voicelab?.sessionRotateRecommendedMs) {
+        const rotateMs = Number(sessionData.voicelab.sessionRotateRecommendedMs) || LIVE_SESSION_ROTATE_MS;
+        if (liveRotationTimerRef.current) clearTimeout(liveRotationTimerRef.current);
+        liveRotationTimerRef.current = setTimeout(() => {
+          if (!isRunning.current || standbyRef.current) return;
+          debugVoiceLog("[WebRTC] Proactive session rotation");
+          closeTransportRef.current?.();
+          scheduleReconnect("rotation");
+        }, rotateMs);
+      }
       // Server decides duplex behavior per noise mode. Default = half-duplex.
       fullDuplexRef.current = Boolean(sessionData?.voicelab?.bargeIn);
       // Server-authoritative wake greeting (fired via response.create on activation).
@@ -1261,12 +1344,24 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
       // A half-dead connection (media stalls, DC still "open") would otherwise
       // leave the UI on "Listening" forever with no recovery path.
       pc.onconnectionstatechange = () => {
-        if (pcRef.current !== pc || pc.connectionState !== "failed") return;
-        if (standbyRef.current) return; // dc.onclose recycles standby quietly
-        debugVoiceLog("[WebRTC] Connection failed mid-session");
-        closeTransportRef.current?.();
-        setError("Connection lost. Tap the wave to reconnect.");
-        setAgentState("error");
+        const state = pc.connectionState;
+        if (pcRef.current !== pc) return;
+        if (state === "connected") {
+          iceRestartAttemptedRef.current = false;
+          reconnectAttemptRef.current = 0;
+          return;
+        }
+        if (state === "disconnected" && !iceRestartAttemptedRef.current) {
+          iceRestartAttemptedRef.current = true;
+          try { pc.restartIce(); } catch { /* ignore */ }
+          return;
+        }
+        if (state === "failed" || state === "disconnected") {
+          if (standbyRef.current) return;
+          debugVoiceLog(`[WebRTC] Connection ${state} mid-session`);
+          closeTransportRef.current?.();
+          scheduleReconnect(`pc_${state}`);
+        }
       };
 
       // 3. Set up audio playback — remote audio track goes to an <audio> element.
@@ -1314,6 +1409,8 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
         } else {
           sessionStartTsRef.current = Date.now();
           startHeartbeat();
+          startStallWatchdog();
+          reconnectAttemptRef.current = 0;
         }
       };
 
@@ -1327,8 +1424,10 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
           if (!wasStandby) setAgentState((prev) => (prev === "error" ? "error" : "disconnected"));
         }
         if (wasStandby) {
-          // OpenAI dropped the idle standby session — recycle it quietly.
           setTimeout(() => standbyRecycleRef.current(), 500);
+        } else if (isRunning.current) {
+          closeTransportRef.current?.();
+          scheduleReconnect("dc_close");
         }
       };
 
@@ -1386,7 +1485,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
         audioElRef.current = null;
       }
     }
-  }, [handleDcEvent, cancelMicReopen, cleanupWsAudio, connectRelaySession, createStandbyAudioTrack, openLiveMic, scheduleStandbyExpire, startHeartbeat, stopStandbyAudio]);
+  }, [handleDcEvent, cancelMicReopen, cleanupWsAudio, connectRelaySession, createStandbyAudioTrack, openLiveMic, scheduleStandbyExpire, startHeartbeat, startStallWatchdog, scheduleReconnect, stopStandbyAudio]);
 
   connectInternalRef.current = connectInternal;
 
@@ -1411,6 +1510,13 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const disconnect = useCallback(async () => {
+    userInitiatedDisconnectRef.current = true;
+    clearReconnectTimer();
+    clearStallWatchdog();
+    if (liveRotationTimerRef.current) {
+      clearTimeout(liveRotationTimerRef.current);
+      liveRotationTimerRef.current = null;
+    }
     wantStandbyRef.current = false;
     standbyRef.current = false;
     pendingActivationRef.current = null;
@@ -1646,6 +1752,22 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
       }
     }
   }, [pendingConfirmation, requestResponse]);
+
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.hidden || standbyRef.current) return;
+      if (!isRunning.current && agentStateRef.current === "disconnected") return;
+      const dcDead = dcRef.current?.readyState !== "open";
+      const wsDead = wsRef.current != null && wsRef.current.readyState !== WebSocket.OPEN;
+      const stale = Date.now() - lastInboundAtRef.current > 5_000;
+      if (isRunning.current && (dcDead || wsDead || stale)) {
+        closeTransportRef.current?.();
+        scheduleReconnect("visibility");
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [scheduleReconnect]);
 
   return (
     <VoiceAgentContext.Provider value={{

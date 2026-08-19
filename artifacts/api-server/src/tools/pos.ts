@@ -16,6 +16,12 @@ import {
   squareHeaders,
 } from "../lib/square-helpers";
 
+function squareIdempotencyKey(ctx: ToolContext, suffix: string): string | undefined {
+  if (!ctx.requestId || !ctx.callId) return undefined;
+  const raw = `${ctx.requestId}-${ctx.callId}-${suffix}`;
+  return raw.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 45);
+}
+
 // ── Definitions ───────────────────────────────────────────────────────────────
 
 export const definitions: ToolDefinition[] = [
@@ -107,7 +113,7 @@ async function addItem(args: Record<string, unknown>, ctx: ToolContext): Promise
     const existing = sessionOrder.find((i) => i.catalogItemId === match.id);
     if (existing) existing.quantity += qty;
     else sessionOrder.push({ catalogItemId: match.id, variationId: match.variationId, name: match.name, price: match.price, quantity: qty });
-    const sync = await syncLiveOrderToSquare(session, squareToken, squareLocationId);
+    const sync = await syncLiveOrderToSquare(session, squareToken, squareLocationId, squareIdempotencyKey(ctx, "add"));
     const posStatus = sync.ok && session.squareOrderId
       ? " Showing on POS."
       : sync.error ? ` (POS sync issue: ${sync.error})` : "";
@@ -133,7 +139,7 @@ async function removeItem(args: Record<string, unknown>, ctx: ToolContext): Prom
     sessionOrder[idx].quantity -= qty;
     if (sessionOrder[idx].quantity <= 0) sessionOrder.splice(idx, 1);
   }
-  const sync = await syncLiveOrderToSquare(session, squareToken, squareLocationId);
+  const sync = await syncLiveOrderToSquare(session, squareToken, squareLocationId, squareIdempotencyKey(ctx, "rm"));
   const posStatus = sync.ok && session.squareOrderId ? " POS updated." : sync.error ? ` (POS sync issue: ${sync.error})` : "";
   return {
     result: `Removed ${qty}x ${itemName} from the order.${posStatus}`,
@@ -169,7 +175,7 @@ async function submitOrder(_args: Record<string, unknown>, ctx: ToolContext): Pr
       // Hold-for-review: park the order on the POS as an OPEN ticket so the team
       // can settle it at close-out. Never take payment here.
       if (!session.squareOrderId) {
-        const sync = await syncLiveOrderToSquare(session, squareToken, squareLocationId);
+        const sync = await syncLiveOrderToSquare(session, squareToken, squareLocationId, squareIdempotencyKey(ctx, "add"));
         if (!sync.ok || !session.squareOrderId) {
           return { result: `Couldn't park the order on the POS${sync.error ? `: ${sync.error}` : ""}.` };
         }
@@ -196,7 +202,9 @@ async function submitOrder(_args: Record<string, unknown>, ctx: ToolContext): Pr
     }
 
     if (session.squareOrderId) {
-      const { orderId, total, paymentId, error } = await completeLiveOrder(session, squareToken, squareLocationId);
+      const { orderId, total, paymentId, error } = await completeLiveOrder(
+        session, squareToken, squareLocationId, squareIdempotencyKey(ctx, "pay"),
+      );
       if (error) console.warn(`[Tools/POS] Live payment failed: ${error}`);
       else console.log(`[Tools/POS] Live order completed order=${redactSquareId(orderId)} payment=${redactSquareId(paymentId)}`);
       sessionOrder.splice(0, sessionOrder.length);
@@ -269,7 +277,7 @@ async function sendToTerminal(_args: Record<string, unknown>, ctx: ToolContext):
   if (!squareToken || !squareLocationId) return { result: "Square is not configured — cannot send to terminal." };
 
   if (!session.squareOrderId) {
-    const sync = await syncLiveOrderToSquare(session, squareToken, squareLocationId);
+    const sync = await syncLiveOrderToSquare(session, squareToken, squareLocationId, squareIdempotencyKey(ctx, "add"));
     if (!sync.ok) return { result: `Could not create the order in Square: ${sync.error}. Try submitting instead.` };
   }
   if (!session.squareOrderId) return { result: "Could not create the order in Square. Try submitting instead." };

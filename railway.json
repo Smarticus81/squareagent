@@ -6,7 +6,7 @@
   },
   "deploy": {
     "startCommand": "pnpm run start:railway",
-    "healthcheckPath": "/api/healthz",
+    "healthcheckPath": "/api/readyz",
     "healthcheckTimeout": 300,
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10
