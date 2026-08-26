@@ -230,6 +230,13 @@ export function SquareProvider({ children }: { children: ReactNode }) {
 
   function applyAgentLaunchInfo(data: any) {
     const profile = data.agentProfile as AgentProfileLaunchInfo | null | undefined;
+    if (!profile?.id && agentProfile?.id) {
+      // The payload carried no assistant profile (e.g. a venue credentials
+      // response for a venue the active assistant isn't bound to). Keep the
+      // assistant this tab already resolved instead of clobbering its wake
+      // phrase back to the shared/global default.
+      return;
+    }
     const storedWakePhrase = localStorage.getItem(WAKE_PHRASE_KEY);
     const storedWakeMode = localStorage.getItem(WAKE_MODE_KEY);
     const nextWakePhrase =
@@ -279,7 +286,7 @@ export function SquareProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(WAKE_MODE_KEY, normalizedMode);
     if (nextProfile) localStorage.setItem(AGENT_PROFILE_KEY, JSON.stringify(nextProfile));
 
-    const profileId = nextProfile?.id ?? agentProfileId ?? localStorage.getItem(AGENT_PROFILE_ID_KEY);
+    const profileId = nextProfile?.id ?? agentProfileId ?? readActiveProfileId();
     const tok = authToken || localStorage.getItem(AUTH_TOKEN_KEY);
     if (!profileId || !tok) return null;
 
@@ -313,7 +320,7 @@ export function SquareProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(ORDER_HANDLING_KEY, normalized);
     if (nextProfile) localStorage.setItem(AGENT_PROFILE_KEY, JSON.stringify(nextProfile));
 
-    const profileId = nextProfile?.id ?? agentProfileId ?? localStorage.getItem(AGENT_PROFILE_ID_KEY);
+    const profileId = nextProfile?.id ?? agentProfileId ?? readActiveProfileId();
     const tok = authToken || localStorage.getItem(AUTH_TOKEN_KEY);
     if (!profileId || !tok) return null;
 
@@ -938,9 +945,11 @@ export function SquareProvider({ children }: { children: ReactNode }) {
     if (!tok) return "Not logged in";
 
     try {
-      const storedAgentProfileId = localStorage.getItem(AGENT_PROFILE_ID_KEY);
-      const profileQuery = storedAgentProfileId
-        ? `?agentProfileId=${encodeURIComponent(storedAgentProfileId)}`
+      // Per-tab pinned assistant first — localStorage alone can point at
+      // whichever agent another tab launched last.
+      const activeAgentProfileId = readActiveProfileId();
+      const profileQuery = activeAgentProfileId
+        ? `?agentProfileId=${encodeURIComponent(activeAgentProfileId)}`
         : "";
       const res = await fetch(`${getBaseUrl()}api/venues/${vid}/credentials${profileQuery}`, {
         headers: { Authorization: `Bearer ${tok}` },
@@ -982,9 +991,9 @@ export function SquareProvider({ children }: { children: ReactNode }) {
     setConnectionError(null);
 
     try {
-      const storedAgentProfileId = localStorage.getItem(AGENT_PROFILE_ID_KEY);
-      const profileQuery = storedAgentProfileId
-        ? `?agentProfileId=${encodeURIComponent(storedAgentProfileId)}`
+      const activeAgentProfileId = readActiveProfileId();
+      const profileQuery = activeAgentProfileId
+        ? `?agentProfileId=${encodeURIComponent(activeAgentProfileId)}`
         : "";
       const res = await fetch(`${getBaseUrl()}api/venues/${vid}/credentials${profileQuery}`, {
         headers: { Authorization: `Bearer ${tok}` },

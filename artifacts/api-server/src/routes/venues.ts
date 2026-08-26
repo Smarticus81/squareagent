@@ -506,8 +506,14 @@ router.get("/:id/credentials", requireAuth as any, async (req: Request, res: Res
         requestedProfileId
           ? and(
               eq(agentProfilesTable.organizationId, organizationId),
-              eq(agentProfilesTable.venueId, venueId),
               eq(agentProfilesTable.id, requestedProfileId),
+              // The requested assistant must be bound to this venue or be an
+              // org-wide (venue-less) assistant; an assistant bound to a
+              // DIFFERENT venue must not attach to this venue's credentials.
+              or(
+                eq(agentProfilesTable.venueId, venueId),
+                isNull(agentProfilesTable.venueId),
+              ),
             )
           : and(
               eq(agentProfilesTable.organizationId, organizationId),
