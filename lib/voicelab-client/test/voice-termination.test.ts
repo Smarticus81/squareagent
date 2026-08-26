@@ -21,11 +21,18 @@ describe("matchWakeWord", () => {
     expect(matchWakeWord("VOYCELAB", words)).toBe("voycelab");
   });
 
-  it("does not fire on words that merely contain the phrase", () => {
+  it("does not fire on words that merely sound unrelated", () => {
     // "bev" inside "beverage" must not wake when the phrase is "hey bev".
     expect(matchWakeWord("pour me a beverage", words)).toBeNull();
-    expect(matchWakeWord("heyvoyce no boundary", words)).toBeNull();
-    expect(matchWakeWord("the voycelabs report", words)).toBeNull();
+    expect(matchWakeWord("what a lovely day", ["hey lola"])).toBeNull();
+    expect(matchWakeWord("close out the register", ["hey voyce"])).toBeNull();
+  });
+
+  it("accepts the recognizer merging or pluralizing the phrase", () => {
+    // ASR often concatenates ("heyvoyce") or inflects ("voycelabs") the
+    // exact phrase — those are the wake word, not a false positive.
+    expect(matchWakeWord("heyvoyce open orders", words)).toBe("hey voyce");
+    expect(matchWakeWord("the voycelabs report", words)).toBe("voycelab");
   });
 
   it("tolerates punctuation around the phrase", () => {
@@ -37,6 +44,32 @@ describe("matchWakeWord", () => {
     expect(matchWakeWord("", words)).toBeNull();
     expect(matchWakeWord("hey voyce", [])).toBeNull();
     expect(matchWakeWord("hey voyce", ["", "  "])).toBeNull();
+  });
+
+  describe("fuzzy matching (ASR spelling drift)", () => {
+    it("matches the recognizer's real-word spelling of brand phrases", () => {
+      expect(matchWakeWord("hey voice what sold today", ["hey voyce"])).toBe("hey voyce");
+      expect(matchWakeWord("voice lab open orders", ["voycelab"])).toBe("voycelab");
+      expect(matchWakeWord("hey voice lab", ["hey voycelab"])).toBe("hey voycelab");
+    });
+
+    it("matches near-miss transcriptions of custom assistant names", () => {
+      expect(matchWakeWord("hey lowla", ["hey lola"])).toBe("hey lola");
+      expect(matchWakeWord("okay hey lolla what's up", ["hey lola"])).toBe("hey lola");
+      expect(matchWakeWord("hey donna two spritzes", ["hey dana"])).toBe("hey dana");
+    });
+
+    it("never fuzzy-matches very short phrases", () => {
+      // "hey b" (4 letters joined) is below the fuzzy floor; only an exact
+      // boundary match may fire.
+      expect(matchWakeWord("hey d", ["hey b"])).toBeNull();
+      expect(matchWakeWord("hey b", ["hey b"])).toBe("hey b");
+    });
+
+    it("keeps ordinary sentences from false-waking", () => {
+      expect(matchWakeWord("add two margaritas to the tab", ["hey voyce"])).toBeNull();
+      expect(matchWakeWord("how are we looking on stock", ["hey lola"])).toBeNull();
+    });
   });
 });
 

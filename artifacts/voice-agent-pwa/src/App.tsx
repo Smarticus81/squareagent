@@ -549,13 +549,11 @@ export default function App() {
             // the server — don't flash "Offline / Sign in" at an already
             // signed-in user, and don't offer voice that would fail.
             <div className="welcome">
-              <span className="welcome-eyebrow">VoyceLab · Live</span>
               <h1 className="welcome-title">Waking <em>up</em>…</h1>
             </div>
           )}
           {!bootChecking && msgs.length === 0 && !partialTranscript && (mode === "idle" || mode === "shutdown" || mode === "wake_word") && (
             <div className="welcome">
-              <span className="welcome-eyebrow">VoyceLab · Live</span>
               <h1 className="welcome-title">
                 {!sessionVerified
                   ? <>Voice Terminal <em>Offline</em>.</>
@@ -563,17 +561,17 @@ export default function App() {
                     ? <>Square <em>disconnected</em>.</>
                     : <>Voice Terminal <em>Online</em>.</>}
               </h1>
-              <p className="welcome-sub">
-                {!sessionVerified
-                  ? sessionStatus === "offline"
-                    ? "Can't reach VoyceLab right now. Check the internet connection — retrying automatically."
-                    : "Sign in to connect your venue and start the real-time operations console."
-                  : squareBlocked
-                    ? "This assistant's Square connection needs attention. Reconnect it to take orders and run reports by voice."
-                    : assistantKind === "general"
-                      ? "Tap the wave and speak. I can handle email, look things up, and answer questions. Connect Square in settings to unlock POS commands."
-                      : "Tap the wave and speak to execute orders, adjust inventory levels, or generate reporting summaries."}
-              </p>
+              {/* Guidance copy only when something needs fixing — the ready
+                  state lets the wave speak for itself. */}
+              {(!sessionVerified || squareBlocked) && (
+                <p className="welcome-sub">
+                  {!sessionVerified
+                    ? sessionStatus === "offline"
+                      ? "Can't reach VoyceLab right now. Check the internet connection — retrying automatically."
+                      : "Sign in to connect your venue and start the real-time operations console."
+                    : "This assistant's Square connection needs attention. Reconnect it to take orders and run reports by voice."}
+                </p>
+              )}
               {!sessionVerified ? (
                 sessionStatus === "offline" ? null : (
                   <div className="suggestion-row">

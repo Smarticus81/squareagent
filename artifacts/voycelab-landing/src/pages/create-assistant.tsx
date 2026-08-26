@@ -5,6 +5,7 @@ import { rememberIntendedPath } from "@/lib/post-login-redirect";
 import { useVenues } from "@/hooks/use-venues";
 import { withClerkBillingHeader } from "@/lib/clerk-session";
 import { getPlanAllowedPipelines } from "@workspace/voicelab-core/pricing";
+import { defaultWakePhraseFor } from "@workspace/voicelab-core/agent-profile";
 import {
   ArrowLeft,
   Check,
@@ -185,6 +186,10 @@ export default function CreateAssistant() {
   const [noiseMode, setNoiseMode] = useState("standard");
   const [voicePipelineProvider, setVoicePipelineProvider] = useState<VoiceEngineId>("openai_realtime_webrtc");
   const [wakePhrase, setWakePhrase] = useState("Hey Voyce");
+  // Until the user edits the wake phrase themselves, keep it derived from the
+  // assistant's name ("Lola" -> "Hey Lola") so every assistant wakes on its
+  // own name instead of the shared "Hey Voyce" default.
+  const [wakePhraseTouched, setWakePhraseTouched] = useState(false);
   const [wakeMode, setWakeMode] = useState<"ambient" | "tap">("ambient");
   const [orderHandlingMode, setOrderHandlingMode] = useState<"auto_complete" | "hold_for_review">("auto_complete");
   const [geminiThinkingLevel, setGeminiThinkingLevel] = useState<"minimal" | "low" | "medium" | "high">("minimal");
@@ -206,6 +211,11 @@ export default function CreateAssistant() {
   }, [auth, authLoading, navigate]);
 
   useEffect(() => {
+    if (editId || wakePhraseTouched) return;
+    setWakePhrase(name.trim() ? defaultWakePhraseFor(name.trim()) : "Hey Voyce");
+  }, [name, editId, wakePhraseTouched]);
+
+  useEffect(() => {
     if (!editId) return;
     (async () => {
       try {
@@ -219,6 +229,7 @@ export default function CreateAssistant() {
         setName(profile.displayName);
         setVenueId(profile.venueId);
         setWakePhrase(profile.wakePhrase || "Hey Voyce");
+        setWakePhraseTouched(true);
         setWakeMode(profile.wakeMode === "tap" ? "tap" : "ambient");
         setNoiseMode(profile.noiseMode || "standard");
         setOrderHandlingMode(profile.orderHandlingMode === "hold_for_review" ? "hold_for_review" : "auto_complete");
@@ -375,7 +386,7 @@ export default function CreateAssistant() {
       const body: Record<string, unknown> = {
         organizationId: auth.organizationId,
         displayName: name.trim(),
-        wakePhrase: wakePhrase.trim() || "Hey Voyce",
+        wakePhrase: wakePhrase.trim() || defaultWakePhraseFor(name.trim()),
         wakeMode: noiseMode === "push_to_talk" ? "tap" : wakeMode,
         voicePipelineProvider,
         voicePipelineConfig,
@@ -640,8 +651,8 @@ export default function CreateAssistant() {
                 <span className="vl-eyebrow block mb-1.5">Wake phrase</span>
                 <input
                   value={wakePhrase}
-                  onChange={(e) => setWakePhrase(e.target.value)}
-                  placeholder="Hey Voyce"
+                  onChange={(e) => { setWakePhrase(e.target.value); setWakePhraseTouched(true); }}
+                  placeholder={name.trim() ? defaultWakePhraseFor(name.trim()) : "Hey Voyce"}
                   className="vl-input"
                   maxLength={60}
                 />

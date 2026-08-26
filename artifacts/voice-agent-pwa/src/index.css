@@ -809,30 +809,18 @@ html[data-theme="dark"] .panel {
 html[data-theme="dark"] .welcome-signin { background: #FFFFFF; color: var(--ink); }
 
 /* ── Voice Orb ───────────────────────────────────────────────── */
+/* The wave is the centerpiece: it owns the majority of the vertical space
+   and scales with the viewport. No dish, no plate, no drop shadow. */
 .orb-stage {
-  flex: 1; display: flex; align-items: center; justify-content: center;
+  flex: 1.5; display: flex; align-items: center; justify-content: center;
   position: relative; z-index: 1;
-  padding: 16px 0 8px;
+  padding: 8px 0 4px;
 }
-.orb-stage::before {
-  content: "";
-  position: absolute;
-  width: min(78vw, 520px);
-  aspect-ratio: 1.7;
-  border: 1px solid rgba(14,27,44,0.065);
-  border-radius: 50%;
-  background:
-    radial-gradient(ellipse at 40% 45%, rgba(255,107,71,0.10), transparent 50%),
-    radial-gradient(ellipse at 65% 42%, rgba(124,110,245,0.10), transparent 54%),
-    rgba(255,252,248,0.26);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.70), 0 28px 58px -45px rgba(14,27,44,0.48);
-  backdrop-filter: blur(16px) saturate(1.2);
-  transform: perspective(600px) rotateX(66deg);
-}
-html[data-theme="dark"] .orb-stage::before { background: rgba(255,255,255,0.025); border-color: rgba(255,255,255,0.08); }
 .orb-stage > * { position: relative; z-index: 1; }
 .orb {
   position: relative; display: inline-flex; align-items: center; justify-content: center;
+  width: min(94vw, 680px);
+  aspect-ratio: 240 / 150;
   background: transparent; border: 0; padding: 0; cursor: pointer;
   -webkit-tap-highlight-color: transparent;
   transition: transform 220ms cubic-bezier(.2,.7,.2,1);
@@ -1010,20 +998,18 @@ html[data-theme="dark"] .orb-stage::before { background: rgba(255,255,255,0.025)
 /* Sizing of Voice Orb on smaller/shorter screens to avoid crowding */
 @media (max-height: 740px) {
   .orb-stage {
-    padding: 10px 0 !important;
+    padding: 6px 0 !important;
   }
-  .voice-orb {
-    width: 110px !important;
-    height: 110px !important;
+  .orb {
+    width: min(86vw, 540px) !important;
   }
 }
 @media (max-height: 660px) {
   .orb-stage {
-    padding: 6px 0 !important;
+    padding: 4px 0 !important;
   }
-  .voice-orb {
-    width: 85px !important;
-    height: 85px !important;
+  .orb {
+    width: min(78vw, 440px) !important;
   }
   .welcome-title {
     font-size: 24px !important;

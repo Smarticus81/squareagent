@@ -13,7 +13,6 @@ interface Props {
   state: OrbState;
   remoteStream: MediaStream | null;
   onTap?: () => void;
-  size?: number;
 }
 
 /**
@@ -71,7 +70,7 @@ const REFLECT_RATIO = 0.5; // reflection height relative to the bar
 const TOTAL_W = BAR_COUNT * BAR_W + (BAR_COUNT - 1) * GAP;
 const X_START = (VB_W - TOTAL_W) / 2;
 
-export function VoiceOrb({ state, remoteStream, onTap, size = 240 }: Props) {
+export function VoiceOrb({ state, remoteStream, onTap }: Props) {
   const uid = useId().replace(/[:]/g, "");
 
   const rootRef = useRef<HTMLButtonElement | null>(null);
@@ -224,21 +223,19 @@ export function VoiceOrb({ state, remoteStream, onTap, size = 240 }: Props) {
     };
   }, []);
 
-  const dimW = Math.round(size);
-  const dimH = Math.round(size * (VB_H / VB_W));
-
   const barX = (i: number) => X_START + i * (BAR_W + GAP);
 
+  // Sizing lives in CSS (.orb) so the wave can scale fluidly with the
+  // viewport — it is the centerpiece of the page, not a fixed-size widget.
   return (
     <button
       ref={rootRef}
       type="button"
       onClick={onTap}
       className={`orb orb-${state}`}
-      style={{ width: dimW, height: dimH, background: "transparent", border: 0, padding: 0, cursor: "pointer" }}
       aria-label="Voice surface"
     >
-      <svg className="orb-svg" viewBox={`0 0 ${VB_W} ${VB_H}`} width={dimW} height={dimH} aria-hidden>
+      <svg className="orb-svg" viewBox={`0 0 ${VB_W} ${VB_H}`} width="100%" height="100%" aria-hidden>
         <defs>
           {BAR_COLORS.map(([light, dark], i) => (
             <linearGradient key={i} id={`bar-${uid}-${i}`} x1="0%" y1="0%" x2="0%" y2="100%">
