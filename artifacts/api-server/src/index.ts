@@ -4,6 +4,7 @@ import { pool } from "@workspace/db";
 import { assertJwtSecret } from "./routes/auth";
 import { attachWebSocketRelay, closeAllRelays } from "./routes/ws-relay";
 import { assertSecretsEncryptionKey } from "./lib/secrets";
+import { ensureInfraTables } from "./lib/ensure-infra-tables";
 import { flushAllDirtySessions, stopSessionStoreBackgroundTasks } from "./lib/session-store";
 import { stopVoiceSessionSweeper } from "./lib/voice-session-metering";
 
@@ -32,6 +33,10 @@ async function main() {
       console.error(error.message);
       throw new Error("Configured DATABASE_URL is unreachable. Fix database connectivity before starting the API.");
     }
+    // Operational tables (OAuth handshake state, pending token claims, rate
+    // limits) are created idempotently so a deploy never depends on a manual
+    // schema push for the app's own plumbing.
+    await ensureInfraTables();
   }
 
   const server = createServer(app);

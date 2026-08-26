@@ -280,10 +280,15 @@ router.get("/oauth/callback", async (req: Request, res: Response): Promise<void>
       res.send(popupHtml(ts, null));
     }
   } catch (e: any) {
+    // Full detail (including the driver's cause) goes to the server log only.
+    // The raw message can contain SQL parameters — never put it in a URL or
+    // page the browser sees.
+    console.error("[Square OAuth] callback failed:", e?.message ?? e, e?.cause ?? "");
+    const safeMsg = "Could not save the Square connection. Please try again, and contact support if it keeps failing.";
     if (isRedirectMode) {
-      res.redirect(`${returnTarget}${returnTarget.includes("?") ? "&" : "?"}oauth_error=${encodeURIComponent(e.message || "Unexpected error")}`);
+      res.redirect(`${returnTarget}${returnTarget.includes("?") ? "&" : "?"}oauth_error=${encodeURIComponent(safeMsg)}`);
     } else {
-      res.send(popupHtml(null, e.message || "Unexpected error during token exchange"));
+      res.send(popupHtml(null, safeMsg));
     }
   }
 });
