@@ -68,12 +68,12 @@ export function TeachSequence({
               initial={false}
               animate={{ opacity: state === "pending" ? 0.38 : 1 }}
               transition={{ duration: 0.25 }}
-              className="flex items-center gap-3 rounded-2xl border px-4 py-3"
+              className="vl-light flex items-center gap-3 rounded-2xl border px-4 py-3"
               style={{
                 borderColor:
-                  state === "active" ? "rgba(255, 107, 71, 0.35)" : "rgba(14, 27, 44, 0.08)",
+                  state === "active" ? "rgba(255, 107, 71, 0.35)" : "var(--vl-line)",
                 background:
-                  state === "active" ? "rgba(255, 240, 234, 0.55)" : "rgba(255, 252, 248, 0.6)",
+                  state === "active" ? "#FFF0EA" : "#F9FAFB",
               }}
             >
               <span
@@ -202,12 +202,12 @@ function MenuTicker({ names }: { names: string[] }) {
 function TickerChip({ label }: { label: string }) {
   return (
     <span
-      className="whitespace-nowrap rounded-xl border px-2.5 py-1 text-[11.5px]"
+      className="vl-light whitespace-nowrap rounded-xl border px-2.5 py-1 text-[11.5px]"
       style={{
         fontFamily: "var(--font-mono)",
         color: "var(--color-vl-ink-soft)",
-        borderColor: "rgba(14, 27, 44, 0.10)",
-        background: "rgba(255, 252, 248, 0.8)",
+        borderColor: "var(--vl-line)",
+        background: "#F9FAFB",
       }}
     >
       {label}

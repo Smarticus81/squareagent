@@ -227,6 +227,8 @@ export function VoiceOrb({ state, remoteStream, onTap }: Props) {
 
   // Sizing lives in CSS (.orb) so the wave can scale fluidly with the
   // viewport — it is the centerpiece of the page, not a fixed-size widget.
+  // Layering (presentation only): blurred conic halo -> conic ring -> black
+  // shell holding the waveform. State classes on the root drive the ring.
   return (
     <button
       ref={rootRef}
@@ -235,6 +237,9 @@ export function VoiceOrb({ state, remoteStream, onTap }: Props) {
       className={`orb orb-${state}`}
       aria-label="Voice surface"
     >
+      <span className="orb-halo" aria-hidden="true" />
+      <span className="orb-ring" aria-hidden="true" />
+      <span className="orb-shell" aria-hidden="true">
       <svg className="orb-svg" viewBox={`0 0 ${VB_W} ${VB_H}`} width="100%" height="100%" aria-hidden>
         <defs>
           {BAR_COLORS.map(([light, dark], i) => (
@@ -314,6 +319,7 @@ export function VoiceOrb({ state, remoteStream, onTap }: Props) {
           ))}
         </g>
       </svg>
+      </span>
     </button>
   );
 }

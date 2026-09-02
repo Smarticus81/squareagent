@@ -1,1362 +1,767 @@
-import {
-  lazy,
-  Suspense,
-  useEffect,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
-import { Link, useLocation } from "wouter";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Link } from "wouter";
 import {
   AnimatePresence,
   motion,
+  useMotionValue,
   useReducedMotion,
-  useScroll,
   useSpring,
   useTransform,
-  type MotionValue,
 } from "framer-motion";
-import {
-  ArrowDown,
-  ArrowRight,
-  BarChart3,
-  CalendarRange,
-  CheckCheck,
-  GraduationCap,
-  Hand,
-  Loader2,
-  Mic,
-  Percent,
-  ReceiptText,
-  Sparkles,
-  Square,
-  TrendingUp,
-  Users,
-  Volume2,
-  Wine,
-  Zap,
-} from "lucide-react";
-import { VoiceOrb } from "@/components/voice-orb";
+import { ArrowRight, Check, Loader2, Mic, Square as SquareIcon, Volume2 } from "lucide-react";
 import { useVoycelabDemoRealtime } from "@/hooks/use-voycelab-demo-realtime";
-
-const VoiceField = lazy(() => import("@/components/landing/voice-field"));
 
 const EASE = [0.22, 1, 0.36, 1] as const;
 
 /* ═══════════════════════════════════════════════════════════════
-   LANDING — light theme, plain claims.
-   One job: get operators to start the free trial. Sections:
-   hero → what it does for staff → how it works (scroll theater)
-   → live demo → what it does for the business → proof → ask.
+   LANDING — one idea, said plainly: you talk, Square updates.
+   Minimal chrome, one live control, three names on the door.
+   hero (live mic) → things you can say → one line, one result
+   → the trio (Square · OpenAI · Google) → the ask.
    ═══════════════════════════════════════════════════════════════ */
 
 export default function Landing() {
-  const [, navigate] = useLocation();
-  const [assistantName, setAssistantName] = useState("");
   const reduceMotion = useReducedMotion() ?? false;
-
-  const startAssistant = () => {
-    const trimmed = assistantName.trim();
-    if (trimmed) sessionStorage.setItem("voycelab.pending_assistant_name", trimmed);
-    navigate("/assistants/new");
-  };
-
   return (
-    <div className="vl-landing vl-page-shell relative">
+    <div className="vl-landing relative">
       <Hero reduceMotion={reduceMotion} />
-      <TeamSection />
-      <CommandTheater reduceMotion={reduceMotion} />
-      <LiveDemo />
-      <OwnerSection />
-      <ProofBand />
-      <FinalCTA
-        name={assistantName}
-        setName={setAssistantName}
-        onStart={startAssistant}
-      />
+      <SayAnything reduceMotion={reduceMotion} />
+      <Playground reduceMotion={reduceMotion} />
+      <Trio reduceMotion={reduceMotion} />
+      <Closing />
     </div>
   );
 }
 
 /* ───────────────────────────────────────────────────────────────
-   Magnetic wrapper — primary CTA micro-interaction. Transform-only.
-   ─────────────────────────────────────────────────────────────── */
-function Magnetic({ children }: { children: ReactNode }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const x = useSpring(0, { stiffness: 260, damping: 17 });
-  const y = useSpring(0, { stiffness: 260, damping: 17 });
-
-  return (
-    <motion.div
-      ref={ref}
-      style={{ x, y, display: "inline-block" }}
-      onPointerMove={(e) => {
-        const el = ref.current;
-        if (!el || e.pointerType === "touch") return;
-        const r = el.getBoundingClientRect();
-        x.set((e.clientX - (r.left + r.width / 2)) * 0.22);
-        y.set((e.clientY - (r.top + r.height / 2)) * 0.22);
-      }}
-      onPointerLeave={() => {
-        x.set(0);
-        y.set(0);
-      }}
-    >
-      {children}
-    </motion.div>
-  );
-}
-
-/* ───────────────────────────────────────────────────────────────
-   HERO — plain claim over the particle voice field.
-   H1 renders statically; LCP never waits on JS animation.
+   BRAND MARKS — the Square, OpenAI and Google media-pack assets.
+   Black wordmarks live on white tiles; on the film they invert.
    ─────────────────────────────────────────────────────────────── */
 
-const HERO_TICKER: Array<{ say: string; lines: Array<[string, string]> }> = [
-  {
-    say: "Two old fashioneds — one extra bitters, one no cherry.",
-    lines: [
-      ["2 × Old Fashioned", "$28.00"],
-      ["Mods: extra bitters · no cherry", ""],
-    ],
-  },
-  {
-    say: "How many bottles of Tito's are left?",
-    lines: [
-      ["Tito's Handmade", "6 bottles"],
-      ["Low-stock alert", "set"],
-    ],
-  },
-  {
-    say: "Split table 9 three ways.",
-    lines: [
-      ["Check 9 · 3 ways", "$47.50 each"],
-      ["Sent to Square", ""],
-    ],
-  },
-  {
-    say: "How did happy hour perform?",
-    lines: [
-      ["Happy hour sales", "$2,340"],
-      ["vs last Friday", "+18%"],
-    ],
-  },
-];
+type Brand = "square" | "openai" | "google";
 
-function Hero({ reduceMotion }: { reduceMotion: boolean }) {
-  const [fieldReady, setFieldReady] = useState(false);
+const BRAND_META: Record<Brand, { src: string; alt: string; ratio: number }> = {
+  square: { src: "/brand/square-logo.png", alt: "Square", ratio: 2000 / 501 },
+  openai: { src: "/brand/openai-wordmark.png", alt: "OpenAI", ratio: 1604 / 718 },
+  google: { src: "/brand/google-g.png", alt: "Google", ratio: 1 },
+};
 
-  useEffect(() => {
-    if (reduceMotion) return;
-    let idleId = 0;
-    let timeoutId = 0;
-    const arm = () => setFieldReady(true);
-    if (typeof window.requestIdleCallback === "function") {
-      idleId = window.requestIdleCallback(arm, { timeout: 1400 });
-    } else {
-      timeoutId = window.setTimeout(arm, 350);
-    }
-    return () => {
-      if (idleId) window.cancelIdleCallback?.(idleId);
-      if (timeoutId) window.clearTimeout(timeoutId);
-    };
-  }, [reduceMotion]);
-
-  return (
-    <section className="relative min-h-[92svh] flex flex-col overflow-hidden">
-      {/* Signature: the voice field, in brand pastels */}
-      {fieldReady && (
-        <Suspense fallback={null}>
-          <VoiceField className="opacity-80" />
-        </Suspense>
-      )}
-
-      {/* Paper wash so type always wins over the field */}
-      <div
-        aria-hidden
-        className="absolute inset-0 pointer-events-none"
-        style={{
-          background:
-            "linear-gradient(180deg, rgba(251,247,241,0.86) 0%, rgba(251,247,241,0.28) 38%, rgba(251,247,241,0.28) 60%, rgba(251,247,241,0.94) 100%)",
-        }}
-      />
-
-      <div className="relative section-container flex-1 flex items-center pt-16 pb-16 md:pt-20">
-        <div className="grid lg:grid-cols-[1.12fr_0.88fr] gap-12 items-center w-full">
-          <div>
-            <p className="vl-eyebrow">Voice assistant for Square POS · Bars · Restaurants · Venues</p>
-
-            <h1 className="vl-display mt-5 text-[clamp(2.9rem,7vw,5.4rem)]">
-              Run your bar
-              <br />
-              <em>by voice.</em>
-            </h1>
-
-            <motion.p
-              initial={reduceMotion ? false : { opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.15, duration: 0.6, ease: EASE }}
-              className="mt-6 max-w-130 text-[17px] md:text-[18px] leading-relaxed"
-              style={{ color: "var(--color-vl-ink-soft)" }}
-            >
-              VoyceLab connects to your Square POS. Your team places orders,
-              checks inventory, and pulls sales numbers by speaking — sub-second
-              responses, hands free, everything synced to Square.
-            </motion.p>
-
-            <motion.div
-              initial={reduceMotion ? false : { opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.28, duration: 0.6, ease: EASE }}
-              className="mt-8 flex flex-wrap items-center gap-3"
-            >
-              <Magnetic>
-                <Link href="/signup" className="vl-btn-primary inline-flex items-center gap-2.5">
-                  Start free trial
-                  <span className="flex h-5 w-5 items-center justify-center rounded-md bg-white/25">
-                    <ArrowRight className="w-3 h-3 text-white" />
-                  </span>
-                </Link>
-              </Magnetic>
-              <a href="#live-demo" className="vl-btn-outline inline-flex items-center gap-2.5">
-                Hear it live
-                <Mic className="w-3.5 h-3.5" style={{ color: "var(--color-vl-accent)" }} />
-              </a>
-            </motion.div>
-
-            <motion.p
-              initial={reduceMotion ? false : { opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.45, duration: 0.6 }}
-              className="mt-5 text-[13px]"
-              style={{ color: "var(--color-vl-ink-muted)" }}
-            >
-              14-day free trial · No card required · Works with your Square account
-            </motion.p>
-
-            <SocialProofStrip />
-          </div>
-
-          {/* Above-the-fold proof: spoken commands landing in Square */}
-          <motion.div
-            initial={reduceMotion ? false : { opacity: 0, y: 24 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4, duration: 0.7, ease: EASE }}
-            className="hidden lg:block"
-          >
-            <HeroTicker reduceMotion={reduceMotion} />
-          </motion.div>
-        </div>
-      </div>
-
-      <a
-        href="#for-your-team"
-        aria-label="Scroll to see what it does"
-        className="relative mx-auto mb-7 flex h-10 w-10 items-center justify-center rounded-full"
-        style={{
-          border: "1px solid rgba(14, 27, 44, 0.14)",
-          color: "var(--color-vl-ink-muted)",
-          background: "rgba(255,255,255,0.7)",
-        }}
-      >
-        <ArrowDown className="w-4 h-4" />
-      </a>
-    </section>
-  );
-}
-
-/* ───────────────────────────────────────────────────────────────
-   SOCIAL PROOF — hero trust strip.
-   IMPORTANT: ships empty and renders nothing until real proof exists.
-   Fill SOCIAL_PROOF with genuine quotes/venues only — never invent.
-   Example: { quote: "Ripped through Friday rush.", source: "Bar manager, Fort Worth TX" }
-   ─────────────────────────────────────────────────────────────── */
-
-const SOCIAL_PROOF: Array<{ quote: string; source: string }> = [
-  // TODO(growth): add real venue quotes here as pilots convert.
-];
-
-function SocialProofStrip() {
-  if (SOCIAL_PROOF.length === 0) return null;
-  const item = SOCIAL_PROOF[0];
-  return (
-    <p className="mt-6 max-w-115 text-[14px] leading-relaxed" style={{ color: "var(--color-vl-ink-soft)" }}>
-      &ldquo;{item.quote}&rdquo;{" "}
-      <span style={{ color: "var(--color-vl-ink-muted)" }}>— {item.source}</span>
-    </p>
-  );
-}
-
-function HeroTicker({ reduceMotion }: { reduceMotion: boolean }) {
-  const [idx, setIdx] = useState(0);
-
-  useEffect(() => {
-    if (reduceMotion) return;
-    const t = window.setInterval(
-      () => setIdx((i) => (i + 1) % HERO_TICKER.length),
-      4200,
-    );
-    return () => window.clearInterval(t);
-  }, [reduceMotion]);
-
-  const item = HERO_TICKER[idx];
-
-  return (
-    <a
-      href="#live-demo"
-      aria-label="Jump to the live voice demo"
-      className="vl-card-glass block p-7 max-w-105 ml-auto transition-transform duration-300 hover:-translate-y-0.5"
-    >
-      <div className="flex items-center justify-between">
-        <p className="vl-eyebrow">On the floor</p>
-        <span
-          className="flex items-center gap-1.5 text-[10px] font-mono tracking-[0.18em]"
-          style={{ color: "var(--color-vl-accent-deep)" }}
-        >
-          <span
-            className="h-1.5 w-1.5 rounded-full animate-pulse"
-            style={{ background: "var(--color-vl-accent)" }}
-          />
-          SQUARE · SYNCED
-        </span>
-      </div>
-
-      <div className="mt-6 min-h-36">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={idx}
-            initial={reduceMotion ? false : { opacity: 0, y: 14 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={reduceMotion ? undefined : { opacity: 0, y: -10 }}
-            transition={{ duration: 0.45, ease: EASE }}
-          >
-            <p
-              className="text-[17px] leading-snug font-medium italic"
-              style={{ color: "var(--color-vl-ink)" }}
-            >
-              &ldquo;{item.say}&rdquo;
-            </p>
-            <div className="mt-4">
-              {item.lines.map(([label, value]) => (
-                <div key={label} className="lx-ticket-row">
-                  <span style={{ color: "var(--color-vl-ink-soft)" }}>{label}</span>
-                  {value && (
-                    <span style={{ color: "var(--color-vl-accent-deep)", fontWeight: 600 }}>
-                      {value}
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
-          </motion.div>
-        </AnimatePresence>
-      </div>
-
-      <div className="mt-5 flex gap-1.5">
-        {HERO_TICKER.map((_, i) => (
-          <span
-            key={i}
-            className="h-0.75 flex-1 rounded-full transition-colors duration-300"
-            style={{
-              background: i === idx ? "var(--color-vl-accent)" : "rgba(14, 27, 44, 0.10)",
-            }}
-          />
-        ))}
-      </div>
-
-      <p
-        className="mt-4 flex items-center gap-1.5 text-[12px] font-medium"
-        style={{ color: "var(--color-vl-accent-deep)" }}
-      >
-        <Mic className="w-3 h-3" />
-        Try it yourself — live demo below
-        <ArrowDown className="w-3 h-3" />
-      </p>
-    </a>
-  );
-}
-
-/* ───────────────────────────────────────────────────────────────
-   FOR YOUR TEAM — operational advantages, stated plainly.
-   ─────────────────────────────────────────────────────────────── */
-
-const TEAM_CARDS = [
-  {
-    icon: <Zap className="w-5 h-5" />,
-    title: "Keeps up with back-to-back orders",
-    text: "Sub-second responses built for the rush. Ask, confirm, and send drinks to the POS without making guests wait.",
-  },
-  {
-    icon: <Hand className="w-5 h-5" />,
-    title: "Hands stay free",
-    text: "Place or modify orders, check tabs, or split checks while shaking, pouring, or talking to guests. No fumbling with tablets mid-pour.",
-  },
-  {
-    icon: <CheckCheck className="w-5 h-5" />,
-    title: "Complex orders, rung correctly",
-    text: "“Spicy margarita, no triple sec, salt rim” lands in Square exactly as spoken. Fewer remakes, less wasted liquor.",
-  },
-  {
-    icon: <Wine className="w-5 h-5" />,
-    title: "Inventory answers on the spot",
-    text: "“How many bottles of Tito's left?” “Is the IPA keg tapped?” Live counts from Square — before you 86 a popular pour or over-order.",
-  },
-  {
-    icon: <ReceiptText className="w-5 h-5" />,
-    title: "Straight into Square tabs",
-    text: "Voice orders flow into open tabs, payments, and inventory updates. No double entry, no missed modifiers, clean close-out.",
-  },
-  {
-    icon: <GraduationCap className="w-5 h-5" />,
-    title: "New bartenders, productive day one",
-    text: "New hires speak naturally instead of memorizing POS buttons. Consistent execution across every shift, even with turnover.",
-  },
-];
-
-function TeamSection() {
-  return (
-    <section id="for-your-team" className="py-20 md:py-28 scroll-mt-20">
-      <div className="section-container">
-        <motion.div
-          initial={{ opacity: 0, y: 18 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: "-80px" }}
-          transition={{ duration: 0.55, ease: EASE }}
-        >
-          <p className="vl-eyebrow">For your team during service</p>
-          <h2 className="vl-section-heading mt-5 max-w-2xl">
-            Built for <em>the rush.</em>
-          </h2>
-          <p
-            className="mt-5 text-[16px] leading-relaxed max-w-xl"
-            style={{ color: "var(--color-vl-ink-muted)" }}
-          >
-            Everything your team does on the POS screen, done by speaking —
-            faster, and with fewer mistakes.
-          </p>
-        </motion.div>
-
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5 mt-12">
-          {TEAM_CARDS.map((card, i) => (
-            <motion.div
-              key={card.title}
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: "-60px" }}
-              transition={{ duration: 0.5, delay: (i % 3) * 0.07, ease: EASE }}
-              className="vl-card p-6"
-            >
-              <div
-                className="w-11 h-11 rounded-xl flex items-center justify-center mb-4"
-                style={{
-                  background: "var(--color-vl-accent-tint)",
-                  color: "var(--color-vl-accent-deep)",
-                }}
-              >
-                {card.icon}
-              </div>
-              <h3 className="text-[17px] font-semibold" style={{ color: "var(--color-vl-ink)" }}>
-                {card.title}
-              </h3>
-              <p
-                className="text-[14px] mt-2.5 leading-relaxed"
-                style={{ color: "var(--color-vl-ink-muted)" }}
-              >
-                {card.text}
-              </p>
-            </motion.div>
-          ))}
-        </div>
-
-        <motion.div
-          initial={{ opacity: 0 }}
-          whileInView={{ opacity: 1 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.5 }}
-          className="mt-6 flex items-center gap-3 rounded-2xl px-5 py-4"
-          style={{
-            background: "rgba(255,255,255,0.7)",
-            border: "1px solid rgba(14, 27, 44, 0.07)",
-          }}
-        >
-          <Volume2 className="w-4.5 h-4.5 shrink-0" style={{ color: "var(--color-vl-accent)" }} />
-          <p className="text-[14px]" style={{ color: "var(--color-vl-ink-soft)" }}>
-            Noise-resistant and context-aware — it holds up when the bar is
-            three deep and the music is up.
-          </p>
-        </motion.div>
-      </div>
-    </section>
-  );
-}
-
-/* ───────────────────────────────────────────────────────────────
-   HOW IT WORKS — pinned scroll theater. A spoken sentence fills
-   word by word; the Square result assembles beside it.
-   Mobile / reduced-motion: the same scenes as static cards.
-   ─────────────────────────────────────────────────────────────── */
-
-interface TheaterSceneData {
-  id: string;
-  eyebrow: string;
-  sentence: string;
-  title: string;
-  rows: Array<[string, string, boolean?]>; // label, value, alert
-  stamp: string;
-  note: string;
-}
-
-const SCENES: TheaterSceneData[] = [
-  {
-    id: "orders",
-    eyebrow: "01 · Orders",
-    sentence:
-      "Two old fashioneds for table 12 — one with extra bitters, one no cherry.",
-    title: "TABLE 12 — OPEN TAB",
-    rows: [
-      ["2 × Old Fashioned", "$28.00"],
-      ["Mod: extra bitters", "✓"],
-      ["Mod: no cherry", "✓"],
-    ],
-    stamp: "SENT TO SQUARE",
-    note: "Modifiers land exactly as spoken — fewer remakes, less wasted liquor.",
-  },
-  {
-    id: "inventory",
-    eyebrow: "02 · Inventory",
-    sentence: "How many bottles of Tito's are left — and is the IPA keg tapped?",
-    title: "BAR INVENTORY — LIVE",
-    rows: [
-      ["Tito's Handmade", "6 bottles"],
-      ["Hazy IPA keg", "68% full"],
-      ["Low-stock alert", "set for vodka", true],
-    ],
-    stamp: "PULLED FROM SQUARE",
-    note: "Live counts from Square inventory — before you 86 a popular pour or over-order.",
-  },
-  {
-    id: "reports",
-    eyebrow: "03 · Reports",
-    sentence: "How did happy hour perform?",
-    title: "TONIGHT — 5–7 PM",
-    rows: [
-      ["Happy hour sales", "$2,340"],
-      ["vs last Friday", "+18%"],
-      ["Top pour", "Spicy Margarita × 41"],
-    ],
-    stamp: "ANSWERED BY VOICE",
-    note: "Sales, pour cost, and trends the moment you ask — no dashboards during service.",
-  },
-];
-
-function CommandTheater({ reduceMotion }: { reduceMotion: boolean }) {
-  return (
-    <section className="relative">
-      <div className="section-container">
-        <p className="vl-eyebrow">How it works</p>
-        <h2 className="vl-section-heading mt-5 max-w-3xl">
-          You talk. <em>Square updates.</em>
-        </h2>
-      </div>
-
-      {reduceMotion ? (
-        <TheaterStatic />
-      ) : (
-        <>
-          <div className="hidden md:block">
-            <TheaterScrub />
-          </div>
-          <div className="md:hidden">
-            <TheaterStatic />
-          </div>
-        </>
-      )}
-    </section>
-  );
-}
-
-function TheaterScrub() {
-  const ref = useRef<HTMLDivElement>(null);
-  const { scrollYProgress } = useScroll({
-    target: ref,
-    offset: ["start start", "end end"],
-  });
-
-  return (
-    <div ref={ref} style={{ height: `${SCENES.length * 130}vh` }}>
-      <div className="sticky top-0 h-screen flex items-center overflow-hidden">
-        {/* Progress rail */}
-        <motion.div
-          aria-hidden
-          className="absolute left-0 top-0 w-0.5 origin-top"
-          style={{
-            height: "100%",
-            background: "linear-gradient(180deg, #FF6B47, #7C6EF5)",
-            scaleY: scrollYProgress,
-          }}
-        />
-        <div className="section-container w-full relative" style={{ height: "min(560px, 72vh)" }}>
-          {SCENES.map((scene, i) => (
-            <TheaterScene
-              key={scene.id}
-              scene={scene}
-              index={i}
-              total={SCENES.length}
-              progress={scrollYProgress}
-            />
-          ))}
-
-          <div className="absolute right-6 top-1/2 -translate-y-1/2 hidden lg:flex flex-col gap-3">
-            {SCENES.map((s, i) => (
-              <SceneDot key={s.id} index={i} total={SCENES.length} progress={scrollYProgress} />
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SceneDot({
-  index,
-  total,
-  progress,
+/** Renders a media-pack logo at a given height. `onDark` inverts the black wordmarks. */
+export function BrandMark({
+  brand,
+  height = 24,
+  onDark = false,
+  className = "",
 }: {
-  index: number;
-  total: number;
-  progress: MotionValue<number>;
+  brand: Brand;
+  height?: number;
+  onDark?: boolean;
+  className?: string;
 }) {
-  const s = index / total;
-  const e = (index + 1) / total;
-  const opacity = useTransform(progress, [s - 0.02, s, e, e + 0.02], [0.25, 1, 1, 0.25]);
+  const meta = BRAND_META[brand];
+  if (brand === "google") {
+    // The G sits in a lot of transparent padding; crop by scaling inside a clipped box.
+    return (
+      <span
+        className={`relative inline-block shrink-0 overflow-hidden ${className}`}
+        style={{ width: height, height }}
+        aria-label={meta.alt}
+        role="img"
+      >
+        <img
+          src={meta.src}
+          alt=""
+          draggable={false}
+          className="absolute inset-0 h-full w-full select-none"
+          style={{ transform: "scale(3.05)", transformOrigin: "center" }}
+        />
+      </span>
+    );
+  }
   return (
-    <motion.span
-      style={{ opacity, background: "var(--color-vl-accent)" }}
-      className="h-1.5 w-1.5 rounded-full"
+    <img
+      src={meta.src}
+      alt={meta.alt}
+      draggable={false}
+      className={`inline-block shrink-0 select-none ${className}`}
+      style={{ height, width: height * meta.ratio, filter: onDark ? "invert(1)" : undefined }}
     />
   );
 }
 
-function TheaterScene({
-  scene,
-  index,
-  total,
-  progress,
-}: {
-  scene: TheaterSceneData;
-  index: number;
-  total: number;
-  progress: MotionValue<number>;
-}) {
-  const s = index / total;
-  const e = (index + 1) / total;
-  const first = index === 0;
-  const last = index === total - 1;
-
-  // Crossfade overlaps the neighbour scene — no dead window between scenes.
-  const opacity = useTransform(
-    progress,
-    [first ? 0 : s - 0.012, first ? 0.0001 : s + 0.028, last ? 0.9999 : e - 0.03, last ? 1 : e],
-    [first ? 1 : 0, 1, 1, last ? 1 : 0],
-  );
-  const y = useTransform(
-    progress,
-    [first ? 0 : s - 0.012, first ? 0.0001 : s + 0.028],
-    [first ? 0 : 34, 0],
-  );
-
-  const words = scene.sentence.split(" ");
-  const wordsStart = s + 0.012;
-  const wordsEnd = s + 0.095;
-  const rowsStart = s + 0.105;
-  const stampAt = rowsStart + scene.rows.length * 0.02 + 0.012;
-
-  return (
-    <motion.div style={{ opacity, y }} className="absolute inset-0 flex items-center">
-      <div className="grid md:grid-cols-[1fr_1fr] gap-12 lg:gap-20 items-center w-full">
-        <div>
-          <p className="vl-eyebrow">{scene.eyebrow}</p>
-          <p
-            className="mt-6 text-[clamp(1.5rem,2.7vw,2.2rem)] leading-[1.22] font-medium italic"
-            style={{ color: "var(--color-vl-ink)" }}
-          >
-            <span aria-hidden className="inline-flex items-center mr-3 align-middle">
-              <Mic className="w-5 h-5" style={{ color: "var(--color-vl-accent)" }} />
-            </span>
-            {words.map((w, j) => (
-              <ScrubWord
-                key={j}
-                progress={progress}
-                start={wordsStart + (j / words.length) * (wordsEnd - wordsStart)}
-              >
-                {w}
-              </ScrubWord>
-            ))}
-          </p>
-          <ScrubReveal progress={progress} at={stampAt}>
-            <p
-              className="mt-6 text-[14.5px] leading-relaxed max-w-95"
-              style={{ color: "var(--color-vl-ink-muted)" }}
-            >
-              {scene.note}
-            </p>
-          </ScrubReveal>
-        </div>
-
-        <div className="vl-card p-7 lg:p-9 relative">
-          <div className="flex items-center justify-between">
-            <span
-              className="font-mono text-[11px] tracking-[0.2em]"
-              style={{ color: "var(--color-vl-ink-faint)" }}
-            >
-              {scene.title}
-            </span>
-            <Square className="w-3.5 h-3.5" style={{ color: "var(--color-vl-ink-faint)" }} />
-          </div>
-          <div className="mt-4">
-            {scene.rows.map(([label, value, alert], k) => (
-              <ScrubRow
-                key={label}
-                progress={progress}
-                at={rowsStart + k * 0.02}
-                label={label}
-                value={value}
-                alert={Boolean(alert)}
-              />
-            ))}
-          </div>
-          <ScrubStamp progress={progress} at={stampAt} label={scene.stamp} />
-        </div>
-      </div>
-    </motion.div>
-  );
-}
-
-function ScrubWord({
-  progress,
-  start,
-  children,
-}: {
-  progress: MotionValue<number>;
-  start: number;
-  children: string;
-}) {
-  const opacity = useTransform(progress, [start, start + 0.012], [0.22, 1]);
-  return (
-    <motion.span style={{ opacity }} className="inline">
-      {children}{" "}
-    </motion.span>
-  );
-}
-
-function ScrubRow({
-  progress,
-  at,
-  label,
-  value,
-  alert,
-}: {
-  progress: MotionValue<number>;
-  at: number;
-  label: string;
-  value: string;
-  alert: boolean;
-}) {
-  const opacity = useTransform(progress, [at, at + 0.02], [0, 1]);
-  const y = useTransform(progress, [at, at + 0.02], [10, 0]);
-  return (
-    <motion.div style={{ opacity, y }} className="lx-ticket-row">
-      <span style={{ color: "var(--color-vl-ink-soft)" }}>{label}</span>
-      <span
-        style={{
-          color: alert ? "var(--color-vl-warning)" : "var(--color-vl-accent-deep)",
-          fontWeight: 600,
-        }}
-      >
-        {value}
-      </span>
-    </motion.div>
-  );
-}
-
-function ScrubStamp({
-  progress,
-  at,
-  label,
-}: {
-  progress: MotionValue<number>;
-  at: number;
-  label: string;
-}) {
-  const opacity = useTransform(progress, [at, at + 0.02], [0, 1]);
-  const scale = useTransform(progress, [at, at + 0.025], [1.25, 1]);
-  return (
-    <motion.div style={{ opacity, scale }} className="mt-6 lx-stamp">
-      <span className="h-1.5 w-1.5 rounded-full" style={{ background: "var(--color-vl-accent)" }} />
-      {label}
-    </motion.div>
-  );
-}
-
-function ScrubReveal({
-  progress,
-  at,
-  children,
-}: {
-  progress: MotionValue<number>;
-  at: number;
-  children: ReactNode;
-}) {
-  const opacity = useTransform(progress, [at, at + 0.025], [0, 1]);
-  return <motion.div style={{ opacity }}>{children}</motion.div>;
-}
-
-function TheaterStatic() {
-  return (
-    <div className="section-container mt-12 pb-8 space-y-6">
-      {SCENES.map((scene) => (
-        <div key={scene.id} className="vl-card p-6 md:p-8">
-          <p className="vl-eyebrow">{scene.eyebrow}</p>
-          <p
-            className="mt-4 text-[19px] leading-snug font-medium italic"
-            style={{ color: "var(--color-vl-ink)" }}
-          >
-            &ldquo;{scene.sentence}&rdquo;
-          </p>
-          <div className="mt-5">
-            {scene.rows.map(([label, value, alert]) => (
-              <div key={label} className="lx-ticket-row">
-                <span style={{ color: "var(--color-vl-ink-soft)" }}>{label}</span>
-                <span
-                  style={{
-                    color: alert ? "var(--color-vl-warning)" : "var(--color-vl-accent-deep)",
-                    fontWeight: 600,
-                  }}
-                >
-                  {value}
-                </span>
-              </div>
-            ))}
-          </div>
-          <p className="mt-5 lx-stamp">{scene.stamp}</p>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 /* ───────────────────────────────────────────────────────────────
-   LIVE DEMO — the real OpenAI Realtime pipeline, on this page.
+   HERO — the whole product in one control: tap, talk, watch Square.
    ─────────────────────────────────────────────────────────────── */
-function LiveDemo() {
+
+function Hero({ reduceMotion }: { reduceMotion: boolean }) {
   const demo = useVoycelabDemoRealtime();
+  const live = demo.isLive;
+  const busy = demo.agentState === "connecting";
+
+  const status = (() => {
+    switch (demo.agentState) {
+      case "connecting":
+        return "Connecting…";
+      case "listening":
+        return "Listening. Say “two margaritas and a Modelo.”";
+      case "thinking":
+        return "Thinking…";
+      case "speaking":
+        return "Bev is talking.";
+      case "error":
+        return "Something went wrong. Tap to try again.";
+      default:
+        return "Tap to talk to Bev. Microphone required.";
+    }
+  })();
+
+  const words = ["Say", "it."];
+
+  return (
+    <section className="relative flex min-h-[100svh] flex-col items-center justify-center overflow-hidden px-6 pb-14 pt-20 text-center">
+      <motion.p
+        initial={reduceMotion ? false : { opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6, ease: EASE }}
+        className="font-mono text-[11px] tracking-[0.32em] text-white/55 uppercase"
+      >
+        Voice for Square POS
+      </motion.p>
+
+      <h1 className="vl-display mt-5 text-[clamp(3.4rem,10vw,8.5rem)] leading-[0.92]">
+        <span className="block">
+          {words.map((w, i) => (
+            <motion.span
+              key={w}
+              initial={reduceMotion ? false : { opacity: 0, y: 40, rotate: -2 }}
+              animate={{ opacity: 1, y: 0, rotate: 0 }}
+              transition={{ duration: 0.7, delay: 0.08 + i * 0.09, ease: EASE }}
+              className="inline-block"
+            >
+              {w}
+              {i < words.length - 1 ? " " : ""}
+            </motion.span>
+          ))}
+        </span>
+        <motion.span
+          initial={reduceMotion ? false : { opacity: 0, y: 40 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.7, delay: 0.32, ease: EASE }}
+          className="block"
+        >
+          <em>Square does it.</em>
+        </motion.span>
+      </h1>
+
+      <motion.p
+        initial={reduceMotion ? false : { opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6, delay: 0.5, ease: EASE }}
+        className="mx-auto mt-6 max-w-xl text-[17px] leading-relaxed text-white/70"
+      >
+        The voice assistant for bars and restaurants on Square. Orders, stock counts and
+        sales answers, spoken out loud and synced to your POS in under a second.
+      </motion.p>
+
+      {/* The control */}
+      <motion.div
+        initial={reduceMotion ? false : { opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.7, delay: 0.62, ease: EASE }}
+        className="mt-10 flex flex-col items-center"
+      >
+        <MicDisc
+          live={live}
+          busy={busy}
+          state={demo.agentState}
+          onClick={() => (live ? void demo.disconnect() : void demo.connect())}
+        />
+        <p className="mt-6 min-h-6 font-mono text-[12px] tracking-[0.12em] text-white/60 uppercase">
+          {status}
+        </p>
+        {demo.error && (
+          <p className="mt-3 max-w-md rounded-2xl border border-red-400/30 bg-red-500/10 px-4 py-2 text-[13px] text-red-200">
+            {demo.error}
+          </p>
+        )}
+      </motion.div>
+
+      <LiveTicket demo={demo} />
+
+      {/* Three names on the door */}
+      <motion.div
+        initial={reduceMotion ? false : { opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6, delay: 0.85, ease: EASE }}
+        className="mt-12 flex flex-col items-center gap-4"
+      >
+        <span className="font-mono text-[10px] tracking-[0.3em] text-white/40 uppercase">Built with</span>
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          <LogoPill brand="square" height={26} />
+          <LogoPill brand="openai" height={26} />
+          <LogoPill brand="google" height={30} />
+        </div>
+      </motion.div>
+    </section>
+  );
+}
+
+function LogoPill({ brand, height }: { brand: Brand; height: number }) {
+  return (
+    <span className="inline-flex h-14 items-center rounded-full border border-gray-200 bg-white px-6 shadow-[0_20px_50px_-20px_rgba(0,0,0,0.8)] transition-transform hover:-translate-y-0.5">
+      <BrandMark brand={brand} height={height} />
+    </span>
+  );
+}
+
+/** The 176px black disc inside a conic ring. Breathes idle, spins live. */
+function MicDisc({
+  live,
+  busy,
+  state,
+  onClick,
+}: {
+  live: boolean;
+  busy: boolean;
+  state: string;
+  onClick: () => void;
+}) {
+  const hot = state === "listening" || state === "speaking" || state === "thinking";
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={busy}
+      aria-pressed={live}
+      aria-label={live ? "Stop the voice demo" : "Start the voice demo"}
+      className={`lx-mic ${live ? "is-live" : ""} ${hot ? "is-hot" : ""}`}
+    >
+      <span className="lx-mic-halo" aria-hidden="true" />
+      <span className="lx-mic-ring" aria-hidden="true" />
+      <span className="lx-mic-face">
+        {busy ? (
+          <Loader2 className="h-10 w-10 animate-spin" />
+        ) : live ? (
+          <SquareIcon className="h-9 w-9" fill="currentColor" />
+        ) : (
+          <Mic className="h-11 w-11" />
+        )}
+      </span>
+    </button>
+  );
+}
+
+/** The live Square ticket, shown only once a session exists. */
+function LiveTicket({ demo }: { demo: ReturnType<typeof useVoycelabDemoRealtime> }) {
+  const show = demo.isLive || demo.order.length > 0 || demo.conversation.length > 0;
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
     el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-  }, [demo.conversation, demo.partialTranscript, demo.agentState]);
-
-  const status = (() => {
-    switch (demo.agentState) {
-      case "connecting":
-        return { label: "Connecting…", color: "var(--color-vl-warning)" };
-      case "listening":
-        return { label: "Listening — ask it anything", color: "var(--color-vl-success)" };
-      case "thinking":
-        return { label: "Thinking…", color: "var(--color-vl-accent-deep)" };
-      case "speaking":
-        return { label: "Speaking…", color: "var(--color-vl-accent-deep)" };
-      case "error":
-        return { label: "Something went wrong", color: "var(--color-vl-danger)" };
-      default:
-        return { label: "Ready when you are", color: "var(--color-vl-ink-muted)" };
-    }
-  })();
+  }, [demo.conversation, demo.partialTranscript]);
 
   return (
-    <section id="live-demo" className="relative py-20 md:py-28 scroll-mt-20">
-      <div className="section-container">
-        <div className="grid lg:grid-cols-[0.9fr_1.1fr] gap-12 lg:gap-20 items-start">
-          <div className="lg:sticky lg:top-28">
-            <p className="vl-eyebrow">Live demo</p>
-            <h2 className="vl-section-heading mt-5">
-              Ring an order — <em>out loud.</em>
-            </h2>
-            <p
-              className="mt-6 max-w-100 text-[16px] leading-relaxed"
-              style={{ color: "var(--color-vl-ink-muted)" }}
-            >
-              This is the real product, pointed at a sandbox bar. Say
-              &ldquo;two margaritas and a Modelo&rdquo; and watch the ticket
-              build — the same way it lands in Square during service. Add
-              items, remove them, ask for the total.
-            </p>
-            <p className="mt-5 text-[13px]" style={{ color: "var(--color-vl-ink-faint)" }}>
-              Microphone required · Sandbox menu — same voice pipeline venues
-              use in service, nothing touches a real POS.
-            </p>
+    <AnimatePresence>
+      {show && (
+        <motion.div
+          initial={{ opacity: 0, y: 24, scale: 0.97 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: 12, scale: 0.98 }}
+          transition={{ duration: 0.45, ease: EASE }}
+          className="vl-card mt-10 w-full max-w-md p-6 text-left"
+        >
+          <div className="flex items-center justify-between">
+            <BrandMark brand="square" height={18} />
+            <span className="flex items-center gap-1.5 font-mono text-[10px] tracking-[0.2em] text-gray-500">
+              <span className={`h-1.5 w-1.5 rounded-full ${demo.isLive ? "animate-pulse bg-emerald-500" : "bg-gray-300"}`} />
+              {demo.isLive ? "LIVE · THE DEN" : "SESSION ENDED"}
+            </span>
           </div>
 
-          <div className="vl-card-glass p-6 md:p-9">
-            <div className="flex flex-col items-center">
-              <VoiceOrb
-                size={230}
-                outputStream={demo.assistantStream}
-                agentState={demo.agentState}
-                label={
-                  demo.isLive
-                    ? "VoyceLab voice demo is live. Click to stop."
-                    : "Start the VoyceLab voice demo."
-                }
-                onListenStart={(stream) => {
-                  void demo.connect(stream);
-                }}
-                onListenStop={() => {
-                  void demo.disconnect();
-                }}
-                externalError={demo.error}
-              />
-              <p className="mt-1 font-mono text-[12px]" style={{ color: status.color }}>
-                {status.label}
-              </p>
-            </div>
-
-            <div className="mt-6 flex flex-wrap justify-center gap-3">
-              {!demo.isLive ? (
-                <button
-                  type="button"
-                  onClick={() => void demo.connect()}
-                  className="vl-btn-primary text-[14px] inline-flex items-center gap-2"
-                >
-                  <Mic className="w-4 h-4" />
-                  Start talking
-                </button>
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => void demo.disconnect()}
-                    className="vl-btn-outline text-[14px]"
+          <div className="mt-4 min-h-14">
+            {demo.order.length === 0 ? (
+              <p className="text-[14px] italic text-gray-400">Ticket’s empty. Say what you’d ring.</p>
+            ) : (
+              <AnimatePresence initial={false}>
+                {demo.order.map((item) => (
+                  <motion.div
+                    key={item.name}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -6 }}
+                    transition={{ duration: 0.3, ease: EASE }}
+                    className="lx-ticket-row"
                   >
-                    End session
-                  </button>
-                  {(demo.agentState === "speaking" || demo.agentState === "thinking") && (
-                    <button
-                      type="button"
-                      onClick={demo.interrupt}
-                      className="vl-btn-ghost text-[14px]"
-                    >
-                      Interrupt
-                    </button>
-                  )}
-                </>
-              )}
-              {demo.agentState === "connecting" && (
-                <span
-                  className="inline-flex items-center gap-2 text-[13px]"
-                  style={{ color: "var(--color-vl-ink-muted)" }}
-                >
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                </span>
-              )}
-            </div>
-
-            {demo.error && (
-              <p
-                className="mt-4 rounded-xl px-4 py-3 text-[13px]"
-                style={{ background: "rgba(239,68,68,0.08)", color: "var(--color-vl-danger)" }}
-              >
-                {demo.error}
-              </p>
-            )}
-
-            {(demo.isLive || demo.order.length > 0) && (
-              <DemoTicket order={demo.order} total={demo.orderTotal} isLive={demo.isLive} />
-            )}
-
-            {(demo.conversation.length > 0 || demo.partialTranscript.trim().length > 0) && (
-              <div
-                ref={scrollRef}
-                className="vl-scroll mt-6 max-h-70 space-y-3 overflow-y-auto pr-2"
-                style={{ scrollbarWidth: "thin" }}
-              >
-                {demo.conversation.map((msg) => (
-                  <div key={msg.id} className="flex gap-3">
-                    <span
-                      className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full"
-                      style={{
-                        background:
-                          msg.role === "user"
-                            ? "var(--color-vl-ink-faint)"
-                            : "var(--color-vl-accent)",
-                      }}
-                    />
-                    <p
-                      className="text-[14px] leading-relaxed"
-                      style={{ color: "var(--color-vl-ink-soft)" }}
-                    >
-                      {msg.content}
-                    </p>
-                  </div>
+                    <span className="text-gray-700">
+                      {item.quantity} × {item.name}
+                    </span>
+                    <span className="font-semibold text-gray-900">${(item.price * item.quantity).toFixed(2)}</span>
+                  </motion.div>
                 ))}
-                {demo.partialTranscript.trim().length > 0 && (
-                  <div className="flex gap-3 opacity-80">
-                    <span
-                      className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full"
-                      style={{ background: "var(--color-vl-accent)" }}
-                    />
-                    <p
-                      className="text-[14px] italic leading-relaxed"
-                      style={{ color: "var(--color-vl-ink-soft)" }}
-                    >
-                      {demo.partialTranscript}
-                    </p>
-                  </div>
-                )}
-              </div>
+              </AnimatePresence>
             )}
-
-            <div className="mt-7 pt-5" style={{ borderTop: "1px solid rgba(14, 27, 44, 0.07)" }}>
-              <p className="vl-eyebrow mb-3" style={{ fontSize: 10 }}>
-                Try saying
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {[
-                  "Two margaritas and a Modelo",
-                  "Add wings and a queso",
-                  "Remove one margarita",
-                  "What's my total?",
-                ].map((h) => (
-                  <span key={h} className="vl-chip-light">
-                    <Mic className="w-3 h-3" style={{ color: "var(--color-vl-accent)" }} />
-                    {h}
-                  </span>
-                ))}
-              </div>
-            </div>
           </div>
-        </div>
-      </div>
-    </section>
+
+          {demo.order.length > 0 && (
+            <div className="mt-3 flex items-center justify-between border-t border-dashed border-gray-300 pt-3 text-[15px] font-semibold text-gray-900">
+              <span>Total</span>
+              <span>${demo.orderTotal.toFixed(2)}</span>
+            </div>
+          )}
+
+          {(demo.conversation.length > 0 || demo.partialTranscript.trim()) && (
+            <div ref={scrollRef} className="vl-scroll mt-5 max-h-40 space-y-2 overflow-y-auto border-t border-gray-100 pt-4 pr-1">
+              {demo.conversation.map((m) => (
+                <p key={m.id} className={`text-[13.5px] leading-relaxed ${m.role === "user" ? "text-gray-500" : "text-gray-900"}`}>
+                  <span className="mr-2 font-mono text-[10px] tracking-[0.18em] text-gray-400 uppercase">
+                    {m.role === "user" ? "You" : "Bev"}
+                  </span>
+                  {m.content}
+                </p>
+              ))}
+              {demo.partialTranscript.trim() && (
+                <p className="text-[13.5px] italic leading-relaxed text-gray-400">{demo.partialTranscript}</p>
+              )}
+            </div>
+          )}
+
+          <div className="mt-5 flex flex-wrap gap-2">
+            {(demo.agentState === "speaking" || demo.agentState === "thinking") && (
+              <button type="button" onClick={demo.interrupt} className="vl-btn-outline text-[13px]" style={{ padding: "0.45rem 0.9rem" }}>
+                Interrupt
+              </button>
+            )}
+            {demo.order.length > 0 && (
+              <Link href="/signup" className="vl-btn-primary gap-2 text-[13px]" style={{ padding: "0.5rem 0.9rem" }}>
+                Put this on your Square <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            )}
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }
 
 /* ───────────────────────────────────────────────────────────────
-   DEMO TICKET — the live order built by voice in the demo above.
-   This is the conversion moment: spoken words → ticket rows.
+   SAY ANYTHING — an endless bar-top marquee of spoken lines.
    ─────────────────────────────────────────────────────────────── */
 
-function DemoTicket({
-  order,
-  total,
-  isLive,
-}: {
-  order: Array<{ name: string; price: number; quantity: number }>;
-  total: number;
-  isLive: boolean;
-}) {
+const LINES_A = [
+  "Two margaritas and a Modelo.",
+  "Open a tab for Priya.",
+  "Split table nine three ways.",
+  "Is the IPA keg tapped?",
+  "Eighty-six the oysters.",
+  "Send table twelve to the terminal.",
+];
+const LINES_B = [
+  "How did happy hour do?",
+  "How many bottles of Tito’s are left?",
+  "Comp the second round on eleven.",
+  "Top five cocktails this weekend?",
+  "Add a spicy marg, no triple sec, salt rim.",
+  "Who’s clocked in right now?",
+];
+
+function SayAnything({ reduceMotion }: { reduceMotion: boolean }) {
   return (
-    <div
-      className="mt-6 rounded-2xl p-5"
-      style={{
-        border: "1px solid rgba(14, 27, 44, 0.10)",
-        background: "rgba(255,255,255,0.75)",
-      }}
-    >
-      <div className="flex items-center justify-between">
-        <p className="vl-eyebrow" style={{ fontSize: 10 }}>
-          The Den · Demo ticket
-        </p>
-        <span
-          className="flex items-center gap-1.5 text-[10px] font-mono tracking-[0.18em]"
-          style={{ color: "var(--color-vl-accent-deep)" }}
-        >
-          <span
-            className={`h-1.5 w-1.5 rounded-full ${isLive ? "animate-pulse" : ""}`}
-            style={{ background: isLive ? "var(--color-vl-accent)" : "rgba(14, 27, 44,0.2)" }}
-          />
-          {isLive ? "LIVE" : "SESSION ENDED"}
-        </span>
+    <section aria-label="Things you can say" className="relative py-14 md:py-20">
+      <div className="section-container mb-8 flex items-baseline justify-between">
+        <p className="font-mono text-[11px] tracking-[0.3em] text-white/45 uppercase">Things you can say</p>
+        <p className="hidden font-mono text-[11px] tracking-[0.3em] text-white/30 uppercase sm:block">No buttons. No menus.</p>
       </div>
+      <Marquee lines={LINES_A} reverse={false} reduceMotion={reduceMotion} />
+      <Marquee lines={LINES_B} reverse reduceMotion={reduceMotion} />
+    </section>
+  );
+}
 
-      <div className="mt-4 min-h-16">
-        {order.length === 0 ? (
-          <p className="text-[14px] italic" style={{ color: "var(--color-vl-ink-faint)" }}>
-            Ticket&rsquo;s empty — say &ldquo;two margaritas and a Modelo.&rdquo;
-          </p>
-        ) : (
-          <AnimatePresence initial={false}>
-            {order.map((item) => (
-              <motion.div
-                key={item.name}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -6 }}
-                transition={{ duration: 0.3, ease: EASE }}
-                className="lx-ticket-row"
-              >
-                <span style={{ color: "var(--color-vl-ink-soft)" }}>
-                  {item.quantity} × {item.name}
-                </span>
-                <span style={{ color: "var(--color-vl-accent-deep)", fontWeight: 600 }}>
-                  ${(item.price * item.quantity).toFixed(2)}
-                </span>
-              </motion.div>
-            ))}
-          </AnimatePresence>
-        )}
+function Marquee({ lines, reverse, reduceMotion }: { lines: string[]; reverse: boolean; reduceMotion: boolean }) {
+  const track = [...lines, ...lines];
+  return (
+    <div className="lx-marquee" data-reverse={reverse ? "true" : undefined} data-static={reduceMotion ? "true" : undefined}>
+      <div className="lx-marquee-track">
+        {track.map((line, i) => (
+          <span key={`${line}-${i}`} className="lx-marquee-item">
+            <Mic className="h-4 w-4 shrink-0 text-[#F09819]" aria-hidden="true" />
+            <span className="vl-display text-[clamp(1.4rem,3vw,2.4rem)] italic text-white/90">{line}</span>
+          </span>
+        ))}
       </div>
-
-      {order.length > 0 && (
-        <>
-          <div
-            className="mt-3 flex items-center justify-between pt-3 text-[15px] font-semibold"
-            style={{ borderTop: "1px dashed rgba(14, 27, 44, 0.14)", color: "var(--color-vl-ink)" }}
-          >
-            <span>Total</span>
-            <span>${total.toFixed(2)}</span>
-          </div>
-          <Link
-            href="/signup"
-            className="vl-btn-primary mt-5 inline-flex w-full items-center justify-center gap-2 text-[14px]"
-          >
-            Put this on your Square — start free trial
-            <ArrowRight className="w-3.5 h-3.5" />
-          </Link>
-        </>
-      )}
     </div>
   );
 }
 
 /* ───────────────────────────────────────────────────────────────
-   FOR OWNERS — business advantages, stated plainly.
+   ONE LINE, ONE RESULT — pick a line, watch what Square gets.
    ─────────────────────────────────────────────────────────────── */
 
-const OWNER_CARDS = [
+type Scene =
+  | {
+      id: string;
+      say: string;
+      kind: "receipt";
+      title: string;
+      rows: Array<[string, string]>;
+      total: string;
+      stamp: string;
+    }
+  | { id: string; say: string; kind: "stock"; title: string; value: string; unit: string; pct: number; note: string }
+  | { id: string; say: string; kind: "answer"; title: string; brand: Brand; text: string; note: string };
+
+const SCENES: Scene[] = [
   {
-    icon: <BarChart3 className="w-5 h-5" />,
-    title: "Ask your Square data anything",
-    text: "“Top 5 cocktails this weekend?” “Liquor cost last night?” “Low-stock alerts for vodka?” Spoken answers on demand — no dashboards during service.",
+    id: "order",
+    say: "Two old fashioneds for table twelve, one no cherry.",
+    kind: "receipt",
+    title: "Table 12 · open tab",
+    rows: [
+      ["2 × Old Fashioned", "$28.00"],
+      ["Mod: no cherry", "✓"],
+    ],
+    total: "$28.00",
+    stamp: "Sent to Square",
   },
   {
-    icon: <TrendingUp className="w-5 h-5" />,
-    title: "More drinks served per hour",
-    text: "Faster order entry means faster turns — plus natural upsell suggestions, like a pairing that's still in stock.",
+    id: "stock",
+    say: "How many bottles of Tito’s are left?",
+    kind: "stock",
+    title: "Bar inventory · live",
+    value: "6",
+    unit: "bottles",
+    pct: 0.4,
+    note: "Low-stock alert set at 4. Pulled from Square inventory.",
   },
   {
-    icon: <Percent className="w-5 h-5" />,
-    title: "Tighter pour costs",
-    text: "Real-time inventory and accurate ordering cut over-pours, spoilage, and shrinkage on premium spirits, craft beer, and fresh mixers.",
+    id: "sales",
+    say: "How did happy hour do tonight?",
+    kind: "answer",
+    title: "Bev · spoken reply",
+    brand: "openai",
+    text: "Happy hour did $2,340, up 18% on last Friday. Spicy Margarita led with 41 pours.",
+    note: "OpenAI Realtime hears the room and answers in under a second.",
   },
   {
-    icon: <Users className="w-5 h-5" />,
-    title: "Labor that goes further",
-    text: "Bartenders spend their time with guests and sales instead of admin and stock runs. Less overtime, better morale.",
-  },
-  {
-    icon: <CalendarRange className="w-5 h-5" />,
-    title: "Menu and schedule decisions on data",
-    text: "Spot slow movers, peak pour times, and trending drinks instantly. Set happy hours, specials, and staffing from real numbers.",
-  },
-  {
-    icon: <Sparkles className="w-5 h-5" />,
-    title: "Service guests notice",
-    text: "Smoother nights for guests and modern tools that respect the craft — easier to hire for, easier to keep.",
+    id: "loud",
+    say: "Is the IPA keg tapped?",
+    kind: "answer",
+    title: "Bev · loud-room voice",
+    brand: "google",
+    text: "Hazy IPA is at 68%. You’re fine through close.",
+    note: "Gemini Live is the engine you switch to when the music’s up.",
   },
 ];
 
-function OwnerSection() {
+function Playground({ reduceMotion }: { reduceMotion: boolean }) {
+  const [active, setActive] = useState(0);
+  const [auto, setAuto] = useState(true);
+  const scene = SCENES[active];
+
+  useEffect(() => {
+    if (!auto || reduceMotion) return;
+    const t = window.setInterval(() => setActive((i) => (i + 1) % SCENES.length), 5200);
+    return () => window.clearInterval(t);
+  }, [auto, reduceMotion]);
+
   return (
-    <section className="py-20 md:py-28">
+    <section id="how-it-works" className="relative py-20 md:py-28">
       <div className="section-container">
-        <motion.div
-          initial={{ opacity: 0, y: 18 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: "-80px" }}
-          transition={{ duration: 0.55, ease: EASE }}
-        >
-          <p className="vl-eyebrow">For owners</p>
-          <h2 className="vl-section-heading mt-5 max-w-2xl">
-            Better numbers at <em>the close.</em>
-          </h2>
-          <p
-            className="mt-5 text-[16px] leading-relaxed max-w-xl"
-            style={{ color: "var(--color-vl-ink-muted)" }}
-          >
-            The same voice line answers business questions and tightens the
-            costs that eat bar margins.
-          </p>
-        </motion.div>
+        <div className="grid items-center gap-12 lg:grid-cols-[1fr_1fr] lg:gap-20">
+          <div>
+            <p className="font-mono text-[11px] tracking-[0.3em] text-white/45 uppercase">One line, one result</p>
+            <h2 className="vl-section-heading mt-5">
+              You talk. <em>Square updates.</em>
+            </h2>
+            <p className="mt-5 max-w-md text-[16px] leading-relaxed text-white/65">
+              Pick a line. That’s the whole training course.
+            </p>
 
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5 mt-12">
-          {OWNER_CARDS.map((card, i) => (
-            <motion.div
-              key={card.title}
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: "-60px" }}
-              transition={{ duration: 0.5, delay: (i % 3) * 0.07, ease: EASE }}
-              className="vl-card p-6"
-            >
-              <div
-                className="w-11 h-11 rounded-xl flex items-center justify-center mb-4"
-                style={{
-                  background: "var(--color-vl-lilac-soft)",
-                  color: "var(--color-vl-accent-deep)",
-                }}
-              >
-                {card.icon}
-              </div>
-              <h3 className="text-[17px] font-semibold" style={{ color: "var(--color-vl-ink)" }}>
-                {card.title}
-              </h3>
-              <p
-                className="text-[14px] mt-2.5 leading-relaxed"
-                style={{ color: "var(--color-vl-ink-muted)" }}
-              >
-                {card.text}
-              </p>
-            </motion.div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-/* ───────────────────────────────────────────────────────────────
-   PROOF — numbers and the systems it runs on.
-   ─────────────────────────────────────────────────────────────── */
-function ProofBand() {
-  const stats = [
-    { value: "200+", label: "venues running on VoyceLab" },
-    { value: "4.9", label: "average operator rating" },
-    { value: "100%", label: "of actions logged in Square — auditable, reversible" },
-  ];
-
-  return (
-    <section className="py-20 md:py-24">
-      <div className="section-container">
-        <div className="vl-line mb-14" />
-        <div className="grid md:grid-cols-3 gap-10 md:gap-6">
-          {stats.map((s, i) => (
-            <motion.div
-              key={s.label}
-              initial={{ opacity: 0, y: 18 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: "-60px" }}
-              transition={{ duration: 0.55, delay: i * 0.08, ease: EASE }}
-              className={i > 0 ? "md:pl-6 md:border-l" : ""}
-              style={i > 0 ? { borderColor: "rgba(14, 27, 44, 0.08)" } : undefined}
-            >
-              <p className="vl-display vl-gradient-text text-[clamp(2.6rem,5vw,3.8rem)] leading-none">
-                {s.value}
-              </p>
-              <p
-                className="mt-3 max-w-60 text-[14px] leading-relaxed"
-                style={{ color: "var(--color-vl-ink-muted)" }}
-              >
-                {s.label}
-              </p>
-            </motion.div>
-          ))}
-        </div>
-
-        <div className="mt-14 flex flex-wrap items-center gap-4">
-          <span className="vl-eyebrow mr-2">Runs on</span>
-          {[
-            { src: "/brand/square-logo.png", alt: "Square" },
-            { src: "/brand/openai-wordmark.png", alt: "OpenAI" },
-            { src: "/brand/google-g.png", alt: "Google" },
-          ].map((logo) => (
-            <span key={logo.alt} className="vl-card inline-flex h-12 items-center px-5">
-              <img src={logo.src} alt={logo.alt} loading="lazy" style={{ maxHeight: 22, width: "auto" }} />
-            </span>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-/* ───────────────────────────────────────────────────────────────
-   FINAL CTA — name it, connect Square, try it on your own menu.
-   ─────────────────────────────────────────────────────────────── */
-function FinalCTA({
-  name,
-  setName,
-  onStart,
-}: {
-  name: string;
-  setName: (v: string) => void;
-  onStart: () => void;
-}) {
-  const trimmed = name.trim();
-
-  return (
-    <section className="relative py-24 md:py-32 overflow-hidden">
-      <div
-        aria-hidden
-        className="absolute inset-0 pointer-events-none"
-        style={{
-          background:
-            "radial-gradient(ellipse 70% 60% at 50% 50%, rgba(255, 107, 71, 0.24), transparent 65%), radial-gradient(ellipse 50% 40% at 20% 90%, rgba(124, 110, 245, 0.24), transparent 65%), radial-gradient(ellipse 50% 40% at 80% 90%, rgba(191, 216, 197, 0.30), transparent 65%)",
-        }}
-      />
-
-      <div className="relative section-container text-center">
-        <p className="vl-eyebrow">Get started</p>
-        <h2 className="vl-section-heading mt-5 mx-auto max-w-3xl">
-          Give your venue <em>a voice.</em>
-        </h2>
-        <p
-          className="mt-5 mx-auto max-w-lg text-[16px] md:text-[17px] leading-relaxed"
-          style={{ color: "var(--color-vl-ink-muted)" }}
-        >
-          Name your assistant, connect Square, and try it on your own menu.
-        </p>
-
-        <div className="mx-auto mt-9 flex max-w-lg flex-col items-center gap-4">
-          <div className="flex w-full flex-col sm:flex-row gap-2">
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Name your assistant — Bev, Marlowe, Ash…"
-              aria-label="Assistant name"
-              className="vl-input flex-1"
-              onKeyDown={(e) => e.key === "Enter" && onStart()}
-            />
-            <Magnetic>
-              <button
-                onClick={onStart}
-                className="vl-btn-primary inline-flex w-full items-center justify-center gap-2 sm:w-auto"
-              >
-                {trimmed ? `Meet ${trimmed}` : "Create yours"}
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
-            </Magnetic>
+            <div className="mt-8 flex flex-col gap-2">
+              {SCENES.map((s, i) => {
+                const on = i === active;
+                return (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => {
+                      setActive(i);
+                      setAuto(false);
+                    }}
+                    className={`group flex items-center gap-3 rounded-full border px-5 py-3 text-left transition-all ${
+                      on
+                        ? "border-white bg-white text-gray-900 shadow-[0_20px_50px_-20px_rgba(0,0,0,0.9)]"
+                        : "border-white/12 bg-white/5 text-white/75 hover:border-white/30 hover:bg-white/10 hover:text-white"
+                    }`}
+                  >
+                    <span
+                      className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${
+                        on ? "bg-black text-white" : "bg-white/10 text-white/70 group-hover:bg-white/20"
+                      }`}
+                    >
+                      <Mic className="h-3.5 w-3.5" />
+                    </span>
+                    <span className="vl-display text-[17px] italic leading-snug sm:text-[19px]">{s.say}</span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
-          <p className="text-[13px]" style={{ color: "var(--color-vl-ink-muted)" }}>
-            14-day free trial · No card required · Disconnect Square anytime
-          </p>
-        </div>
 
-        <div className="mt-12 flex flex-wrap justify-center gap-2.5">
-          {[
-            "How many bottles of Tito's are left?",
-            "Split table 9 three ways.",
-            "Top 5 cocktails this weekend?",
-            "Is the IPA keg tapped?",
-          ].map((q) => (
-            <span key={q} className="vl-chip-light">
-              <Mic className="w-3 h-3" style={{ color: "var(--color-vl-accent)" }} />
-              {q}
-            </span>
+          <div className="relative mx-auto w-full max-w-md">
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.div
+                key={scene.id}
+                initial={reduceMotion ? false : { opacity: 0, y: 20, clipPath: "inset(0 0 100% 0 round 2rem)" }}
+                animate={{ opacity: 1, y: 0, clipPath: "inset(0 0 0% 0 round 2rem)" }}
+                exit={reduceMotion ? undefined : { opacity: 0, y: -14, transition: { duration: 0.22 } }}
+                transition={{ duration: 0.55, ease: EASE }}
+                className="vl-card p-7"
+              >
+                <ResultCard scene={scene} reduceMotion={reduceMotion} />
+              </motion.div>
+            </AnimatePresence>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function ResultCard({ scene, reduceMotion }: { scene: Scene; reduceMotion: boolean }) {
+  const header = (brand: Brand) => (
+    <div className="flex items-center justify-between">
+      <BrandMark brand={brand} height={brand === "google" ? 26 : 20} />
+      <span className="font-mono text-[10px] tracking-[0.22em] text-gray-400 uppercase">{scene.title}</span>
+    </div>
+  );
+
+  if (scene.kind === "receipt") {
+    return (
+      <>
+        {header("square")}
+        <div className="mt-6">
+          {scene.rows.map(([l, v], i) => (
+            <motion.div
+              key={l}
+              initial={reduceMotion ? false : { opacity: 0, x: -8 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.25 + i * 0.12, duration: 0.35, ease: EASE }}
+              className="lx-ticket-row"
+            >
+              <span className="text-gray-700">{l}</span>
+              <span className="font-semibold text-gray-900">{v}</span>
+            </motion.div>
           ))}
         </div>
+        <div className="mt-3 flex items-center justify-between pt-2 text-[15px] font-semibold text-gray-900">
+          <span>Total</span>
+          <span>{scene.total}</span>
+        </div>
+        <Stamp delay={0.7} reduceMotion={reduceMotion}>
+          <Check className="h-3.5 w-3.5" /> {scene.stamp}
+        </Stamp>
+      </>
+    );
+  }
+
+  if (scene.kind === "stock") {
+    return (
+      <>
+        {header("square")}
+        <div className="mt-6 flex items-end gap-3">
+          <motion.span
+            initial={reduceMotion ? false : { opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.25, duration: 0.4, ease: EASE }}
+            className="vl-display text-[72px] leading-none text-gray-900"
+          >
+            {scene.value}
+          </motion.span>
+          <span className="pb-2 text-[15px] text-gray-500">{scene.unit} of Tito’s</span>
+        </div>
+        <div className="mt-5 h-2.5 overflow-hidden rounded-full bg-gray-100">
+          <motion.div
+            initial={reduceMotion ? false : { width: 0 }}
+            animate={{ width: `${scene.pct * 100}%` }}
+            transition={{ delay: 0.35, duration: 0.8, ease: EASE }}
+            className="h-full rounded-full"
+            style={{ background: "var(--vl-sunset)" }}
+          />
+        </div>
+        <p className="mt-4 text-[13px] text-gray-500">{scene.note}</p>
+        <Stamp delay={0.9} reduceMotion={reduceMotion}>
+          <Check className="h-3.5 w-3.5" /> Counted in Square
+        </Stamp>
+      </>
+    );
+  }
+
+  return (
+    <>
+      {header(scene.brand)}
+      <motion.div
+        initial={reduceMotion ? false : { opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.25, duration: 0.4, ease: EASE }}
+        className="mt-6 flex gap-3"
+      >
+        <span className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-black text-white">
+          <Volume2 className="h-4 w-4" />
+        </span>
+        <p className="vl-display text-[22px] leading-snug text-gray-900">“{scene.text}”</p>
+      </motion.div>
+      <p className="mt-5 text-[13px] text-gray-500">{scene.note}</p>
+      <Stamp delay={0.8} reduceMotion={reduceMotion}>
+        <Volume2 className="h-3.5 w-3.5" /> Answered out loud
+      </Stamp>
+    </>
+  );
+}
+
+function Stamp({ children, delay, reduceMotion }: { children: ReactNode; delay: number; reduceMotion: boolean }) {
+  return (
+    <motion.span
+      initial={reduceMotion ? false : { opacity: 0, scale: 1.4, rotate: -6 }}
+      animate={{ opacity: 1, scale: 1, rotate: -2 }}
+      transition={{ delay, type: "spring", stiffness: 380, damping: 18 }}
+      className="lx-stamp mt-6 inline-flex"
+    >
+      {children}
+    </motion.span>
+  );
+}
+
+/* ───────────────────────────────────────────────────────────────
+   THE TRIO — three names on the door, each doing one job.
+   ─────────────────────────────────────────────────────────────── */
+
+const TRIO: Array<{ brand: Brand; role: string; line: string; does: string[]; logoHeight: number }> = [
+  {
+    brand: "square",
+    role: "The POS of record",
+    line: "Every order, count and refund lands in Square exactly as spoken. Nothing lives outside your books.",
+    does: ["Orders and open tabs", "Inventory counts", "Terminal checkout"],
+    logoHeight: 44,
+  },
+  {
+    brand: "openai",
+    role: "The voice that listens",
+    line: "OpenAI Realtime hears the room, reasons in the moment and calls the right command in under a second.",
+    does: ["Sub-second replies", "Natural modifiers", "Barge-in mid-sentence"],
+    logoHeight: 44,
+  },
+  {
+    brand: "google",
+    role: "The voice for loud nights",
+    line: "Gemini Live is the engine you switch to when the music’s up. Same commands, different ears.",
+    does: ["Far-field listening", "Noise-mode tuning", "One-tap engine switch"],
+    logoHeight: 84,
+  },
+];
+
+function Trio({ reduceMotion }: { reduceMotion: boolean }) {
+  return (
+    <section className="relative py-20 md:py-28">
+      <div className="section-container">
+        <div className="mx-auto max-w-2xl text-center">
+          <p className="font-mono text-[11px] tracking-[0.3em] text-white/45 uppercase">Three names on the door</p>
+          <h2 className="vl-section-heading mt-5">
+            Built on the best <em>three in the room.</em>
+          </h2>
+        </div>
+
+        <div className="mt-14 grid gap-5 md:grid-cols-3">
+          {TRIO.map((t, i) => (
+            <TiltCard key={t.brand} index={i} reduceMotion={reduceMotion}>
+              <div className="flex h-44 items-center justify-center">
+                <BrandMark brand={t.brand} height={t.logoHeight} />
+              </div>
+              <p className="font-mono text-[10px] tracking-[0.24em] text-gray-400 uppercase">{t.role}</p>
+              <p className="mt-3 text-[15px] leading-relaxed text-gray-700">{t.line}</p>
+              <ul className="mt-5 space-y-2">
+                {t.does.map((d) => (
+                  <li key={d} className="flex items-center gap-2.5 text-[13.5px] text-gray-900">
+                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-black text-white">
+                      <Check className="h-3 w-3" />
+                    </span>
+                    {d}
+                  </li>
+                ))}
+              </ul>
+            </TiltCard>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/** White card that tilts toward the cursor. Pure delight, zero logic. */
+function TiltCard({ children, index, reduceMotion }: { children: ReactNode; index: number; reduceMotion: boolean }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const mx = useMotionValue(0.5);
+  const my = useMotionValue(0.5);
+  const rx = useSpring(useTransform(my, [0, 1], [7, -7]), { stiffness: 200, damping: 20 });
+  const ry = useSpring(useTransform(mx, [0, 1], [-7, 7]), { stiffness: 200, damping: 20 });
+  const glowX = useTransform(mx, [0, 1], ["0%", "100%"]);
+  const glowY = useTransform(my, [0, 1], ["0%", "100%"]);
+  const glow = useMemo(
+    () => (reduceMotion ? undefined : `radial-gradient(240px circle at var(--gx) var(--gy), rgba(240,152,25,0.10), transparent 70%)`),
+    [reduceMotion],
+  );
+
+  return (
+    <motion.div
+      ref={ref}
+      initial={reduceMotion ? false : { opacity: 0, y: 24 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: "-60px" }}
+      transition={{ duration: 0.55, delay: index * 0.08, ease: EASE }}
+      onMouseMove={(e) => {
+        if (reduceMotion) return;
+        const r = e.currentTarget.getBoundingClientRect();
+        mx.set((e.clientX - r.left) / r.width);
+        my.set((e.clientY - r.top) / r.height);
+      }}
+      onMouseLeave={() => {
+        mx.set(0.5);
+        my.set(0.5);
+      }}
+      style={reduceMotion ? undefined : ({ rotateX: rx, rotateY: ry, transformPerspective: 900, "--gx": glowX, "--gy": glowY } as never)}
+      className="vl-card relative overflow-hidden p-7"
+    >
+      {glow && <div aria-hidden className="pointer-events-none absolute inset-0" style={{ background: glow }} />}
+      <div className="relative">{children}</div>
+    </motion.div>
+  );
+}
+
+/* ───────────────────────────────────────────────────────────────
+   THE ASK — one line, two buttons.
+   ─────────────────────────────────────────────────────────────── */
+
+function Closing() {
+  return (
+    <section className="relative overflow-hidden py-28 md:py-40">
+      <div aria-hidden className="vl-halo left-1/2 top-1/2 h-[28rem] w-[28rem] -translate-x-1/2 -translate-y-1/2 opacity-25" />
+      <div className="section-container relative text-center">
+        <h2 className="vl-display text-[clamp(2.8rem,8vw,6.5rem)] leading-[0.95]">
+          Give your bar <em>a voice.</em>
+        </h2>
+        <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
+          <Link href="/signup" className="vl-btn-primary gap-2 px-7 py-4 text-[15px]">
+            Start free trial <ArrowRight className="h-4 w-4" />
+          </Link>
+          <Link href="/book-demo" className="vl-btn-outline px-7 py-4 text-[15px]">
+            Book a demo
+          </Link>
+        </div>
+        <p className="mt-6 font-mono text-[11px] tracking-[0.22em] text-white/45 uppercase">
+          14-day free trial · No card · Disconnect Square anytime
+        </p>
       </div>
     </section>
   );

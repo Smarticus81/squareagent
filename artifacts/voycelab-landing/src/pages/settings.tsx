@@ -524,7 +524,7 @@ export default function Settings() {
                     )}
 
                     {auth.user.isAdmin && billingStatus && (
-                      <div className="mt-5 border-t pt-4" style={{ borderColor: "rgba(14, 27, 44,0.06)" }}>
+                      <div className="mt-5 border-t pt-4" style={{ borderColor: "var(--vl-line)" }}>
                         <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-vl-ink-faint">Launch Diagnostics</p>
                         <div className="flex flex-wrap gap-2.5">
                           <BillingBadge tone={billingStatus.configured ? "ok" : "warn"} text={billingStatus.configured ? "Clerk Billing Connected" : "Clerk Billing Integration Needed"} />
@@ -567,7 +567,7 @@ export default function Settings() {
               {auth.user.isAdmin && (
                 <Section icon={<KeyRound className="h-5 w-5" />} title="Launch Readiness" description="Confirm the live product is ready for customers.">
                   <div className="grid gap-5 lg:grid-cols-[230px_minmax(0,1fr)]">
-                    <div className="rounded-[24px] border p-5" style={{ borderColor: "rgba(14, 27, 44,0.08)", background: "linear-gradient(135deg, rgba(124,110,245,0.12), rgba(255,107,71,0.10), rgba(79,184,255,0.10))" }}>
+                    <div className="rounded-[24px] border p-5" style={{ borderColor: "var(--vl-surface)", background: "linear-gradient(135deg, rgba(124,110,245,0.12), rgba(255,107,71,0.10), rgba(79,184,255,0.10))" }}>
                       <p className="text-[11px] font-bold uppercase tracking-[0.16em]" style={{ color: "var(--color-vl-ink-faint)" }}>
                         Production score
                       </p>
@@ -596,7 +596,7 @@ export default function Settings() {
                   <Field label="Email Address">
                     <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="vl-compact-input shadow-sm" placeholder="Your email address" />
                   </Field>
-                  <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4" style={{ borderColor: "rgba(14, 27, 44,0.05)" }}>
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4" style={{ borderColor: "var(--vl-line)" }}>
                     <button
                       type="submit"
                       disabled={profileLoading || !profileDirty}
@@ -618,7 +618,7 @@ export default function Settings() {
                   <Field label="New Password">
                     <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} minLength={8} className="vl-compact-input shadow-sm" autoComplete="new-password" placeholder="Min 8 characters" />
                   </Field>
-                  <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4" style={{ borderColor: "rgba(14, 27, 44,0.05)" }}>
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4" style={{ borderColor: "var(--vl-line)" }}>
                     <button
                       type="submit"
                       disabled={pwLoading || !currentPassword || !newPassword}
@@ -668,13 +668,13 @@ export default function Settings() {
           padding: 0 16px;
           border-radius: 14px;
           background: rgba(255,255,255,0.78);
-          border: 1px solid rgba(14,27,44,0.12);
+          border: 1px solid var(--vl-line);
           color: var(--color-vl-ink);
           font-size: 14px;
           outline: none;
           transition: all .2s ease;
         }
-        .vl-compact-input::placeholder { color: rgba(14,27,44,0.3); }
+        .vl-compact-input::placeholder { color: var(--vl-line-strong); }
         .vl-compact-input:focus {
           border-color: #FF6B47;
           background: #fff;
@@ -704,7 +704,7 @@ function Section({
         type="button"
         onClick={() => setOpen(true)}
         className="vl-panel group flex aspect-square min-h-[210px] flex-col justify-between overflow-hidden rounded-[28px] border p-4 text-left shadow-sm transition hover:-translate-y-1 hover:shadow-lg"
-        style={{ borderColor: "rgba(14,27,44,0.05)" }}
+        style={{ borderColor: "var(--vl-line)" }}
       >
         <PremiumSettingsArt title={title} />
 
@@ -732,16 +732,16 @@ function Section({
           <button
             type="button"
             aria-label={`Close ${title}`}
-            className="absolute inset-0 bg-[rgba(14,27,44,0.38)] backdrop-blur-sm"
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
             onClick={() => setOpen(false)}
           />
           <section
             role="dialog"
             aria-modal="true"
             className="relative flex max-h-[88vh] w-full max-w-[960px] flex-col overflow-hidden rounded-[28px] border bg-white shadow-2xl"
-            style={{ borderColor: "rgba(14, 27, 44,0.10)" }}
+            style={{ borderColor: "var(--vl-line)" }}
           >
-            <div className="flex flex-wrap items-start justify-between gap-4 border-b p-6" style={{ borderColor: "rgba(14, 27, 44,0.08)" }}>
+            <div className="flex flex-wrap items-start justify-between gap-4 border-b p-6" style={{ borderColor: "var(--vl-line)" }}>
               <div className="flex min-w-0 items-start gap-4">
                 <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-orange-100 shadow-sm" style={{ background: "var(--color-vl-coral-tint)", color: "var(--color-vl-coral-deep)" }}>
                   {icon}
@@ -763,7 +763,7 @@ function Section({
               <button
                 type="button"
                 className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border bg-white/80 text-vl-ink-muted transition hover:bg-white hover:text-vl-ink"
-                style={{ borderColor: "rgba(14, 27, 44,0.10)" }}
+                style={{ borderColor: "var(--vl-line)" }}
                 onClick={() => setOpen(false)}
               >
                 <X className="h-4 w-4" />
@@ -850,7 +850,7 @@ function getSettingsArtPalette(title: string) {
       glow: "rgba(255,107,71,0.45)",
       soft: "rgba(255,185,90,0.32)",
       line: "rgba(255,107,71,0.72)",
-      lineAlt: "rgba(14,27,44,0.72)",
+      lineAlt: "var(--color-vl-ink-soft)",
       border: "rgba(255,107,71,0.18)",
       ink: "#8F2F1D",
     };
@@ -876,21 +876,21 @@ function getSettingsArtPalette(title: string) {
       glow: "rgba(47,158,100,0.40)",
       soft: "rgba(79,184,255,0.32)",
       line: "rgba(47,158,100,0.78)",
-      lineAlt: "rgba(14,27,44,0.68)",
+      lineAlt: "var(--color-vl-ink-soft)",
       border: "rgba(47,158,100,0.18)",
       ink: "#17633B",
     };
   }
   if (title.includes("Security")) {
     return {
-      start: "rgba(14,27,44,0.16)",
+      start: "var(--vl-line)",
       mid: "rgba(124,110,245,0.18)",
       end: "rgba(255,255,255,0.88)",
-      glow: "rgba(14,27,44,0.28)",
+      glow: "var(--vl-line-strong)",
       soft: "rgba(124,110,245,0.32)",
-      line: "rgba(14,27,44,0.76)",
+      line: "var(--color-vl-ink-soft)",
       lineAlt: "rgba(124,110,245,0.74)",
-      border: "rgba(14,27,44,0.12)",
+      border: "var(--vl-line)",
       ink: "#0E1B2C",
     };
   }
@@ -993,7 +993,7 @@ function AdminPanel({
 }) {
   return (
     <section className={`vl-panel rounded-3xl border p-5 shadow-sm ${className ?? ""}`} style={{ borderColor: "rgba(14,27,44,0.06)" }}>
-      <div className="mb-5 flex flex-wrap items-start justify-between gap-4 border-b pb-4" style={{ borderColor: "rgba(14,27,44,0.06)" }}>
+      <div className="mb-5 flex flex-wrap items-start justify-between gap-4 border-b pb-4" style={{ borderColor: "var(--vl-line)" }}>
         <div className="flex min-w-0 items-start gap-3.5">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-orange-100 shadow-sm" style={{ background: "var(--color-vl-coral-tint)", color: "var(--color-vl-coral-deep)" }}>
             {icon}
@@ -1163,7 +1163,7 @@ function AdminConsole({ token }: { token: string | null }) {
 
   if (loading) {
     return (
-      <div className="mt-10 flex items-center gap-3 py-6 justify-center rounded-2xl bg-white/40 border" style={{ borderColor: "rgba(14, 27, 44,0.06)" }}>
+      <div className="mt-10 flex items-center gap-3 py-6 justify-center rounded-2xl bg-white/40 border" style={{ borderColor: "var(--vl-line)" }}>
         <Loader2 className="h-5 w-5 animate-spin text-[#FF6B47]" />
         <span className="text-[13.5px] font-bold" style={{ color: "var(--color-vl-ink-muted)" }}>Loading secure admin workspace...</span>
       </div>
@@ -1235,7 +1235,7 @@ function AdminConsole({ token }: { token: string | null }) {
         type="button"
         onClick={() => setControlCenterOpen(true)}
         className="vl-panel group flex aspect-square min-h-[210px] flex-col justify-between overflow-hidden rounded-[28px] border p-5 text-left shadow-sm transition hover:-translate-y-1 hover:shadow-lg bg-white"
-        style={{ borderColor: "rgba(14,27,44,0.05)" }}
+        style={{ borderColor: "var(--vl-line)" }}
       >
         <PremiumSettingsArt title="Platform Control Center" />
         <div>
@@ -1259,7 +1259,7 @@ function AdminConsole({ token }: { token: string | null }) {
         type="button"
         onClick={() => setDiagnosticsOpen(true)}
         className="vl-panel group flex aspect-square min-h-[210px] flex-col justify-between overflow-hidden rounded-[28px] border p-5 text-left shadow-sm transition hover:-translate-y-1 hover:shadow-lg bg-white"
-        style={{ borderColor: "rgba(14,27,44,0.05)" }}
+        style={{ borderColor: "var(--vl-line)" }}
       >
         <PremiumSettingsArt title="System Diagnostics" />
         <div>
@@ -1283,7 +1283,7 @@ function AdminConsole({ token }: { token: string | null }) {
         type="button"
         onClick={() => setEnginesOpen(true)}
         className="vl-panel group flex aspect-square min-h-[210px] flex-col justify-between overflow-hidden rounded-[28px] border p-5 text-left shadow-sm transition hover:-translate-y-1 hover:shadow-lg bg-white"
-        style={{ borderColor: "rgba(14,27,44,0.05)" }}
+        style={{ borderColor: "var(--vl-line)" }}
       >
         <PremiumSettingsArt title="Voice Pipelines" />
         <div>
@@ -1307,7 +1307,7 @@ function AdminConsole({ token }: { token: string | null }) {
         type="button"
         onClick={() => setRolesOpen(true)}
         className="vl-panel group flex aspect-square min-h-[210px] flex-col justify-between overflow-hidden rounded-[28px] border p-5 text-left shadow-sm transition hover:-translate-y-1 hover:shadow-lg bg-white"
-        style={{ borderColor: "rgba(14,27,44,0.05)" }}
+        style={{ borderColor: "var(--vl-line)" }}
       >
         <PremiumSettingsArt title="Workspace Roles" />
         <div>
@@ -1437,7 +1437,7 @@ function UsageMeter({ usage, compact = false }: { usage: AdminUserAccess["usage"
 
   return (
     <div className={compact ? "mt-2" : "mt-4"}>
-      <div className="h-2.5 overflow-hidden rounded-lg bg-[rgba(14,27,44,0.06)]">
+      <div className="h-2.5 overflow-hidden rounded-lg bg-[var(--vl-line)]">
         <div className="h-full rounded-lg" style={{ width: `${capWidth}%`, background: colors.bar }} />
       </div>
       {!compact && (
@@ -1519,16 +1519,16 @@ function AdminDiagnosticsModal({
       <button
         type="button"
         aria-label="Close diagnostics"
-        className="absolute inset-0 bg-[rgba(14,27,44,0.38)] backdrop-blur-sm"
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
         onClick={onClose}
       />
       <section
         role="dialog"
         aria-modal="true"
-        className="relative flex max-h-[88vh] w-full max-w-[960px] flex-col overflow-hidden rounded-[28px] border bg-[#FBF7F1] shadow-2xl"
-        style={{ borderColor: "rgba(14, 27, 44,0.10)" }}
+        className="relative flex max-h-[88vh] w-full max-w-[960px] flex-col overflow-hidden rounded-[28px] border bg-white shadow-2xl"
+        style={{ borderColor: "var(--vl-line)" }}
       >
-        <div className="flex flex-wrap items-start justify-between gap-4 border-b p-6 bg-white" style={{ borderColor: "rgba(14, 27, 44,0.08)" }}>
+        <div className="flex flex-wrap items-start justify-between gap-4 border-b p-6 bg-white" style={{ borderColor: "var(--vl-line)" }}>
           <div>
             <p className="text-[11px] font-bold uppercase tracking-[0.16em]" style={{ color: "var(--color-vl-ink-faint)" }}>
               Admin diagnostics
@@ -1553,7 +1553,7 @@ function AdminDiagnosticsModal({
             <button
               type="button"
               className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border bg-white/80 text-vl-ink-muted transition hover:bg-white hover:text-vl-ink"
-              style={{ borderColor: "rgba(14, 27, 44,0.10)" }}
+              style={{ borderColor: "var(--vl-line)" }}
               onClick={onClose}
             >
               <X className="h-4 w-4" />
@@ -1650,7 +1650,7 @@ function AdminDiagnosticsModal({
                         )}
                       </div>
                       <div className="text-right">
-                        <span className={`text-[11px] font-extrabold uppercase px-2 py-0.5 rounded-md ${diagData.clerkApi.status === "healthy" ? "bg-emerald-100 text-emerald-800" : diagData.clerkApi.status === "unconfigured" ? "bg-[rgba(14,27,44,0.06)] text-vl-ink-soft" : "bg-red-100 text-red-800"}`}>
+                        <span className={`text-[11px] font-extrabold uppercase px-2 py-0.5 rounded-md ${diagData.clerkApi.status === "healthy" ? "bg-emerald-100 text-emerald-800" : diagData.clerkApi.status === "unconfigured" ? "bg-[var(--vl-line)] text-vl-ink-soft" : "bg-red-100 text-red-800"}`}>
                           {diagData.clerkApi.status}
                         </span>
                         {diagData.clerkApi.status === "healthy" && (
@@ -1670,42 +1670,42 @@ function AdminDiagnosticsModal({
                     Environment Credentials
                   </h3>
                   <div className="grid grid-cols-2 gap-2 text-[12.5px] font-semibold text-vl-ink-soft">
-                    <div className="flex items-center gap-2 rounded-xl border p-3 bg-vl-cream" style={{ borderColor: "rgba(14, 27, 44,0.04)" }}>
+                    <div className="flex items-center gap-2 rounded-xl border p-3 bg-vl-cream" style={{ borderColor: "var(--vl-line)" }}>
                       <span className={`h-2.5 w-2.5 rounded-full ${diagData.env?.databaseUrlSet ? "bg-emerald-500" : "bg-red-500"}`} />
                       <span>DATABASE_URL</span>
                     </div>
-                    <div className="flex items-center gap-2 rounded-xl border p-3 bg-vl-cream" style={{ borderColor: "rgba(14, 27, 44,0.04)" }}>
+                    <div className="flex items-center gap-2 rounded-xl border p-3 bg-vl-cream" style={{ borderColor: "var(--vl-line)" }}>
                       <span className={`h-2.5 w-2.5 rounded-full ${diagData.env?.secretsEncryptionKeySet ? "bg-emerald-500" : "bg-red-500"}`} />
                       <span>ENCRYPTION_KEY</span>
                     </div>
-                    <div className="flex items-center gap-2 rounded-xl border p-3 bg-vl-cream" style={{ borderColor: "rgba(14, 27, 44,0.04)" }}>
+                    <div className="flex items-center gap-2 rounded-xl border p-3 bg-vl-cream" style={{ borderColor: "var(--vl-line)" }}>
                       <span className={`h-2.5 w-2.5 rounded-full ${diagData.env?.openaiApiKeySet ? "bg-emerald-500" : "bg-red-500"}`} />
                       <span>OPENAI_API_KEY</span>
                     </div>
-                    <div className="flex items-center gap-2 rounded-xl border p-3 bg-vl-cream" style={{ borderColor: "rgba(14, 27, 44,0.04)" }}>
+                    <div className="flex items-center gap-2 rounded-xl border p-3 bg-vl-cream" style={{ borderColor: "var(--vl-line)" }}>
                       <span className={`h-2.5 w-2.5 rounded-full ${diagData.env?.googleGeminiApiKeySet ? "bg-emerald-500" : "bg-red-500"}`} />
                       <span>GEMINI_API_KEY</span>
                     </div>
-                    <div className="flex items-center gap-2 rounded-xl border p-3 bg-vl-cream" style={{ borderColor: "rgba(14, 27, 44,0.04)" }}>
+                    <div className="flex items-center gap-2 rounded-xl border p-3 bg-vl-cream" style={{ borderColor: "var(--vl-line)" }}>
                       <span className={`h-2.5 w-2.5 rounded-full ${diagData.env?.squareAppIdSet ? "bg-emerald-500" : "bg-red-500"}`} />
                       <span>SQUARE_APP_ID</span>
                     </div>
-                    <div className="flex items-center gap-2 rounded-xl border p-3 bg-vl-cream" style={{ borderColor: "rgba(14, 27, 44,0.04)" }}>
+                    <div className="flex items-center gap-2 rounded-xl border p-3 bg-vl-cream" style={{ borderColor: "var(--vl-line)" }}>
                       <span className={`h-2.5 w-2.5 rounded-full ${diagData.env?.squareAppSecretSet ? "bg-emerald-500" : "bg-red-500"}`} />
                       <span>SQUARE_SECRET</span>
                     </div>
-                    <div className="flex items-center gap-2 rounded-xl border p-3 bg-vl-cream" style={{ borderColor: "rgba(14, 27, 44,0.04)" }}>
+                    <div className="flex items-center gap-2 rounded-xl border p-3 bg-vl-cream" style={{ borderColor: "var(--vl-line)" }}>
                       <span className={`h-2.5 w-2.5 rounded-full ${diagData.env?.clerkSecretKeySet ? "bg-emerald-500" : "bg-red-500"}`} />
                       <span>CLERK_SECRET_KEY</span>
                     </div>
-                    <div className="flex items-center gap-2 rounded-xl border p-3 bg-vl-cream" style={{ borderColor: "rgba(14, 27, 44,0.04)" }}>
+                    <div className="flex items-center gap-2 rounded-xl border p-3 bg-vl-cream" style={{ borderColor: "var(--vl-line)" }}>
                       <span className={`h-2.5 w-2.5 rounded-full ${diagData.env?.clerkPublishableKeySet ? "bg-emerald-500" : "bg-red-500"}`} />
                       <span>CLERK_PUB_KEY</span>
                     </div>
                   </div>
                 </div>
 
-                <div className="mt-4 pt-4 border-t" style={{ borderColor: "rgba(14, 27, 44,0.04)" }}>
+                <div className="mt-4 pt-4 border-t" style={{ borderColor: "var(--vl-line)" }}>
                   <div className="flex justify-between text-[13px] font-bold">
                     <span style={{ color: "var(--color-vl-ink-muted)" }}>Active cached venues:</span>
                     <span className="tabular-nums" style={{ color: "var(--color-vl-coral-deep)" }}>{diagData.caches?.credentialsSize} credentials</span>
@@ -1732,16 +1732,16 @@ function AdminVoiceEnginesModal({
       <button
         type="button"
         aria-label="Close voice engines"
-        className="absolute inset-0 bg-[rgba(14,27,44,0.38)] backdrop-blur-sm"
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
         onClick={onClose}
       />
       <section
         role="dialog"
         aria-modal="true"
-        className="relative flex max-h-[85vh] w-full max-w-[800px] flex-col overflow-hidden rounded-[28px] border bg-[#FBF7F1] shadow-2xl"
-        style={{ borderColor: "rgba(14, 27, 44,0.10)" }}
+        className="relative flex max-h-[85vh] w-full max-w-[800px] flex-col overflow-hidden rounded-[28px] border bg-white shadow-2xl"
+        style={{ borderColor: "var(--vl-line)" }}
       >
-        <div className="flex flex-wrap items-start justify-between gap-4 border-b p-6 bg-white" style={{ borderColor: "rgba(14, 27, 44,0.08)" }}>
+        <div className="flex flex-wrap items-start justify-between gap-4 border-b p-6 bg-white" style={{ borderColor: "var(--vl-line)" }}>
           <div>
             <p className="text-[11px] font-bold uppercase tracking-[0.16em]" style={{ color: "var(--color-vl-ink-faint)" }}>
               Voice pipelines
@@ -1756,7 +1756,7 @@ function AdminVoiceEnginesModal({
           <button
             type="button"
             className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border bg-white/80 text-vl-ink-muted transition hover:bg-white hover:text-vl-ink"
-            style={{ borderColor: "rgba(14, 27, 44,0.10)" }}
+            style={{ borderColor: "var(--vl-line)" }}
             onClick={onClose}
           >
             <X className="h-4 w-4" />
@@ -1768,7 +1768,7 @@ function AdminVoiceEnginesModal({
             {data.pipelines.map((pipeline) => {
               const isLive = pipeline.status === "available" || pipeline.status === "experimental";
               return (
-                <div key={pipeline.provider} className="rounded-2xl border bg-white p-4 flex flex-col justify-between" style={{ borderColor: "rgba(14, 27, 44,0.06)" }}>
+                <div key={pipeline.provider} className="rounded-2xl border bg-white p-4 flex flex-col justify-between" style={{ borderColor: "var(--vl-line)" }}>
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="truncate text-[14px] font-black" style={{ color: "var(--color-vl-ink)" }}>{pipeline.displayName}</p>
@@ -1777,7 +1777,7 @@ function AdminVoiceEnginesModal({
                     <span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${isLive ? "bg-emerald-500" : "bg-vl-ink-faint"}`} />
                   </div>
                   {pipeline.reason && (
-                    <p className="mt-3.5 border-t pt-3 text-[11.5px] leading-relaxed font-semibold" style={{ borderColor: "rgba(14, 27, 44,0.04)", color: "var(--color-vl-ink-muted)" }}>{pipeline.reason}</p>
+                    <p className="mt-3.5 border-t pt-3 text-[11.5px] leading-relaxed font-semibold" style={{ borderColor: "var(--vl-line)", color: "var(--color-vl-ink-muted)" }}>{pipeline.reason}</p>
                   )}
                 </div>
               );
@@ -1801,16 +1801,16 @@ function AdminRolesModal({
       <button
         type="button"
         aria-label="Close security roles"
-        className="absolute inset-0 bg-[rgba(14,27,44,0.38)] backdrop-blur-sm"
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
         onClick={onClose}
       />
       <section
         role="dialog"
         aria-modal="true"
-        className="relative flex max-h-[85vh] w-full max-w-[800px] flex-col overflow-hidden rounded-[28px] border bg-[#FBF7F1] shadow-2xl"
-        style={{ borderColor: "rgba(14, 27, 44,0.10)" }}
+        className="relative flex max-h-[85vh] w-full max-w-[800px] flex-col overflow-hidden rounded-[28px] border bg-white shadow-2xl"
+        style={{ borderColor: "var(--vl-line)" }}
       >
-        <div className="flex flex-wrap items-start justify-between gap-4 border-b p-6 bg-white" style={{ borderColor: "rgba(14, 27, 44,0.08)" }}>
+        <div className="flex flex-wrap items-start justify-between gap-4 border-b p-6 bg-white" style={{ borderColor: "var(--vl-line)" }}>
           <div>
             <p className="text-[11px] font-bold uppercase tracking-[0.16em]" style={{ color: "var(--color-vl-ink-faint)" }}>
               Access policy
@@ -1825,7 +1825,7 @@ function AdminRolesModal({
           <button
             type="button"
             className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border bg-white/80 text-vl-ink-muted transition hover:bg-white hover:text-vl-ink"
-            style={{ borderColor: "rgba(14, 27, 44,0.10)" }}
+            style={{ borderColor: "var(--vl-line)" }}
             onClick={onClose}
           >
             <X className="h-4 w-4" />
@@ -1835,14 +1835,14 @@ function AdminRolesModal({
         <div className="vl-scroll overflow-y-auto p-6">
           <div className="grid gap-4 sm:grid-cols-2">
             {data.roles.map((role) => (
-              <div key={role.role} className="rounded-2xl border bg-white p-4" style={{ borderColor: "rgba(14, 27, 44,0.06)" }}>
+              <div key={role.role} className="rounded-2xl border bg-white p-4" style={{ borderColor: "var(--vl-line)" }}>
                 <div className="flex items-center gap-2.5 mb-2">
                   <Lock className="h-4 w-4 text-vl-ink-faint" />
                   <p className="text-[14px] font-black" style={{ color: "var(--color-vl-ink)" }}>{role.label}</p>
                 </div>
-                <div className="flex flex-wrap gap-1.5 mt-2 pt-2 border-t" style={{ borderColor: "rgba(14, 27, 44,0.04)" }}>
+                <div className="flex flex-wrap gap-1.5 mt-2 pt-2 border-t" style={{ borderColor: "var(--vl-line)" }}>
                   {role.permissions.map((p) => (
-                    <span key={p} className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-vl-cream border capitalize text-vl-ink-muted" style={{ borderColor: "rgba(14, 27, 44,0.04)" }}>
+                    <span key={p} className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-vl-cream border capitalize text-vl-ink-muted" style={{ borderColor: "var(--vl-line)" }}>
                       {p.replace(/_/g, " ")}
                     </span>
                   ))}
@@ -1908,16 +1908,16 @@ function AdminControlCenterModal({
       <button
         type="button"
         aria-label="Close platform control"
-        className="absolute inset-0 bg-[rgba(14,27,44,0.38)] backdrop-blur-sm"
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
         onClick={onClose}
       />
       <section
         role="dialog"
         aria-modal="true"
-        className="relative flex max-h-[90vh] w-full max-w-[1240px] flex-col overflow-hidden rounded-[28px] border bg-[#FBF7F1] shadow-2xl"
-        style={{ borderColor: "rgba(14, 27, 44,0.10)" }}
+        className="relative flex max-h-[90vh] w-full max-w-[1240px] flex-col overflow-hidden rounded-[28px] border bg-white shadow-2xl"
+        style={{ borderColor: "var(--vl-line)" }}
       >
-        <div className="flex flex-wrap items-start justify-between gap-4 border-b p-6 bg-white" style={{ borderColor: "rgba(14, 27, 44,0.08)" }}>
+        <div className="flex flex-wrap items-start justify-between gap-4 border-b p-6 bg-white" style={{ borderColor: "var(--vl-line)" }}>
           <div>
             <p className="text-[11px] font-bold uppercase tracking-[0.16em]" style={{ color: "var(--color-vl-ink-faint)" }}>
               Admin console
@@ -1932,7 +1932,7 @@ function AdminControlCenterModal({
           <button
             type="button"
             className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border bg-white/80 text-vl-ink-muted transition hover:bg-white hover:text-vl-ink"
-            style={{ borderColor: "rgba(14, 27, 44,0.10)" }}
+            style={{ borderColor: "var(--vl-line)" }}
             onClick={onClose}
           >
             <X className="h-4 w-4" />
@@ -1976,7 +1976,7 @@ function AdminControlCenterModal({
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="h-12 w-full rounded-2xl border bg-vl-cream pl-11 pr-4 text-[13px] outline-none transition-all duration-200 focus:border-[#FF6B47] focus:bg-white font-semibold"
-                  style={{ borderColor: "rgba(14, 27, 44,0.08)", color: "var(--color-vl-ink)" }}
+                  style={{ borderColor: "var(--vl-line)", color: "var(--color-vl-ink)" }}
                 />
               </div>
 
@@ -1994,7 +1994,7 @@ function AdminControlCenterModal({
                     onClick={() => setUsageFilter(value === "over" ? "over_included" : value)}
                     className="rounded-xl border py-2 text-[10px] font-black uppercase tracking-[0.12em] transition hover:bg-white"
                     style={{
-                      borderColor: (value === "over" ? usageFilter === "over_included" : usageFilter === value) ? "rgba(255,107,71,0.34)" : "rgba(14, 27, 44,0.06)",
+                      borderColor: (value === "over" ? usageFilter === "over_included" : usageFilter === value) ? "rgba(255,107,71,0.34)" : "var(--vl-line)",
                       background: (value === "over" ? usageFilter === "over_included" : usageFilter === value) ? "rgba(255,107,71,0.08)" : "rgba(255,255,255,0.58)",
                       color: (value === "over" ? usageFilter === "over_included" : usageFilter === value) ? "var(--color-vl-coral-deep)" : "var(--color-vl-ink-muted)",
                     }}
@@ -2023,7 +2023,7 @@ function AdminControlCenterModal({
                         type="button"
                         className="w-full rounded-2xl border p-3.5 text-left transition hover:bg-white hover:shadow-xs"
                         style={{
-                          borderColor: isSelected ? "rgba(255,107,71,0.34)" : "rgba(14, 27, 44,0.06)",
+                          borderColor: isSelected ? "rgba(255,107,71,0.34)" : "var(--vl-line)",
                           background: isSelected ? "rgba(255,107,71,0.08)" : "rgba(255,255,255,0.66)",
                         }}
                         onClick={() => setSelectedUserId(user.id)}
@@ -2041,7 +2041,7 @@ function AdminControlCenterModal({
                             {status}
                           </span>
                         </div>
-                        <div className="mt-3.5 border-t pt-3 flex items-center justify-between text-[11px] font-bold" style={{ borderColor: "rgba(14, 27, 44,0.04)" }}>
+                        <div className="mt-3.5 border-t pt-3 flex items-center justify-between text-[11px] font-bold" style={{ borderColor: "var(--vl-line)" }}>
                           <span style={{ color: "var(--color-vl-ink-muted)" }}>
                             {user.organization?.name || "Personal Workspace"}
                           </span>
@@ -2060,7 +2060,7 @@ function AdminControlCenterModal({
             <div className="rounded-3xl border bg-white p-5 shadow-xs flex flex-col justify-between" style={{ borderColor: "rgba(14, 27, 44,0.06)" }}>
               {selectedUser ? (
                 <div className="space-y-5">
-                  <div className="border-b pb-4 flex justify-between items-start gap-4" style={{ borderColor: "rgba(14, 27, 44,0.04)" }}>
+                  <div className="border-b pb-4 flex justify-between items-start gap-4" style={{ borderColor: "var(--vl-line)" }}>
                     <div>
                       <h3 className="text-[17px] font-black" style={{ color: "var(--color-vl-ink)" }}>
                         {selectedUser.name || "User Details"}
@@ -2090,7 +2090,7 @@ function AdminControlCenterModal({
                     <AdminStat label="Total Voice Minutes" value={`${selectedUser.usage.voiceMinutes} mins utilized`} />
                   </div>
 
-                  <div className="border-t pt-4 space-y-4" style={{ borderColor: "rgba(14, 27, 44,0.04)" }}>
+                  <div className="border-t pt-4 space-y-4" style={{ borderColor: "var(--vl-line)" }}>
                     <div className="grid gap-4 sm:grid-cols-2">
                       <AdminSelect
                         label="Subscription Tier"
@@ -2148,7 +2148,7 @@ function AdminControlCenterModal({
                           <button
                             type="button"
                             className="vl-btn-outline w-full py-2.5 rounded-xl font-bold text-[12px] inline-flex items-center justify-center gap-1 bg-vl-cream hover:bg-white text-vl-ink-soft"
-                            style={{ borderColor: "rgba(14, 27, 44,0.06)" }}
+                            style={{ borderColor: "var(--vl-line)" }}
                             onClick={() =>
                               setActionModal({
                                 kind: "quick",
@@ -2177,7 +2177,7 @@ function AdminControlCenterModal({
               )}
 
               {selectedUser && (
-                <div className="mt-6 pt-4 border-t flex justify-end gap-2" style={{ borderColor: "rgba(14, 27, 44,0.04)" }}>
+                <div className="mt-6 pt-4 border-t flex justify-end gap-2" style={{ borderColor: "var(--vl-line)" }}>
                   {selectedDraft?.status !== "active" ? (
                     <button
                       type="button"
@@ -2262,7 +2262,7 @@ function AdminActionTile({
       type="button"
       className="group flex min-h-28 flex-col rounded-3xl border bg-white/72 p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:bg-white hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
       style={{
-        borderColor: danger ? "rgba(215,64,46,0.20)" : "rgba(14, 27, 44,0.08)",
+        borderColor: danger ? "rgba(215,64,46,0.20)" : "var(--vl-line)",
         color: danger ? "var(--color-vl-danger)" : "var(--color-vl-ink)",
       }}
       disabled={disabled}
@@ -2325,16 +2325,16 @@ function AdminAccessModal({
       <button
         type="button"
         aria-label="Close admin action"
-        className="absolute inset-0 bg-[rgba(14,27,44,0.38)] backdrop-blur-sm"
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
         onClick={onClose}
       />
       <section
         role="dialog"
         aria-modal="true"
         className="relative w-full max-w-150 overflow-hidden rounded-[28px] border bg-white shadow-2xl"
-        style={{ borderColor: "rgba(14, 27, 44,0.10)" }}
+        style={{ borderColor: "var(--vl-line)" }}
       >
-        <div className="relative border-b p-6" style={{ borderColor: "rgba(14, 27, 44,0.08)" }}>
+        <div className="relative border-b p-6" style={{ borderColor: "var(--vl-line)" }}>
           <div className="pointer-events-none absolute inset-0 opacity-80" style={{
             background:
               "radial-gradient(circle at 14% 18%, rgba(255, 107, 71,0.12), transparent 28%), radial-gradient(circle at 85% 5%, rgba(124, 110, 245,0.12), transparent 30%), radial-gradient(circle at 92% 88%, rgba(16,185,129,0.10), transparent 30%)",
@@ -2354,7 +2354,7 @@ function AdminAccessModal({
             <button
               type="button"
               className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border bg-white/80 text-vl-ink-muted transition hover:bg-white hover:text-vl-ink"
-              style={{ borderColor: "rgba(14, 27, 44,0.10)" }}
+              style={{ borderColor: "var(--vl-line)" }}
               onClick={onClose}
             >
               <X className="h-4 w-4" />
@@ -2382,7 +2382,7 @@ function AdminAccessModal({
               )}
             </div>
           ) : (
-            <div className="rounded-3xl border bg-vl-cream/70 p-5" style={{ borderColor: "rgba(14, 27, 44,0.08)" }}>
+            <div className="rounded-3xl border bg-vl-cream/70 p-5" style={{ borderColor: "var(--vl-line)" }}>
               <p className="text-[11px] font-bold uppercase tracking-[0.15em]" style={{ color: "var(--color-vl-ink-faint)" }}>
                 This will apply
               </p>
@@ -2395,7 +2395,7 @@ function AdminAccessModal({
           )}
         </div>
 
-        <div className="flex flex-wrap items-center justify-end gap-3 border-t bg-vl-cream/60 p-5" style={{ borderColor: "rgba(14, 27, 44,0.08)" }}>
+        <div className="flex flex-wrap items-center justify-end gap-3 border-t bg-vl-cream/60 p-5" style={{ borderColor: "var(--vl-line)" }}>
           <button type="button" className="vl-btn-ghost text-[13px]" onClick={onClose} disabled={saving}>
             Cancel
           </button>
@@ -2603,7 +2603,7 @@ function UsageCard({ token, plan, isAdmin = false }: { token: string | null; pla
                 </div>
 
                 {/* Progress details */}
-                <div className="rounded-2xl border bg-vl-cream/50 p-3 mt-3 flex justify-between items-center text-[12px] font-semibold" style={{ borderColor: "rgba(14, 27, 44,0.05)" }}>
+                <div className="rounded-2xl border bg-vl-cream/50 p-3 mt-3 flex justify-between items-center text-[12px] font-semibold" style={{ borderColor: "var(--vl-line)" }}>
                   <span style={{ color: "var(--color-vl-ink-muted)" }}>
                     {used > limit ? (
                       <>
@@ -2636,7 +2636,7 @@ function UsageCard({ token, plan, isAdmin = false }: { token: string | null; pla
                   const maxCount = Math.max(...(data?.topTools?.map((tool) => tool.count) ?? [1]));
                   const relativePct = Math.max(12, Math.round((t.count / maxCount) * 100));
                   return (
-                    <div key={t.toolName} className="relative overflow-hidden rounded-xl bg-vl-cream border px-4 py-2 flex justify-between items-center text-[13px]" style={{ borderColor: "rgba(14,27,44,0.04)" }}>
+                    <div key={t.toolName} className="relative overflow-hidden rounded-xl bg-vl-cream border px-4 py-2 flex justify-between items-center text-[13px]" style={{ borderColor: "var(--vl-line)" }}>
                       {/* background count bar */}
                       <div className="absolute left-0 top-0 bottom-0 bg-[#FF6B47]/5 transition-all duration-300" style={{ width: `${relativePct}%` }} />
                       <span className="font-bold capitalize z-10" style={{ color: "var(--color-vl-ink)" }}>{t.toolName.replace(/_/g, " ")}</span>

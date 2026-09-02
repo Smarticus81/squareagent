@@ -5,10 +5,16 @@
 @plugin "@tailwindcss/typography";
 
 /* ──────────────────────────────────────────────────────────────
-   VoyceLab — premium hospitality design system
+   VoyceLab — "Immersive Noir" design system
    ──────────────────────────────────────────────────────────────
-   Warm paper. Deep navy ink. Coral action color. Watercolor atmosphere.
-   Fraunces display type, Inter UI type, tactile controls, restrained motion.
+   A near-black shell with a looping ambient film behind everything.
+   Solid white, heavily rounded cards float on top. Navy ink inside
+   cards, white type on the shell. Sunset gradient for emphasis,
+   a conic-gradient ring for the primary action.
+
+   The ink tokens are CONTEXTUAL: on the shell they resolve to white,
+   inside any white surface (.vl-card, .vl-panel, bg-white…) they
+   resolve back to navy. Pages never need to know where they sit.
    ────────────────────────────────────────────────────────────── */
 
 @theme inline {
@@ -41,36 +47,6 @@
   --color-destructive: hsl(var(--destructive));
   --color-destructive-foreground: hsl(var(--destructive-foreground));
 
-  /* ── Brand tokens ───────────────────────────────────────────── */
-
-  /* Paper backgrounds */
-  --color-vl-cream: #FBF7F1;
-
-  /* Ink */
-  --color-vl-ink: #0E1B2C;
-  --color-vl-ink-soft: #2C394A;
-  --color-vl-ink-muted: #657080;
-  --color-vl-ink-faint: #9299A3;
-
-  /* Primary action */
-  --color-vl-coral: #FF6B47;
-  --color-vl-coral-deep: #E54F2D;
-  --color-vl-coral-tint: #FFF0EA;
-
-  /* Accent — violet/indigo signature */
-  --color-vl-accent: #7C6EF5;
-  --color-vl-accent-deep: #6354DC;
-  --color-vl-accent-tint: #F0EDFF;
-
-  /* Painterly support color */
-  --color-vl-lilac: #CFC8FF;
-  --color-vl-lilac-soft: #ECE9FF;
-
-  /* Status */
-  --color-vl-success: #10B981;
-  --color-vl-warning: #F59E0B;
-  --color-vl-danger: #EF4444;
-
   --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-display: 'Fraunces', Georgia, serif;
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -83,50 +59,161 @@
   --radius-3xl: 2rem;
 }
 
-/* Single light theme — flagship */
+/* Brand tokens are NOT inlined so utilities like text-vl-ink emit
+   var(--color-vl-ink) and follow the contextual overrides below. */
+@theme {
+  /* "cream" is now the subtle secondary surface — white/6 on the shell, gray-50 in cards */
+  --color-vl-cream: rgba(255, 255, 255, 0.06);
+
+  /* Ink — shell values (white). Re-declared for light surfaces below. */
+  --color-vl-ink: #FFFFFF;
+  --color-vl-ink-soft: rgba(255, 255, 255, 0.80);
+  --color-vl-ink-muted: rgba(255, 255, 255, 0.58);
+  --color-vl-ink-faint: rgba(255, 255, 255, 0.38);
+
+  /* Primary action — sunset */
+  --color-vl-coral: #FF6B47;
+  --color-vl-coral-deep: #FF512F;
+  --color-vl-coral-tint: rgba(255, 107, 71, 0.16);
+
+  /* Accent — electric violet, from the conic ring family */
+  --color-vl-accent: #8B7CFF;
+  --color-vl-accent-deep: #A99DFF;
+  --color-vl-accent-tint: rgba(124, 110, 245, 0.18);
+
+  --color-vl-lilac: #CFC8FF;
+  --color-vl-lilac-soft: rgba(207, 200, 255, 0.16);
+
+  /* Status */
+  --color-vl-success: #34D399;
+  --color-vl-warning: #FBBF24;
+  --color-vl-danger: #F87171;
+}
+
 :root,
 :root.light,
 :root.dark {
-  color-scheme: light;
+  color-scheme: dark;
 
-  --background: 36 56% 96%;
-  --foreground: 216 52% 11%;
+  --background: 240 9% 2%;
+  --foreground: 0 0% 100%;
 
-  --card: 36 100% 99%;
+  --card: 0 0% 100%;
   --card-foreground: 216 52% 11%;
-  --card-border: 216 52% 11% / 9%;
+  --card-border: 220 13% 91%;
 
-  --popover: 36 100% 99%;
+  --popover: 0 0% 100%;
   --popover-foreground: 216 52% 11%;
-  --popover-border: 216 52% 11% / 10%;
+  --popover-border: 220 13% 91%;
 
-  --primary: 11 100% 64%;
+  --primary: 0 0% 0%;
   --primary-foreground: 0 0% 100%;
 
-  --secondary: 34 50% 92%;
-  --secondary-foreground: 216 52% 11%;
+  --secondary: 0 0% 100% / 8%;
+  --secondary-foreground: 0 0% 100%;
 
-  --muted: 34 50% 92%;
-  --muted-foreground: 216 12% 45%;
+  --muted: 0 0% 100% / 8%;
+  --muted-foreground: 0 0% 100% / 58%;
 
-  --accent: 11 100% 64%;
+  --accent: 11 100% 59%;
   --accent-foreground: 0 0% 100%;
 
   --destructive: 0 84% 60%;
   --destructive-foreground: 0 0% 100%;
 
-  --border: 216 22% 85%;
-  --input: 216 22% 85%;
-  --ring: 11 100% 64%;
+  --border: 0 0% 100% / 12%;
+  --input: 0 0% 100% / 12%;
+  --ring: 11 100% 59%;
 
-  --radius: 0.875rem;
+  --radius: 1rem;
+
+  /* Structural tokens — shell values */
+  --vl-shell: #050506;
+  --vl-line: rgba(255, 255, 255, 0.12);
+  --vl-line-strong: rgba(255, 255, 255, 0.22);
+  --vl-surface: rgba(255, 255, 255, 0.06);
+  --vl-surface-2: rgba(255, 255, 255, 0.10);
+  --vl-surface-solid: #111114;
+  --vl-input-bg: rgba(255, 255, 255, 0.06);
+  --vl-input-focus-bg: rgba(255, 255, 255, 0.10);
+  --vl-input-focus-border: rgba(255, 255, 255, 0.42);
+  --vl-glass: rgba(8, 8, 10, 0.58);
+  --vl-sunset: linear-gradient(90deg, #FF512F 0%, #F09819 100%);
+  --vl-sunset-soft: linear-gradient(112deg, #FF512F 0%, #FF7A3D 45%, #F09819 100%);
+  --vl-conic: conic-gradient(from var(--vl-angle, 0deg), #00c6ff, #0072ff, #ff007a, #ff8a00, #00c6ff);
+}
+
+/* ── Light-surface context ─────────────────────────────────────
+   Anything painted white flips the ink back to navy and the
+   structural tokens to their light values. */
+.vl-card,
+.vl-panel,
+.vl-card-glass,
+.vl-light,
+.bg-white,
+[class*="bg-white/"],
+[class*="bg-white "],
+.bg-emerald-50,
+.bg-amber-50,
+.bg-red-50,
+.bg-rose-50,
+.bg-sky-50,
+.bg-violet-50,
+.bg-gray-50,
+.bg-slate-50 {
+  --color-vl-ink: #0E1B2C;
+  --color-vl-ink-soft: #2C394A;
+  --color-vl-ink-muted: #657080;
+  --color-vl-ink-faint: #9299A3;
+  --color-vl-cream: #F5F5F4;
+  --color-vl-coral-tint: #FFF0EA;
+  --color-vl-accent: #7C6EF5;
+  --color-vl-accent-deep: #6354DC;
+  --color-vl-accent-tint: #F0EDFF;
+  --color-vl-lilac-soft: #ECE9FF;
+  --color-vl-success: #10B981;
+  --color-vl-warning: #F59E0B;
+  --color-vl-danger: #EF4444;
+  --vl-line: #E5E7EB;
+  --vl-line-strong: #D1D5DB;
+  --vl-surface: #F9FAFB;
+  --vl-surface-2: #F3F4F6;
+  --vl-surface-solid: #FFFFFF;
+  --vl-input-bg: #F9FAFB;
+  --vl-input-focus-bg: #FFFFFF;
+  --vl-input-focus-border: #9CA3AF;
+  --vl-glass: rgba(255, 255, 255, 0.86);
+  --border: 220 13% 91%;
+  --input: 220 13% 91%;
+  --muted: 220 14% 96%;
+  --muted-foreground: 216 12% 45%;
+  --secondary: 220 14% 96%;
+  --secondary-foreground: 216 52% 11%;
+  color-scheme: light;
+}
+
+/* Translucent white surfaces were soft cards on cream paper. On the film
+   they read as muddy glass, so any bg-white/NN placed directly on the shell
+   becomes a solid white card. Inside cards they were already white. */
+.vl-page-shell [class*="bg-white/"]:not(.vl-btn-primary *, .vl-conic-disc *, .vl-shell-glass, .vl-shell-glass *) {
+  background-color: #FFFFFF;
+}
+
+/* Rotating conic ring on any shape: animate a registered angle. */
+@property --vl-angle {
+  syntax: '<angle>';
+  inherits: true;
+  initial-value: 0deg;
+}
+@keyframes vl-spin-angle {
+  to { --vl-angle: 360deg; }
 }
 
 @layer base {
   * { @apply border-border; }
 
   html, body {
-    background: hsl(var(--background));
+    background: var(--vl-shell);
     color: hsl(var(--foreground));
     /* Prevent rogue horizontal scroll from absolute-positioned decorative
        elements on mobile. `clip` instead of `hidden`: hidden turns body into
@@ -140,54 +227,30 @@
     }
   }
 
-  /* Friendlier text wrapping on small screens — long words/URLs won't blow out layouts. */
   body {
     overflow-wrap: break-word;
-  }
-
-  body {
     @apply font-sans antialiased;
-    background-color: #FBF7F1;
-    background-image:
-      radial-gradient(ellipse 70% 50% at 10% 0%, rgba(255, 107, 71, 0.20), transparent 60%),
-      radial-gradient(ellipse 60% 45% at 95% 8%, rgba(124, 110, 245, 0.18), transparent 65%),
-      radial-gradient(ellipse 55% 40% at 90% 100%, rgba(191, 216, 197, 0.24), transparent 70%),
-      radial-gradient(ellipse 50% 40% at 5% 95%, rgba(251, 211, 147, 0.24), transparent 70%),
-      linear-gradient(135deg, rgba(14, 27, 44, 0.022) 1px, transparent 1px),
-      linear-gradient(45deg, rgba(255, 107, 71, 0.014) 1px, transparent 1px);
-    background-size: auto, auto, auto, auto, 24px 24px, 32px 32px;
-    background-attachment: fixed;
+    background-color: var(--vl-shell);
     text-rendering: optimizeLegibility;
     font-feature-settings: "ss01", "cv11";
   }
 
   * {
     scrollbar-width: thin;
-    scrollbar-color: rgba(255, 107, 71, 0.36) rgba(14, 27, 44, 0.045);
+    scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
   }
-
-  *::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
-  }
-
-  *::-webkit-scrollbar-track {
-    background:
-      linear-gradient(180deg, rgba(255, 252, 248, 0.86), rgba(247, 240, 230, 0.78));
-    border-radius: 14px;
-  }
-
+  *::-webkit-scrollbar { width: 10px; height: 10px; }
+  *::-webkit-scrollbar-track { background: transparent; }
   *::-webkit-scrollbar-thumb {
-    background:
-      linear-gradient(180deg, rgba(255, 107, 71, 0.58), rgba(124, 110, 245, 0.34));
-    border: 3px solid rgba(251, 247, 241, 0.78);
+    background: rgba(255, 255, 255, 0.18);
+    border: 3px solid transparent;
+    background-clip: padding-box;
     border-radius: 14px;
   }
-
-  *::-webkit-scrollbar-thumb:hover {
-    background:
-      linear-gradient(180deg, rgba(79, 70, 229, 0.56), rgba(255, 107, 71, 0.40));
-  }
+  *::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.32); background-clip: padding-box; }
+  .vl-card *::-webkit-scrollbar-thumb,
+  .vl-panel *::-webkit-scrollbar-thumb,
+  .bg-white *::-webkit-scrollbar-thumb { background: rgba(14, 27, 44, 0.18); background-clip: padding-box; }
 
   h1, h2, h3, h4, h5, h6 {
     @apply tracking-tight;
@@ -199,12 +262,16 @@
   }
 
   ::selection {
-    background: rgba(255, 107, 71, 0.22);
-    color: var(--color-vl-ink);
+    background: rgba(255, 138, 0, 0.35);
+    color: #fff;
+  }
+  .vl-card ::selection, .vl-panel ::selection, .bg-white ::selection {
+    background: rgba(255, 81, 47, 0.22);
+    color: #0E1B2C;
   }
 
   :focus-visible {
-    outline: 2px solid var(--color-vl-accent);
+    outline: 2px solid #F09819;
     outline-offset: 2px;
     border-radius: 8px;
   }
@@ -222,16 +289,18 @@
     color: var(--color-vl-ink);
   }
 
-  /* Italic emphasis fragment in headlines — gradient text */
-  .vl-display em {
+  /* Italic emphasis fragment in headlines — sunset gradient text */
+  .vl-display em,
+  .vl-section-heading em {
     font-family: var(--font-display);
     font-style: italic;
     font-weight: 600;
-    background: linear-gradient(112deg, #E54F2D 0%, #FF6B47 42%, #7C6EF5 100%);
+    background: var(--vl-sunset-soft);
     -webkit-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent;
     color: transparent;
+    padding-right: 0.06em;
   }
 
   .vl-eyebrow {
@@ -255,125 +324,157 @@
   /* ── Surfaces ───────────────────────────────────────────────── */
 
   .vl-glass {
-    background: rgba(251, 247, 241, 0.76);
-    backdrop-filter: blur(22px) saturate(1.3);
-    -webkit-backdrop-filter: blur(22px) saturate(1.3);
-    border-bottom: 1px solid rgba(14, 27, 44, 0.07);
+    background: var(--vl-glass);
+    backdrop-filter: blur(22px) saturate(1.4);
+    -webkit-backdrop-filter: blur(22px) saturate(1.4);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   }
 
   .vl-card {
-    background:
-      linear-gradient(160deg, rgba(255, 252, 248, 0.93), rgba(251, 247, 241, 0.75)),
-      radial-gradient(circle at 8% 0%, rgba(255, 107, 71, 0.075), transparent 36%),
-      radial-gradient(circle at 94% 10%, rgba(124, 110, 245, 0.075), transparent 38%);
-    border: 1px solid rgba(14, 27, 44, 0.075);
-    border-radius: 22px;
-    backdrop-filter: blur(18px) saturate(1.15);
+    background: #FFFFFF;
+    border: 1px solid #E5E7EB;
+    border-radius: 2rem;
     box-shadow:
-      0 1px 0 rgba(255, 255, 255, 0.72) inset,
-      0 18px 48px -36px rgba(14, 27, 44, 0.34),
-      0 3px 10px rgba(14, 27, 44, 0.035);
+      0 1px 0 rgba(255, 255, 255, 0.9) inset,
+      0 30px 80px -30px rgba(0, 0, 0, 0.75),
+      0 4px 14px rgba(0, 0, 0, 0.25);
     transition: box-shadow .25s ease, transform .25s ease, border-color .25s ease;
   }
   .vl-card:hover {
-    border-color: rgba(255, 107, 71, 0.24);
+    border-color: #D1D5DB;
     box-shadow:
-      0 1px 0 rgba(255, 255, 255, 0.76) inset,
-      0 22px 56px -34px rgba(14, 27, 44, 0.40),
-      0 8px 22px rgba(255, 107, 71, 0.08);
+      0 1px 0 rgba(255, 255, 255, 0.9) inset,
+      0 40px 100px -30px rgba(0, 0, 0, 0.85),
+      0 10px 30px -10px rgba(240, 152, 25, 0.18);
   }
 
   .vl-card-glass {
-    background: rgba(255, 252, 248, 0.76);
+    background: rgba(255, 255, 255, 0.94);
     backdrop-filter: blur(20px) saturate(1.3);
     -webkit-backdrop-filter: blur(20px) saturate(1.3);
-    border: 1px solid rgba(14, 27, 44, 0.08);
-    border-radius: 24px;
+    border: 1px solid #E5E7EB;
+    border-radius: 2rem;
     box-shadow:
-      0 4px 24px rgba(14, 27, 44, 0.06),
-      0 1px 3px rgba(14, 27, 44, 0.04);
+      0 30px 80px -30px rgba(0, 0, 0, 0.75),
+      0 4px 14px rgba(0, 0, 0, 0.25);
   }
 
   .vl-panel {
-    background:
-      linear-gradient(160deg, rgba(255, 252, 248, 0.92), rgba(247, 240, 230, 0.76)),
-      radial-gradient(circle at 0% 0%, rgba(255, 107, 71, 0.055), transparent 32%),
-      radial-gradient(circle at 100% 100%, rgba(124, 110, 245, 0.045), transparent 34%);
-    border: 1px solid rgba(14, 27, 44, 0.075);
-    border-radius: 22px;
+    background: #FFFFFF;
+    border: 1px solid #E5E7EB;
+    border-radius: 2rem;
     box-shadow:
-      0 1px 2px rgba(14, 27, 44, 0.03),
-      0 18px 48px -38px rgba(14, 27, 44, 0.36);
+      0 30px 80px -30px rgba(0, 0, 0, 0.75),
+      0 4px 14px rgba(0, 0, 0, 0.22);
+  }
+
+  /* Dark glass panel that stays on the shell (chips, nav pills, toasts). */
+  .vl-shell-glass {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    backdrop-filter: blur(18px) saturate(1.3);
+    -webkit-backdrop-filter: blur(18px) saturate(1.3);
+    color: #fff;
   }
 
   .vl-edge-coral {
-    box-shadow: inset 0 2px 0 rgba(255, 107, 71, 0.34);
+    box-shadow: inset 0 2px 0 #F09819;
   }
 
   .vl-line {
-    background-image: linear-gradient(90deg, transparent, rgba(14, 27, 44, 0.10), transparent);
+    background-image: linear-gradient(90deg, transparent, var(--vl-line-strong), transparent);
     height: 1px;
+  }
+
+  /* Sunset halo — decorative blurred blob, place absolutely */
+  .vl-halo {
+    pointer-events: none;
+    position: absolute;
+    width: 16rem;
+    height: 16rem;
+    border-radius: 9999px;
+    background: linear-gradient(135deg, #FF512F, #F09819);
+    opacity: 0.2;
+    filter: blur(80px);
   }
 
   /* ── Buttons ────────────────────────────────────────────────── */
 
+  /* Primary: black fill inside a conic ring. Ring spins + glows on hover. */
   .vl-btn-primary {
-    background: linear-gradient(135deg, #FF7958 0%, #FF6B47 48%, #E75230 100%);
+    --vl-angle: 0deg;
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background:
+      linear-gradient(#0A0A0B, #0A0A0B) padding-box,
+      var(--vl-conic) border-box;
     color: #FFFFFF;
     font-family: var(--font-sans);
-    font-weight: 500;
+    font-weight: 600;
     font-size: 14px;
-    border-radius: 14px;
-    padding: 0.72rem 1.4rem;
-    transition: transform .15s ease, box-shadow .15s ease, background .15s ease;
-    box-shadow:
-      0 1px 0 rgba(255, 255, 255, 0.28) inset,
-      0 10px 24px -10px rgba(229, 79, 45, 0.72),
-      0 2px 5px rgba(14, 27, 44, 0.11);
-    border: 1px solid rgba(180, 55, 29, 0.18);
+    border: 2px solid transparent;
+    border-radius: 1.1rem;
+    padding: 0.7rem 1.35rem;
     cursor: pointer;
     letter-spacing: -0.005em;
+    transition: transform .18s ease, box-shadow .3s ease;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.14),
+      inset 0 -3px 8px rgba(0, 0, 0, 0.7),
+      0 12px 30px -14px rgba(0, 0, 0, 0.9);
   }
   .vl-btn-primary:hover {
     transform: translateY(-1px);
-    background: linear-gradient(135deg, #FF8668 0%, #FF6B47 44%, #DD4828 100%);
+    animation: vl-spin-angle 1.6s linear infinite;
     box-shadow:
-      0 1px 0 rgba(255, 255, 255, 0.30) inset,
-      0 15px 32px -10px rgba(229, 79, 45, 0.78),
-      0 5px 12px rgba(14, 27, 44, 0.12);
+      inset 0 1px 0 rgba(255, 255, 255, 0.18),
+      inset 0 -3px 8px rgba(0, 0, 0, 0.7),
+      0 -6px 26px -8px rgba(255, 138, 0, 0.75),
+      6px 0 26px -8px rgba(255, 0, 122, 0.7),
+      0 8px 26px -8px rgba(0, 114, 255, 0.75),
+      -6px 0 26px -8px rgba(0, 198, 255, 0.7);
   }
-  .vl-btn-primary:active { transform: translateY(0); background: #E54F2D; }
+  .vl-btn-primary:active { transform: translateY(0) scale(0.985); }
   .vl-btn-primary:disabled {
     opacity: 0.45;
     cursor: not-allowed;
     transform: none;
+    animation: none;
+    box-shadow: none;
   }
 
   .vl-btn-outline {
-    background: rgba(255, 252, 248, 0.78);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--vl-surface);
     color: var(--color-vl-ink);
     font-family: var(--font-sans);
     font-weight: 500;
     font-size: 14px;
-    border-radius: 16px;
+    border-radius: 1.1rem;
     padding: 0.72rem 1.4rem;
-    border: 1px solid rgba(14, 27, 44, 0.14);
-    transition: background .2s ease, border-color .2s ease, box-shadow .2s ease;
+    border: 1px solid var(--vl-line-strong);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    transition: background .2s ease, border-color .2s ease, transform .18s ease;
     cursor: pointer;
     letter-spacing: -0.005em;
-    box-shadow: 0 1px 2px rgba(14, 27, 44, 0.03);
   }
   .vl-btn-outline:hover {
-    background: #FFFCF8;
-    border-color: rgba(255, 107, 71, 0.38);
-    box-shadow: 0 2px 8px rgba(14, 27, 44, 0.06);
+    background: var(--vl-surface-2);
+    border-color: var(--vl-input-focus-border);
+    transform: translateY(-1px);
   }
+  .vl-btn-outline:active { transform: scale(0.985); }
 
   .vl-btn-ghost {
     background: transparent;
     color: var(--color-vl-ink);
     border: 1px solid transparent;
-    border-radius: 16px;
+    border-radius: 1.1rem;
     padding: 0.72rem 1.4rem;
     font-weight: 500;
     font-size: 14px;
@@ -381,90 +482,95 @@
     cursor: pointer;
   }
   .vl-btn-ghost:hover {
-    background: rgba(255, 107, 71, 0.08);
+    background: var(--vl-surface);
   }
 
   /* ── Chips ──────────────────────────────────────────────────── */
 
-  .vl-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    padding: 0.32rem 0.7rem;
-    border-radius: 12px;
-    font-size: 12px;
-    font-weight: 500;
-    letter-spacing: -0.005em;
-    color: var(--color-vl-ink-soft);
-    background: #F7F0E6;
-    border: 1px solid rgba(14, 27, 44, 0.08);
-  }
-
+  .vl-chip,
   .vl-chip-light {
     display: inline-flex;
     align-items: center;
     gap: 0.4rem;
-    padding: 0.28rem 0.7rem;
-    border-radius: 12px;
+    padding: 0.32rem 0.75rem;
+    border-radius: 999px;
     font-size: 12px;
     font-weight: 500;
+    letter-spacing: -0.005em;
     color: var(--color-vl-ink-soft);
-    background: #FFFCF8;
-    border: 1px solid rgba(14, 27, 44, 0.08);
-    box-shadow: 0 1px 2px rgba(14, 27, 44, 0.03);
+    background: var(--vl-surface);
+    border: 1px solid var(--vl-line);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
   }
 
   /* ── Inputs ─────────────────────────────────────────────────── */
 
   .vl-input {
     width: 100%;
-    height: 46px;
+    height: 48px;
     padding: 0 16px;
-    border-radius: 12px;
-    background: rgba(255, 252, 248, 0.86);
-    border: 1px solid rgba(14, 27, 44, 0.12);
+    border-radius: 1rem;
+    background: var(--vl-input-bg);
+    border: 1px solid var(--vl-line);
     color: var(--color-vl-ink);
     font-size: 15px;
     outline: none;
-    transition: border-color .2s ease, box-shadow .2s ease;
+    transition: border-color .2s ease, background .2s ease, box-shadow .2s ease;
   }
-  .vl-input::placeholder { color: rgba(14, 27, 44, 0.38); }
+  .vl-input::placeholder { color: var(--color-vl-ink-faint); }
   .vl-input:focus {
-    border-color: var(--color-vl-coral);
-    box-shadow: 0 0 0 4px rgba(255, 107, 71, 0.13);
+    background: var(--vl-input-focus-bg);
+    border-color: var(--vl-input-focus-border);
+    box-shadow: 0 0 0 4px rgba(240, 152, 25, 0.16);
   }
+  select.vl-input option { color: #0E1B2C; background: #fff; }
+
+  /* Stacked label + input group from the sign-in screen */
+  .vl-input-group {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    border-radius: 1.25rem;
+    border: 1px solid var(--vl-line);
+    background: var(--vl-input-bg);
+    padding: 0.5rem 0.5rem 0.5rem 1.25rem;
+    transition: border-color .2s ease, background .2s ease;
+  }
+  .vl-input-group:focus-within {
+    background: var(--vl-input-focus-bg);
+    border-color: var(--vl-input-focus-border);
+  }
+  .vl-input-group label {
+    display: block;
+    margin-bottom: 2px;
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--color-vl-ink-muted);
+  }
+  .vl-input-group input,
+  .vl-input-group select,
+  .vl-input-group textarea {
+    width: 100%;
+    background: transparent;
+    border: 0;
+    outline: none;
+    padding: 0;
+    font-size: 15px;
+    line-height: 1.4;
+    color: var(--color-vl-ink);
+  }
+  .vl-input-group input::placeholder { color: var(--color-vl-ink-faint); }
 
   /* ── Layout helpers ─────────────────────────────────────────── */
 
   .vl-page-shell,
   .vl-auth-shell {
     position: relative;
-    background-color: rgba(251, 247, 241, 0.48);
-    background-image:
-      radial-gradient(ellipse 70% 48% at 8% 0%, rgba(255, 107, 71, 0.12), transparent 62%),
-      radial-gradient(ellipse 64% 42% at 96% 6%, rgba(124, 110, 245, 0.12), transparent 66%),
-      radial-gradient(ellipse 54% 38% at 92% 100%, rgba(191, 216, 197, 0.14), transparent 70%),
-      radial-gradient(ellipse 48% 35% at 3% 92%, rgba(251, 211, 147, 0.14), transparent 70%),
-      linear-gradient(135deg, rgba(14, 27, 44, 0.020) 1px, transparent 1px),
-      linear-gradient(45deg, rgba(255, 107, 71, 0.012) 1px, transparent 1px);
-    background-size: auto, auto, auto, auto, 24px 24px, 32px 32px;
+    background: transparent;
   }
-
-  .vl-page-shell::before,
-  .vl-auth-shell::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    opacity: 0.38;
-    background-image:
-      linear-gradient(90deg, transparent 0%, rgba(255, 107, 71, 0.05) 18%, transparent 36%),
-      linear-gradient(90deg, transparent 14%, rgba(124, 110, 245, 0.04) 32%, transparent 50%),
-      linear-gradient(90deg, transparent 48%, rgba(191, 216, 197, 0.05) 66%, transparent 84%);
-    background-size: 260px 100%, 340px 100%, 420px 100%;
-    mask-image: linear-gradient(to bottom, transparent, #000 12%, #000 82%, transparent);
-  }
-
   .vl-page-shell > *,
   .vl-auth-shell > * {
     position: relative;
@@ -472,79 +578,63 @@
 
   .vl-app-shell {
     isolation: isolate;
-    background: var(--color-vl-cream);
+    background: var(--vl-shell);
   }
 
+  /* Ambient film — one fixed video behind the whole app */
   .vl-premium-backdrop {
     position: fixed;
     inset: 0;
     z-index: -1;
     overflow: hidden;
     pointer-events: none;
-    background: linear-gradient(180deg, rgba(255,252,248,0.20), rgba(251,247,241,0.72));
+    background: var(--vl-shell);
   }
-
-  .vl-premium-backdrop::before {
-    content: "";
+  .vl-ambient-aurora {
     position: absolute;
-    inset: -12%;
-    background: repeating-radial-gradient(ellipse at 50% 52%, transparent 0 44px, rgba(14,27,44,0.025) 45px, transparent 46px 76px);
-    mask-image: linear-gradient(to bottom, transparent 5%, #000 28%, #000 72%, transparent 96%);
-    transform: perspective(700px) rotateX(64deg) scale(1.35);
-    transform-origin: 50% 52%;
-    opacity: 0.72;
-    animation: vl-premium-rings 24s linear infinite;
+    inset: 0;
+    background-color: #0c0c0e;
+    background-image:
+      radial-gradient(ellipse 60% 50% at 20% 25%, rgba(255, 107, 71, 0.55), transparent 65%),
+      radial-gradient(ellipse 55% 45% at 80% 30%, rgba(124, 110, 245, 0.5), transparent 65%),
+      radial-gradient(ellipse 65% 55% at 55% 85%, rgba(0, 114, 255, 0.45), transparent 65%),
+      radial-gradient(ellipse 45% 40% at 85% 85%, rgba(255, 0, 122, 0.35), transparent 65%);
+    background-size: 180% 180%;
+    animation: vl-aurora 18s ease-in-out infinite alternate;
   }
-
-  .vl-premium-aura {
+  .vl-ambient-video {
     position: absolute;
-    display: block;
-    width: 46vw;
-    min-width: 420px;
-    aspect-ratio: 1;
-    border-radius: 42% 58% 65% 35% / 48% 42% 58% 52%;
-    filter: blur(76px);
-    mix-blend-mode: multiply;
-    opacity: 0.20;
-    will-change: transform;
-    animation: vl-premium-drift 22s ease-in-out infinite alternate;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transform: scale(1.05);
   }
-  .vl-premium-aura-coral { top: -22%; left: -13%; background: radial-gradient(circle at 44% 42%, #FF6B47, #FFC7B1 56%, transparent 74%); }
-  .vl-premium-aura-violet { top: -16%; right: -16%; background: radial-gradient(circle at 48% 46%, #7C6EF5, #CFC8FF 54%, transparent 74%); animation-delay: -8s; animation-duration: 28s; }
-  .vl-premium-aura-honey { bottom: -27%; left: 8%; background: radial-gradient(circle at 50% 46%, #FBD393, #FFF0CE 54%, transparent 74%); animation-delay: -13s; animation-duration: 31s; }
-  .vl-premium-aura-sage { right: -12%; bottom: -24%; background: radial-gradient(circle at 44% 44%, #BFD8C5, #E6F0E7 54%, transparent 74%); animation-delay: -17s; animation-duration: 26s; }
-
-  .vl-premium-horizon {
+  .vl-ambient-veil {
     position: absolute;
-    left: -12%;
-    top: 48%;
-    width: 124%;
-    height: 2px;
-    background: linear-gradient(90deg, transparent, rgba(255,107,71,0.25), rgba(124,110,245,0.30), transparent);
-    box-shadow: 0 0 28px rgba(255,107,71,0.18), 0 0 52px rgba(124,110,245,0.11);
-    animation: vl-premium-horizon 9s ease-in-out infinite;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.10);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
   }
-
+  /* Deeper veil on content pages so long-form text stays readable */
+  .vl-ambient-veil-deep {
+    background:
+      linear-gradient(180deg, rgba(5, 5, 6, 0.55) 0%, rgba(5, 5, 6, 0.35) 40%, rgba(5, 5, 6, 0.55) 100%);
+  }
   .vl-premium-grain {
     position: absolute;
     inset: 0;
     background-image:
-      radial-gradient(circle at 20% 30%, rgba(14,27,44,0.12) 0 0.45px, transparent 0.7px),
-      radial-gradient(circle at 72% 68%, rgba(14,27,44,0.08) 0 0.45px, transparent 0.75px);
+      radial-gradient(circle at 20% 30%, rgba(255,255,255,0.12) 0 0.45px, transparent 0.7px),
+      radial-gradient(circle at 72% 68%, rgba(255,255,255,0.08) 0 0.45px, transparent 0.75px);
     background-size: 5px 5px, 7px 7px;
-    opacity: 0.16;
-    mix-blend-mode: multiply;
+    opacity: 0.10;
+    mix-blend-mode: screen;
   }
-
-  @keyframes vl-premium-drift {
-    0% { transform: translate3d(-2%, -1%, 0) rotate(-8deg) scale(0.94); }
-    52% { transform: translate3d(8%, 5%, 0) rotate(8deg) scale(1.06); }
-    100% { transform: translate3d(-4%, 9%, 0) rotate(-3deg) scale(1); }
-  }
-  @keyframes vl-premium-rings { from { background-position: 0 0; } to { background-position: 0 76px; } }
-  @keyframes vl-premium-horizon {
-    0%, 100% { transform: translate3d(-2%, -10px, 0) rotate(-2deg) scaleX(0.96); opacity: 0.42; }
-    50% { transform: translate3d(2%, 12px, 0) rotate(1deg) scaleX(1.03); opacity: 0.74; }
+  @keyframes vl-aurora {
+    from { background-position: 0% 0%; }
+    to { background-position: 100% 100%; }
   }
 
   .vl-landing {
@@ -562,26 +652,22 @@
     padding-right: 1.5rem;
   }
   @media (min-width: 768px) {
-    .section-container {
-      padding-left: 2.5rem;
-      padding-right: 2.5rem;
-    }
+    .section-container { padding-left: 2.5rem; padding-right: 2.5rem; }
   }
   @media (min-width: 1280px) {
-    .section-container {
-      padding-left: 3rem;
-      padding-right: 3rem;
-    }
+    .section-container { padding-left: 3rem; padding-right: 3rem; }
   }
 
   .vl-landing-header .vl-glass {
-    background: rgba(251, 247, 241, 0.78);
-    border-bottom: 1px solid rgba(14, 27, 44, 0.07);
+    background: rgba(5, 5, 6, 0.42);
   }
 
-  .vl-landing-footer {
-    background: rgba(247, 240, 230, 0.82);
-    border-color: rgba(14, 27, 44, 0.08) !important;
+  .vl-landing-footer,
+  .vl-footer {
+    background: rgba(5, 5, 6, 0.72);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    border-color: rgba(255, 255, 255, 0.08) !important;
   }
 
   /* ── Mobile touch-target safeguards ──────────────────────────── */
@@ -596,21 +682,52 @@
 
   .vl-scroll {
     scrollbar-width: thin;
-    scrollbar-color: rgba(255, 107, 71, 0.34) rgba(14, 27, 44, 0.04);
   }
+  .vl-scroll::-webkit-scrollbar { width: 8px; }
 
-  .vl-scroll::-webkit-scrollbar {
-    width: 8px;
-  }
-
-  /* Gradient text utility */
+  /* Gradient text utility — sunset */
   .vl-gradient-text {
-    background: linear-gradient(112deg, #E54F2D 0%, #FF6B47 42%, #7C6EF5 100%);
+    background: var(--vl-sunset-soft);
     -webkit-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent;
     color: transparent;
   }
+
+  /* Conic ring disc — the hero control from the sign-in screen */
+  .vl-conic-disc {
+    --vl-angle: 0deg;
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 52px;
+    height: 52px;
+    border-radius: 9999px;
+    background:
+      linear-gradient(#000, #000) padding-box,
+      var(--vl-conic) border-box;
+    border: 3px solid transparent;
+    color: #fff;
+    box-shadow:
+      inset 0 2px 4px rgba(255, 255, 255, 0.18),
+      inset 0 -3px 8px rgba(0, 0, 0, 0.9);
+    transition: transform .18s ease, box-shadow .3s ease;
+    cursor: pointer;
+  }
+  .vl-conic-disc:hover:not(:disabled) {
+    animation: vl-spin-angle 1.6s linear infinite;
+    box-shadow:
+      inset 0 2px 4px rgba(255, 255, 255, 0.18),
+      inset 0 -3px 8px rgba(0, 0, 0, 0.9),
+      0 -6px 22px -6px rgba(255, 138, 0, 0.8),
+      6px 0 22px -6px rgba(255, 0, 122, 0.8),
+      0 6px 22px -6px rgba(0, 114, 255, 0.8),
+      -6px 0 22px -6px rgba(0, 198, 255, 0.8);
+  }
+  .vl-conic-disc:hover:not(:disabled) svg { transform: translateX(2px); }
+  .vl-conic-disc svg { transition: transform .2s ease; }
+  .vl-conic-disc:disabled { opacity: 0.6; cursor: not-allowed; }
 
   /* ── Animations ─────────────────────────────────────────────── */
 
@@ -633,7 +750,7 @@
     align-items: baseline;
     gap: 1rem;
     padding: 0.55rem 0;
-    border-bottom: 1px dashed rgba(14, 27, 44, 0.12);
+    border-bottom: 1px dashed var(--vl-line-strong);
     font-family: var(--font-mono);
     font-size: 13px;
   }
@@ -642,26 +759,115 @@
     display: inline-flex;
     align-items: center;
     gap: 0.5rem;
-    border: 1px solid rgba(124, 110, 245, 0.45);
-    border-radius: 10px;
+    border: 1px solid rgba(240, 152, 25, 0.5);
+    border-radius: 999px;
     padding: 0.5rem 0.9rem;
     font-family: var(--font-mono);
     font-size: 11px;
     letter-spacing: 0.18em;
-    color: var(--color-vl-accent-deep);
-    background: var(--color-vl-accent-tint);
+    color: #C2410C;
+    background: linear-gradient(90deg, rgba(255, 81, 47, 0.10), rgba(240, 152, 25, 0.14));
+  }
+
+  /* ── Landing: the mic disc ──────────────────────────────────── */
+  .lx-mic {
+    --vl-angle: 0deg;
+    --lx-size: 176px;
+    position: relative;
+    display: inline-flex;
+    width: var(--lx-size);
+    height: var(--lx-size);
+    border-radius: 9999px;
+    background: transparent;
+    border: 0;
+    padding: 0;
+    cursor: pointer;
+    outline: none;
+    transition: transform .2s ease;
+  }
+  .lx-mic:active { transform: scale(0.97); }
+  .lx-mic:disabled { cursor: wait; }
+  .lx-mic-halo,
+  .lx-mic-ring {
+    position: absolute;
+    inset: 0;
+    border-radius: 9999px;
+    background: var(--vl-conic);
+  }
+  .lx-mic-halo {
+    inset: -18px;
+    filter: blur(28px);
+    opacity: 0.28;
+    animation: lx-breathe 4.2s ease-in-out infinite;
+  }
+  .lx-mic-face {
+    position: absolute;
+    inset: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9999px;
+    background: #000;
+    color: #fff;
+    box-shadow:
+      inset 0 3px 6px rgba(255, 255, 255, 0.18),
+      inset 0 -8px 18px rgba(0, 0, 0, 0.95),
+      0 30px 60px -20px rgba(0, 0, 0, 0.9);
+    transition: transform .2s ease;
+  }
+  .lx-mic:hover .lx-mic-face { transform: scale(1.02); }
+  .lx-mic:hover .lx-mic-ring,
+  .lx-mic:hover .lx-mic-halo,
+  .lx-mic.is-live .lx-mic-ring,
+  .lx-mic.is-live .lx-mic-halo {
+    animation: vl-spin-angle 2.4s linear infinite;
+  }
+  .lx-mic:hover .lx-mic-halo { opacity: 0.6; }
+  .lx-mic.is-live .lx-mic-halo { opacity: 0.55; animation: vl-spin-angle 2.4s linear infinite, lx-breathe 2.2s ease-in-out infinite; }
+  .lx-mic.is-hot .lx-mic-halo { opacity: 0.9; inset: -26px; }
+  .lx-mic:focus-visible .lx-mic-face { box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.35); }
+  @keyframes lx-breathe {
+    0%, 100% { transform: scale(0.96); }
+    50% { transform: scale(1.06); }
+  }
+  @media (max-width: 640px) { .lx-mic { --lx-size: 140px; } }
+
+  /* ── Landing: the marquee ───────────────────────────────────── */
+  .lx-marquee {
+    position: relative;
+    overflow: hidden;
+    padding: 0.6rem 0;
+    mask-image: linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent);
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent);
+  }
+  .lx-marquee-track {
+    display: flex;
+    width: max-content;
+    gap: 3.5rem;
+    padding-right: 3.5rem;
+    animation: lx-marquee 46s linear infinite;
+  }
+  .lx-marquee[data-reverse] .lx-marquee-track { animation-direction: reverse; animation-duration: 52s; }
+  .lx-marquee:hover .lx-marquee-track { animation-play-state: paused; }
+  .lx-marquee[data-static] .lx-marquee-track { animation: none; flex-wrap: wrap; width: auto; padding: 0 1.5rem; gap: 1.5rem; }
+  .lx-marquee-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.9rem;
+    white-space: nowrap;
+  }
+  @keyframes lx-marquee {
+    from { transform: translate3d(0, 0, 0); }
+    to { transform: translate3d(-50%, 0, 0); }
   }
 
   /* ── iPad Mini & iPhone Layout and Spacing Optimizations ────── */
 
-  /* Prevent over-scrolling and reduce massive empty spaces on mobile/tablet */
   @media (max-width: 768px) {
     .vl-page-shell {
       padding-top: 4.5rem !important;
       padding-bottom: 3.5rem !important;
     }
-    
-    /* Optimize padding classes commonly used to prevent huge vertical gaps */
     .py-20, .py-24, .py-28, .py-32 {
       padding-top: 3rem !important;
       padding-bottom: 3rem !important;
@@ -673,12 +879,9 @@
 
   /* Native full-screen sheets for Settings & Create Assistant modals on iPhones */
   @media (max-width: 640px) {
-    /* Dialog position reset to full bleed */
     .fixed.inset-0.z-80.flex.items-center.justify-center {
       padding: 0 !important;
     }
-    
-    /* Form Modal main container transformation */
     .relative.flex.max-h-\[88vh\].w-full.max-w-\[960px\].flex-col {
       max-height: 100vh !important;
       height: 100vh !important;
@@ -686,20 +889,14 @@
       border: none !important;
       box-shadow: none !important;
     }
-    
-    /* Header optimization for native phone feel */
     .flex.flex-wrap.items-start.justify-between.gap-4.border-b.p-6 {
       padding: 1rem 1.25rem !important;
       flex-wrap: nowrap !important;
       align-items: center !important;
     }
-    
-    /* Scale down titles inside dialogs on small mobile screens */
     .text-\[28px\].font-bold.leading-tight {
       font-size: 20px !important;
     }
-    
-    /* Scroll container inside dialogs - expands fully */
     .vl-scroll.overflow-y-auto.p-6 {
       padding: 1.25rem !important;
       flex: 1 !important;

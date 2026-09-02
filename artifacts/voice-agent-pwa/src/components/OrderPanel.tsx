@@ -3,6 +3,7 @@ import { X, MoreVertical, Trash2, Loader, Link, ChevronRight, Sun, Moon, Refresh
 import { useOrder, type OrderLineItem } from "@/contexts/OrderContext";
 import { useSquare } from "@/contexts/SquareContext";
 import { OrderCard } from "./OrderCard";
+import { ConicButton } from "./ConicButton";
 import { getVoicePrefs, setVoicePref, setSpeedPref, VOICES, SPEEDS } from "@/lib/voice-prefs";
 import { getBaseUrl } from "@/lib/api";
 import { isWakeWordSupported } from "@/hooks/useWakeWord";
@@ -69,10 +70,10 @@ function PanelContent({
       <nav className="panel-nav">
         <span className="panel-nav-btn active">Order</span>
         <div style={{ flex: 1 }} />
-        <button className="panel-nav-btn" onClick={() => setSettingsOpen(!settingsOpen)} title="Settings">
+        <button className="panel-icon-btn" onClick={() => setSettingsOpen(!settingsOpen)} title="Settings" aria-label="Settings">
           <MoreVertical size={16} />
         </button>
-        <button className="panel-nav-close" onClick={onClose}><X size={16} /></button>
+        <button className="panel-icon-btn panel-nav-close" onClick={onClose} aria-label="Close"><X size={16} /></button>
       </nav>
       <div className="panel-body">
         {settingsOpen ? (
@@ -129,8 +130,8 @@ function OrderScreen({
             <div className="confirmation-prompt">{pendingConfirmation.prompt}</div>
           )}
           <div className="confirmation-actions">
-            <button className="confirm-btn" onClick={onConfirm}>Confirm</button>
-            <button className="deny-btn" onClick={onDeny}>Cancel</button>
+            <ConicButton className="confirm-btn" size="sm" live onClick={onConfirm}>Confirm</ConicButton>
+            <button className="ghost-btn" onClick={onDeny}>Cancel</button>
           </div>
         </div>
       )}
@@ -161,11 +162,11 @@ function OrderScreen({
           )}
           {items.length === 0 ? (
             <div className="empty-panel">
-              <span className="empty-txt">no items yet</span>
-              <span className="empty-hint">speak to add items</span>
+              <span className="empty-txt">No items yet</span>
+              <span className="empty-hint">Speak to add items to the order</span>
             </div>
           ) : (
-            <div style={{ flex: 1, overflowY: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
+            <div className="order-list">
               {items.map((item) => (
                 <div key={item.id} style={{ animation: "orderSlideIn 180ms ease-out" }}>
                   <OrderCard
@@ -184,16 +185,16 @@ function OrderScreen({
               {submitWarning && <div className="error-text" style={{ marginBottom: 8 }}>{submitWarning}</div>}
               <div className="order-total">${total.toFixed(2)}</div>
               <div className="order-actions">
-                <button className="clear-btn" onClick={clearOrder}><Trash2 size={15} /></button>
-                <button
+                <button className="clear-btn" onClick={clearOrder} aria-label="Clear order"><Trash2 size={15} /></button>
+                <ConicButton
                   className="submit-btn"
                   disabled={isSubmitting || !isConfigured}
                   onClick={async () => {
                     await submitOrder(venueId, authToken);
                   }}
                 >
-                  {isSubmitting ? <Loader size={16} className="spin" /> : "process"}
-                </button>
+                  {isSubmitting ? <Loader size={16} className="spin" /> : "Send to terminal"}
+                </ConicButton>
               </div>
             </div>
           )}
@@ -207,49 +208,6 @@ function OrderScreen({
         @keyframes orderSlideIn {
           from { opacity: 0; transform: translateY(-12px); }
           to { opacity: 1; transform: translateY(0); }
-        }
-        .confirmation-banner {
-          background: linear-gradient(135deg, #FFF3E0, #FFE0B2);
-          border-bottom: 2px solid #FF9800;
-          padding: 12px 16px;
-        }
-        .confirmation-text {
-          font-size: 13px;
-          font-weight: 600;
-          color: #E65100;
-          margin-bottom: 4px;
-        }
-        .confirmation-prompt {
-          font-size: 12px;
-          line-height: 1.35;
-          color: #8A3E00;
-          margin-bottom: 8px;
-        }
-        .confirmation-actions {
-          display: flex;
-          gap: 8px;
-        }
-        .confirm-btn {
-          flex: 1;
-          padding: 10px;
-          border-radius: 999px;
-          background: #FF6B47;
-          color: white;
-          border: none;
-          font-size: 14px;
-          font-weight: 600;
-          cursor: pointer;
-          font-family: var(--font);
-        }
-        .deny-btn {
-          padding: 10px 20px;
-          border-radius: 999px;
-          background: transparent;
-          border: 1px solid rgba(0,0,0,0.2);
-          font-size: 13px;
-          cursor: pointer;
-          font-family: var(--font);
-          color: inherit;
         }
       `}</style>
     </div>
@@ -309,38 +267,22 @@ function WorkflowButtons({ authToken, venueId }: { authToken: string | null; ven
   if (!authToken || !venueId) return null;
 
   return (
-    <div style={{ padding: "8px 16px 16px", borderTop: "1px solid var(--border)" }}>
-      <div className="rec-label" style={{ marginBottom: 8 }}>WORKFLOWS</div>
-      <div style={{ display: "flex", gap: 8 }}>
+    <div className="wf-section">
+      <div className="rec-label" style={{ marginBottom: 8 }}>Shortcuts</div>
+      <div className="wf-row">
         {WORKFLOW_BUTTONS.map((wf) => (
           <button
             key={wf.slug}
             disabled={running !== null}
             onClick={() => runWorkflow(wf.slug)}
-            style={{
-              flex: 1, padding: "8px 4px", borderRadius: 12,
-              border: "1px solid var(--border)",
-              background: running === wf.slug ? "var(--brand)" : "transparent",
-              color: running === wf.slug ? "#fff" : "inherit",
-              fontSize: 11, fontWeight: 600, cursor: running ? "wait" : "pointer",
-              fontFamily: "var(--font)", display: "flex", flexDirection: "column",
-              alignItems: "center", gap: 4, opacity: running && running !== wf.slug ? 0.5 : 1,
-            }}
+            className={`wf-btn${running === wf.slug ? " is-running" : running ? " is-dimmed" : ""}`}
           >
             {running === wf.slug ? <Loader size={14} className="spin" /> : <wf.icon size={14} />}
             {wf.label}
           </button>
         ))}
       </div>
-      {result && (
-        <pre style={{
-          marginTop: 8, padding: 10, borderRadius: 8, fontSize: 11,
-          background: "var(--surface)", border: "1px solid var(--border)",
-          maxHeight: 200, overflow: "auto", whiteSpace: "pre-wrap", wordBreak: "break-word",
-        }}>
-          {result}
-        </pre>
-      )}
+      {result && <pre className="wf-result">{result}</pre>}
     </div>
   );
 }
@@ -437,7 +379,7 @@ function SettingsSheet({ onBack, screenWakeStatus }: { onBack: () => void; scree
   } = useSquare();
 
   const [prefs, setPrefs] = useState(getVoicePrefs);
-  const [theme, setTheme] = useState(() => document.documentElement.getAttribute("data-theme") || "light");
+  const [theme, setTheme] = useState(() => document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark");
   const [authMode, setAuthMode] = useState<"login" | "signup">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -484,7 +426,7 @@ function SettingsSheet({ onBack, screenWakeStatus }: { onBack: () => void; scree
     document.documentElement.setAttribute("data-theme", next);
     localStorage.setItem("voycelab_theme", next);
     // Keep the browser/status-bar chrome in step with the app theme.
-    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", next === "dark" ? "#07080A" : "#FFFFFF");
+    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", next === "dark" ? "#050506" : "#FBF7F1");
     setTheme(next);
   };
   const updateVoice = (v: string) => { setVoicePref(v); setPrefs(getVoicePrefs()); };
@@ -593,33 +535,42 @@ function SettingsSheet({ onBack, screenWakeStatus }: { onBack: () => void; scree
 
   return (
     <div className="settings-sheet">
-      <button onClick={onBack} style={{
-        display: "flex", alignItems: "center", gap: 6, marginBottom: 12,
-        background: "transparent", border: "none", cursor: "pointer",
-        fontSize: 13, fontWeight: 500, fontFamily: "var(--font)", color: "var(--brand)",
-      }}>
+      <button className="panel-back" onClick={onBack}>
         <ChevronRight size={14} style={{ transform: "rotate(180deg)" }} /> Back to order
       </button>
 
       {!isLoggedIn && !isConfigured ? (
         <div className="auth-section">
-          <div className="auth-title">{authMode === "login" ? "Sign in to VoyceLab" : "Create your account"}</div>
+          <div className="auth-title">{authMode === "login" ? "Welcome back" : "Create your account"}</div>
+          <p className="auth-sub">{authMode === "login" ? "Sign in to connect your venue." : "A few details and your assistant is ready."}</p>
           {authMode === "signup" && (
-            <input className="auth-input" type="text" placeholder="Your name" value={name}
-              onChange={(e) => setName(e.target.value)} autoComplete="name" />
+            <label className="field">
+              <span className="field-label">Name</span>
+              <input className="field-input" type="text" placeholder="Your name" value={name}
+                onChange={(e) => setName(e.target.value)} autoComplete="name" />
+            </label>
           )}
-          <input className="auth-input" type="email" placeholder="Email address" value={email}
-            onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
-          <input className="auth-input" type="password" placeholder="Password" value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoComplete={authMode === "login" ? "current-password" : "new-password"}
-            onKeyDown={(e) => e.key === "Enter" && handleAuth()} />
+          <label className="field">
+            <span className="field-label">Email</span>
+            <input className="field-input" type="email" placeholder="Enter your email" value={email}
+              onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
+          </label>
+          <label className="field">
+            <span className="field-label">Password</span>
+            <input className="field-input" type="password" placeholder="Enter your password" value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete={authMode === "login" ? "current-password" : "new-password"}
+              onKeyDown={(e) => e.key === "Enter" && handleAuth()} />
+          </label>
           {authError && <div className="auth-error">{authError}</div>}
-          <button className="auth-btn" onClick={handleAuth} disabled={authLoading}>
-            {authLoading ? <Loader size={16} className="spin" /> : <><LogIn size={16} /> {authMode === "login" ? "Sign In" : "Create Account"}</>}
-          </button>
+          <ConicButton className="auth-btn" block onClick={handleAuth} disabled={authLoading}>
+            {authLoading ? <Loader size={16} className="spin" /> : <><LogIn size={16} /> {authMode === "login" ? "Sign in" : "Create account"}</>}
+          </ConicButton>
+          <div className="divider-or" role="separator" aria-label="or"><span>or</span></div>
           <button className="auth-switch" onClick={() => { setAuthMode(authMode === "login" ? "signup" : "login"); setAuthError(null); }}>
-            {authMode === "login" ? "Don't have an account? Sign up" : "Already have an account? Sign in"}
+            {authMode === "login"
+              ? <>Don't have an account? <span className="sunset-text">Sign up</span></>
+              : <>Already have an account? <span className="sunset-text">Sign in</span></>}
           </button>
         </div>
       ) : isLoggedIn && !isConfigured ? (
@@ -658,12 +609,13 @@ function SettingsSheet({ onBack, screenWakeStatus }: { onBack: () => void; scree
           )}
           {venueError && <div className="auth-error">{venueError}</div>}
           {connectionError && <div className="auth-error">{connectionError}</div>}
-          <button className="auth-btn" onClick={handleConnectSquare} disabled={isConnectingSquare || venueLoading}>
+          <ConicButton className="auth-btn" block onClick={handleConnectSquare} disabled={isConnectingSquare || venueLoading}>
             {isConnectingSquare ? <Loader size={16} className="spin" /> : <Link size={16} />}
             {isConnectingSquare ? "Connecting..." : "Connect Square"}
-          </button>
+          </ConicButton>
+          <div className="divider-or" role="separator" aria-label="or"><span>or</span></div>
           <button className="auth-switch" onClick={() => { window.location.href = `${getBaseUrl()}services`; }}>
-            Manage all integrations
+            <span className="sunset-text">Manage all connected systems</span>
           </button>
           <button className="auth-logout" onClick={logout}><LogOut size={14} /> Sign out</button>
         </div>
@@ -732,12 +684,14 @@ function SettingsSheet({ onBack, screenWakeStatus }: { onBack: () => void; scree
               {assistantKind === "venue" && !isConfigured && (
                 <div className="settings-action-stack">
                   {connectionError && <div className="error-text" style={{ fontSize: 12 }}>{connectionError}</div>}
-                  <button
+                  <ConicButton
                     className="settings-primary-action"
+                    size="sm"
+                    block
                     onClick={() => window.open(dashboardUrl("/services"), "_blank", "noopener,noreferrer")}
                   >
                     <ExternalLink size={13} /> Connect Square
-                  </button>
+                  </ConicButton>
                   <button className="settings-secondary-action" disabled={isReconnecting} onClick={() => refreshCredentials()}>
                     {isReconnecting ? <Loader size={13} className="spin" /> : <RefreshCw size={13} />}
                     {isReconnecting ? "Checking connection..." : "I already connected — refresh"}
@@ -746,12 +700,14 @@ function SettingsSheet({ onBack, screenWakeStatus }: { onBack: () => void; scree
               )}
               {assistantKind === "general" && !isConfigured && isLoggedIn && (
                 <div className="settings-action-stack">
-                  <button
+                  <ConicButton
                     className="settings-primary-action"
+                    size="sm"
+                    block
                     onClick={() => window.open(dashboardUrl("/services"), "_blank", "noopener,noreferrer")}
                   >
                     <ExternalLink size={13} /> Connect Square
-                  </button>
+                  </ConicButton>
                 </div>
               )}
               <div className="settings-mini-row">
@@ -788,15 +744,17 @@ function SettingsSheet({ onBack, screenWakeStatus }: { onBack: () => void; scree
               <ChevronRight size={14} />
             </summary>
             <div className="settings-group-body">
-              <label className="settings-mini-label" htmlFor="wake-phrase-input">Wake phrase</label>
-              <input
-                id="wake-phrase-input"
-                className="auth-input"
-                value={localWakePhrase}
-                onChange={(e) => { setLocalWakePhrase(e.target.value); setActivationSaved(false); }}
-                placeholder="Hey Voyce"
-                maxLength={60}
-              />
+              <label className="field" htmlFor="wake-phrase-input" style={{ marginTop: 10 }}>
+                <span className="field-label">Wake phrase</span>
+                <input
+                  id="wake-phrase-input"
+                  className="field-input"
+                  value={localWakePhrase}
+                  onChange={(e) => { setLocalWakePhrase(e.target.value); setActivationSaved(false); }}
+                  placeholder="Hey Voyce"
+                  maxLength={60}
+                />
+              </label>
               <div className="speed-row" style={{ marginTop: 10 }}>
                 <button
                   type="button"
@@ -814,15 +772,16 @@ function SettingsSheet({ onBack, screenWakeStatus }: { onBack: () => void; scree
                   Tap only
                 </button>
               </div>
-              <button
+              <ConicButton
                 className="settings-primary-action"
-                type="button"
+                size="sm"
+                block
                 disabled={activationSaving || (localWakePhrase.trim() === wakePhrase && effectiveLocalWakeMode === wakeMode)}
                 onClick={handleSaveActivation}
               >
                 {activationSaving ? <Loader size={13} className="spin" /> : <Check size={13} />}
                 {activationSaving ? "Saving..." : "Save activation"}
-              </button>
+              </ConicButton>
               {activationError && <div className="error-text" style={{ fontSize: 12 }}>{activationError}</div>}
               {activationSaved && <p className="settings-muted">Saved. The assistant will listen for this phrase on this device.</p>}
               <div className="settings-mini-row">

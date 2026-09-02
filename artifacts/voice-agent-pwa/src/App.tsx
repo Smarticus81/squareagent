@@ -5,6 +5,7 @@ import { useOrder } from "@/contexts/OrderContext";
 import { useSquare } from "@/contexts/SquareContext";
 import { OrderPanel } from "@/components/OrderPanel";
 import { VoiceOrb } from "@/components/VoiceOrb";
+import { ConicButton } from "@/components/ConicButton";
 import { useWakeWord, isWakeWordSupported } from "@/hooks/useWakeWord";
 import { useWakeLock } from "@/hooks/useWakeLock";
 import { soundWake, soundItemAdd, soundSubmit, soundError, soundSleep } from "@/lib/sounds";
@@ -18,6 +19,34 @@ function debugAppLog(message: string, ...args: unknown[]): void {
 }
 
 const assetUrl = (path: string) => `${import.meta.env.BASE_URL}${path}`.replace(/\/{2,}/g, "/");
+
+/** Ambient clip behind the noir shell — the same one the dashboard's login uses. */
+const AMBIENT_VIDEO_SRC = "https://cdn.midjourney.com/video/71048e88-d8e6-470e-88ef-555c01eacb12/0.mp4";
+
+type DocumentTheme = "light" | "dark";
+
+function readDocumentTheme(): DocumentTheme {
+  return document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark";
+}
+
+/**
+ * Mirrors the `data-theme` attribute the settings sheet toggles on <html>, so
+ * the shell can swap its backdrop (video for noir, paper washes for light)
+ * without threading theme state through any context.
+ */
+function useDocumentTheme(): DocumentTheme {
+  const [theme, setTheme] = useState<DocumentTheme>(readDocumentTheme);
+  useEffect(() => {
+    const observer = new MutationObserver(() => setTheme(readDocumentTheme()));
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    return () => observer.disconnect();
+  }, []);
+  return theme;
+}
+
+function prefersReducedMotion(): boolean {
+  return typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+}
 
 /* ── App modes ─────────────────────────────────────────────────── */
 type AppMode = "idle" | "wake_word" | "command" | "shutdown";
@@ -106,6 +135,18 @@ export default function App() {
 
   const [panelOpen, setPanelOpen] = useState(false);
   const [panelScreen, setPanelScreen] = useState<"order" | "settings">("order");
+  const theme = useDocumentTheme();
+  const reduceMotion = useMemo(prefersReducedMotion, []);
+  const ambientVideoRef = useRef<HTMLVideoElement | null>(null);
+
+  // Belt-and-braces autoplay: React sets `muted` as a property, and some
+  // browsers only honour the autoplay policy when play() is called explicitly.
+  useEffect(() => {
+    const video = ambientVideoRef.current;
+    if (!video || reduceMotion || theme !== "dark") return;
+    video.muted = true;
+    void video.play().catch(() => {});
+  }, [theme, reduceMotion]);
   const [mode, setMode] = useState<AppMode>("idle");
   const [micPermissionGranted, setMicPermissionGranted] = useState(false);
   const [micError, setMicError] = useState<string | null>(null);
@@ -461,16 +502,35 @@ export default function App() {
   const msgs = conversation.slice(-3);
   const orderCount = currentOrder?.items.length ?? 0;
   const label = stateLabel(agentState, mode, wakeWordListening);
+  const liveLabel = mode === "command" && (agentState === "listening" || agentState === "speaking");
   return (
     <div className="app">
-      <div className="premium-backdrop" aria-hidden="true">
-        <span className="premium-aura premium-aura-coral" />
-        <span className="premium-aura premium-aura-violet" />
-        <span className="premium-aura premium-aura-honey" />
-        <span className="premium-aura premium-aura-sage" />
-        <span className="premium-horizon" />
-        <span className="premium-grain" />
-      </div>
+      {theme === "dark" ? (
+        <div className="noir-backdrop" aria-hidden="true">
+          <div className="noir-aurora" />
+          <video
+            ref={ambientVideoRef}
+            className="noir-video"
+            src={AMBIENT_VIDEO_SRC}
+            autoPlay={!reduceMotion}
+            muted
+            loop
+            playsInline
+            preload="auto"
+            aria-hidden="true"
+          />
+          <div className="noir-veil" />
+        </div>
+      ) : (
+        <div className="premium-backdrop" aria-hidden="true">
+          <span className="premium-aura premium-aura-coral" />
+          <span className="premium-aura premium-aura-violet" />
+          <span className="premium-aura premium-aura-honey" />
+          <span className="premium-aura premium-aura-sage" />
+          <span className="premium-horizon" />
+          <span className="premium-grain" />
+        </div>
+      )}
       {/* ── Top bar ──────────────────────────────────────────── */}
       <div className="top-bar">
         <button className="hamburger" onClick={() => openPanel(sessionVerified ? "order" : "settings")} aria-label="Open menu">
@@ -513,25 +573,17 @@ export default function App() {
 
       {/* ── Resource Limits / Overage Banners ───────────────── */}
       {sessionUsage && sessionUsage.risk !== "ok" && (
-        <div className="mx-4 my-2.5 p-3.5 rounded-2xl border text-[12px] leading-relaxed font-semibold shadow-xs flex items-start gap-3"
-             style={{
-               background: sessionUsage.risk === "blocked" ? "rgba(239,68,68,0.06)" : sessionUsage.risk === "near_cap" ? "rgba(245,158,11,0.06)" : "rgba(255,107,71,0.05)",
-               borderColor: sessionUsage.risk === "blocked" ? "rgba(239,68,68,0.22)" : sessionUsage.risk === "near_cap" ? "rgba(245,158,11,0.22)" : "rgba(255,107,71,0.20)",
-               color: sessionUsage.risk === "blocked" ? "#991B1B" : sessionUsage.risk === "near_cap" ? "#92400E" : "#9A3412"
-             }}>
-          <div className="shrink-0 mt-0.5">
-            {sessionUsage.risk === "blocked" ? (
-              <span className="flex h-5 w-5 items-center justify-center rounded-lg bg-red-100 text-red-600 font-black">!</span>
-            ) : (
-              <span className="flex h-5 w-5 items-center justify-center rounded-lg bg-amber-100 text-amber-600 font-black">!</span>
-            )}
-          </div>
-          <div className="flex-1">
-            <p className="font-bold mb-0.5">
-              {sessionUsage.risk === "blocked" ? "Assistant Suspended" : sessionUsage.risk === "near_cap" ? "Overage Limit Critical" : "Overage Mode Active"}
-            </p>
-            <p style={{ opacity: 0.85 }}>
-              {sessionUsage.risk === "blocked" 
+        <div
+          className={`usage-banner ${sessionUsage.risk === "blocked" ? "usage-blocked" : sessionUsage.risk === "near_cap" ? "usage-near" : "usage-over"}`}
+          role="status"
+        >
+          <span className="usage-banner-icon" aria-hidden="true">!</span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p><strong>
+              {sessionUsage.risk === "blocked" ? "Assistant suspended" : sessionUsage.risk === "near_cap" ? "Overage limit critical" : "Overage mode active"}
+            </strong></p>
+            <p>
+              {sessionUsage.risk === "blocked"
                 ? `This assistant is suspended because your organization has reached its monthly overage cap (${sessionUsage.hardCap} min). Please upgrade on the billing dashboard.`
                 : sessionUsage.risk === "near_cap"
                 ? `Using overage minutes (${sessionUsage.used} / ${sessionUsage.hardCap} min cap). Upgrade soon to prevent automated suspension.`
@@ -575,12 +627,12 @@ export default function App() {
               {!sessionVerified ? (
                 sessionStatus === "offline" ? null : (
                   <div className="suggestion-row">
-                    <button className="welcome-signin" onClick={() => openPanel("settings")}>Sign in to get started</button>
+                    <ConicButton className="welcome-signin" onClick={() => openPanel("settings")}>Sign in to get started</ConicButton>
                   </div>
                 )
               ) : squareBlocked ? (
                 <div className="suggestion-row">
-                  <button className="welcome-signin" onClick={() => openPanel("settings")}>Reconnect Square</button>
+                  <ConicButton className="welcome-signin" onClick={() => openPanel("settings")}>Reconnect Square</ConicButton>
                 </div>
               ) : (
                 <div className="suggestion-row">
@@ -626,7 +678,7 @@ export default function App() {
             remoteStream={remoteStream}
             onTap={handleRailTap}
           />
-          <div className="orb-label">{label ?? (mode === "idle" ? "" : "")}</div>
+          <div className={`orb-label${liveLabel ? " orb-label-live" : ""}`}>{label ?? ""}</div>
           {mode === "idle" && (
             <div className="orb-hint">
               {wakeWordAvailable
@@ -646,71 +698,25 @@ export default function App() {
       <div className="brand-strip" aria-label="Connected systems">
         <span className="brand-strip-label">Powered by</span>
         {assistantKind === "venue" && (
-          <img src={assetUrl("brand/square-logo.png")} alt="Square" className="brand-strip-logo" />
+          <img src={assetUrl("brand/square-logo.png")} alt="Square" className="brand-strip-logo brand-strip-logo-mono" />
         )}
-        <img src={assetUrl("brand/openai-wordmark.png")} alt="OpenAI" className="brand-strip-logo brand-strip-logo-narrow" />
+        <img src={assetUrl("brand/openai-wordmark.png")} alt="OpenAI" className="brand-strip-logo brand-strip-logo-narrow brand-strip-logo-mono" />
         <img src={assetUrl("brand/google-g.png")} alt="Google" className="brand-strip-logo brand-strip-logo-narrow" />
       </div>
 
       {/* Voice confirmation — the panel renders its own banner when open, so
           only show the floating one when the panel is closed. */}
       {pendingConfirmation && !panelOpen && (
-        <div
-          style={{
-            position: "fixed",
-            left: 16,
-            right: 16,
-            bottom: "calc(148px + env(safe-area-inset-bottom))",
-            zIndex: 40,
-            background: "linear-gradient(135deg, #FFF3E0, #FFE0B2)",
-            border: "2px solid #FF9800",
-            borderRadius: 16,
-            padding: "12px 16px",
-            boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
-          }}
-        >
-          <div style={{ fontSize: 13, fontWeight: 600, color: "#E65100", marginBottom: 8 }}>
+        <div className="confirm-float" role="alertdialog" aria-live="polite">
+          <div className="confirm-float-title">
             Confirm {commandLabel(pendingConfirmation.tool_name)}
           </div>
           {pendingConfirmation.prompt && (
-            <div style={{ fontSize: 12, lineHeight: 1.35, color: "#8A3E00", marginBottom: 8 }}>
-              {pendingConfirmation.prompt}
-            </div>
+            <div className="confirm-float-prompt">{pendingConfirmation.prompt}</div>
           )}
-          <div style={{ display: "flex", gap: 8 }}>
-            <button
-              type="button"
-              onClick={confirmPending}
-              style={{
-                flex: 1,
-                padding: 10,
-                borderRadius: 999,
-                background: "#FF6B47",
-                color: "white",
-                border: "none",
-                fontSize: 14,
-                fontWeight: 600,
-                cursor: "pointer",
-                fontFamily: "var(--font)",
-              }}
-            >
-              Confirm
-            </button>
-            <button
-              type="button"
-              onClick={denyPending}
-              style={{
-                padding: "10px 20px",
-                borderRadius: 999,
-                background: "transparent",
-                border: "1px solid rgba(0,0,0,0.2)",
-                fontSize: 13,
-                cursor: "pointer",
-                fontFamily: "var(--font)",
-              }}
-            >
-              Cancel
-            </button>
+          <div className="confirm-float-actions">
+            <ConicButton size="sm" live onClick={confirmPending} style={{ flex: 1 }}>Confirm</ConicButton>
+            <button type="button" className="ghost-btn" onClick={denyPending}>Cancel</button>
           </div>
         </div>
       )}

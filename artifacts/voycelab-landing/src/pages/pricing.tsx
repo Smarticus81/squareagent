@@ -462,7 +462,7 @@ function CadenceToggle({ value, onChange }: { value: Cadence; onChange: (v: Cade
   return (
     <div
       className="inline-flex rounded-2xl border p-1"
-      style={{ borderColor: "rgba(14, 27, 44,0.12)", background: "rgba(255,255,255,0.5)" }}
+      style={{ borderColor: "var(--vl-surface)", background: "rgba(255,255,255,0.5)" }}
       role="radiogroup"
     >
       {(["monthly", "yearly"] as Cadence[]).map((opt) => {
@@ -562,7 +562,7 @@ function PlanCard({
         </p>
       )}
 
-      <div className="my-5 h-px" style={{ background: "rgba(14, 27, 44,0.08)" }} />
+      <div className="my-5 h-px" style={{ background: "var(--vl-surface)" }} />
 
       <ul className="space-y-2.5 flex-1">
         {plan.bullets.map((b, i) => (
@@ -629,7 +629,7 @@ function PlanArt({ plan }: { plan: PlanResponse }) {
           glow: "rgba(47,158,100,0.34)",
           soft: "rgba(255,185,90,0.26)",
           line: "rgba(47,158,100,0.70)",
-          lineAlt: "rgba(14,27,44,0.62)",
+          lineAlt: "var(--color-vl-ink-muted)",
           border: "rgba(47,158,100,0.16)",
           ink: "#17633B",
         }
@@ -639,7 +639,7 @@ function PlanArt({ plan }: { plan: PlanResponse }) {
           glow: "rgba(255,107,71,0.34)",
           soft: "rgba(255,185,90,0.26)",
           line: "rgba(255,107,71,0.72)",
-          lineAlt: "rgba(14,27,44,0.66)",
+          lineAlt: "var(--color-vl-ink-soft)",
           border: "rgba(255,107,71,0.16)",
           ink: "#8F2F1D",
         };
