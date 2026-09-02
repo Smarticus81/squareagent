@@ -724,7 +724,7 @@ export default function Onboarding() {
                             className="flex items-center gap-3 rounded-2xl border px-4 py-3"
                             style={{
                               borderColor: "var(--vl-line)",
-                              background: "rgba(255, 252, 248, 0.6)",
+                              background: "rgba(255, 255, 255, 0.08)", backdropFilter: "blur(12px)",
                             }}
                           >
                             <Icon
