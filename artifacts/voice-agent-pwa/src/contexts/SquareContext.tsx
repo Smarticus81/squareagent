@@ -109,7 +109,8 @@ interface SquareContextType {
   selectVenue: (venueId: number) => Promise<string | null>;
   clearCredentials: () => void;
   refreshCredentials: () => Promise<boolean>;
-  loadCatalog: () => Promise<number>;
+  /** Load the venue menu. `refresh` bypasses the server cache after edits in Square. */
+  loadCatalog: (opts?: { refresh?: boolean }) => Promise<number>;
   searchCatalog: (query: string) => SquareCatalogItem[];
 }
 
@@ -1035,7 +1036,7 @@ export function SquareProvider({ children }: { children: ReactNode }) {
 
   const loadingRef = useRef(false);
 
-  async function loadCatalog(): Promise<number> {
+  async function loadCatalog(opts: { refresh?: boolean } = {}): Promise<number> {
     const vid = venueId || localStorage.getItem(VENUE_ID_KEY);
     const jwt = authToken || localStorage.getItem(AUTH_TOKEN_KEY);
     if (!vid || !jwt) return 0;
@@ -1045,7 +1046,7 @@ export function SquareProvider({ children }: { children: ReactNode }) {
     setIsLoadingCatalog(true);
     setCatalogError(null);
     try {
-      const res = await fetch(`${getBaseUrl()}api/venues/${encodeURIComponent(vid)}/catalog`, {
+      const res = await fetch(`${getBaseUrl()}api/venues/${encodeURIComponent(vid)}/catalog${opts.refresh ? "?refresh=1" : ""}`, {
         headers: { Authorization: `Bearer ${jwt}` },
       });
       if (!res.ok) {
@@ -1055,7 +1056,7 @@ export function SquareProvider({ children }: { children: ReactNode }) {
           const refreshed = await refreshCredentials();
           if (refreshed) {
             // Retry with new credentials
-            return loadCatalog();
+            return loadCatalog(opts);
           }
           throw new Error("Session expired. Sign in or relaunch from the dashboard.");
         }

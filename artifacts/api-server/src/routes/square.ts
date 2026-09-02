@@ -9,11 +9,10 @@ import {
   purgeExpiredSquareOAuthTokens,
   storePendingSquareOAuthToken,
 } from "../lib/square-oauth-claims";
+import { SQUARE_OAUTH_BASE, SquareClient } from "../lib/square-client";
+import { exchangeSquareAuthorizationCode } from "../lib/square-oauth";
 
 const router: IRouter = Router();
-
-const SQUARE_BASE = "https://connect.squareup.com/v2";
-const SQUARE_OAUTH_BASE = "https://connect.squareup.com/oauth2";
 
 function getRequestOrigin(req: Request): string | null {
   // Prefer forwarded headers for deployments behind reverse proxies/load balancers.
@@ -70,14 +69,6 @@ function getRedirectUri(req?: Request): string {
   const domain = process.env.REPLIT_DEV_DOMAIN ?? "localhost:8080";
   const protocol = domain.startsWith("localhost") ? "http" : "https";
   return `${protocol}://${domain}/api/square/oauth/callback`;
-}
-
-function squareHeaders(token: string) {
-  return {
-    "Authorization": `Bearer ${token}`,
-    "Content-Type": "application/json",
-    "Square-Version": "2024-12-18",
-  };
 }
 
 // ── In-memory state stores (TTL: 10 min) ─────────────────────────────────────
@@ -235,27 +226,13 @@ router.get("/oauth/callback", async (req: Request, res: Response): Promise<void>
   }
   await deleteOAuthState(state);
 
-  const appId = process.env.SQUARE_APPLICATION_ID;
-  const appSecret = process.env.SQUARE_APPLICATION_SECRET;
   const redirectUri = pendingOAuthState.redirectUri || getRedirectUri(req);
 
   try {
-    const tokenRes = await fetch(`${SQUARE_OAUTH_BASE}/token`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Square-Version": "2024-12-18" },
-      body: JSON.stringify({
-        client_id: appId,
-        client_secret: appSecret,
-        code,
-        grant_type: "authorization_code",
-        redirect_uri: redirectUri,
-      }),
-    });
+    const exchange = await exchangeSquareAuthorizationCode(code, redirectUri);
 
-    const data = await tokenRes.json() as any;
-
-    if (!tokenRes.ok || !data.access_token) {
-      const msg = data.message || data.errors?.[0]?.detail || "Token exchange failed";
+    if (!exchange.ok || !exchange.tokens) {
+      const msg = exchange.error || "Token exchange failed";
       if (isRedirectMode) {
         // Full-page flows (onboarding, standalone PWA) must land back in the
         // app with oauth_error — a popup page here would strand the user.
@@ -266,9 +243,13 @@ router.get("/oauth/callback", async (req: Request, res: Response): Promise<void>
       return;
     }
 
+    // Refresh token + expiry ride along so the stored connection can renew
+    // its 30-day access token instead of silently disconnecting.
     const ts = await storePendingSquareOAuthToken({
-      token: data.access_token,
-      merchantId: data.merchant_id ?? "",
+      token: exchange.tokens.accessToken,
+      refreshToken: exchange.tokens.refreshToken,
+      tokenExpiresAt: exchange.tokens.expiresAt,
+      merchantId: exchange.tokens.merchantId,
       userId: pendingOAuthState.userId,
       organizationId: pendingOAuthState.organizationId,
     });
@@ -382,17 +363,15 @@ router.get("/locations", async (req: Request, res: Response): Promise<void> => {
   if (!token) { res.status(404).json({ error: "Square connection expired. Please connect again." }); return; }
 
   try {
-    const response = await fetch(`${SQUARE_BASE}/locations`, {
-      headers: squareHeaders(token),
-    });
-    const data = await response.json() as any;
+    // No location is bound yet — this is the picker that chooses one.
+    const response = await new SquareClient(token, "").get("/locations");
 
     if (!response.ok) {
-      res.status(response.status).json({ error: data.errors?.[0]?.detail || "Failed to load locations" });
+      res.status(response.status || 502).json({ error: response.error?.message || "Failed to load locations" });
       return;
     }
 
-    const locations = (data.locations || []).map((loc: any) => ({
+    const locations = (response.data?.locations || []).map((loc: any) => ({
       id: loc.id,
       name: loc.name,
       address: loc.address

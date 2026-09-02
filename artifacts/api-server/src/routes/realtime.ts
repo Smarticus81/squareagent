@@ -32,8 +32,9 @@ import {
   type OrderItem,
   type SessionOrderItem,
 } from "../lib/square-helpers";
-import { SquareClient } from "../lib/square-client";
+import { getSquareClient } from "../lib/square-client";
 import { getCachedCredentials } from "../lib/credential-cache";
+import { getCachedCatalog } from "../lib/catalog-cache";
 import { getCachedAgentProfile } from "../lib/agent-profile-cache";
 import { ensureUserOrganization, userOwnsOrganization } from "./v1/_helpers";
 import { executeToolCall } from "../tools";
@@ -833,6 +834,15 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
 
   if (assistantKind === "venue" && !squareToken) assistantKind = "general";
 
+  // The server owns the catalog: the prompt lists what the venue actually
+  // sells, straight from Square (cached), not whatever the client sent. A
+  // client-supplied catalog is only a fallback for when Square is unreachable.
+  let sessionCatalog: CatalogItem[] = Array.isArray(catalog) ? catalog : [];
+  if (squareToken) {
+    const loaded = await getCachedCatalog(getSquareClient(squareToken, squareLocationId));
+    if (loaded.items.length > 0) sessionCatalog = loaded.items;
+  }
+
   // When general connected systems are configured, merge those commands into
   // venue sessions so Square plus email/knowledge/database workflows can run
   // in one assistant.
@@ -855,7 +865,7 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
   const sessionConfig = buildRealtimeSessionConfig(
     String(providerConfig.voice ?? voice),
     Number(providerConfig.speed ?? speed),
-    catalog,
+    sessionCatalog,
     order,
     plan,
     assistantKind,
@@ -1054,6 +1064,16 @@ router.post("/tools", requireAuth as any, requirePlan() as any, async (req: any,
   const callId = typeof call_id === "string" ? call_id : "";
   const numericVenueId = effectiveVenueId ?? 0;
 
+  // Server-owned catalog (cached per venue) so every command resolves item
+  // names against what Square actually has. Loaded before the session lock so
+  // a cold cache never holds the lock while Square is paged.
+  const squareClient = squareToken ? getSquareClient(squareToken, squareLocationId) : undefined;
+  let toolCatalog: CatalogItem[] = Array.isArray(catalog) ? catalog : [];
+  if (squareClient) {
+    const loaded = await getCachedCatalog(squareClient);
+    if (loaded.items.length > 0) toolCatalog = loaded.items;
+  }
+
   const existingSession = getSession(sessionId);
   if (
     existingSession &&
@@ -1097,14 +1117,13 @@ router.post("/tools", requireAuth as any, requirePlan() as any, async (req: any,
       );
 
       if (session.items.length === 0) {
-        const initialItems = orderSnapshotToSessionItems(order, catalog);
+        const initialItems = orderSnapshotToSessionItems(order, toolCatalog);
         if (initialItems.length > 0) {
           session.items.push(...initialItems);
           markDirty(sessionId);
         }
       }
 
-      const squareClient = squareToken ? new SquareClient(squareToken, squareLocationId) : undefined;
       const assistantKind: "venue" | "general" = squareToken ? "venue" : "general";
       const includeGeneralTools =
         assistantKind === "venue" && (await hasGeneralConnectedSystemsCached(req.user.id, organizationId));
@@ -1127,7 +1146,7 @@ router.post("/tools", requireAuth as any, requirePlan() as any, async (req: any,
         tool_name,
         args,
         {
-          catalog,
+          catalog: toolCatalog,
           order,
           squareToken,
           squareLocationId,

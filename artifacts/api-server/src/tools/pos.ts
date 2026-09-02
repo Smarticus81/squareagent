@@ -5,21 +5,26 @@
 import type { ToolDefinition, ToolExecutor, ToolContext, ToolResult } from "./types";
 import {
   findCatalogItem,
+  normalizeItemName,
   syncLiveOrderToSquare,
   cancelLiveOrder,
   completeLiveOrder,
+  detachLiveOrder,
   pushToTerminal,
+  listLocationDevices,
+  externalPaymentBody,
+  idempotencyKey,
   redactSquareId,
-  SQUARE_BASE,
-  squareFetch,
-  squareErrorSummary,
-  squareHeaders,
+  squareErrorMessage,
 } from "../lib/square-helpers";
+import { squareFromCtx, idempotencySeed, money } from "./_square";
+import { createComponentLogger } from "../lib/logger";
+
+const log = createComponentLogger("tool:pos");
 
 function squareIdempotencyKey(ctx: ToolContext, suffix: string): string | undefined {
-  if (!ctx.requestId || !ctx.callId) return undefined;
-  const raw = `${ctx.requestId}-${ctx.callId}-${suffix}`;
-  return raw.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 45);
+  const seed = idempotencySeed(ctx, suffix);
+  return seed ? idempotencyKey("v", seed) : undefined;
 }
 
 // ── Definitions ───────────────────────────────────────────────────────────────
@@ -93,11 +98,15 @@ export const definitions: ToolDefinition[] = [
 
 // ── Executors ─────────────────────────────────────────────────────────────────
 
+function sessionTotal(ctx: ToolContext): number {
+  return ctx.session.items.reduce((s, i) => s + i.price * i.quantity, 0);
+}
+
 async function addItem(args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
   const { catalog, session, squareToken, squareLocationId } = ctx;
   const sessionOrder = session.items;
   const itemName = String(args.item_name ?? "");
-  const qty = Number(args.quantity ?? 1);
+  const qty = Math.max(1, Math.round(Number(args.quantity ?? 1)) || 1);
   // No menu loaded — we can't see what's available, so we can't take an order.
   // Refuse truthfully instead of adding an item we can't verify or price. This
   // backstops the prompt: the assistant only takes orders when it can actually
@@ -108,42 +117,49 @@ async function addItem(args: Record<string, unknown>, ctx: ToolContext): Promise
         "MENU NOT AVAILABLE: no menu is loaded, so there are no items to order from. Do not claim anything was added. Tell the user you can't see their menu yet and they need to sign in and connect Square from the dashboard before you can take orders.",
     };
   }
-  const match = findCatalogItem(catalog, itemName);
-  if (match) {
-    const existing = sessionOrder.find((i) => i.catalogItemId === match.id);
-    if (existing) existing.quantity += qty;
-    else sessionOrder.push({ catalogItemId: match.id, variationId: match.variationId, name: match.name, price: match.price, quantity: qty });
-    const sync = await syncLiveOrderToSquare(session, squareToken, squareLocationId, squareIdempotencyKey(ctx, "add"));
-    const posStatus = sync.ok && session.squareOrderId
-      ? " Showing on POS."
-      : sync.error ? ` (POS sync issue: ${sync.error})` : "";
-    return {
-      result: `Added ${qty}x ${match.name} ($${(match.price * qty).toFixed(2)}) to the order.${posStatus}`,
-      command: { action: "add", item_id: match.id, item_name: match.name, quantity: qty, price: match.price, squareOrderId: session.squareOrderId },
-    };
+  const byId = typeof args.item_id === "string" && args.item_id
+    ? catalog.find((c) => c.id === args.item_id || c.variationId === args.item_id)
+    : undefined;
+  const match = byId ?? findCatalogItem(catalog, itemName);
+  if (!match) {
+    const names = catalog.slice(0, 5).map((c) => c.name).join(", ");
+    return { result: `Item "${itemName}" not found. Available: ${names || "none"}` };
   }
-  const names = catalog.slice(0, 5).map((c) => c.name).join(", ");
-  return { result: `Item "${itemName}" not found. Available: ${names || "none"}` };
+  const lineKey = match.variationId ?? match.id;
+  const existing = sessionOrder.find((i) => (i.variationId ?? i.catalogItemId) === lineKey);
+  if (existing) existing.quantity += qty;
+  else sessionOrder.push({ catalogItemId: match.id, variationId: match.variationId, name: match.name, price: match.price, quantity: qty });
+  const sync = await syncLiveOrderToSquare(session, squareToken, squareLocationId, squareIdempotencyKey(ctx, "add"));
+  const posStatus = sync.ok && session.squareOrderId
+    ? " Showing on POS."
+    : sync.error ? ` (POS sync issue: ${sync.error})` : "";
+  return {
+    result: `Added ${qty}x ${match.name} ($${(match.price * qty).toFixed(2)}) to the order.${posStatus}`,
+    command: { action: "add", item_id: match.id, item_name: match.name, quantity: qty, price: match.price, squareOrderId: session.squareOrderId },
+  };
 }
 
 async function removeItem(args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
   const { session, squareToken, squareLocationId } = ctx;
   const sessionOrder = session.items;
   const itemName = String(args.item_name ?? "");
-  const qty = Number(args.quantity ?? 1);
-  const n = itemName.toLowerCase();
-  const idx = sessionOrder.findIndex(
-    (i) => i.name.toLowerCase() === n || i.name.toLowerCase().includes(n) || n.includes(i.name.toLowerCase()),
-  );
-  if (idx >= 0) {
-    sessionOrder[idx].quantity -= qty;
-    if (sessionOrder[idx].quantity <= 0) sessionOrder.splice(idx, 1);
+  const qty = Math.max(1, Math.round(Number(args.quantity ?? 1)) || 1);
+  const n = normalizeItemName(itemName);
+  const idx = sessionOrder.findIndex((i) => {
+    const name = normalizeItemName(i.name);
+    return name === n || name.includes(n) || n.includes(name);
+  });
+  if (idx < 0) {
+    return { result: `"${itemName}" isn't on the order.${sessionOrder.length ? ` Currently: ${sessionOrder.map((i) => `${i.quantity}x ${i.name}`).join(", ")}.` : ""}` };
   }
+  const removedName = sessionOrder[idx].name;
+  sessionOrder[idx].quantity -= qty;
+  if (sessionOrder[idx].quantity <= 0) sessionOrder.splice(idx, 1);
   const sync = await syncLiveOrderToSquare(session, squareToken, squareLocationId, squareIdempotencyKey(ctx, "rm"));
   const posStatus = sync.ok && session.squareOrderId ? " POS updated." : sync.error ? ` (POS sync issue: ${sync.error})` : "";
   return {
-    result: `Removed ${qty}x ${itemName} from the order.${posStatus}`,
-    command: { action: "remove", item_name: itemName, quantity: qty, squareOrderId: session.squareOrderId },
+    result: `Removed ${qty}x ${removedName} from the order.${posStatus}`,
+    command: { action: "remove", item_name: removedName, quantity: qty, squareOrderId: session.squareOrderId },
   };
 }
 
@@ -151,130 +167,102 @@ async function getOrder(_args: Record<string, unknown>, ctx: ToolContext): Promi
   const sessionOrder = ctx.session.items;
   if (sessionOrder.length === 0) return { result: "The order is currently empty." };
   const lines = sessionOrder.map((i) => `${i.quantity}x ${i.name} @ $${i.price.toFixed(2)}`);
-  const total = sessionOrder.reduce((s, i) => s + i.price * i.quantity, 0);
+  const total = typeof ctx.session.squareOrderTotal === "number" ? ctx.session.squareOrderTotal / 100 : sessionTotal(ctx);
   const posNote = ctx.session.squareOrderId ? ` (live on POS: ${ctx.session.referenceId ?? ctx.session.squareOrderId})` : "";
   return { result: `Current order${posNote}:\n${lines.join("\n")}\nTotal: $${total.toFixed(2)}` };
 }
 
 async function clearOrder(_args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
+  const hadLiveOrder = Boolean(ctx.session.squareOrderId);
   await cancelLiveOrder(ctx.session, ctx.squareToken, ctx.squareLocationId);
   ctx.session.items.splice(0, ctx.session.items.length);
-  return { result: "Order cleared. Removed from POS.", command: { action: "clear" } };
+  return { result: hadLiveOrder ? "Order cleared. Removed from POS." : "Order cleared.", command: { action: "clear" } };
 }
 
 async function submitOrder(_args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
   const { session, squareToken, squareLocationId } = ctx;
   const sessionOrder = session.items;
   if (sessionOrder.length === 0) return { result: "The order is empty — nothing to submit." };
-  if (!squareToken || !squareLocationId) return { result: "Square is not configured for this session — cannot submit." };
+  const client = squareFromCtx(ctx);
+  if (!client) return { result: "Square is not configured for this session — cannot submit." };
 
   const holdForReview = ctx.orderHandlingMode === "hold_for_review";
 
-  try {
-    if (holdForReview) {
-      // Hold-for-review: park the order on the POS as an OPEN ticket so the team
-      // can settle it at close-out. Never take payment here.
-      if (!session.squareOrderId) {
-        const sync = await syncLiveOrderToSquare(session, squareToken, squareLocationId, squareIdempotencyKey(ctx, "add"));
-        if (!sync.ok || !session.squareOrderId) {
-          return { result: `Couldn't park the order on the POS${sync.error ? `: ${sync.error}` : ""}.` };
-        }
+  if (holdForReview) {
+    // Hold-for-review: park the order on the POS as an OPEN ticket so the team
+    // can settle it at close-out. Never take payment here.
+    if (!session.squareOrderId) {
+      const sync = await syncLiveOrderToSquare(session, squareToken, squareLocationId, squareIdempotencyKey(ctx, "add"));
+      if (!sync.ok || !session.squareOrderId) {
+        return { result: `Couldn't park the order on the POS${sync.error ? `: ${sync.error}` : ""}.` };
       }
-      const heldOrderId = session.squareOrderId;
-      const reference = session.referenceId ?? heldOrderId;
-      const total =
-        typeof session.squareOrderTotal === "number"
-          ? session.squareOrderTotal / 100
-          : sessionOrder.reduce((s, i) => s + i.price * i.quantity, 0);
-      console.log(`[Tools/POS] Order held for review order=${redactSquareId(heldOrderId)} ref=${reference}`);
-      // Detach the session from the parked ticket without paying or cancelling,
-      // so the OPEN order stays on the POS and the next conversation starts clean.
-      sessionOrder.splice(0, sessionOrder.length);
-      session.squareOrderId = undefined;
-      session.squareOrderVersion = undefined;
-      session.squareOrderTotal = undefined;
-      session.referenceId = undefined;
-      session.lineItemUids = undefined;
-      return {
-        result: `Sent to the POS for review. Total: $${total.toFixed(2)}. It's parked as an open ticket (${reference}) for close-out — no payment taken.`,
-        command: { action: "submit", squareOrderId: heldOrderId },
-      };
     }
-
-    if (session.squareOrderId) {
-      const { orderId, total, paymentId, error } = await completeLiveOrder(
-        session, squareToken, squareLocationId, squareIdempotencyKey(ctx, "pay"),
-      );
-      if (error) console.warn(`[Tools/POS] Live payment failed: ${error}`);
-      else console.log(`[Tools/POS] Live order completed order=${redactSquareId(orderId)} payment=${redactSquareId(paymentId)}`);
-      sessionOrder.splice(0, sessionOrder.length);
-      session.squareOrderId = undefined;
-      session.squareOrderVersion = undefined;
-      session.squareOrderTotal = undefined;
-      session.referenceId = undefined;
-      session.lineItemUids = undefined;
-      return {
-        result: `Order submitted! Total: $${total.toFixed(2)}.${error ? ` Warning: ${error}` : ""}`,
-        command: { action: "submit", squareOrderId: orderId },
-      };
-    }
-
-    // Fallback: no live order — create + pay
-    const lineItems = sessionOrder.map((item) => ({
-      quantity: item.quantity.toString(),
-      catalog_object_id: item.variationId || item.catalogItemId,
-      ...(item.variationId ? {} : { base_price_money: { amount: Math.round(item.price * 100), currency: "USD" } }),
-    }));
-    const ticketRef = `VOICE-${Date.now()}`;
-    const orderRes = await squareFetch(`${SQUARE_BASE}/orders`, {
-      method: "POST",
-      headers: squareHeaders(squareToken),
-      body: JSON.stringify({
-        idempotency_key: `order-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        order: { location_id: squareLocationId, reference_id: ticketRef, line_items: lineItems },
-      }),
-    });
-    const orderData = await orderRes.json() as any;
-    if (!orderRes.ok) {
-      const errMsg = orderData.errors?.[0]?.detail || "Failed to create order";
-      console.error("[Tools/POS] Order failed:", squareErrorSummary(orderData.errors));
-      return { result: `Order failed: ${errMsg}` };
-    }
-    const orderId = orderData.order?.id;
-    const orderTotal = orderData.order?.total_money?.amount ?? 0;
-
-    const paymentRes = await squareFetch(`${SQUARE_BASE}/payments`, {
-      method: "POST",
-      headers: squareHeaders(squareToken),
-      body: JSON.stringify({
-        idempotency_key: `payment-${orderId}`,
-        source_id: "EXTERNAL",
-        amount_money: { amount: orderTotal, currency: "USD" },
-        order_id: orderId,
-        location_id: squareLocationId,
-        external_details: { type: "OTHER", source: "Pre-paid Event Package" },
-        note: "Voice order — pre-paid event package",
-      }),
-    });
-    if (!paymentRes.ok) {
-      const pd = await paymentRes.json() as any;
-      console.warn("[Tools/POS] Payment failed:", squareErrorSummary(pd.errors));
-    }
-
+    const heldOrderId = session.squareOrderId;
+    const reference = session.referenceId ?? heldOrderId;
+    const total = typeof session.squareOrderTotal === "number" ? session.squareOrderTotal / 100 : sessionTotal(ctx);
+    log.info({ order: redactSquareId(heldOrderId), ref: reference }, "order held for review");
+    // Detach the session from the parked ticket without paying or cancelling,
+    // so the OPEN order stays on the POS and the next conversation starts clean.
     sessionOrder.splice(0, sessionOrder.length);
-    const total = orderTotal / 100;
-    return { result: `Order submitted! Total: $${total.toFixed(2)}.`, command: { action: "submit" } };
-  } catch (e: any) {
-    console.error("[Tools/POS] submit_order error:", e.message);
-    return { result: `Failed to submit order: ${e.message}` };
+    detachLiveOrder(session);
+    return {
+      result: `Sent to the POS for review. Total: $${total.toFixed(2)}. It's parked as an open ticket (${reference}) for close-out — no payment taken.`,
+      command: { action: "submit", squareOrderId: heldOrderId },
+    };
   }
+
+  if (session.squareOrderId) {
+    const { orderId, total, paymentId, error } = await completeLiveOrder(
+      session, squareToken, squareLocationId, squareIdempotencyKey(ctx, "pay"),
+    );
+    if (error) log.warn({ order: redactSquareId(orderId), err: error }, "live payment failed");
+    else log.info({ order: redactSquareId(orderId), payment: redactSquareId(paymentId) }, "live order completed");
+    sessionOrder.splice(0, sessionOrder.length);
+    detachLiveOrder(session);
+    return {
+      result: `Order submitted! Total: $${total.toFixed(2)}.${error ? ` Warning: ${error}` : ""}`,
+      command: { action: "submit", squareOrderId: orderId },
+    };
+  }
+
+  // Fallback: no live order — create + pay in one go.
+  const lineItems = sessionOrder.map((item) => ({
+    quantity: item.quantity.toString(),
+    ...(item.variationId
+      ? { catalog_object_id: item.variationId }
+      : { name: item.name, base_price_money: { amount: Math.round(item.price * 100), currency: "USD" } }),
+  }));
+  const orderRes = await client.post("/orders", {
+    idempotency_key: squareIdempotencyKey(ctx, "order") ?? idempotencyKey("order"),
+    order: { location_id: squareLocationId, reference_id: `VOICE-${Date.now()}`, line_items: lineItems },
+  });
+  if (!orderRes.ok) {
+    log.error({ err: orderRes.error }, "order create failed");
+    return { result: `Order failed: ${squareErrorMessage(orderRes.error, "Failed to create order")}` };
+  }
+  const orderId: string = orderRes.data.order?.id;
+  const orderTotal: number = orderRes.data.order?.total_money?.amount ?? 0;
+
+  const paymentRes = await client.post("/payments", {
+    idempotency_key: squareIdempotencyKey(ctx, "pay") ?? idempotencyKey("pay", orderId),
+    ...externalPaymentBody(orderId, orderTotal, squareLocationId),
+  });
+  const paymentError = paymentRes.ok ? undefined : squareErrorMessage(paymentRes.error, "Payment failed");
+  if (paymentError) log.warn({ order: redactSquareId(orderId), err: paymentError }, "payment failed");
+
+  sessionOrder.splice(0, sessionOrder.length);
+  return {
+    result: `Order submitted! Total: ${money(orderTotal)}.${paymentError ? ` Warning: ${paymentError}` : ""}`,
+    command: { action: "submit", squareOrderId: orderId },
+  };
 }
 
 async function sendToTerminal(_args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
   const { session, squareToken, squareLocationId } = ctx;
   const sessionOrder = session.items;
   if (sessionOrder.length === 0) return { result: "The order is empty — nothing to send to the terminal." };
-  if (!squareToken || !squareLocationId) return { result: "Square is not configured — cannot send to terminal." };
+  const client = squareFromCtx(ctx);
+  if (!client) return { result: "Square is not configured — cannot send to terminal." };
 
   if (!session.squareOrderId) {
     const sync = await syncLiveOrderToSquare(session, squareToken, squareLocationId, squareIdempotencyKey(ctx, "add"));
@@ -282,44 +270,50 @@ async function sendToTerminal(_args: Record<string, unknown>, ctx: ToolContext):
   }
   if (!session.squareOrderId) return { result: "Could not create the order in Square. Try submitting instead." };
 
-  try {
-    const devRes = await squareFetch(`${SQUARE_BASE}/devices?location_id=${squareLocationId}`, { headers: squareHeaders(squareToken) });
-    const devData = (await devRes.json()) as any;
-    const allDevices = devData.devices ?? [];
-    // Square Terminal hardware supports Terminal Checkout API; iPads/POS devices do not
-    const terminals = allDevices.filter((d: any) => (d.attributes?.type ?? d.type ?? "").toUpperCase() === "TERMINAL");
-    const posDevices = allDevices.filter((d: any) => {
-      const t = (d.attributes?.type ?? d.type ?? "").toUpperCase();
-      return t !== "TERMINAL";
-    });
-
-    if (terminals.length === 0) {
-      const total = ((session.squareOrderTotal ?? 0) / 100).toFixed(2);
-      if (posDevices.length > 0) {
-        return { result: `Your location has an iPad/POS but no Square Terminal hardware. The order ($${total}) is already live on your iPad POS as an open ticket — just tap it there to take payment.` };
-      }
-      // No devices at all — order is still live on any POS signed into this location
-      return { result: `No Square Terminal devices found at this location. The order ($${total}) is live on the POS — open the ticket on your iPad to complete payment.` };
-    }
-
-    const device = terminals[0];
-    const { checkoutId, error } = await pushToTerminal(squareToken, squareLocationId, device.id, session.squareOrderId, session.squareOrderTotal ?? 0);
-    if (error) return { result: `Couldn't send to terminal: ${error}. The order is still open on the POS.` };
-    return {
-      result: `Sent to the terminal! Total: $${((session.squareOrderTotal ?? 0) / 100).toFixed(2)}. Customer can tap or swipe.`,
-      command: { action: "submit", squareOrderId: session.squareOrderId },
-    };
-  } catch (e: any) {
-    console.error("[Tools/POS] send_to_terminal error:", e.message);
-    return { result: `Failed to send to terminal: ${e.message}` };
+  const devices = await listLocationDevices(client);
+  if (!devices.ok) {
+    return { result: `Couldn't look up terminals: ${squareErrorMessage(devices.error)}. The order is still open on the POS.` };
   }
+  const total = money(session.squareOrderTotal);
+  if (devices.terminals.length === 0) {
+    if (devices.posDevices.length > 0) {
+      return { result: `Your location has an iPad/POS but no Square Terminal hardware. The order (${total}) is already live on your iPad POS as an open ticket — just tap it there to take payment.` };
+    }
+    // No devices at all — order is still live on any POS signed into this location
+    return { result: `No Square Terminal devices found at this location. The order (${total}) is live on the POS — open the ticket on your iPad to complete payment.` };
+  }
+
+  const device = devices.terminals[0];
+  const { checkoutId, error } = await pushToTerminal(
+    squareToken,
+    squareLocationId,
+    device.id,
+    session.squareOrderId,
+    session.squareOrderTotal ?? 0,
+    squareIdempotencyKey(ctx, "term"),
+  );
+  if (error) return { result: `Couldn't send to terminal: ${error}. The order is still open on the POS.` };
+  log.info({ checkout: redactSquareId(checkoutId) }, "terminal checkout sent");
+  return {
+    result: `Sent to the terminal! Total: ${total}. Customer can tap or swipe.`,
+    command: { action: "submit", squareOrderId: session.squareOrderId },
+  };
 }
 
 async function searchMenu(args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
-  const q = String(args.query ?? "").toLowerCase();
-  const hits = ctx.catalog.filter((c) => c.name.toLowerCase().includes(q) || c.category?.toLowerCase().includes(q));
-  if (hits.length === 0) return { result: `No menu items matching "${q}".` };
-  return { result: hits.map((c) => `${c.name}: $${c.price.toFixed(2)}`).join(", ") };
+  const q = normalizeItemName(String(args.query ?? ""));
+  if (!q) return { result: "What should I search for?" };
+  const hits = ctx.catalog.filter((c) =>
+    normalizeItemName(c.name).includes(q) || (c.category ? normalizeItemName(c.category).includes(q) : false),
+  );
+  if (hits.length === 0) {
+    const fuzzy = findCatalogItem(ctx.catalog, q);
+    if (fuzzy) return { result: `${fuzzy.name}: $${fuzzy.price.toFixed(2)}` };
+    return { result: `No menu items matching "${args.query}".` };
+  }
+  const shown = hits.slice(0, 15);
+  const more = hits.length > shown.length ? ` (and ${hits.length - shown.length} more)` : "";
+  return { result: shown.map((c) => `${c.name}: $${c.price.toFixed(2)}`).join(", ") + more };
 }
 
 // ── Export executor map ───────────────────────────────────────────────────────

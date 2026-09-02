@@ -50,6 +50,9 @@ cd artifacts/voice-agent-pwa && pnpm dev     # PWA on :8081
 # Database migration
 cd lib/db && pnpm push
 
+# API server unit tests (Square client, catalog cache, matching, OAuth refresh, venue time)
+cd artifacts/api-server && pnpm test
+
 # One-time migration scripts
 cd artifacts/api-server && npx tsx scripts/encrypt-venue-tokens.ts
 cd artifacts/api-server && npx tsx scripts/migrate-venues-to-orgs.ts
@@ -68,7 +71,9 @@ cd artifacts/api-server && npx tsx scripts/enable-pgvector.ts
 
 **Auth**: JWT-based. `requireAuth` and `requirePlan` middleware gate API routes. `req.organization` is attached alongside `req.user`. Clerk Billing (B2B, organization-level) manages subscriptions (plan/trial gating).
 
-**Square integration**: OAuth flow at `/api/square/oauth/*` stores encrypted tokens per-venue. Credentials are AES-256-GCM encrypted via `secrets.ts`. The credential cache decrypts on read.
+**Square integration**: OAuth flow at `/api/square/oauth/*` stores encrypted tokens per-venue (in `service_connections`, with the legacy venue columns kept in step). Credentials are AES-256-GCM encrypted via `secrets.ts`. The credential cache decrypts on read and renews 30-day Square access tokens ahead of expiry using the stored refresh token (`lib/square-oauth.ts`). All Square HTTP goes through `lib/square-client.ts` (`SquareClient`, memoized per credential via `getSquareClient`); the pinned API version lives there as `SQUARE_API_VERSION` (env override `SQUARE_API_VERSION`). Tools obtain the client with `squareFromCtx(ctx)` from `tools/_square.ts` and never call `fetch` directly.
+
+**Catalog ownership**: the server owns the venue catalog. `/api/realtime/session`, `/api/realtime/tools`, the WS relays, and `/v1/workflows/:slug/run` all read it from `lib/catalog-cache.ts`; a client-supplied `catalog` in a request body is only a fallback for when Square is unreachable. Item names spoken by users are resolved with `findCatalogItem` (normalized, tiered matching) in `square-helpers.ts`. Reports use the venue's Square location timezone via `lib/venue-time.ts`.
 
 ## Skills System
 
@@ -153,9 +158,10 @@ All plans have a 1.5x overage hard cap. Seven voice pipeline providers (LiveKit,
 
 ## Performance Layer
 
-- **SquareClient** (`lib/square-client.ts`) -- fetch wrapper with exponential backoff retry (3 attempts), circuit breaker per venue (opens after 5 failures in 60s)
-- **Credential Cache** (`lib/credential-cache.ts`) -- 5-min TTL in-memory cache for venue Square credentials (decrypted on read), avoids DB hit on every tool call
-- **Catalog Cache** (`lib/catalog-cache.ts`) -- 5-min TTL per-venue catalog cache, avoids re-fetching from Square API
+- **SquareClient** (`lib/square-client.ts`) -- the single Square HTTP path: 10s per-request timeout, exponential backoff retry with jitter (3 attempts, honors Retry-After), circuit breaker per credential (opens after 5 failures in 60s, probes after 30s), cursor pagination helpers (`getAllPages`, `postAllPages`)
+- **Credential Cache** (`lib/credential-cache.ts`) -- 5-min TTL in-memory cache for venue Square credentials (decrypted on read), avoids DB hit on every tool call; refreshes expiring OAuth tokens single-flight per connection
+- **Catalog Cache** (`lib/catalog-cache.ts`) -- per-location catalog cache (5-min TTL, stale-while-revalidate up to 30 min, single-flight loads; catalog writes invalidate), plus a 10s inventory-count micro-cache and a 1h location (timezone) cache
+- **Venue Time** (`lib/venue-time.ts`) -- day/period boundaries and hour buckets in the venue's IANA timezone for reports
 - **Session Store** (`lib/session-store.ts`) -- in-memory + DB write-through for voice session state, survives server restarts
 - **Pino Logging** (`lib/logger.ts`) -- structured JSON logging via pino + pino-http; LOG_LEVEL env var
 
@@ -189,4 +195,4 @@ Required: `DATABASE_URL`, `JWT_SECRET`, `SECRETS_ENCRYPTION_KEY` (dedicated 32+ 
 
 Provider API keys are resolved through `artifacts/api-server/src/lib/api-keys.ts`. Use canonical names for new deployments: `OPENAI_API_KEY` and `GOOGLE_GEMINI_API_KEY`. Legacy aliases (`AI_INTEGRATIONS_OPENAI_API_KEY`, `GOOGLE_API_KEY`) are accepted only for compatibility.
 
-Optional: `VITE_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, `CLERK_WEBHOOK_SECRET`, `CLERK_PLAN_PRO_ID`, `CLERK_PLAN_BUSINESS_ID`, `SESSION_SECRET`, `LOG_LEVEL`
+Optional: `VITE_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, `CLERK_WEBHOOK_SECRET`, `CLERK_PLAN_PRO_ID`, `CLERK_PLAN_BUSINESS_ID`, `SESSION_SECRET`, `LOG_LEVEL`, `SQUARE_API_VERSION` (pin override), `SQUARE_REQUEST_TIMEOUT_MS`, `SQUARE_CATALOG_CACHE_TTL_MS`, `SQUARE_TOKEN_REFRESH_AHEAD_MS`
