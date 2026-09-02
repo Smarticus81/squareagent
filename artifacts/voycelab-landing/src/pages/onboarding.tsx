@@ -610,7 +610,7 @@ export default function Onboarding() {
                       fontWeight: 600,
                       letterSpacing: "-0.03em",
                       color: "var(--color-vl-ink)",
-                      borderBottom: "2px solid rgba(14, 27, 44, 0.14)",
+                      borderBottom: "2px solid var(--vl-line)",
                       paddingBottom: "0.35rem",
                       caretColor: "var(--color-vl-coral)",
                     }}
@@ -723,7 +723,7 @@ export default function Onboarding() {
                             key={text}
                             className="flex items-center gap-3 rounded-2xl border px-4 py-3"
                             style={{
-                              borderColor: "rgba(14, 27, 44, 0.08)",
+                              borderColor: "var(--vl-line)",
                               background: "rgba(255, 252, 248, 0.6)",
                             }}
                           >
