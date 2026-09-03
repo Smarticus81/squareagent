@@ -107,11 +107,11 @@ function Hero({ reduceMotion }: { reduceMotion: boolean }) {
       case "thinking":
         return "Thinking…";
       case "speaking":
-        return "Bev is talking.";
+        return "Nova is talking.";
       case "error":
         return "Something went wrong. Tap to try again.";
       default:
-        return "Tap to talk to Bev. Microphone required.";
+        return "Tap to talk to Nova. Microphone required.";
     }
   })();
 
@@ -316,7 +316,7 @@ function LiveTicket({ demo }: { demo: ReturnType<typeof useVoycelabDemoRealtime>
               {demo.conversation.map((m) => (
                 <p key={m.id} className={`text-[13.5px] leading-relaxed ${m.role === "user" ? "text-gray-500" : "text-gray-900"}`}>
                   <span className="mr-2 font-mono text-[10px] tracking-[0.18em] text-gray-400 uppercase">
-                    {m.role === "user" ? "You" : "Bev"}
+                    {m.role === "user" ? "You" : "Nova"}
                   </span>
                   {m.content}
                 </p>
@@ -439,7 +439,7 @@ const SCENES: Scene[] = [
     id: "sales",
     say: "How did happy hour do tonight?",
     kind: "answer",
-    title: "Bev · spoken reply",
+    title: "Nova · spoken reply",
     brand: "openai",
     text: "Happy hour did $2,340, up 18% on last Friday. Spicy Margarita led with 41 pours.",
     note: "OpenAI Realtime hears the room and answers in under a second.",
@@ -448,7 +448,7 @@ const SCENES: Scene[] = [
     id: "loud",
     say: "Is the IPA keg tapped?",
     kind: "answer",
-    title: "Bev · loud-room voice",
+    title: "Nova · loud-room voice",
     brand: "google",
     text: "Hazy IPA is at 68%. You’re fine through close.",
     note: "Gemini Live is the engine you switch to when the music’s up.",
