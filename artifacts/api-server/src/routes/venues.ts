@@ -14,14 +14,15 @@ import { db, agentProfilesTable, serviceConnectionsTable, venuesTable } from "@w
 import { eq, and, desc, inArray, isNull, or } from "drizzle-orm";
 import { requireAuth } from "./auth";
 import { ensureUserOrganization } from "./v1/_helpers";
-import { getCachedCredentials, invalidateCredentials } from "../lib/credential-cache";
+import { getCachedCredentials, invalidateCredentials, type StoredSquareCredentials } from "../lib/credential-cache";
 import { encrypt, decrypt } from "../lib/secrets";
 import { claimPendingSquareOAuthToken } from "../lib/square-oauth-claims";
-import { squareFetch } from "../lib/square-helpers";
+import { externalPaymentBody, idempotencyKey } from "../lib/square-helpers";
+import { getSquareClient } from "../lib/square-client";
+import { getCachedCatalog, invalidateCatalog } from "../lib/catalog-cache";
+import { revokeSquareAccessToken } from "../lib/square-oauth";
 
 const router = Router();
-
-const SQUARE_BASE = "https://connect.squareup.com/v2";
 
 type VenueListRow = typeof venuesTable.$inferSelect;
 type SquareConnectionSummary = {
@@ -69,14 +70,18 @@ async function syncSquareServiceConnection(params: {
   organizationId: string | null;
   venueId: number;
   accessToken: string;
+  refreshToken?: string | null;
+  tokenExpiresAt?: string | null;
   merchantId?: string | null;
   locationId: string;
   locationName?: string | null;
 }) {
   if (!params.organizationId) return null;
 
-  const credentials = {
+  const credentials: StoredSquareCredentials = {
     accessToken: encrypt(params.accessToken),
+    ...(params.refreshToken ? { refreshToken: encrypt(params.refreshToken) } : {}),
+    ...(params.tokenExpiresAt ? { expiresAt: params.tokenExpiresAt } : {}),
     merchantId: params.merchantId || undefined,
   };
   const config = {
@@ -97,10 +102,17 @@ async function syncSquareServiceConnection(params: {
     .limit(1);
 
   if (existing) {
+    const previous = (existing.credentials ?? {}) as StoredSquareCredentials;
+    const merged: StoredSquareCredentials = {
+      ...credentials,
+      // A legacy backfill (no refresh token) must not erase one already stored.
+      ...(credentials.refreshToken ? {} : previous.refreshToken ? { refreshToken: previous.refreshToken } : {}),
+      ...(credentials.expiresAt ? {} : previous.expiresAt ? { expiresAt: previous.expiresAt } : {}),
+    };
     const [updated] = await db
       .update(serviceConnectionsTable)
       .set({
-        credentials,
+        credentials: merged,
         config,
         status: "available",
         lastHealthCheck: {
@@ -132,14 +144,6 @@ async function syncSquareServiceConnection(params: {
     })
     .returning();
   return inserted;
-}
-
-function squareHeaders(token: string) {
-  return {
-    Authorization: `Bearer ${token}`,
-    "Content-Type": "application/json",
-    "Square-Version": "2024-12-18",
-  };
 }
 
 // ── GET /api/venues — list all venues for current user ─────────────────────
@@ -284,6 +288,8 @@ router.post("/", requireAuth as any, async (req: Request, res: Response): Promis
         organizationId,
         venueId: updated.id,
         accessToken,
+        refreshToken: claimedOAuth.refreshToken,
+        tokenExpiresAt: claimedOAuth.expiresAt,
         merchantId: merchantId || updated.squareMerchantId,
         locationId,
         locationName: locationName || updated.squareLocationName,
@@ -324,6 +330,8 @@ router.post("/", requireAuth as any, async (req: Request, res: Response): Promis
         organizationId,
         venueId: updated.id,
         accessToken,
+        refreshToken: claimedOAuth.refreshToken,
+        tokenExpiresAt: claimedOAuth.expiresAt,
         merchantId: merchantId || updated.squareMerchantId,
         locationId,
         locationName: locationName || updated.squareLocationName,
@@ -365,6 +373,8 @@ router.post("/", requireAuth as any, async (req: Request, res: Response): Promis
       organizationId,
       venueId: venue.id,
       accessToken,
+      refreshToken: claimedOAuth.refreshToken,
+      tokenExpiresAt: claimedOAuth.expiresAt,
       merchantId: merchantId || venue.squareMerchantId,
       locationId,
       locationName: locationName || venue.squareLocationName,
@@ -420,25 +430,8 @@ router.delete("/:id", requireAuth as any, async (req: Request, res: Response): P
     // through getCachedCredentials so migrated venues are handled too.
     const creds = await getCachedCredentials(user.id, venueId, organizationId);
     if (creds?.squareToken) {
-      try {
-        const appId = process.env.SQUARE_APPLICATION_ID;
-        if (appId) {
-          await squareFetch("https://connect.squareup.com/oauth2/revoke", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "Square-Version": "2024-12-18",
-              Authorization: `Client ${process.env.SQUARE_APPLICATION_SECRET}`,
-            },
-            body: JSON.stringify({
-              client_id: appId,
-              access_token: creds.squareToken,
-            }),
-          });
-        }
-      } catch {
-        // Token revocation is best-effort
-      }
+      await revokeSquareAccessToken(creds.squareToken);
+      invalidateCatalog(creds.squareLocationId);
     }
 
     await db.delete(venuesTable).where(venueIdTenantWhere(venueId, user.id, organizationId));
@@ -568,60 +561,17 @@ router.get("/:id/catalog", requireAuth as any, async (req: Request, res: Respons
       return;
     }
 
-    const plainToken = creds.squareToken;
-    const items: any[] = [];
-    let cursor: string | undefined;
+    // Same cached catalog the voice tools use, so the PWA menu and the
+    // assistant always agree. `?refresh=1` forces a reload after edits in Square.
+    const client = getSquareClient(creds.squareToken, creds.squareLocationId);
+    const force = req.query.refresh === "1" || req.query.refresh === "true";
+    const catalog = await getCachedCatalog(client, { force });
+    if (catalog.error && catalog.items.length === 0) {
+      res.status(catalog.error.status >= 400 ? catalog.error.status : 502).json({ error: catalog.error.message || "Failed to load catalog" });
+      return;
+    }
 
-    do {
-      const url = `${SQUARE_BASE}/catalog/list?types=ITEM&include_deleted_objects=false${cursor ? `&cursor=${cursor}` : ""}`;
-      const response = await squareFetch(url, { headers: squareHeaders(plainToken) });
-      const data = (await response.json()) as any;
-
-      if (!response.ok) {
-        res.status(response.status).json({ error: data.errors?.[0]?.detail || "Failed to load catalog" });
-        return;
-      }
-
-      for (const obj of data.objects || []) {
-        if (obj.type !== "ITEM") continue;
-        const itemData = obj.item_data;
-        if (!itemData) continue;
-        const variations = itemData.variations || [];
-        if (variations.length === 0) continue;
-
-        if (variations.length === 1) {
-          const varData = variations[0].item_variation_data;
-          items.push({
-            id: obj.id,
-            variationId: variations[0].id,
-            name: itemData.name,
-            price: varData?.price_money ? varData.price_money.amount / 100 : 0,
-            category: itemData.category_id,
-            description: itemData.description || "",
-          });
-        } else {
-          for (const variation of variations) {
-            const varData = variation.item_variation_data;
-            if (!varData) continue;
-            const varName =
-              varData.name && varData.name !== "Regular"
-                ? `${itemData.name} (${varData.name})`
-                : itemData.name;
-            items.push({
-              id: obj.id,
-              variationId: variation.id,
-              name: varName,
-              price: varData.price_money ? varData.price_money.amount / 100 : 0,
-              category: itemData.category_id,
-              description: itemData.description || "",
-            });
-          }
-        }
-      }
-      cursor = data.cursor;
-    } while (cursor);
-
-    res.json({ items, count: items.length });
+    res.json({ items: catalog.items, count: catalog.items.length, cached: catalog.cached });
   } catch (e: any) {
     console.error("[Venues] Catalog error:", e.message);
     res.status(500).json({ error: "Failed to load catalog" });
@@ -663,7 +613,7 @@ router.post("/:id/orders", requireAuth as any, async (req: Request, res: Respons
       return;
     }
 
-    const plainToken = creds.squareToken;
+    const client = getSquareClient(creds.squareToken, creds.squareLocationId);
     const lineItems = items.map((item: any) => ({
       quantity: String(item.quantity ?? 1),
       catalog_object_id: item.variationId || item.catalogItemId,
@@ -673,42 +623,27 @@ router.post("/:id/orders", requireAuth as any, async (req: Request, res: Respons
       },
     }));
 
-    const orderRes = await squareFetch(`${SQUARE_BASE}/orders`, {
-      method: "POST",
-      headers: squareHeaders(plainToken),
-      body: JSON.stringify({
-        idempotency_key: `order-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
-        order: {
-          location_id: creds.squareLocationId,
-          reference_id: `VOICE-${Date.now()}`,
-          line_items: lineItems,
-        },
-      }),
+    const orderRes = await client.post("/orders", {
+      idempotency_key: idempotencyKey("order"),
+      order: {
+        location_id: creds.squareLocationId,
+        reference_id: `VOICE-${Date.now()}`,
+        line_items: lineItems,
+      },
     });
-    const orderData = await orderRes.json() as any;
     if (!orderRes.ok) {
-      res.status(orderRes.status).json({ error: orderData.errors?.[0]?.detail || "Failed to create order" });
+      res.status(orderRes.status >= 400 ? orderRes.status : 502).json({ error: orderRes.error?.message || "Failed to create order" });
       return;
     }
 
-    const orderId = orderData.order?.id;
-    const orderTotal = orderData.order?.total_money?.amount ?? 0;
-    const paymentRes = await squareFetch(`${SQUARE_BASE}/payments`, {
-      method: "POST",
-      headers: squareHeaders(plainToken),
-      body: JSON.stringify({
-        idempotency_key: `payment-${orderId}`,
-        source_id: "EXTERNAL",
-        amount_money: { amount: orderTotal, currency: "USD" },
-        order_id: orderId,
-        location_id: creds.squareLocationId,
-        external_details: { type: "OTHER", source: "Pre-paid Event Package" },
-        note: "Voice order - pre-paid event package",
-      }),
+    const orderId = orderRes.data.order?.id;
+    const orderTotal = orderRes.data.order?.total_money?.amount ?? 0;
+    const paymentRes = await client.post("/payments", {
+      idempotency_key: idempotencyKey("pay", orderId),
+      ...externalPaymentBody(orderId, orderTotal, creds.squareLocationId),
     });
-    const paymentData = await paymentRes.json() as any;
     const paymentError = !paymentRes.ok
-      ? paymentData.errors?.[0]?.detail || "Order created but external payment could not be recorded"
+      ? paymentRes.error?.message || "Order created but external payment could not be recorded"
       : null;
 
     res.json({
@@ -716,7 +651,7 @@ router.post("/:id/orders", requireAuth as any, async (req: Request, res: Respons
       orderId,
       total: orderTotal / 100,
       paymentRecorded: !paymentError,
-      paymentId: paymentData.payment?.id,
+      paymentId: paymentRes.data?.payment?.id,
       warning: paymentError,
     });
   } catch (e: any) {

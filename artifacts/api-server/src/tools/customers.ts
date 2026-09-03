@@ -3,7 +3,9 @@
  */
 
 import type { ToolDefinition, ToolExecutor, ToolContext, ToolResult } from "./types";
-import { SQUARE_BASE, squareFetch, squareHeaders } from "../lib/square-helpers";
+import { idempotencyKey, squareErrorMessage } from "../lib/square-helpers";
+import { squareFromCtx, idempotencySeed, venueTimeZone, NOT_CONNECTED } from "./_square";
+import { formatLocalDate } from "../lib/venue-time";
 
 // ── Definitions ───────────────────────────────────────────────────────────────
 
@@ -69,140 +71,109 @@ export const definitions: ToolDefinition[] = [
 
 // ── Executors ─────────────────────────────────────────────────────────────────
 
+function customerName(c: any): string {
+  return `${c?.given_name ?? ""} ${c?.family_name ?? ""}`.trim() || c?.company_name || "Unnamed";
+}
+
+function customerLine(c: any): string {
+  const email = c.email_address ? ` | ${c.email_address}` : "";
+  const phone = c.phone_number ? ` | ${c.phone_number}` : "";
+  return `${customerName(c)} (${c.id})${email}${phone}`;
+}
+
+function customerBody(args: Record<string, unknown>): Record<string, string> {
+  const body: Record<string, string> = {};
+  if (args.given_name) body.given_name = String(args.given_name);
+  if (args.family_name) body.family_name = String(args.family_name);
+  if (args.email) body.email_address = String(args.email);
+  if (args.phone) body.phone_number = String(args.phone);
+  if (args.note) body.note = String(args.note);
+  return body;
+}
+
 async function searchCustomer(args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
-  const query = String(args.query ?? "");
+  const query = String(args.query ?? "").trim();
   if (!query) return { result: "Search query is required." };
-  if (!ctx.squareToken) return { result: "Square not connected." };
-  try {
-    const res = await squareFetch(`${SQUARE_BASE}/customers/search`, {
-      method: "POST",
-      headers: squareHeaders(ctx.squareToken),
-      body: JSON.stringify({
-        query: {
-          filter: {
-            email_address: { fuzzy: query },
-            phone_number: { fuzzy: query },
-          },
-        },
-        limit: 10,
-      }),
-    });
-    // Square search can be picky — also try a general text search if needed
-    const data = (await res.json()) as any;
-    let customers = data.customers ?? [];
+  const client = squareFromCtx(ctx);
+  if (!client) return NOT_CONNECTED;
 
-    // If no results, try searching by display name
-    if (customers.length === 0) {
-      const res2 = await squareFetch(`${SQUARE_BASE}/customers/search`, {
-        method: "POST",
-        headers: squareHeaders(ctx.squareToken),
-        body: JSON.stringify({
-          query: {
-            filter: {},
-            sort: { field: "CREATED_AT", order: "DESC" },
-          },
-          limit: 50,
-        }),
-      });
-      const data2 = (await res2.json()) as any;
-      const all = data2.customers ?? [];
-      const q = query.toLowerCase();
-      customers = all.filter((c: any) => {
-        const name = `${c.given_name ?? ""} ${c.family_name ?? ""}`.toLowerCase();
-        return name.includes(q) || (c.email_address ?? "").toLowerCase().includes(q) || (c.phone_number ?? "").includes(q);
-      });
-    }
+  // Square's search filter only fuzzes email/phone. Run that and a recent-
+  // customers scan in parallel, then merge, so name lookups don't cost a
+  // second round trip after the first comes back empty.
+  const looksLikeContact = /[@\d]/.test(query);
+  const [filtered, recent] = await Promise.all([
+    looksLikeContact
+      ? client.post("/customers/search", {
+          query: { filter: query.includes("@") ? { email_address: { fuzzy: query } } : { phone_number: { fuzzy: query } } },
+          limit: 10,
+        })
+      : Promise.resolve(null),
+    client.post("/customers/search", { query: { sort: { field: "CREATED_AT", order: "DESC" } }, limit: 100 }),
+  ]);
+  if (filtered && !filtered.ok) return { result: `Failed to search customers: ${squareErrorMessage(filtered.error)}` };
+  if (!recent.ok) return { result: `Failed to search customers: ${squareErrorMessage(recent.error)}` };
 
-    if (customers.length === 0) return { result: `No customers found matching "${query}".` };
-    const lines = customers.slice(0, 5).map((c: any) => {
-      const name = `${c.given_name ?? ""} ${c.family_name ?? ""}`.trim() || "Unnamed";
-      const email = c.email_address ? ` | ${c.email_address}` : "";
-      const phone = c.phone_number ? ` | ${c.phone_number}` : "";
-      return `${name} (${c.id})${email}${phone}`;
-    });
-    return { result: `Customers found:\n${lines.join("\n")}` };
-  } catch (e: any) {
-    return { result: `Failed to search customers: ${e.message}` };
+  const q = query.toLowerCase();
+  const digits = q.replace(/\D/g, "");
+  const filteredIds = new Set<string>((filtered?.data?.customers ?? []).map((c: any) => c.id));
+  const seen = new Set<string>();
+  const customers: any[] = [];
+  for (const c of [...(filtered?.data?.customers ?? []), ...(recent.data?.customers ?? [])]) {
+    if (!c?.id || seen.has(c.id)) continue;
+    const matches = filteredIds.has(c.id)
+      || customerName(c).toLowerCase().includes(q)
+      || (c.email_address ?? "").toLowerCase().includes(q)
+      || (digits.length > 0 && String(c.phone_number ?? "").replace(/\D/g, "").includes(digits));
+    if (!matches) continue;
+    seen.add(c.id);
+    customers.push(c);
   }
+
+  if (customers.length === 0) return { result: `No customers found matching "${query}".` };
+  return { result: `Customers found:\n${customers.slice(0, 5).map(customerLine).join("\n")}` };
 }
 
 async function createCustomer(args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
-  if (!ctx.squareToken) return { result: "Square not connected." };
-  const body: any = {};
-  if (args.given_name) body.given_name = String(args.given_name);
-  if (args.family_name) body.family_name = String(args.family_name);
-  if (args.email) body.email_address = String(args.email);
-  if (args.phone) body.phone_number = String(args.phone);
-  if (args.note) body.note = String(args.note);
-  body.idempotency_key = `cust-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-
-  try {
-    const res = await squareFetch(`${SQUARE_BASE}/customers`, {
-      method: "POST",
-      headers: squareHeaders(ctx.squareToken),
-      body: JSON.stringify(body),
-    });
-    const data = (await res.json()) as any;
-    if (!res.ok) return { result: `Failed: ${data.errors?.[0]?.detail ?? "Unknown error"}` };
-    const c = data.customer;
-    const name = `${c.given_name ?? ""} ${c.family_name ?? ""}`.trim();
-    return { result: `Created customer "${name}" (ID: ${c.id}).` };
-  } catch (e: any) {
-    return { result: `Failed to create customer: ${e.message}` };
-  }
+  const client = squareFromCtx(ctx);
+  if (!client) return NOT_CONNECTED;
+  const body = customerBody(args);
+  if (Object.keys(body).length === 0) return { result: "Need at least a name, email, or phone to create a customer." };
+  const res = await client.post("/customers", { ...body, idempotency_key: idempotencyKey("cust", idempotencySeed(ctx, "cust")) });
+  if (!res.ok) return { result: `Failed: ${squareErrorMessage(res.error)}` };
+  const c = res.data.customer;
+  return { result: `Created customer "${customerName(c)}" (ID: ${c.id}).` };
 }
 
 async function getCustomer(args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
-  const customerId = String(args.customer_id ?? "");
+  const customerId = String(args.customer_id ?? "").trim();
   if (!customerId) return { result: "Customer ID is required." };
-  if (!ctx.squareToken) return { result: "Square not connected." };
-  try {
-    const res = await squareFetch(`${SQUARE_BASE}/customers/${customerId}`, {
-      headers: squareHeaders(ctx.squareToken),
-    });
-    const data = (await res.json()) as any;
-    if (!res.ok) return { result: `Failed: ${data.errors?.[0]?.detail ?? "Customer not found"}` };
-    const c = data.customer;
-    const lines = [
-      `Name: ${c.given_name ?? ""} ${c.family_name ?? ""}`.trim(),
-      c.email_address ? `Email: ${c.email_address}` : null,
-      c.phone_number ? `Phone: ${c.phone_number}` : null,
-      `Created: ${c.created_at ? new Date(c.created_at).toLocaleDateString() : "?"}`,
-      c.note ? `Note: ${c.note}` : null,
-      `ID: ${c.id}`,
-    ].filter(Boolean);
-    return { result: lines.join("\n") };
-  } catch (e: any) {
-    return { result: `Failed to get customer: ${e.message}` };
-  }
+  const client = squareFromCtx(ctx);
+  if (!client) return NOT_CONNECTED;
+  const [res, tz] = await Promise.all([client.get(`/customers/${encodeURIComponent(customerId)}`), venueTimeZone(client)]);
+  if (!res.ok) return { result: `Failed: ${squareErrorMessage(res.error, "Customer not found")}` };
+  const c = res.data.customer;
+  const lines = [
+    `Name: ${customerName(c)}`,
+    c.email_address ? `Email: ${c.email_address}` : null,
+    c.phone_number ? `Phone: ${c.phone_number}` : null,
+    `Created: ${formatLocalDate(c.created_at, tz)}`,
+    c.note ? `Note: ${c.note}` : null,
+    `ID: ${c.id}`,
+  ].filter(Boolean);
+  return { result: lines.join("\n") };
 }
 
 async function updateCustomer(args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
-  const customerId = String(args.customer_id ?? "");
+  const customerId = String(args.customer_id ?? "").trim();
   if (!customerId) return { result: "Customer ID is required." };
-  if (!ctx.squareToken) return { result: "Square not connected." };
-  const body: any = {};
-  if (args.given_name) body.given_name = String(args.given_name);
-  if (args.family_name) body.family_name = String(args.family_name);
-  if (args.email) body.email_address = String(args.email);
-  if (args.phone) body.phone_number = String(args.phone);
-  if (args.note) body.note = String(args.note);
-
-  try {
-    const res = await squareFetch(`${SQUARE_BASE}/customers/${customerId}`, {
-      method: "PUT",
-      headers: squareHeaders(ctx.squareToken),
-      body: JSON.stringify(body),
-    });
-    const data = (await res.json()) as any;
-    if (!res.ok) return { result: `Failed: ${data.errors?.[0]?.detail ?? "Unknown error"}` };
-    return { result: `Customer ${customerId} updated.` };
-  } catch (e: any) {
-    return { result: `Failed to update customer: ${e.message}` };
-  }
+  const client = squareFromCtx(ctx);
+  if (!client) return NOT_CONNECTED;
+  const body = customerBody(args);
+  if (Object.keys(body).length === 0) return { result: "No changes specified." };
+  const res = await client.put(`/customers/${encodeURIComponent(customerId)}`, body);
+  if (!res.ok) return { result: `Failed: ${squareErrorMessage(res.error)}` };
+  return { result: `Customer ${customerName(res.data.customer)} updated.` };
 }
-
-// ── Export executor map ───────────────────────────────────────────────────────
 
 export const executors: Record<string, ToolExecutor> = {
   search_customer: searchCustomer,

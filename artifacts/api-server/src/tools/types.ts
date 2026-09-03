@@ -39,7 +39,10 @@ export interface ToolContext {
   squareToken: string;
   squareLocationId: string;
   session: LiveSession;
-  /** Resilient Square API client (with retry + circuit breaker). */
+  /**
+   * Resilient Square API client (retry + timeout + circuit breaker). Built
+   * lazily from squareToken/squareLocationId by the tool registry when absent.
+   */
   squareClient?: SquareClient;
   /** Unique request ID for tracing (optional). */
   requestId?: string;

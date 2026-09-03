@@ -1,8 +1,23 @@
 /**
- * Shared Square API helpers used by both POS and Inventory agents.
+ * Shared Square domain helpers used by the voice tools, workflows, and the
+ * dashboard routes. All HTTP goes through SquareClient (retry, timeout,
+ * circuit breaker); this module owns the domain logic on top of it.
  */
 
-export const SQUARE_BASE = "https://connect.squareup.com/v2";
+import {
+  SQUARE_BASE,
+  SQUARE_OAUTH_BASE,
+  SQUARE_API_VERSION,
+  getSquareClient,
+  squareHeaders,
+  type SquareClient,
+  type SquareError,
+} from "./square-client";
+import { createComponentLogger } from "./logger";
+
+const log = createComponentLogger("square");
+
+export { SQUARE_BASE, SQUARE_OAUTH_BASE, SQUARE_API_VERSION, squareHeaders, getSquareClient };
 
 export function redactSquareId(id: unknown): string {
   if (typeof id !== "string" || id.length === 0) return "unknown";
@@ -22,33 +37,21 @@ export function squareErrorSummary(errors: unknown): string {
     .join(",");
 }
 
-export function squareHeaders(token: string) {
-  return {
-    Authorization: `Bearer ${token}`,
-    "Content-Type": "application/json",
-    "Square-Version": "2024-12-18",
-  };
+/** Speakable message for a failed SquareResponse. */
+export function squareErrorMessage(error: SquareError | undefined, fallback = "Square request failed"): string {
+  return error?.message || fallback;
 }
 
-const SQUARE_FETCH_TIMEOUT_MS = 10_000;
-
 /**
- * fetch wrapper for Square API calls with a hard timeout. Raw fetch has no
- * deadline, so a Square outage would hang a live voice command (and the SSE
- * workflow stream) indefinitely; this fails fast with a speakable message.
+ * Idempotency keys must be unique per logical operation and ≤ 45 chars.
+ * Callers pass a stable seed (request + call id) when they have one so a
+ * retried voice command never double-creates on Square.
  */
-export async function squareFetch(url: string | URL, init: RequestInit = {}): Promise<Response> {
-  try {
-    return await fetch(url, {
-      ...init,
-      signal: init.signal ?? AbortSignal.timeout(SQUARE_FETCH_TIMEOUT_MS),
-    });
-  } catch (e: any) {
-    if (e?.name === "TimeoutError" || e?.name === "AbortError") {
-      throw new Error("Square did not respond in time. Please try again.");
-    }
-    throw e;
-  }
+export function idempotencyKey(prefix: string, seed?: string): string {
+  const base = seed
+    ? `${prefix}-${seed}`
+    : `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  return base.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 45);
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -59,6 +62,7 @@ export interface CatalogItem {
   name: string;
   price: number;
   category?: string;
+  description?: string;
 }
 
 export interface OrderItem {
@@ -85,37 +89,174 @@ export interface OrderCommand {
   squareOrderId?: string;          // Live order ID on Square POS
 }
 
-// ── Catalog / Inventory helpers ───────────────────────────────────────────────
+// ── Catalog matching ──────────────────────────────────────────────────────────
 
-export function findCatalogItem(catalog: CatalogItem[], name: string): CatalogItem | undefined {
-  return (
-    catalog.find((c) => c.name.toLowerCase() === name.toLowerCase()) ??
-    catalog.find(
-      (c) =>
-        c.name.toLowerCase().includes(name.toLowerCase()) ||
-        name.toLowerCase().includes(c.name.toLowerCase()),
-    )
-  );
+const APOSTROPHE_RE = /['\u2019]/g;
+const NAME_NOISE_RE = /[^a-z0-9\s]/g;
+
+/** Normalize a spoken or catalog name for comparison ("Foster's Lager!" -> "fosters lager"). */
+export function normalizeItemName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(APOSTROPHE_RE, "")
+    .replace(/&/g, " and ")
+    .replace(NAME_NOISE_RE, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
-export async function getInventoryCount(
-  token: string,
-  locationId: string,
-  variationId: string,
-): Promise<number> {
-  const res = await squareFetch(`${SQUARE_BASE}/inventory/counts/batch-retrieve`, {
-    method: "POST",
-    headers: squareHeaders(token),
-    body: JSON.stringify({
-      catalog_object_ids: [variationId],
-      location_ids: [locationId],
-    }),
-  });
-  const data = (await res.json()) as any;
-  const count = data.counts?.find(
-    (c: any) => c.catalog_object_id === variationId && c.state === "IN_STOCK",
+/**
+ * Find the catalog item a spoken name refers to.
+ *
+ * Voice transcripts are noisy ("two fosters" for "Foster's Lager", "the ipa"
+ * for "Hazy IPA (Pint)"), so matching runs in tiers, most specific first:
+ *   1. exact normalized name
+ *   2. one side contains the other (prefer the shortest catalog name — "IPA"
+ *      should pick "IPA" over "Hazy IPA (Pint)")
+ *   3. best word overlap, requiring every spoken word to appear
+ */
+export function findCatalogItem(catalog: CatalogItem[], name: string): CatalogItem | undefined {
+  const query = normalizeItemName(name ?? "");
+  if (!query || catalog.length === 0) return undefined;
+
+  let containment: CatalogItem | undefined;
+  let containmentLength = Infinity;
+  const queryWords = query.split(" ");
+  let best: CatalogItem | undefined;
+  let bestScore = 0;
+
+  for (const item of catalog) {
+    const candidate = normalizeItemName(item.name);
+    if (!candidate) continue;
+    if (candidate === query) return item;
+
+    if (candidate.includes(query) || query.includes(candidate)) {
+      if (candidate.length < containmentLength) {
+        containment = item;
+        containmentLength = candidate.length;
+      }
+      continue;
+    }
+
+    const candidateWords = new Set(candidate.split(" "));
+    let hits = 0;
+    for (const word of queryWords) if (candidateWords.has(word)) hits++;
+    if (hits === queryWords.length) {
+      const score = hits / candidateWords.size;
+      if (score > bestScore) {
+        best = item;
+        bestScore = score;
+      }
+    }
+  }
+
+  return containment ?? best;
+}
+
+// ── Catalog loading ───────────────────────────────────────────────────────────
+
+type RawCatalogObject = Record<string, any>;
+
+/**
+ * Flatten Square catalog objects into voice-friendly items: one entry per
+ * sellable variation, with the category name resolved (Square returns only
+ * ids). Handles both the legacy `category_id` and the current `categories[]`
+ * / `reporting_category` shapes.
+ */
+export function mapCatalogObjects(objects: RawCatalogObject[]): CatalogItem[] {
+  const categoryNames = new Map<string, string>();
+  for (const obj of objects) {
+    if (obj?.type === "CATEGORY" && obj.id && obj.category_data?.name) {
+      categoryNames.set(obj.id, obj.category_data.name);
+    }
+  }
+
+  const items: CatalogItem[] = [];
+  for (const obj of objects) {
+    if (obj?.type !== "ITEM" || obj.is_deleted) continue;
+    const itemData = obj.item_data;
+    if (!itemData?.name) continue;
+    const variations: RawCatalogObject[] = (itemData.variations ?? []).filter((v: RawCatalogObject) => !v?.is_deleted);
+    if (variations.length === 0) continue;
+
+    const categoryId: string | undefined =
+      itemData.reporting_category?.id ?? itemData.categories?.[0]?.id ?? itemData.category_id;
+    const category = categoryId ? categoryNames.get(categoryId) ?? categoryId : undefined;
+    const description: string = itemData.description_plaintext ?? itemData.description ?? "";
+
+    for (const variation of variations) {
+      const varData = variation.item_variation_data;
+      if (!varData) continue;
+      const variationName = varData.name && variations.length > 1 && varData.name !== "Regular"
+        ? `${itemData.name} (${varData.name})`
+        : itemData.name;
+      items.push({
+        id: obj.id,
+        variationId: variation.id,
+        name: variationName,
+        price: varData.price_money ? Number(varData.price_money.amount ?? 0) / 100 : 0,
+        category,
+        description,
+      });
+    }
+  }
+  return items;
+}
+
+/** Fetch the full sellable catalog for a client's merchant (all pages). */
+export async function loadCatalog(client: SquareClient): Promise<{ ok: boolean; items: CatalogItem[]; error?: SquareError }> {
+  const res = await client.getAllPages(
+    "/catalog/list?types=ITEM,CATEGORY&include_deleted_objects=false",
+    (page: { objects?: RawCatalogObject[] }) => page.objects ?? [],
   );
-  return count ? parseFloat(count.quantity) : 0;
+  if (!res.ok) return { ok: false, items: [], error: res.error };
+  return { ok: true, items: mapCatalogObjects(res.items) };
+}
+
+// ── Inventory ─────────────────────────────────────────────────────────────────
+
+const INVENTORY_BATCH_SIZE = 100;
+
+/**
+ * IN_STOCK counts for a set of variation ids at the client's location, as a
+ * Map for O(1) lookups. Chunks the request and follows cursors so large
+ * catalogs are never silently truncated. Missing ids are simply absent.
+ */
+export async function fetchInventoryCounts(
+  client: SquareClient,
+  variationIds: string[],
+): Promise<{ ok: boolean; counts: Map<string, number>; error?: SquareError }> {
+  const counts = new Map<string, number>();
+  const unique = [...new Set(variationIds.filter(Boolean))];
+  const chunks: string[][] = [];
+  for (let i = 0; i < unique.length; i += INVENTORY_BATCH_SIZE) chunks.push(unique.slice(i, i + INVENTORY_BATCH_SIZE));
+
+  const results = await Promise.all(
+    chunks.map((ids) =>
+      client.postAllPages(
+        "/inventory/counts/batch-retrieve",
+        { catalog_object_ids: ids, location_ids: [client.locationId], states: ["IN_STOCK"] },
+        (page: { counts?: any[] }) => page.counts ?? [],
+        10_000,
+      ),
+    ),
+  );
+
+  for (const res of results) {
+    if (!res.ok) return { ok: false, counts, error: res.error };
+    for (const c of res.items) {
+      if (c?.state === "IN_STOCK" && typeof c.catalog_object_id === "string") {
+        counts.set(c.catalog_object_id, parseFloat(c.quantity ?? "0") || 0);
+      }
+    }
+  }
+  return { ok: true, counts };
+}
+
+export async function getInventoryCount(client: SquareClient, variationId: string): Promise<number> {
+  const res = await fetchInventoryCounts(client, [variationId]);
+  if (!res.ok) throw new Error(squareErrorMessage(res.error, "Failed to read inventory"));
+  return res.counts.get(variationId) ?? 0;
 }
 
 // ── Live POS Order Sync ───────────────────────────────────────────────────────
@@ -137,24 +278,17 @@ export interface SyncResult {
   squareOrderId?: string;
 }
 
-/**
- * Sync the current session items to Square as a live open order.
- * Creates the order on first call, updates on subsequent calls.
- * Returns status so callers can surface errors.
- */
-export async function syncLiveOrderToSquare(
-  session: LiveSession,
-  squareToken: string,
-  locationId: string,
-  idempotencyKey?: string,
-): Promise<SyncResult> {
-  if (!squareToken || !locationId) {
-    console.warn("[LiveSync] Skipped — missing credentials", { hasToken: !!squareToken, hasLocation: !!locationId });
-    return { ok: false, error: "Square credentials not configured for this venue" };
-  }
-  if (session.items.length === 0 && !session.squareOrderId) return { ok: true };
+/** Reset the Square-side fields of a session after the order is closed or detached. */
+export function detachLiveOrder(session: LiveSession): void {
+  session.squareOrderId = undefined;
+  session.squareOrderVersion = undefined;
+  session.squareOrderTotal = undefined;
+  session.referenceId = undefined;
+  session.lineItemUids = undefined;
+}
 
-  const lineItems = session.items.map((item) => ({
+function buildLineItems(items: SessionOrderItem[]) {
+  return items.map((item) => ({
     quantity: item.quantity.toString(),
     // Square requires a variation ID for catalog items; fall back to ad-hoc pricing
     ...(item.variationId
@@ -164,13 +298,41 @@ export async function syncLiveOrderToSquare(
           base_price_money: { amount: Math.round(item.price * 100), currency: "USD" },
         }),
   }));
+}
 
-  try {
-    if (!session.squareOrderId) {
-      // ── CREATE a new live order ─────────────────────────────────────────
-      const refId = `VOICE-LIVE-${Date.now()}`;
-      const ticketName = `Voice #${Date.now().toString().slice(-4)}`;
-      const orderPayload: Record<string, unknown> = {
+function applyOrderResponse(session: LiveSession, order: any): void {
+  session.squareOrderVersion = order?.version;
+  session.squareOrderTotal = order?.total_money?.amount ?? 0;
+  session.lineItemUids = (order?.line_items ?? []).map((li: any) => li.uid);
+}
+
+/**
+ * Sync the current session items to Square as a live open order.
+ * Creates the order on first call, updates on subsequent calls.
+ * Returns status so callers can surface errors.
+ */
+export async function syncLiveOrderToSquare(
+  session: LiveSession,
+  squareToken: string,
+  locationId: string,
+  idempotencyKeyOverride?: string,
+): Promise<SyncResult> {
+  if (!squareToken || !locationId) {
+    log.warn({ hasToken: !!squareToken, hasLocation: !!locationId }, "live sync skipped — missing credentials");
+    return { ok: false, error: "Square credentials not configured for this venue" };
+  }
+  if (session.items.length === 0 && !session.squareOrderId) return { ok: true };
+
+  const client = getSquareClient(squareToken, locationId);
+  const lineItems = buildLineItems(session.items);
+
+  if (!session.squareOrderId) {
+    // ── CREATE a new live order ─────────────────────────────────────────
+    const refId = `VOICE-LIVE-${Date.now()}`;
+    const ticketName = `Voice #${Date.now().toString().slice(-4)}`;
+    const res = await client.post("/orders", {
+      idempotency_key: idempotencyKeyOverride ?? idempotencyKey("live"),
+      order: {
         location_id: locationId,
         reference_id: refId,
         // ticket_name makes the order appear as an Open Ticket in Square POS.
@@ -180,91 +342,41 @@ export async function syncLiveOrderToSquare(
         source: { name: "VoyceLab Voice" },
         line_items: lineItems,
         // No fulfillment — we want this as an Open Ticket on the register,
-        // not routed to the "Orders" tab. Open Tickets show in the ticket
-        // drawer and load directly into the cart when tapped.
-      };
-      console.log(`[LiveSync] Creating order location=${redactSquareId(locationId)} itemCount=${lineItems.length}`);
-      const res = await squareFetch(`${SQUARE_BASE}/orders`, {
-        method: "POST",
-        headers: squareHeaders(squareToken),
-        body: JSON.stringify({
-          idempotency_key: idempotencyKey ?? `live-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-          order: orderPayload,
-        }),
-      });
-      const data = (await res.json()) as any;
-      if (!res.ok) {
-        const errMsg = data.errors?.[0]?.detail || JSON.stringify(data.errors);
-        console.error("[LiveSync] Create order failed:", squareErrorSummary(data.errors));
-        return { ok: false, error: `Create order failed: ${errMsg}` };
-      }
-      session.squareOrderId = data.order.id;
-      session.squareOrderVersion = data.order.version;
-      session.squareOrderTotal = data.order.total_money?.amount ?? 0;
-      session.referenceId = refId;
-      session.lineItemUids = (data.order.line_items || []).map((li: any) => li.uid);
-      console.log(`[LiveSync] Order created order=${redactSquareId(data.order.id)} state=${data.order.state} itemCount=${session.lineItemUids?.length ?? 0}`);
-    } else if (session.items.length > 0) {
-      // ── UPDATE existing order — clear old line items by UID, set new ones ──
-      const uidsToRemove = (session.lineItemUids || []).map((uid) => `line_items[${uid}]`);
-      const res = await squareFetch(`${SQUARE_BASE}/orders/${session.squareOrderId}`, {
-        method: "PUT",
-        headers: squareHeaders(squareToken),
-        body: JSON.stringify({
-          order: {
-            location_id: locationId,
-            version: session.squareOrderVersion,
-            line_items: lineItems,
-          },
-          ...(uidsToRemove.length > 0 ? { fields_to_clear: uidsToRemove } : {}),
-        }),
-      });
-      const data = (await res.json()) as any;
-      if (!res.ok) {
-        const errMsg = data.errors?.[0]?.detail || JSON.stringify(data.errors);
-        console.error("[LiveSync] Update order failed:", squareErrorSummary(data.errors));
-        return { ok: false, error: `Update order failed: ${errMsg}` };
-      }
-      session.squareOrderVersion = data.order.version;
-      session.squareOrderTotal = data.order.total_money?.amount ?? 0;
-      session.lineItemUids = (data.order.line_items || []).map((li: any) => li.uid);
-      console.log(`[LiveSync] Order updated order=${redactSquareId(session.squareOrderId)} itemCount=${session.lineItemUids?.length ?? 0}`);
-    } else {
-      // Items were all removed — clear remaining line items from the order
-      const uidsToRemove = (session.lineItemUids || []).map((uid) => `line_items[${uid}]`);
-      if (uidsToRemove.length === 0) {
-        // Nothing to clear — order already has no items
-        session.squareOrderTotal = 0;
-        console.log(`[LiveSync] Order already empty order=${redactSquareId(session.squareOrderId)}`);
-        return { ok: true, squareOrderId: session.squareOrderId };
-      }
-      const res = await squareFetch(`${SQUARE_BASE}/orders/${session.squareOrderId}`, {
-        method: "PUT",
-        headers: squareHeaders(squareToken),
-        body: JSON.stringify({
-          order: {
-            location_id: locationId,
-            version: session.squareOrderVersion,
-          },
-          fields_to_clear: uidsToRemove,
-        }),
-      });
-      const data = (await res.json()) as any;
-      if (!res.ok) {
-        const errMsg = data.errors?.[0]?.detail || JSON.stringify(data.errors);
-        console.error("[LiveSync] Clear items failed:", squareErrorSummary(data.errors));
-        return { ok: false, error: `Clear items failed: ${errMsg}` };
-      }
-      session.squareOrderVersion = data.order.version;
-      session.squareOrderTotal = 0;
-      session.lineItemUids = [];
-      console.log(`[LiveSync] Order emptied order=${redactSquareId(session.squareOrderId)}`);
+        // not routed to the "Orders" tab.
+      },
+    });
+    if (!res.ok) {
+      log.error({ err: res.error }, "live order create failed");
+      return { ok: false, error: `Create order failed: ${squareErrorMessage(res.error)}` };
     }
+    session.squareOrderId = res.data.order.id;
+    session.referenceId = refId;
+    applyOrderResponse(session, res.data.order);
+    log.info({ order: redactSquareId(session.squareOrderId), itemCount: session.lineItemUids?.length ?? 0 }, "live order created");
     return { ok: true, squareOrderId: session.squareOrderId };
-  } catch (e: any) {
-    console.error("[LiveSync] Sync error:", e.message);
-    return { ok: false, error: `Sync error: ${e.message}` };
   }
+
+  // ── UPDATE existing order — replace line items by UID ──────────────────
+  const uidsToRemove = (session.lineItemUids ?? []).map((uid) => `line_items[${uid}]`);
+  if (session.items.length === 0 && uidsToRemove.length === 0) {
+    session.squareOrderTotal = 0;
+    return { ok: true, squareOrderId: session.squareOrderId };
+  }
+  const res = await client.put(`/orders/${session.squareOrderId}`, {
+    order: {
+      location_id: locationId,
+      version: session.squareOrderVersion,
+      ...(session.items.length > 0 ? { line_items: lineItems } : {}),
+    },
+    ...(uidsToRemove.length > 0 ? { fields_to_clear: uidsToRemove } : {}),
+  });
+  if (!res.ok) {
+    log.error({ order: redactSquareId(session.squareOrderId), err: res.error }, "live order update failed");
+    return { ok: false, error: `Update order failed: ${squareErrorMessage(res.error)}` };
+  }
+  applyOrderResponse(session, res.data.order);
+  log.info({ order: redactSquareId(session.squareOrderId), itemCount: session.lineItemUids?.length ?? 0 }, "live order updated");
+  return { ok: true, squareOrderId: session.squareOrderId };
 }
 
 /**
@@ -276,35 +388,14 @@ export async function cancelLiveOrder(
   locationId: string,
 ): Promise<void> {
   if (!session.squareOrderId || !squareToken || !locationId) return;
-  try {
-    // To cancel we update the order state. Square requires paying or canceling OPEN orders.
-    // We use the UpdateOrder endpoint with state: CANCELED.
-    // Note: This only works if the order has no completed payments.
-    const res = await squareFetch(`${SQUARE_BASE}/orders/${session.squareOrderId}`, {
-      method: "PUT",
-      headers: squareHeaders(squareToken),
-      body: JSON.stringify({
-        order: {
-          location_id: locationId,
-          version: session.squareOrderVersion,
-          state: "CANCELED",
-        },
-      }),
-    });
-    const data = (await res.json()) as any;
-    if (!res.ok) {
-      console.warn("[LiveSync] Cancel failed:", squareErrorSummary(data.errors));
-    } else {
-      console.log(`[LiveSync] Order canceled order=${redactSquareId(session.squareOrderId)}`);
-    }
-  } catch (e: any) {
-    console.warn("[LiveSync] Cancel error:", e.message);
-  }
-  session.squareOrderId = undefined;
-  session.squareOrderVersion = undefined;
-  session.squareOrderTotal = undefined;
-  session.referenceId = undefined;
-  session.lineItemUids = undefined;
+  const client = getSquareClient(squareToken, locationId);
+  // Only OPEN orders with no completed payment can be canceled this way.
+  const res = await client.put(`/orders/${session.squareOrderId}`, {
+    order: { location_id: locationId, version: session.squareOrderVersion, state: "CANCELED" },
+  });
+  if (!res.ok) log.warn({ order: redactSquareId(session.squareOrderId), err: res.error }, "live order cancel failed");
+  else log.info({ order: redactSquareId(session.squareOrderId) }, "live order canceled");
+  detachLiveOrder(session);
 }
 
 /**
@@ -315,39 +406,35 @@ export async function completeLiveOrder(
   session: LiveSession,
   squareToken: string,
   locationId: string,
-  idempotencyKey?: string,
+  idempotencyKeyOverride?: string,
 ): Promise<{ orderId: string; total: number; paymentId?: string; error?: string }> {
   if (!session.squareOrderId) throw new Error("No live order to complete");
-
   const orderId = session.squareOrderId;
   const orderTotal = session.squareOrderTotal ?? 0;
+  const client = getSquareClient(squareToken, locationId);
 
-  try {
-    const paymentRes = await squareFetch(`${SQUARE_BASE}/payments`, {
-      method: "POST",
-      headers: squareHeaders(squareToken),
-      body: JSON.stringify({
-        idempotency_key: idempotencyKey ?? `pay-${orderId.slice(0, 22)}-${Date.now()}`,
-        source_id: "EXTERNAL",
-        amount_money: { amount: orderTotal, currency: "USD" },
-        order_id: orderId,
-        location_id: locationId,
-        external_details: { type: "OTHER", source: "Pre-paid Event Package" },
-        note: "Voice order — pre-paid event package",
-      }),
-    });
-    const paymentData = (await paymentRes.json()) as any;
-    if (!paymentRes.ok) {
-      const errMsg = paymentData.errors?.[0]?.detail || "Payment failed";
-      console.warn("[LiveSync] Payment failed:", squareErrorSummary(paymentData.errors));
-      return { orderId, total: orderTotal / 100, error: errMsg };
-    }
-    console.log(`[LiveSync] Payment completed payment=${redactSquareId(paymentData.payment?.id)} order=${redactSquareId(orderId)}`);
-    return { orderId, total: orderTotal / 100, paymentId: paymentData.payment?.id };
-  } catch (e: any) {
-    console.error("[LiveSync] Payment error:", e.message);
-    return { orderId, total: orderTotal / 100, error: e.message };
+  const res = await client.post("/payments", {
+    idempotency_key: idempotencyKeyOverride ?? idempotencyKey("pay", orderId),
+    ...externalPaymentBody(orderId, orderTotal, locationId),
+  });
+  if (!res.ok) {
+    log.warn({ order: redactSquareId(orderId), err: res.error }, "external payment failed");
+    return { orderId, total: orderTotal / 100, error: squareErrorMessage(res.error, "Payment failed") };
   }
+  log.info({ order: redactSquareId(orderId), payment: redactSquareId(res.data.payment?.id) }, "payment completed");
+  return { orderId, total: orderTotal / 100, paymentId: res.data.payment?.id };
+}
+
+/** Payment body for closing a pre-paid voice order with an EXTERNAL source. */
+export function externalPaymentBody(orderId: string, amountCents: number, locationId: string) {
+  return {
+    source_id: "EXTERNAL",
+    amount_money: { amount: amountCents, currency: "USD" },
+    order_id: orderId,
+    location_id: locationId,
+    external_details: { type: "OTHER", source: "Pre-paid Event Package" },
+    note: "Voice order — pre-paid event package",
+  };
 }
 
 /**
@@ -359,254 +446,223 @@ export async function pushToTerminal(
   deviceId: string,
   orderId: string,
   totalCents: number,
+  idempotencyKeyOverride?: string,
 ): Promise<{ checkoutId?: string; error?: string }> {
-  try {
-    const res = await squareFetch(`${SQUARE_BASE}/terminals/checkouts`, {
-      method: "POST",
-      headers: squareHeaders(squareToken),
-      body: JSON.stringify({
-        idempotency_key: `terminal-${orderId}-${Date.now()}`,
-        checkout: {
-          amount_money: { amount: totalCents, currency: "USD" },
-          device_options: {
-            device_id: deviceId,
-            skip_receipt_screen: false,
-            collect_signature: false,
-          },
-          order_id: orderId,
-          reference_id: `VOICE-TERMINAL-${Date.now()}`,
-          note: "Voice order — tap/insert/swipe card",
-        },
-      }),
-    });
-    const data = (await res.json()) as any;
-    if (!res.ok) {
-      const errMsg = data.errors?.[0]?.detail || "Terminal checkout failed";
-      console.error("[Terminal] Checkout failed:", squareErrorSummary(data.errors));
-      return { error: errMsg };
-    }
-    console.log(`[Terminal] Checkout created checkout=${redactSquareId(data.checkout?.id)} device=${redactSquareId(deviceId)}`);
-    return { checkoutId: data.checkout?.id };
-  } catch (e: any) {
-    console.error("[Terminal] Checkout error:", e.message);
-    return { error: e.message };
+  const client = getSquareClient(squareToken, locationId);
+  const res = await client.post("/terminals/checkouts", {
+    idempotency_key: idempotencyKeyOverride ?? idempotencyKey("term", orderId),
+    checkout: {
+      amount_money: { amount: totalCents, currency: "USD" },
+      device_options: { device_id: deviceId, skip_receipt_screen: false, collect_signature: false },
+      order_id: orderId,
+      reference_id: `VOICE-TERMINAL-${Date.now()}`,
+      note: "Voice order — tap/insert/swipe card",
+    },
+  });
+  if (!res.ok) {
+    log.error({ device: redactSquareId(deviceId), err: res.error }, "terminal checkout failed");
+    return { error: squareErrorMessage(res.error, "Terminal checkout failed") };
   }
+  log.info({ checkout: redactSquareId(res.data.checkout?.id), device: redactSquareId(deviceId) }, "terminal checkout created");
+  return { checkoutId: res.data.checkout?.id };
 }
 
-// ── Extended Square API helpers ────────────────────────────────────────────────
-// These power the comprehensive VoyceLab voice agent.
+/** Paired devices at the client's location, split into Terminal hardware vs POS apps. */
+export async function listLocationDevices(
+  client: SquareClient,
+): Promise<{ ok: boolean; terminals: any[]; posDevices: any[]; error?: SquareError }> {
+  const res = await client.getAllPages(
+    `/devices?location_id=${encodeURIComponent(client.locationId)}`,
+    (page: { devices?: any[] }) => page.devices ?? [],
+  );
+  if (!res.ok) return { ok: false, terminals: [], posDevices: [], error: res.error };
+  const typeOf = (d: any) => String(d?.attributes?.type ?? d?.type ?? "").toUpperCase();
+  return {
+    ok: true,
+    terminals: res.items.filter((d) => typeOf(d) === "TERMINAL"),
+    posDevices: res.items.filter((d) => typeOf(d) !== "TERMINAL"),
+  };
+}
+
+// ── Catalog management ────────────────────────────────────────────────────────
 
 /** Create a new catalog item (with one variation). */
 export async function createCatalogItem(
-  squareToken: string,
-  locationId: string,
+  client: SquareClient,
   name: string,
   priceCents: number,
-  category?: string,
+  seed?: string,
 ): Promise<{ ok: boolean; itemId?: string; error?: string }> {
-  const idempotencyKey = `create-item-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-  const itemId = `#item-${Date.now()}`;
-  const varId = `#var-${Date.now()}`;
-  try {
-    const res = await squareFetch(`${SQUARE_BASE}/catalog/object`, {
-      method: "POST",
-      headers: squareHeaders(squareToken),
-      body: JSON.stringify({
-        idempotency_key: idempotencyKey,
-        object: {
-          type: "ITEM",
-          id: itemId,
-          present_at_all_locations: true,
-          item_data: {
-            name,
-            variations: [
-              {
-                type: "ITEM_VARIATION",
-                id: varId,
-                present_at_all_locations: true,
-                item_variation_data: {
-                  name: "Regular",
-                  pricing_type: "FIXED_PRICING",
-                  price_money: { amount: priceCents, currency: "USD" },
-                },
-              },
-            ],
+  const res = await client.post("/catalog/object", {
+    idempotency_key: idempotencyKey("item", seed),
+    object: {
+      type: "ITEM",
+      id: "#item",
+      present_at_all_locations: true,
+      item_data: {
+        name,
+        variations: [
+          {
+            type: "ITEM_VARIATION",
+            id: "#var",
+            present_at_all_locations: true,
+            item_variation_data: {
+              name: "Regular",
+              pricing_type: "FIXED_PRICING",
+              price_money: { amount: priceCents, currency: "USD" },
+            },
           },
-        },
-      }),
-    });
-    const data = (await res.json()) as any;
-    if (!res.ok) return { ok: false, error: data.errors?.[0]?.detail || "Failed to create item" };
-    return { ok: true, itemId: data.catalog_object?.id };
-  } catch (e: any) {
-    return { ok: false, error: e.message };
-  }
+        ],
+      },
+    },
+  });
+  if (!res.ok) return { ok: false, error: squareErrorMessage(res.error, "Failed to create item") };
+  return { ok: true, itemId: res.data.catalog_object?.id };
 }
 
 /** Update an existing catalog item's name or price. */
 export async function updateCatalogItem(
-  squareToken: string,
+  client: SquareClient,
   catalogObjectId: string,
   updates: { name?: string; priceCents?: number },
+  seed?: string,
 ): Promise<{ ok: boolean; error?: string }> {
-  try {
-    // Fetch current object first
-    const getRes = await squareFetch(`${SQUARE_BASE}/catalog/object/${catalogObjectId}`, {
-      headers: squareHeaders(squareToken),
-    });
-    const getData = (await getRes.json()) as any;
-    if (!getRes.ok) return { ok: false, error: getData.errors?.[0]?.detail || "Item not found" };
+  const current = await client.get(`/catalog/object/${encodeURIComponent(catalogObjectId)}`);
+  if (!current.ok) return { ok: false, error: squareErrorMessage(current.error, "Item not found") };
 
-    const obj = getData.object;
-    if (updates.name) obj.item_data.name = updates.name;
-    if (updates.priceCents !== undefined && obj.item_data.variations?.[0]) {
-      obj.item_data.variations[0].item_variation_data.price_money = {
-        amount: updates.priceCents,
-        currency: "USD",
-      };
-    }
-
-    const res = await squareFetch(`${SQUARE_BASE}/catalog/object`, {
-      method: "POST",
-      headers: squareHeaders(squareToken),
-      body: JSON.stringify({
-        idempotency_key: `update-item-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        object: obj,
-      }),
-    });
-    const data = (await res.json()) as any;
-    if (!res.ok) return { ok: false, error: data.errors?.[0]?.detail || "Failed to update" };
-    return { ok: true };
-  } catch (e: any) {
-    return { ok: false, error: e.message };
+  const obj = current.data.object;
+  if (updates.name) obj.item_data.name = updates.name;
+  if (updates.priceCents !== undefined && obj.item_data.variations?.[0]) {
+    obj.item_data.variations[0].item_variation_data.price_money = { amount: updates.priceCents, currency: "USD" };
   }
+
+  const res = await client.post("/catalog/object", { idempotency_key: idempotencyKey("upd", seed), object: obj });
+  if (!res.ok) return { ok: false, error: squareErrorMessage(res.error, "Failed to update") };
+  return { ok: true };
 }
 
 /** Delete a catalog item. */
 export async function deleteCatalogItem(
-  squareToken: string,
+  client: SquareClient,
   catalogObjectId: string,
 ): Promise<{ ok: boolean; error?: string }> {
-  try {
-    const res = await squareFetch(`${SQUARE_BASE}/catalog/object/${catalogObjectId}`, {
-      method: "DELETE",
-      headers: squareHeaders(squareToken),
-    });
-    if (!res.ok) {
-      const data = (await res.json()) as any;
-      return { ok: false, error: data.errors?.[0]?.detail || "Failed to delete" };
-    }
-    return { ok: true };
-  } catch (e: any) {
-    return { ok: false, error: e.message };
+  const res = await client.del(`/catalog/object/${encodeURIComponent(catalogObjectId)}`);
+  if (!res.ok) return { ok: false, error: squareErrorMessage(res.error, "Failed to delete") };
+  return { ok: true };
+}
+
+// ── Orders & reporting ────────────────────────────────────────────────────────
+
+export interface OrderSearchOptions {
+  startAt?: string;
+  endAt?: string;
+  states?: string[];
+  sortOrder?: "ASC" | "DESC";
+  limit?: number;
+  /** Cap on total orders across pages (default 2000). */
+  maxItems?: number;
+}
+
+/** Search orders at the client's location, following cursors up to `maxItems`. */
+export async function searchOrders(
+  client: SquareClient,
+  opts: OrderSearchOptions = {},
+): Promise<{ ok: boolean; orders: any[]; truncated: boolean; error?: SquareError }> {
+  const filter: Record<string, unknown> = {};
+  if (opts.startAt || opts.endAt) {
+    filter.date_time_filter = { created_at: { ...(opts.startAt ? { start_at: opts.startAt } : {}), ...(opts.endAt ? { end_at: opts.endAt } : {}) } };
   }
+  if (opts.states?.length) filter.state_filter = { states: opts.states };
+  const body = {
+    location_ids: [client.locationId],
+    query: {
+      ...(Object.keys(filter).length > 0 ? { filter } : {}),
+      sort: { sort_field: "CREATED_AT", sort_order: opts.sortOrder ?? "DESC" },
+    },
+    limit: Math.min(opts.limit ?? 500, 1000),
+  };
+  const res = await client.postAllPages("/orders/search", body, (page: { orders?: any[] }) => page.orders ?? [], opts.maxItems ?? 2_000);
+  return { ok: res.ok, orders: res.items, truncated: res.truncated, error: res.error };
 }
 
 /** List recent orders with summary. */
 export async function listRecentOrders(
-  squareToken: string,
-  locationId: string,
+  client: SquareClient,
   limit = 20,
 ): Promise<{ ok: boolean; orders?: any[]; error?: string }> {
-  try {
-    const res = await squareFetch(`${SQUARE_BASE}/orders/search`, {
-      method: "POST",
-      headers: squareHeaders(squareToken),
-      body: JSON.stringify({
-        location_ids: [locationId],
-        query: {
-          sort: { sort_field: "CREATED_AT", sort_order: "DESC" },
-        },
-        limit,
-      }),
-    });
-    const data = (await res.json()) as any;
-    if (!res.ok) return { ok: false, error: data.errors?.[0]?.detail || "Failed to list orders" };
-    return { ok: true, orders: data.orders ?? [] };
-  } catch (e: any) {
-    return { ok: false, error: e.message };
+  const res = await searchOrders(client, { limit, maxItems: limit });
+  if (!res.ok) return { ok: false, error: squareErrorMessage(res.error, "Failed to list orders") };
+  return { ok: true, orders: res.orders };
+}
+
+export interface SalesSummary {
+  totalOrders: number;
+  totalRevenue: number;
+  avgOrder: number;
+  topItems: Array<{ name: string; qty: number; revenue: number }>;
+  truncated: boolean;
+}
+
+/** Aggregate completed orders in a window into revenue + top sellers. */
+export function summarizeOrders(orders: any[], topN = 10, truncated = false): SalesSummary {
+  let totalRevenue = 0;
+  const itemCounts = new Map<string, { qty: number; revenue: number }>();
+  for (const order of orders) {
+    totalRevenue += order.total_money?.amount ?? 0;
+    for (const li of order.line_items ?? []) {
+      const name = li.name ?? "Unknown";
+      const qty = parseInt(li.quantity ?? "0", 10) || 0;
+      const rev = li.total_money?.amount ?? 0;
+      const existing = itemCounts.get(name) ?? { qty: 0, revenue: 0 };
+      itemCounts.set(name, { qty: existing.qty + qty, revenue: existing.revenue + rev });
+    }
   }
+  const topItems = [...itemCounts.entries()]
+    .sort((a, b) => b[1].revenue - a[1].revenue)
+    .slice(0, topN)
+    .map(([name, { qty, revenue }]) => ({ name, qty, revenue: revenue / 100 }));
+  return {
+    totalOrders: orders.length,
+    totalRevenue: totalRevenue / 100,
+    avgOrder: orders.length > 0 ? totalRevenue / 100 / orders.length : 0,
+    topItems,
+    truncated,
+  };
 }
 
 /** Get sales summary for a date range. */
 export async function getSalesSummary(
-  squareToken: string,
-  locationId: string,
+  client: SquareClient,
   startDate: string,
   endDate: string,
-): Promise<{ ok: boolean; summary?: { totalOrders: number; totalRevenue: number; avgOrder: number; topItems: Array<{ name: string; qty: number; revenue: number }> }; error?: string }> {
-  try {
-    const res = await squareFetch(`${SQUARE_BASE}/orders/search`, {
-      method: "POST",
-      headers: squareHeaders(squareToken),
-      body: JSON.stringify({
-        location_ids: [locationId],
-        query: {
-          filter: {
-            date_time_filter: {
-              created_at: { start_at: startDate, end_at: endDate },
-            },
-            state_filter: { states: ["COMPLETED"] },
-          },
-          sort: { sort_field: "CREATED_AT", sort_order: "DESC" },
-        },
-        limit: 500,
-      }),
-    });
-    const data = (await res.json()) as any;
-    if (!res.ok) return { ok: false, error: data.errors?.[0]?.detail || "Failed to query orders" };
+): Promise<{ ok: boolean; summary?: SalesSummary; error?: string }> {
+  const res = await searchOrders(client, { startAt: startDate, endAt: endDate, states: ["COMPLETED"] });
+  if (!res.ok) return { ok: false, error: squareErrorMessage(res.error, "Failed to query orders") };
+  return { ok: true, summary: summarizeOrders(res.orders, 10, res.truncated) };
+}
 
-    const orders = data.orders ?? [];
-    let totalRevenue = 0;
-    const itemCounts = new Map<string, { qty: number; revenue: number }>();
+// ── Locations ─────────────────────────────────────────────────────────────────
 
-    for (const order of orders) {
-      totalRevenue += (order.total_money?.amount ?? 0);
-      for (const li of order.line_items ?? []) {
-        const name = li.name ?? "Unknown";
-        const qty = parseInt(li.quantity ?? "0");
-        const rev = li.total_money?.amount ?? 0;
-        const existing = itemCounts.get(name) ?? { qty: 0, revenue: 0 };
-        itemCounts.set(name, { qty: existing.qty + qty, revenue: existing.revenue + rev });
-      }
-    }
-
-    const topItems = [...itemCounts.entries()]
-      .sort((a, b) => b[1].revenue - a[1].revenue)
-      .slice(0, 10)
-      .map(([name, { qty, revenue }]) => ({ name, qty, revenue: revenue / 100 }));
-
-    return {
-      ok: true,
-      summary: {
-        totalOrders: orders.length,
-        totalRevenue: totalRevenue / 100,
-        avgOrder: orders.length > 0 ? (totalRevenue / 100) / orders.length : 0,
-        topItems,
-      },
-    };
-  } catch (e: any) {
-    return { ok: false, error: e.message };
-  }
+export interface SquareLocation {
+  id: string;
+  name: string;
+  status: string;
+  timezone?: string;
+  currency?: string;
 }
 
 /** List all Square locations for the merchant. */
 export async function listLocations(
-  squareToken: string,
-): Promise<{ ok: boolean; locations?: Array<{ id: string; name: string; status: string }>; error?: string }> {
-  try {
-    const res = await squareFetch(`${SQUARE_BASE}/locations`, {
-      headers: squareHeaders(squareToken),
-    });
-    const data = (await res.json()) as any;
-    if (!res.ok) return { ok: false, error: data.errors?.[0]?.detail || "Failed to list locations" };
-    const locations = (data.locations ?? []).map((l: any) => ({
-      id: l.id,
-      name: l.name,
-      status: l.status,
-    }));
-    return { ok: true, locations };
-  } catch (e: any) {
-    return { ok: false, error: e.message };
-  }
+  client: SquareClient,
+): Promise<{ ok: boolean; locations?: SquareLocation[]; error?: string }> {
+  const res = await client.get("/locations");
+  if (!res.ok) return { ok: false, error: squareErrorMessage(res.error, "Failed to list locations") };
+  const locations = (res.data.locations ?? []).map((l: any) => ({
+    id: l.id,
+    name: l.name,
+    status: l.status,
+    timezone: l.timezone,
+    currency: l.currency,
+  }));
+  return { ok: true, locations };
 }

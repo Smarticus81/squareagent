@@ -1,5 +1,9 @@
 /**
  * Durable Square OAuth pending token claims — PostgreSQL-backed.
+ *
+ * The OAuth callback lands server-to-server with no user session, so the
+ * exchanged tokens are parked here (encrypted) under a short-lived claim id
+ * that the authenticated client then redeems from the dashboard/PWA.
  */
 
 import crypto from "crypto";
@@ -9,6 +13,14 @@ import { decrypt, encrypt } from "./secrets";
 
 const TOKEN_TTL_MS = 10 * 60 * 1000;
 
+export interface PendingSquareTokens {
+  token: string;
+  refreshToken: string | null;
+  /** RFC3339 access-token expiry, when Square reported one. */
+  expiresAt: string | null;
+  merchantId: string;
+}
+
 export async function purgeExpiredSquareOAuthTokens(): Promise<void> {
   await db.delete(squareOAuthPendingTokensTable)
     .where(lt(squareOAuthPendingTokensTable.expiresAt, new Date()))
@@ -17,6 +29,8 @@ export async function purgeExpiredSquareOAuthTokens(): Promise<void> {
 
 export async function storePendingSquareOAuthToken(params: {
   token: string;
+  refreshToken?: string | null;
+  tokenExpiresAt?: string | null;
   merchantId: string;
   userId: number;
   organizationId: string | null;
@@ -24,11 +38,14 @@ export async function storePendingSquareOAuthToken(params: {
   await purgeExpiredSquareOAuthTokens();
   const claimId = crypto.randomUUID();
   const expiresAt = new Date(Date.now() + TOKEN_TTL_MS);
+  const tokenExpiresAt = params.tokenExpiresAt ? new Date(params.tokenExpiresAt) : null;
   await db.insert(squareOAuthPendingTokensTable).values({
     claimId,
     userId: params.userId,
     organizationId: params.organizationId,
     encryptedToken: encrypt(params.token),
+    encryptedRefreshToken: params.refreshToken ? encrypt(params.refreshToken) : null,
+    tokenExpiresAt: tokenExpiresAt && !Number.isNaN(tokenExpiresAt.getTime()) ? tokenExpiresAt : null,
     merchantId: params.merchantId,
     expiresAt,
   });
@@ -56,30 +73,33 @@ async function authorizePendingToken(
   return row;
 }
 
+function toPendingTokens(row: typeof squareOAuthPendingTokensTable.$inferSelect): PendingSquareTokens {
+  return {
+    token: decrypt(row.encryptedToken),
+    refreshToken: row.encryptedRefreshToken ? decrypt(row.encryptedRefreshToken) : null,
+    expiresAt: row.tokenExpiresAt ? row.tokenExpiresAt.toISOString() : null,
+    merchantId: row.merchantId,
+  };
+}
+
 export async function peekPendingSquareOAuthToken(params: {
   claimId: string;
   userId: number;
   organizationId: string | null;
-}): Promise<{ token: string; merchantId: string } | null> {
+}): Promise<PendingSquareTokens | null> {
   const pending = await authorizePendingToken(params.claimId, params.userId, params.organizationId);
   if (!pending) return null;
-  return {
-    token: decrypt(pending.encryptedToken),
-    merchantId: pending.merchantId,
-  };
+  return toPendingTokens(pending);
 }
 
 export async function claimPendingSquareOAuthToken(params: {
   claimId: string;
   userId: number;
   organizationId: string | null;
-}): Promise<{ token: string; merchantId: string } | null> {
+}): Promise<PendingSquareTokens | null> {
   const pending = await authorizePendingToken(params.claimId, params.userId, params.organizationId);
   if (!pending) return null;
   await db.delete(squareOAuthPendingTokensTable)
     .where(eq(squareOAuthPendingTokensTable.claimId, params.claimId));
-  return {
-    token: decrypt(pending.encryptedToken),
-    merchantId: pending.merchantId,
-  };
+  return toPendingTokens(pending);
 }

@@ -41,6 +41,8 @@ import {
   buildGeminiLiveUrl,
 } from "../voice-pipelines/google/gemini-live";
 import { getCachedCredentials } from "../lib/credential-cache";
+import { getCachedCatalog } from "../lib/catalog-cache";
+import { getSquareClient } from "../lib/square-client";
 import { readServerApiKey, requiredApiKeyEnv } from "../lib/api-keys";
 import { createComponentLogger } from "../lib/logger";
 import type { NoiseMode } from "@workspace/voicelab-core/noise";
@@ -611,6 +613,27 @@ function buildInstructions(
   return instructions;
 }
 
+// -- Server-owned catalog ---
+
+// How long a relay waits for the venue catalog before sending its first
+// session config. A warm cache resolves instantly; a cold one usually within
+// a second. Past this the session starts and the catalog lands via a follow-up
+// context update rather than delaying first audio.
+const RELAY_CATALOG_WAIT_MS = 4_000;
+
+async function loadRelayCatalog(token: string, locationId: string): Promise<CatalogItem[]> {
+  if (!token || !locationId) return [];
+  try {
+    return (await getCachedCatalog(getSquareClient(token, locationId))).items;
+  } catch {
+    return [];
+  }
+}
+
+function awaitCatalog(ready: Promise<unknown>): Promise<unknown> {
+  return Promise.race([ready, new Promise((resolve) => setTimeout(resolve, RELAY_CATALOG_WAIT_MS))]);
+}
+
 // -- Attach WebSocket server to HTTP server ---
 
 export function attachWebSocketRelay(server: Server): void {
@@ -803,6 +826,10 @@ export function attachWebSocketRelay(server: Server): void {
     let sessionLocationId = ctx.squareLocationId;
     const assistantKind: "venue" | "general" = sessionSquareToken ? "venue" : "general";
     const relayTools = buildRelayTools(ctx.plan, assistantKind, ctx.allowedToolNames, ctx.includeGeneralTools);
+    const catalogReady = loadRelayCatalog(sessionSquareToken, sessionLocationId).then((items) => {
+      if (items.length > 0) catalog = items;
+      return items;
+    });
 
     relayLog.info(
       {
@@ -830,8 +857,9 @@ export function attachWebSocketRelay(server: Server): void {
     let pendingFromClient: string[] = [];
     const pendingConfirmationCallIds = new Set<string>();
 
-    openaiWs.on("open", () => {
+    openaiWs.on("open", async () => {
       relayLog.info({ scope: "openai", userId: ctx.userId }, "upstream connected");
+      await awaitCatalog(catalogReady);
       openaiReady = true;
 
       // Configure session. The model is fixed by the connection URL, so strip
@@ -967,7 +995,7 @@ export function attachWebSocketRelay(server: Server): void {
 
       // Intercept custom context update -- update local state, send session.update to OpenAI
       if (event.type === "x.context_update") {
-        if (Array.isArray(event.catalog)) catalog = event.catalog as CatalogItem[];
+        if (Array.isArray(event.catalog) && catalog.length === 0) catalog = event.catalog as CatalogItem[];
         if (Array.isArray(event.order)) order = event.order as OrderItem[];
 
         const voice = event.voice ? sanitizeRealtimeVoice(event.voice) : undefined;
@@ -1087,6 +1115,10 @@ export function handleGeminiRelay(clientWs: WebSocket, ctx: RelayCtx): void {
   let sessionLocationId = ctx.squareLocationId;
   const assistantKind: "venue" | "general" = sessionSquareToken ? "venue" : "general";
   const relayTools = buildRelayTools(ctx.plan, assistantKind, ctx.allowedToolNames, ctx.includeGeneralTools);
+  const catalogReady = loadRelayCatalog(sessionSquareToken, sessionLocationId).then((items) => {
+    if (items.length > 0) catalog = items;
+    return items;
+  });
   let inputLanguageCodes = parseLanguageCodes(ctx.query.languageCodes);
   let proactiveAudio = parseBooleanQuery(ctx.query.proactiveAudio) ?? capabilityProfile === "ga_2_5";
   let affectiveDialog = parseBooleanQuery(ctx.query.affectiveDialog) ?? false;
@@ -1170,8 +1202,9 @@ export function handleGeminiRelay(clientWs: WebSocket, ctx: RelayCtx): void {
     setupSent = true;
   }
 
-  upstream.on("open", () => {
+  upstream.on("open", async () => {
     relayLog.info({ scope: "gemini", userId: ctx.userId, modelId }, "upstream connected");
+    await awaitCatalog(catalogReady);
     upstreamReady = true;
     sendSetup();
   });
@@ -1302,7 +1335,7 @@ export function handleGeminiRelay(clientWs: WebSocket, ctx: RelayCtx): void {
 
     // Custom context update from the PWA -- refresh local state and re-send setup.
     if (event.type === "x.context_update") {
-      if (Array.isArray(event.catalog)) catalog = event.catalog as CatalogItem[];
+      if (Array.isArray(event.catalog) && catalog.length === 0) catalog = event.catalog as CatalogItem[];
       if (Array.isArray(event.order)) order = event.order as OrderItem[];
       if (Array.isArray(event.languageCodes)) inputLanguageCodes = event.languageCodes as string[];
       if (typeof event.proactiveAudio === "boolean") proactiveAudio = event.proactiveAudio;
@@ -1448,6 +1481,10 @@ export function handleXaiRelay(clientWs: WebSocket, ctx: RelayCtx): void {
   const sessionLocationId = ctx.squareLocationId;
   const assistantKind: "venue" | "general" = sessionSquareToken ? "venue" : "general";
   const relayTools = buildRelayTools(ctx.plan, assistantKind, ctx.allowedToolNames, ctx.includeGeneralTools);
+  const catalogReady = loadRelayCatalog(sessionSquareToken, sessionLocationId).then((items) => {
+    if (items.length > 0) catalog = items;
+    return items;
+  });
   void registerVoiceSession({
     id: xaiSessionId,
     userId: ctx.userId,
@@ -1517,7 +1554,8 @@ export function handleXaiRelay(clientWs: WebSocket, ctx: RelayCtx): void {
     };
   }
 
-  xaiWs.on("open", () => {
+  xaiWs.on("open", async () => {
+    await awaitCatalog(catalogReady);
     relayLog.info({ scope: "xai", userId: ctx.userId }, "upstream connected");
     xaiReady = true;
     xaiWs.send(JSON.stringify(buildXaiSessionUpdate(ctx.query.voice || "eve")));
@@ -1653,7 +1691,7 @@ export function handleXaiRelay(clientWs: WebSocket, ctx: RelayCtx): void {
     try { event = JSON.parse(raw); } catch { return; }
 
     if (event.type === "x.context_update") {
-      if (Array.isArray(event.catalog)) catalog = event.catalog as CatalogItem[];
+      if (Array.isArray(event.catalog) && catalog.length === 0) catalog = event.catalog as CatalogItem[];
       if (Array.isArray(event.order)) order = event.order as OrderItem[];
       const voice = event.voice ? String(event.voice) : undefined;
       if (xaiReady) {

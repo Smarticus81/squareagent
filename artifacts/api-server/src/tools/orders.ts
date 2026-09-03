@@ -3,47 +3,9 @@
  */
 
 import type { ToolDefinition, ToolExecutor, ToolContext, ToolResult } from "./types";
-import {
-  listRecentOrders,
-  getSalesSummary,
-  SQUARE_BASE,
-  squareFetch,
-  squareHeaders,
-} from "../lib/square-helpers";
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function parseDatePeriod(period: string): { start: string; end: string } {
-  const now = new Date();
-  const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
-  let start: Date;
-  switch (period) {
-    case "yesterday": {
-      const y = new Date(now); y.setDate(y.getDate() - 1);
-      start = new Date(y.getFullYear(), y.getMonth(), y.getDate());
-      const end = new Date(y.getFullYear(), y.getMonth(), y.getDate(), 23, 59, 59);
-      return { start: start.toISOString(), end: end.toISOString() };
-    }
-    case "this_week": {
-      const day = now.getDay(); const diff = now.getDate() - day + (day === 0 ? -6 : 1);
-      start = new Date(now.getFullYear(), now.getMonth(), diff);
-      return { start: start.toISOString(), end: endOfDay.toISOString() };
-    }
-    case "last_7_days":
-      start = new Date(now); start.setDate(start.getDate() - 7);
-      return { start: start.toISOString(), end: endOfDay.toISOString() };
-    case "this_month":
-      start = new Date(now.getFullYear(), now.getMonth(), 1);
-      return { start: start.toISOString(), end: endOfDay.toISOString() };
-    case "last_30_days":
-      start = new Date(now); start.setDate(start.getDate() - 30);
-      return { start: start.toISOString(), end: endOfDay.toISOString() };
-    case "today":
-    default:
-      start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      return { start: start.toISOString(), end: endOfDay.toISOString() };
-  }
-}
+import { listRecentOrders, getSalesSummary, searchOrders, squareErrorMessage } from "../lib/square-helpers";
+import { squareFromCtx, venueTimeZone, NOT_CONNECTED, money } from "./_square";
+import { normalizePeriod, periodRange, formatLocalDateTime } from "../lib/venue-time";
 
 // ── Definitions ───────────────────────────────────────────────────────────────
 
@@ -93,31 +55,32 @@ export const definitions: ToolDefinition[] = [
 // ── Executors ─────────────────────────────────────────────────────────────────
 
 async function listOrdersExec(args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
-  if (!ctx.squareToken || !ctx.squareLocationId) return { result: "Square not connected." };
-  const limit = Number(args.limit ?? 10);
-  const { ok, orders, error } = await listRecentOrders(ctx.squareToken, ctx.squareLocationId, limit);
+  const client = squareFromCtx(ctx);
+  if (!client) return NOT_CONNECTED;
+  const limit = Math.min(Math.max(1, Number(args.limit ?? 10) || 10), 50);
+  const [{ ok, orders, error }, tz] = await Promise.all([listRecentOrders(client, limit), venueTimeZone(client)]);
   if (!ok) return { result: `Failed: ${error}` };
   if (!orders || orders.length === 0) return { result: "No recent orders found." };
   const lines = orders.map((o: any) => {
-    const total = ((o.total_money?.amount ?? 0) / 100).toFixed(2);
     const state = o.state ?? "UNKNOWN";
-    const date = o.created_at ? new Date(o.created_at).toLocaleString() : "?";
     const items = (o.line_items ?? []).length;
-    return `${date} — $${total} (${state}, ${items} items)`;
+    return `${formatLocalDateTime(o.created_at, tz)} - ${money(o.total_money?.amount)} (${state}, ${items} items)`;
   });
   return { result: `Recent orders:\n${lines.join("\n")}` };
 }
 
 async function salesReport(args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
-  if (!ctx.squareToken || !ctx.squareLocationId) return { result: "Square not connected." };
-  const period = String(args.period ?? "today");
-  const { start, end } = parseDatePeriod(period);
-  const { ok, summary, error } = await getSalesSummary(ctx.squareToken, ctx.squareLocationId, start, end);
+  const client = squareFromCtx(ctx);
+  if (!client) return NOT_CONNECTED;
+  const period = normalizePeriod(args.period);
+  const tz = await venueTimeZone(client);
+  const { start, end } = periodRange(period, tz);
+  const { ok, summary, error } = await getSalesSummary(client, start, end);
   if (!ok) return { result: `Failed: ${error}` };
   if (!summary) return { result: "No data available." };
   const lines = [
     `Period: ${period.replace(/_/g, " ")}`,
-    `Total orders: ${summary.totalOrders}`,
+    `Total orders: ${summary.totalOrders}${summary.truncated ? "+" : ""}`,
     `Total revenue: $${summary.totalRevenue.toFixed(2)}`,
     `Average ticket: $${summary.avgOrder.toFixed(2)}`,
   ];
@@ -127,74 +90,50 @@ async function salesReport(args: Record<string, unknown>, ctx: ToolContext): Pro
       lines.push(`  ${item.name}: ${item.qty} sold, $${item.revenue.toFixed(2)}`);
     }
   }
+  if (summary.truncated) lines.push("(Large period: figures cover the most recent orders only.)");
   return { result: lines.join("\n") };
 }
 
 async function listOpenOrders(_args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
-  if (!ctx.squareToken || !ctx.squareLocationId) return { result: "Square not connected." };
-  try {
-    const res = await squareFetch(`${SQUARE_BASE}/orders/search`, {
-      method: "POST",
-      headers: squareHeaders(ctx.squareToken),
-      body: JSON.stringify({
-        location_ids: [ctx.squareLocationId],
-        query: {
-          filter: { state_filter: { states: ["OPEN"] } },
-          sort: { sort_field: "CREATED_AT", sort_order: "DESC" },
-        },
-        limit: 50,
-      }),
-    });
-    const data = (await res.json()) as any;
-    if (!res.ok) return { result: `Failed: ${data.errors?.[0]?.detail ?? "Unknown error"}` };
-    const orders = data.orders ?? [];
-    if (orders.length === 0) return { result: "No open orders right now." };
-    const lines = orders.map((o: any) => {
-      const total = ((o.total_money?.amount ?? 0) / 100).toFixed(2);
-      const ref = o.reference_id ?? o.id.slice(0, 8);
-      const items = (o.line_items ?? []).map((li: any) => `${li.quantity}x ${li.name}`).join(", ");
-      return `${ref}: $${total} — ${items || "no items"}`;
-    });
-    return { result: `Open orders (${orders.length}):\n${lines.join("\n")}` };
-  } catch (e: any) {
-    return { result: `Failed to list open orders: ${e.message}` };
-  }
+  const client = squareFromCtx(ctx);
+  if (!client) return NOT_CONNECTED;
+  const res = await searchOrders(client, { states: ["OPEN"], limit: 50, maxItems: 50 });
+  if (!res.ok) return { result: `Failed: ${squareErrorMessage(res.error)}` };
+  if (res.orders.length === 0) return { result: "No open orders right now." };
+  const lines = res.orders.map((o: any) => {
+    const ref = o.ticket_name ?? o.reference_id ?? String(o.id).slice(0, 8);
+    const items = (o.line_items ?? []).map((li: any) => `${li.quantity}x ${li.name}`).join(", ");
+    return `${ref}: ${money(o.total_money?.amount)} - ${items || "no items"}`;
+  });
+  return { result: `Open orders (${res.orders.length}):\n${lines.join("\n")}` };
 }
 
 async function getOrderDetails(args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
-  const orderId = String(args.order_id ?? "");
+  const orderId = String(args.order_id ?? "").trim();
   if (!orderId) return { result: "Order ID is required." };
-  if (!ctx.squareToken) return { result: "Square not connected." };
-  try {
-    const res = await squareFetch(`${SQUARE_BASE}/orders/${orderId}`, {
-      headers: squareHeaders(ctx.squareToken),
-    });
-    const data = (await res.json()) as any;
-    if (!res.ok) return { result: `Failed: ${data.errors?.[0]?.detail ?? "Order not found"}` };
-    const o = data.order;
-    const lines = [
-      `Order: ${o.id}`,
-      `State: ${o.state}`,
-      `Created: ${o.created_at ? new Date(o.created_at).toLocaleString() : "?"}`,
-      `Total: $${((o.total_money?.amount ?? 0) / 100).toFixed(2)}`,
-      `Items:`,
-    ];
-    for (const li of o.line_items ?? []) {
-      lines.push(`  ${li.quantity}x ${li.name} — $${((li.total_money?.amount ?? 0) / 100).toFixed(2)}`);
-    }
-    if (o.discounts?.length) {
-      lines.push(`Discounts:`);
-      for (const d of o.discounts) {
-        lines.push(`  ${d.name}: -$${((d.applied_money?.amount ?? 0) / 100).toFixed(2)}`);
-      }
-    }
-    return { result: lines.join("\n") };
-  } catch (e: any) {
-    return { result: `Failed to get order details: ${e.message}` };
+  const client = squareFromCtx(ctx);
+  if (!client) return NOT_CONNECTED;
+  const [res, tz] = await Promise.all([client.get(`/orders/${encodeURIComponent(orderId)}`), venueTimeZone(client)]);
+  if (!res.ok) return { result: `Failed: ${squareErrorMessage(res.error, "Order not found")}` };
+  const o = res.data.order;
+  const lines = [
+    `Order: ${o.id}`,
+    `State: ${o.state}`,
+    `Created: ${formatLocalDateTime(o.created_at, tz)}`,
+    `Total: ${money(o.total_money?.amount)}`,
+    `Items:`,
+  ];
+  for (const li of o.line_items ?? []) {
+    lines.push(`  ${li.quantity}x ${li.name} - ${money(li.total_money?.amount)}`);
   }
+  if (o.discounts?.length) {
+    lines.push(`Discounts:`);
+    for (const d of o.discounts) {
+      lines.push(`  ${d.name}: -${money(d.applied_money?.amount)}`);
+    }
+  }
+  return { result: lines.join("\n") };
 }
-
-// ── Export executor map ───────────────────────────────────────────────────────
 
 export const executors: Record<string, ToolExecutor> = {
   list_orders: listOrdersExec,

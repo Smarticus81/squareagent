@@ -310,6 +310,10 @@ export const squareOAuthPendingTokensTable = pgTable("square_oauth_pending_token
   userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
   organizationId: uuid("organization_id").references(() => organizationsTable.id, { onDelete: "cascade" }),
   encryptedToken: text("encrypted_token").notNull(),
+  /** Encrypted Square refresh token, when Square issued one. */
+  encryptedRefreshToken: text("encrypted_refresh_token"),
+  /** Access-token expiry reported by Square (30-day tokens). */
+  tokenExpiresAt: timestamp("token_expires_at"),
   merchantId: text("merchant_id").notNull(),
   expiresAt: timestamp("expires_at").notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),

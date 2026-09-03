@@ -3,13 +3,11 @@
  */
 
 import type { ToolDefinition, ToolExecutor, ToolContext, ToolResult } from "./types";
-import {
-  findCatalogItem,
-  getInventoryCount,
-  SQUARE_BASE,
-  squareFetch,
-  squareHeaders,
-} from "../lib/square-helpers";
+import { findCatalogItem, idempotencyKey, squareErrorMessage, type CatalogItem } from "../lib/square-helpers";
+import { getCachedInventoryCounts, invalidateInventoryCounts } from "../lib/catalog-cache";
+import { squareFromCtx, idempotencySeed, venueTimeZone, NOT_CONNECTED } from "./_square";
+import type { SquareClient } from "../lib/square-client";
+import { formatLocalDate } from "../lib/venue-time";
 
 // ── Definitions ───────────────────────────────────────────────────────────────
 
@@ -140,44 +138,74 @@ export const definitions: ToolDefinition[] = [
   },
 ];
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+const LOW_STOCK_DEFAULT = 5;
+
+function variationIdOf(item: CatalogItem): string {
+  return item.variationId ?? item.id;
+}
+
+/** Map a removal reason to Square's inventory state so the audit trail is right. */
+function reasonToState(reason: string): string {
+  switch (reason.toLowerCase()) {
+    case "sold": case "sale": return "SOLD";
+    case "returned": case "return": return "RETURNED_BY_CUSTOMER";
+    default: return "WASTE"; // damaged, waste, spoiled, expired, theft, shrinkage, loss
+  }
+}
+
+function adjustmentChange(variationId: string, locationId: string, quantity: number, reason: string, occurredAt: string) {
+  const isAdding = quantity > 0;
+  return {
+    type: "ADJUSTMENT",
+    adjustment: {
+      catalog_object_id: variationId,
+      location_id: locationId,
+      from_state: isAdding ? "NONE" : "IN_STOCK",
+      to_state: isAdding ? "IN_STOCK" : reasonToState(reason),
+      quantity: Math.abs(quantity).toString(),
+      occurred_at: occurredAt,
+    },
+  };
+}
+
+async function batchCreateChanges(client: SquareClient, changes: unknown[], key: string): Promise<{ ok: boolean; error?: string }> {
+  const res = await client.post("/inventory/changes/batch-create", { idempotency_key: key, changes });
+  invalidateInventoryCounts(client.locationId);
+  if (!res.ok) return { ok: false, error: squareErrorMessage(res.error) };
+  return { ok: true };
+}
+
+/** Counts for the whole catalog, or a spoken error. */
+async function catalogCounts(ctx: ToolContext, client: SquareClient): Promise<{ counts: Map<string, number> } | { error: string }> {
+  const res = await getCachedInventoryCounts(client, ctx.catalog.map(variationIdOf));
+  if (!res.ok) return { error: squareErrorMessage(res.error, "Failed to read inventory") };
+  return { counts: res.counts };
+}
+
 // ── Executors ─────────────────────────────────────────────────────────────────
 
 async function checkInventory(args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
   const itemName = String(args.item_name ?? "");
   const match = findCatalogItem(ctx.catalog, itemName);
   if (!match) return { result: `"${itemName}" not found in catalog.` };
-  if (!ctx.squareToken || !ctx.squareLocationId) return { result: "Square not connected — cannot check inventory." };
-  const variationId = match.variationId ?? match.id;
-  try {
-    const qty = await getInventoryCount(ctx.squareToken, ctx.squareLocationId, variationId);
-    return { result: `${match.name}: ${qty} in stock.` };
-  } catch (e: any) {
-    return { result: `Failed to check inventory: ${e.message}` };
-  }
+  const client = squareFromCtx(ctx);
+  if (!client) return { result: "Square not connected — cannot check inventory." };
+  const variationId = variationIdOf(match);
+  const res = await getCachedInventoryCounts(client, [variationId]);
+  if (!res.ok) return { result: `Failed to check inventory: ${squareErrorMessage(res.error)}` };
+  return { result: `${match.name}: ${res.counts.get(variationId) ?? 0} in stock.` };
 }
 
 async function checkAllInventory(_args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
-  if (!ctx.squareToken || !ctx.squareLocationId) return { result: "Square not connected." };
+  const client = squareFromCtx(ctx);
+  if (!client) return NOT_CONNECTED;
   if (ctx.catalog.length === 0) return { result: "No catalog items loaded." };
-  try {
-    const ids = ctx.catalog.map((c) => c.variationId ?? c.id);
-    const res = await squareFetch(`${SQUARE_BASE}/inventory/counts/batch-retrieve`, {
-      method: "POST",
-      headers: squareHeaders(ctx.squareToken),
-      body: JSON.stringify({ catalog_object_ids: ids, location_ids: [ctx.squareLocationId] }),
-    });
-    const data = (await res.json()) as any;
-    const counts = data.counts ?? [];
-    const lines = ctx.catalog.map((c) => {
-      const vid = c.variationId ?? c.id;
-      const count = counts.find((ct: any) => ct.catalog_object_id === vid && ct.state === "IN_STOCK");
-      const qty = count ? parseFloat(count.quantity) : 0;
-      return `${c.name}: ${qty}`;
-    });
-    return { result: `Inventory:\n${lines.join("\n")}` };
-  } catch (e: any) {
-    return { result: `Failed to check inventory: ${e.message}` };
-  }
+  const counts = await catalogCounts(ctx, client);
+  if ("error" in counts) return { result: `Failed to check inventory: ${counts.error}` };
+  const lines = ctx.catalog.map((c) => `${c.name}: ${counts.counts.get(variationIdOf(c)) ?? 0}`);
+  return { result: `Inventory:\n${lines.join("\n")}` };
 }
 
 async function adjustInventory(args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
@@ -186,54 +214,25 @@ async function adjustInventory(args: Record<string, unknown>, ctx: ToolContext):
   const reason = String(args.reason ?? "received").toLowerCase();
   const match = findCatalogItem(ctx.catalog, itemName);
   if (!match) return { result: `"${itemName}" not found in catalog.` };
-  if (!ctx.squareToken || !ctx.squareLocationId) return { result: "Square not connected." };
-  if (quantity === 0) return { result: "Quantity cannot be zero." };
-  const variationId = match.variationId ?? match.id;
+  const client = squareFromCtx(ctx);
+  if (!client) return NOT_CONNECTED;
+  if (!Number.isFinite(quantity) || quantity === 0) return { result: "Quantity cannot be zero." };
+  const variationId = variationIdOf(match);
   const isAdding = quantity > 0;
 
-  // Map reason to Square inventory state for proper audit trail
-  let toState = "WASTE";
-  if (isAdding) {
-    toState = "IN_STOCK";
-  } else {
-    switch (reason) {
-      case "sold": case "sale": toState = "SOLD"; break;
-      case "returned": case "return": toState = "RETURNED_BY_CUSTOMER"; break;
-      case "damaged": case "damage": toState = "WASTE"; break;
-      case "waste": case "spoiled": case "expired": toState = "WASTE"; break;
-      case "theft": case "shrinkage": case "loss": toState = "WASTE"; break;
-      default: toState = "WASTE"; break;
-    }
-  }
+  const write = await batchCreateChanges(
+    client,
+    [adjustmentChange(variationId, client.locationId, quantity, reason, new Date().toISOString())],
+    idempotencyKey("adj", idempotencySeed(ctx, "adj")),
+  );
+  if (!write.ok) return { result: `Failed: ${write.error}` };
 
-  try {
-    const res = await squareFetch(`${SQUARE_BASE}/inventory/changes/batch-create`, {
-      method: "POST",
-      headers: squareHeaders(ctx.squareToken),
-      body: JSON.stringify({
-        idempotency_key: `inv-adj-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
-        changes: [{
-          type: "ADJUSTMENT",
-          adjustment: {
-            catalog_object_id: variationId,
-            location_id: ctx.squareLocationId,
-            from_state: isAdding ? "NONE" : "IN_STOCK",
-            to_state: toState,
-            quantity: Math.abs(quantity).toString(),
-            occurred_at: new Date().toISOString(),
-          },
-        }],
-      }),
-    });
-    const data = (await res.json()) as any;
-    if (!res.ok) return { result: `Failed: ${data.errors?.[0]?.detail ?? "Unknown error"}` };
-    const action = isAdding ? `Added ${quantity}` : `Removed ${Math.abs(quantity)}`;
-    const newQty = await getInventoryCount(ctx.squareToken, ctx.squareLocationId, variationId);
-    const lowWarning = newQty <= 5 && !isAdding ? ` ⚠ LOW STOCK!` : "";
-    return { result: `${action} ${match.name} (${reason}). Now ${newQty} in stock.${lowWarning}` };
-  } catch (e: any) {
-    return { result: `Failed to adjust inventory: ${e.message}` };
-  }
+  const after = await getCachedInventoryCounts(client, [variationId]);
+  const newQty = after.ok ? after.counts.get(variationId) ?? 0 : undefined;
+  const action = isAdding ? `Added ${quantity}` : `Removed ${Math.abs(quantity)}`;
+  const nowText = newQty === undefined ? "" : ` Now ${newQty} in stock.`;
+  const lowWarning = newQty !== undefined && newQty <= LOW_STOCK_DEFAULT && !isAdding ? " LOW STOCK!" : "";
+  return { result: `${action} ${match.name} (${reason}).${nowText}${lowWarning}` };
 }
 
 async function setInventory(args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
@@ -241,32 +240,25 @@ async function setInventory(args: Record<string, unknown>, ctx: ToolContext): Pr
   const quantity = Number(args.quantity ?? 0);
   const match = findCatalogItem(ctx.catalog, itemName);
   if (!match) return { result: `"${itemName}" not found in catalog.` };
-  if (!ctx.squareToken || !ctx.squareLocationId) return { result: "Square not connected." };
-  const variationId = match.variationId ?? match.id;
-  try {
-    const res = await squareFetch(`${SQUARE_BASE}/inventory/changes/batch-create`, {
-      method: "POST",
-      headers: squareHeaders(ctx.squareToken),
-      body: JSON.stringify({
-        idempotency_key: `inv-set-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
-        changes: [{
-          type: "PHYSICAL_COUNT",
-          physical_count: {
-            catalog_object_id: variationId,
-            location_id: ctx.squareLocationId,
-            quantity: quantity.toString(),
-            state: "IN_STOCK",
-            occurred_at: new Date().toISOString(),
-          },
-        }],
-      }),
-    });
-    const data = (await res.json()) as any;
-    if (!res.ok) return { result: `Failed: ${data.errors?.[0]?.detail ?? "Unknown error"}` };
-    return { result: `${match.name} inventory set to ${quantity}.` };
-  } catch (e: any) {
-    return { result: `Failed to set inventory: ${e.message}` };
-  }
+  const client = squareFromCtx(ctx);
+  if (!client) return NOT_CONNECTED;
+  if (!Number.isFinite(quantity) || quantity < 0) return { result: "Quantity must be zero or more." };
+  const write = await batchCreateChanges(
+    client,
+    [{
+      type: "PHYSICAL_COUNT",
+      physical_count: {
+        catalog_object_id: variationIdOf(match),
+        location_id: client.locationId,
+        quantity: quantity.toString(),
+        state: "IN_STOCK",
+        occurred_at: new Date().toISOString(),
+      },
+    }],
+    idempotencyKey("set", idempotencySeed(ctx, "set")),
+  );
+  if (!write.ok) return { result: `Failed: ${write.error}` };
+  return { result: `${match.name} inventory set to ${quantity}.` };
 }
 
 async function transferInventory(args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
@@ -275,87 +267,67 @@ async function transferInventory(args: Record<string, unknown>, ctx: ToolContext
   const toLocationId = String(args.to_location_id ?? "");
   const match = findCatalogItem(ctx.catalog, itemName);
   if (!match) return { result: `"${itemName}" not found in catalog.` };
-  if (!ctx.squareToken || !ctx.squareLocationId) return { result: "Square not connected." };
+  const client = squareFromCtx(ctx);
+  if (!client) return NOT_CONNECTED;
   if (!toLocationId) return { result: "Destination location ID is required." };
-  const variationId = match.variationId ?? match.id;
-  try {
-    const res = await squareFetch(`${SQUARE_BASE}/inventory/changes/batch-create`, {
-      method: "POST",
-      headers: squareHeaders(ctx.squareToken),
-      body: JSON.stringify({
-        idempotency_key: `inv-xfer-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
-        changes: [{
-          type: "TRANSFER",
-          transfer: {
-            catalog_object_id: variationId,
-            from_location_id: ctx.squareLocationId,
-            to_location_id: toLocationId,
-            quantity: quantity.toString(),
-            occurred_at: new Date().toISOString(),
-          },
-        }],
-      }),
-    });
-    const data = (await res.json()) as any;
-    if (!res.ok) return { result: `Failed: ${data.errors?.[0]?.detail ?? "Unknown error"}` };
-    return { result: `Transferred ${quantity}x ${match.name} to location ${toLocationId}.` };
-  } catch (e: any) {
-    return { result: `Failed to transfer: ${e.message}` };
-  }
+  if (!Number.isFinite(quantity) || quantity <= 0) return { result: "Transfer quantity must be positive." };
+  const write = await batchCreateChanges(
+    client,
+    [{
+      type: "TRANSFER",
+      transfer: {
+        catalog_object_id: variationIdOf(match),
+        from_location_id: client.locationId,
+        to_location_id: toLocationId,
+        quantity: quantity.toString(),
+        occurred_at: new Date().toISOString(),
+      },
+    }],
+    idempotencyKey("xfer", idempotencySeed(ctx, "xfer")),
+  );
+  if (!write.ok) return { result: `Failed: ${write.error}` };
+  return { result: `Transferred ${quantity}x ${match.name} to location ${toLocationId}.` };
 }
 
 async function getInventoryChanges(args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
   const itemName = String(args.item_name ?? "");
   const match = findCatalogItem(ctx.catalog, itemName);
   if (!match) return { result: `"${itemName}" not found in catalog.` };
-  if (!ctx.squareToken || !ctx.squareLocationId) return { result: "Square not connected." };
-  const variationId = match.variationId ?? match.id;
-  try {
-    const res = await squareFetch(
-      `${SQUARE_BASE}/inventory/changes?catalog_object_id=${variationId}&location_ids=${ctx.squareLocationId}`,
-      { headers: squareHeaders(ctx.squareToken) },
-    );
-    const data = (await res.json()) as any;
-    const changes = (data.changes ?? []).slice(0, 10);
-    if (changes.length === 0) return { result: `No recent changes for ${match.name}.` };
-    const lines = changes.map((ch: any) => {
-      const adj = ch.adjustment || ch.physical_count || ch.transfer;
-      const type = ch.type ?? "UNKNOWN";
-      const qty = adj?.quantity ?? "?";
-      const at = adj?.occurred_at ? new Date(adj.occurred_at).toLocaleDateString() : "?";
-      return `${type}: ${qty} on ${at}`;
-    });
-    return { result: `Recent changes for ${match.name}:\n${lines.join("\n")}` };
-  } catch (e: any) {
-    return { result: `Failed to get changes: ${e.message}` };
-  }
+  const client = squareFromCtx(ctx);
+  if (!client) return NOT_CONNECTED;
+  const res = await client.post("/inventory/changes/batch-retrieve", {
+    catalog_object_ids: [variationIdOf(match)],
+    location_ids: [client.locationId],
+    limit: 10,
+  });
+  if (!res.ok) return { result: `Failed to get changes: ${squareErrorMessage(res.error)}` };
+  const changes: any[] = (res.data?.changes ?? []).slice(0, 10);
+  if (changes.length === 0) return { result: `No recent changes for ${match.name}.` };
+  const tz = await venueTimeZone(client);
+  const lines = changes.map((ch) => {
+    const detail = ch.adjustment || ch.physical_count || ch.transfer;
+    const type = String(ch.type ?? "UNKNOWN").toLowerCase().replace(/_/g, " ");
+    const qty = detail?.quantity ?? "?";
+    const state = ch.adjustment ? ` to ${String(ch.adjustment.to_state ?? "").toLowerCase().replace(/_/g, " ")}` : "";
+    return `${type}${state}: ${qty} on ${formatLocalDate(detail?.occurred_at ?? detail?.created_at, tz)}`;
+  });
+  return { result: `Recent changes for ${match.name}:\n${lines.join("\n")}` };
 }
 
 async function lowStockReport(args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
-  if (!ctx.squareToken || !ctx.squareLocationId) return { result: "Square not connected." };
+  const client = squareFromCtx(ctx);
+  if (!client) return NOT_CONNECTED;
   if (ctx.catalog.length === 0) return { result: "No catalog items loaded." };
-  const threshold = Number(args.threshold ?? 5);
-  try {
-    const ids = ctx.catalog.map((c) => c.variationId ?? c.id);
-    const res = await squareFetch(`${SQUARE_BASE}/inventory/counts/batch-retrieve`, {
-      method: "POST",
-      headers: squareHeaders(ctx.squareToken),
-      body: JSON.stringify({ catalog_object_ids: ids, location_ids: [ctx.squareLocationId] }),
-    });
-    const data = (await res.json()) as any;
-    const counts = data.counts ?? [];
-    const low: string[] = [];
-    for (const c of ctx.catalog) {
-      const vid = c.variationId ?? c.id;
-      const count = counts.find((ct: any) => ct.catalog_object_id === vid && ct.state === "IN_STOCK");
-      const qty = count ? parseFloat(count.quantity) : 0;
-      if (qty <= threshold) low.push(`${c.name}: ${qty}`);
-    }
-    if (low.length === 0) return { result: `All items are above ${threshold} units.` };
-    return { result: `Low stock (≤${threshold}):\n${low.join("\n")}` };
-  } catch (e: any) {
-    return { result: `Failed to generate report: ${e.message}` };
+  const threshold = Number(args.threshold ?? LOW_STOCK_DEFAULT);
+  const counts = await catalogCounts(ctx, client);
+  if ("error" in counts) return { result: `Failed to generate report: ${counts.error}` };
+  const low: string[] = [];
+  for (const c of ctx.catalog) {
+    const qty = counts.counts.get(variationIdOf(c)) ?? 0;
+    if (qty <= threshold) low.push(`${c.name}: ${qty}`);
   }
+  if (low.length === 0) return { result: `All items are above ${threshold} units.` };
+  return { result: `Low stock (at or below ${threshold}):\n${low.join("\n")}` };
 }
 
 async function getItemDetails(args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
@@ -366,114 +338,72 @@ async function getItemDetails(args: Record<string, unknown>, ctx: ToolContext): 
     `Name: ${match.name}`,
     `Price: $${match.price.toFixed(2)}`,
     `Category: ${match.category ?? "none"}`,
+    match.description ? `Description: ${match.description}` : null,
     `Catalog ID: ${match.id}`,
     match.variationId ? `Variation ID: ${match.variationId}` : null,
   ].filter(Boolean).join("\n");
   return { result: details };
 }
 
-// ── Export executor map ───────────────────────────────────────────────────────
-
-/** Map reason string to Square inventory to_state for removals */
-function reasonToState(reason: string): string {
-  switch (reason.toLowerCase()) {
-    case "sold": case "sale": return "SOLD";
-    case "returned": case "return": return "RETURNED_BY_CUSTOMER";
-    default: return "WASTE";
-  }
-}
-
 async function batchAdjustInventory(args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
-  if (!ctx.squareToken || !ctx.squareLocationId) return { result: "Square not connected." };
+  const client = squareFromCtx(ctx);
+  if (!client) return NOT_CONNECTED;
   const adjustments = args.adjustments as Array<{ item_name: string; quantity: number; reason?: string }>;
   if (!Array.isArray(adjustments) || adjustments.length === 0) return { result: "No adjustments provided." };
 
-  const changes: any[] = [];
+  const changes: unknown[] = [];
   const matched: string[] = [];
   const notFound: string[] = [];
+  const occurredAt = new Date().toISOString();
 
   for (const adj of adjustments) {
-    const match = findCatalogItem(ctx.catalog, adj.item_name);
-    if (!match) { notFound.push(adj.item_name); continue; }
-    const variationId = match.variationId ?? match.id;
-    const isAdding = adj.quantity > 0;
+    const quantity = Number(adj?.quantity ?? 0);
+    const match = findCatalogItem(ctx.catalog, String(adj?.item_name ?? ""));
+    if (!match) { notFound.push(String(adj?.item_name ?? "?")); continue; }
+    if (!Number.isFinite(quantity) || quantity === 0) continue;
     const reason = adj.reason ?? "received";
-    changes.push({
-      type: "ADJUSTMENT",
-      adjustment: {
-        catalog_object_id: variationId,
-        location_id: ctx.squareLocationId,
-        from_state: isAdding ? "NONE" : "IN_STOCK",
-        to_state: isAdding ? "IN_STOCK" : reasonToState(reason),
-        quantity: Math.abs(adj.quantity).toString(),
-        occurred_at: new Date().toISOString(),
-      },
-    });
-    const action = isAdding ? `+${adj.quantity}` : `${adj.quantity}`;
-    matched.push(`${match.name} ${action} (${reason})`);
+    changes.push(adjustmentChange(variationIdOf(match), client.locationId, quantity, reason, occurredAt));
+    matched.push(`${match.name} ${quantity > 0 ? `+${quantity}` : quantity} (${reason})`);
   }
 
   if (changes.length === 0) return { result: `None of the items found: ${notFound.join(", ")}` };
 
-  try {
-    const res = await squareFetch(`${SQUARE_BASE}/inventory/changes/batch-create`, {
-      method: "POST",
-      headers: squareHeaders(ctx.squareToken),
-      body: JSON.stringify({
-        idempotency_key: `inv-batch-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
-        changes,
-      }),
-    });
-    const data = (await res.json()) as any;
-    if (!res.ok) return { result: `Batch failed: ${data.errors?.[0]?.detail ?? "Unknown error"}` };
-    let result = `Updated ${matched.length} items:\n${matched.join("\n")}`;
-    if (notFound.length > 0) result += `\nNot found: ${notFound.join(", ")}`;
-    return { result };
-  } catch (e: any) {
-    return { result: `Batch adjust failed: ${e.message}` };
-  }
+  const write = await batchCreateChanges(client, changes, idempotencyKey("badj", idempotencySeed(ctx, "badj")));
+  if (!write.ok) return { result: `Batch failed: ${write.error}` };
+  let result = `Updated ${matched.length} items:\n${matched.join("\n")}`;
+  if (notFound.length > 0) result += `\nNot found: ${notFound.join(", ")}`;
+  return { result };
 }
 
 async function inventorySummary(_args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
-  if (!ctx.squareToken || !ctx.squareLocationId) return { result: "Square not connected." };
+  const client = squareFromCtx(ctx);
+  if (!client) return NOT_CONNECTED;
   if (ctx.catalog.length === 0) return { result: "No catalog items loaded." };
-  try {
-    const ids = ctx.catalog.map((c) => c.variationId ?? c.id);
-    const res = await squareFetch(`${SQUARE_BASE}/inventory/counts/batch-retrieve`, {
-      method: "POST",
-      headers: squareHeaders(ctx.squareToken),
-      body: JSON.stringify({ catalog_object_ids: ids, location_ids: [ctx.squareLocationId] }),
-    });
-    const data = (await res.json()) as any;
-    const counts = data.counts ?? [];
+  const counts = await catalogCounts(ctx, client);
+  if ("error" in counts) return { result: `Failed to generate summary: ${counts.error}` };
 
-    let totalUnits = 0;
-    const zeroStock: string[] = [];
-    const lowStock: string[] = [];
-    const wellStocked: string[] = [];
+  let totalUnits = 0;
+  const zeroStock: string[] = [];
+  const lowStock: string[] = [];
+  const wellStocked: string[] = [];
 
-    for (const c of ctx.catalog) {
-      const vid = c.variationId ?? c.id;
-      const count = counts.find((ct: any) => ct.catalog_object_id === vid && ct.state === "IN_STOCK");
-      const qty = count ? parseFloat(count.quantity) : 0;
-      totalUnits += qty;
-      if (qty === 0) zeroStock.push(c.name);
-      else if (qty <= 5) lowStock.push(`${c.name}: ${qty}`);
-      else wellStocked.push(`${c.name}: ${qty}`);
-    }
-
-    const lines = [
-      `📊 Inventory Summary`,
-      `Items tracked: ${ctx.catalog.length}`,
-      `Total units in stock: ${totalUnits}`,
-      `Out of stock (${zeroStock.length}): ${zeroStock.length > 0 ? zeroStock.join(", ") : "none"}`,
-      `Low stock ≤5 (${lowStock.length}): ${lowStock.length > 0 ? lowStock.join(", ") : "none"}`,
-      `Well stocked (${wellStocked.length}): ${wellStocked.length > 0 ? wellStocked.slice(0, 10).join(", ") + (wellStocked.length > 10 ? ` and ${wellStocked.length - 10} more` : "") : "none"}`,
-    ];
-    return { result: lines.join("\n") };
-  } catch (e: any) {
-    return { result: `Failed to generate summary: ${e.message}` };
+  for (const c of ctx.catalog) {
+    const qty = counts.counts.get(variationIdOf(c)) ?? 0;
+    totalUnits += qty;
+    if (qty === 0) zeroStock.push(c.name);
+    else if (qty <= LOW_STOCK_DEFAULT) lowStock.push(`${c.name}: ${qty}`);
+    else wellStocked.push(`${c.name}: ${qty}`);
   }
+
+  const lines = [
+    `Inventory Summary`,
+    `Items tracked: ${ctx.catalog.length}`,
+    `Total units in stock: ${totalUnits}`,
+    `Out of stock (${zeroStock.length}): ${zeroStock.length > 0 ? zeroStock.join(", ") : "none"}`,
+    `Low stock at or below ${LOW_STOCK_DEFAULT} (${lowStock.length}): ${lowStock.length > 0 ? lowStock.join(", ") : "none"}`,
+    `Well stocked (${wellStocked.length}): ${wellStocked.length > 0 ? wellStocked.slice(0, 10).join(", ") + (wellStocked.length > 10 ? ` and ${wellStocked.length - 10} more` : "") : "none"}`,
+  ];
+  return { result: lines.join("\n") };
 }
 
 export const executors: Record<string, ToolExecutor> = {

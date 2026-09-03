@@ -4,7 +4,8 @@ import { requirePlan } from "../auth";
 import { ALL_WORKFLOWS } from "../../workflows";
 import { executeWorkflow } from "../../workflows/engine";
 import { getCachedCredentials } from "../../lib/credential-cache";
-import { SquareClient } from "../../lib/square-client";
+import { getSquareClient } from "../../lib/square-client";
+import { getCachedCatalog } from "../../lib/catalog-cache";
 import type { ToolContext } from "../../tools/types";
 import { getOrCreateSession } from "../../lib/session-store";
 import { db, venuesTable } from "@workspace/db";
@@ -65,10 +66,14 @@ router.post("/:slug/run", v1RequireAuth as any, requirePlan() as any, async (req
 
   const sessionId = `wf-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const session = getOrCreateSession(sessionId, creds.squareToken, creds.squareLocationId, req.user.id, numericVenueId);
-  const squareClient = new SquareClient(creds.squareToken, creds.squareLocationId);
+  const squareClient = getSquareClient(creds.squareToken, creds.squareLocationId);
+  // Inventory steps (stock take, low stock) resolve items against the venue
+  // catalog, so the workflow needs the same server-owned catalog the voice
+  // tools use — without it every inventory step reports "no catalog loaded".
+  const catalog = (await getCachedCatalog(squareClient)).items;
 
   const ctx: ToolContext = {
-    catalog: [],
+    catalog,
     order: [],
     squareToken: creds.squareToken,
     squareLocationId: creds.squareLocationId,

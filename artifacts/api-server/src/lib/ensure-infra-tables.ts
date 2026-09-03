@@ -38,6 +38,10 @@ const INFRA_TABLE_DDL: readonly string[] = [
     "expires_at" timestamp NOT NULL,
     "created_at" timestamp NOT NULL DEFAULT now()
   )`,
+  // Refresh-token columns were added after the table shipped; ADD COLUMN IF NOT
+  // EXISTS upgrades existing deployments in place.
+  `ALTER TABLE "square_oauth_pending_tokens" ADD COLUMN IF NOT EXISTS "encrypted_refresh_token" text`,
+  `ALTER TABLE "square_oauth_pending_tokens" ADD COLUMN IF NOT EXISTS "token_expires_at" timestamp`,
   `CREATE INDEX IF NOT EXISTS "square_oauth_pending_user_idx" ON "square_oauth_pending_tokens" ("user_id")`,
   `CREATE INDEX IF NOT EXISTS "square_oauth_pending_expires_idx" ON "square_oauth_pending_tokens" ("expires_at")`,
   `CREATE TABLE IF NOT EXISTS "rate_limit_buckets" (
