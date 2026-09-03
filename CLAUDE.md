@@ -176,7 +176,7 @@ The marketing site (`voycelab-landing`) uses a warm, hospitality-focused light t
 
 **Customer-facing language**: Say "assistant" not "agent". Say "commands" not "tools". Say "connected systems" not "APIs". Never expose technical internals in user-facing UI.
 
-**Landing demo**: Mock-bar demo backed by an in-memory mock order store in `realtime.ts` (`/api/realtime/demo-bar-session`). Users talk to "Bev" and see a live order ticket update in real time.
+**Landing demo**: Mock-bar demo backed by an in-memory mock order store in `realtime.ts` (`/api/realtime/demo-bar-session`). Users talk to "Nova" and see a live order ticket update in real time. The name "Bev" must never appear in the landing app or the website demo persona.
 
 ## Key Conventions
 

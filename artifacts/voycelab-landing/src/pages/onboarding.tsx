@@ -76,7 +76,7 @@ const VENUE_TYPES: VenueType[] = [
     label: "Bar & lounge",
     tagline: "Tabs, pours, last call",
     icon: Martini,
-    names: ["Bev", "Rio", "Cash"],
+    names: ["Rio", "Cash", "Ace"],
     sampleLine: "Two ranch waters and a Bud heavy — starting a tab or closing out?",
   },
   {
@@ -196,7 +196,7 @@ export default function Onboarding() {
 
   const venueType = VENUE_TYPES.find((t) => t.id === venueTypeId) ?? null;
   const sampleLine = venueType?.sampleLine ?? DEFAULT_SAMPLE_LINE;
-  const namePlaceholder = venueType?.names[0] ?? "Bev";
+  const namePlaceholder = venueType?.names[0] ?? "Nova";
   const selectedVoice = VOICES.find((v) => v.id === voice) ?? VOICES[0];
 
   const goTo = useCallback(
@@ -618,7 +618,7 @@ export default function Onboarding() {
                 </motion.div>
 
                 <motion.div variants={rv} className="mt-5 flex flex-wrap justify-center gap-2">
-                  {(venueType?.names ?? ["Bev", "Piper", "Nova"]).map((n) => (
+                  {(venueType?.names ?? ["Nova", "Piper", "Rio"]).map((n) => (
                     <button
                       key={n}
                       type="button"

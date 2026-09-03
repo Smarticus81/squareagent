@@ -499,7 +499,7 @@ export default function CreateAssistant() {
               autoFocus
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder={isGeneral ? "My Business Assistant" : "Bev at the Den"}
+              placeholder={isGeneral ? "My Business Assistant" : "Nova at the Den"}
               className="vl-input"
               maxLength={32}
               required
