@@ -89,7 +89,7 @@ export async function runAutonomyCycle(trigger = "scheduler"): Promise<AutonomyC
       // compare live usage/support evidence with the current market and product.
       const upgrades = await discoverProductUpgrades(before, runId);
       product.upgradeOpportunities = upgrades;
-      const bestUpgrade = bestAutonomousUpgrade(upgrades);
+      const bestUpgrade = bestAutonomousUpgrade(upgrades, before);
       if (bestUpgrade && codeWritesEnabled()) {
         product.upgrade = await generateProductRepair(bestUpgrade, runId);
       }
