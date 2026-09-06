@@ -42,7 +42,7 @@ jobs:
           fi
           git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}" > /tmp/changed.txt
           cat /tmp/changed.txt
-          if grep -E '(^|/)secrets\.ts$|(^|/)auth\.ts$|subscriptions\.ts$|autonomy/constitution\.ts$|lib/db/src/(schema|autonomy-schema)|(^|/)\.env|pnpm-lock\.yaml$|package-lock\.json$' /tmp/changed.txt; then
-            echo "Autonomous PR touched a protected path. Founder review required; refusing autonomous merge gate."
+          if grep -E '(^|/)secrets\.ts$|(^|/)auth\.ts$|subscriptions\.ts$|^artifacts/api-server/src/autonomy/|^\.github/workflows/autonomy-ci\.yml$|lib/db/src/(schema|autonomy-schema)|lib/voicelab-core/src/pricing/|(^|/)\.env|pnpm-lock\.yaml$|package-lock\.json$' /tmp/changed.txt; then
+            echo "Autonomous PR touched governance, auth, billing, pricing, schema, secrets, or another protected path. Refusing autonomous merge gate."
             exit 1
           fi

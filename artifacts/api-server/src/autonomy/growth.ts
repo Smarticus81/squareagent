@@ -2,6 +2,7 @@ import { pool } from "@workspace/db";
 import { DEFAULT_AUTONOMY_BUDGET, outboundEnabled } from "./constitution";
 import { structuredModel } from "./openai";
 import { recordAutonomousAction, markActionExecuted, markActionFailed, recordBusinessEvent } from "./ledger";
+import { assignOutboundCampaign } from "./marketing";
 import { executors as emailExecutors } from "../tools/general/email";
 
 interface ResearchLead {
@@ -154,15 +155,24 @@ export async function runOutboundBatch(runId?: string, maxBatch = 12): Promise<{
     const domain = email.split("@")[1];
     if (!domain || await sendsToDomainToday(domain) >= DEFAULT_AUTONOMY_BUDGET.maxOutboundPerDomainPerDay) { skipped += 1; continue; }
 
+    const campaign = await assignOutboundCampaign(String(lead.id));
     const copy = await structuredModel<{ subject: string; body: string }>(
       [
         "Write a short, respectful B2B first-touch email for VoyceLab.",
         "Use ONLY the supplied public evidence for personalization; never imply a relationship, observation, integration, customer result, or capability that is not supported.",
         "VoyceLab lets hospitality teams operate connected systems such as Square through fast voice commands for POS, inventory, reporting and venue operations.",
-        "The purpose is to earn a reply or trial, not to pressure the recipient. Plain text, under 120 words, one clear CTA, no fake urgency, no fabricated social proof.",
+        "When a campaign strategy is supplied, faithfully express its angle, target pain, promise and CTA while obeying its proofConstraint. Do not blend the strategy with other positioning.",
+        "The purpose is to earn a qualified reply or trial, not to pressure the recipient. Plain text, under 120 words, one clear CTA, no fake urgency, no fabricated social proof.",
         "End with a simple opt-out sentence: 'If this isn't relevant, just say so and I won't follow up.'",
       ].join("\n"),
-      { companyName: lead.company_name, contactName: lead.contact_name, segment: lead.segment, evidence: lead.evidence, fitScore: lead.fit_score },
+      {
+        companyName: lead.company_name,
+        contactName: lead.contact_name,
+        segment: lead.segment,
+        evidence: lead.evidence,
+        fitScore: lead.fit_score,
+        campaign: campaign ? { slug: campaign.slug, variantId: campaign.variantId, strategy: campaign.payload } : null,
+      },
       { schemaName: "voycelab_outbound_email", schema: EMAIL_SCHEMA as unknown as Record<string, unknown>, reasoningEffort: "low", maxOutputTokens: 700 },
     );
 
@@ -171,8 +181,8 @@ export async function runOutboundBatch(runId?: string, maxBatch = 12): Promise<{
       agent: "growth-outbound",
       actionType: "outreach.email",
       riskLevel: "medium",
-      input: { leadId: lead.id, to: email, subject: copy.subject },
-      expectedImpact: { goal: "qualified_reply_or_trial" },
+      input: { leadId: lead.id, to: email, subject: copy.subject, campaign: campaign?.slug ?? null, variant: campaign?.variantId ?? null },
+      expectedImpact: { goal: "qualified_reply_or_trial", primaryMetric: "outbound_positive_reply" },
     });
     if (action.authority === "founder" || action.authority === "forbidden") { skipped += 1; continue; }
 
@@ -194,10 +204,13 @@ export async function runOutboundBatch(runId?: string, maxBatch = 12): Promise<{
         actorType: "agent",
         actorId: "growth-outbound",
         source: "autonomous_outbound",
+        campaign: campaign?.slug ?? null,
+        experimentId: campaign?.experimentId ?? null,
+        variant: campaign?.variantId ?? null,
         properties: { leadId: lead.id, domain, segment: lead.segment, fitScore: lead.fit_score },
         dedupeKey: `outbound:${lead.id}:${new Date().toISOString().slice(0, 10)}`,
       });
-      await markActionExecuted(action.id, { providerResult: result.result });
+      await markActionExecuted(action.id, { providerResult: result.result, campaign: campaign?.slug ?? null, variant: campaign?.variantId ?? null });
       sent += 1;
     } catch (error) {
       await markActionFailed(action.id, { error: error instanceof Error ? error.message : String(error) });
