@@ -1,11 +1,14 @@
 import { pool } from "@workspace/db";
-import { autonomyEnabled, codeWritesEnabled, VOYCELAB_OBJECTIVE } from "./constitution";
+import { autonomyEnabled, codeWritesEnabled, outboundEnabled, VOYCELAB_OBJECTIVE } from "./constitution";
 import { collectBusinessSnapshot, objectiveScore } from "./metrics";
+import { collectFinanceSnapshot, financeAllowsAcquisition } from "./finance";
 import { createAutonomyPlan } from "./planner";
 import { detectProductFindings, highestPriorityFinding, persistProductFindings } from "./product-diagnostics";
 import { generateProductRepair } from "./product-engineer";
 import { bestAutonomousUpgrade, discoverProductUpgrades } from "./product-opportunities";
 import { researchProspects, runOutboundBatch } from "./growth";
+import { ensureOutboundCampaign } from "./marketing";
+import { runSalesInbox } from "./sales";
 import { runActivationInterventions } from "./activation";
 import { runSupportInbox } from "./support";
 import { evaluateExperiments } from "./experiments";
@@ -17,16 +20,21 @@ export interface AutonomyCycleResult {
   runId?: string;
   before?: unknown;
   after?: unknown;
+  finance?: unknown;
   plan?: unknown;
   product?: unknown;
   growth?: unknown;
+  sales?: unknown;
   activation?: unknown;
   support?: unknown;
   experiments?: unknown;
   promotion?: unknown;
 }
 
-async function snapshotMetrics(snapshot: Awaited<ReturnType<typeof collectBusinessSnapshot>>): Promise<void> {
+async function snapshotMetrics(
+  snapshot: Awaited<ReturnType<typeof collectBusinessSnapshot>>,
+  finance: Awaited<ReturnType<typeof collectFinanceSnapshot>>,
+): Promise<void> {
   if (!pool) return;
   const rows: Array<[string, number, number | null, number | null]> = [
     ["objective_score", objectiveScore(snapshot), null, null],
@@ -37,11 +45,15 @@ async function snapshotMetrics(snapshot: Awaited<ReturnType<typeof collectBusine
     ["activation_to_paid", Math.round(snapshot.funnel.activationToPaid * 1000), snapshot.funnel.paid, snapshot.funnel.activated],
     ["tool_failure_rate", Math.round(snapshot.product.toolFailureRate * 1000), snapshot.product.toolFailures, snapshot.product.toolCalls],
     ["no_successful_tool_session_rate", Math.round(snapshot.product.noSuccessfulToolRate * 1000), snapshot.product.sessionsWithNoSuccessfulTool, snapshot.product.voiceSessions],
+    ["arpa_cents", finance.arpaCents, null, null],
+    ["campaign_spend_cents", finance.campaignSpendCents, null, null],
+    ["estimated_cac_cents", finance.estimatedCacCents ?? 0, finance.cohortPaidCustomers, finance.campaignSpendCents],
+    ["estimated_gross_margin", finance.estimatedGrossMargin === null ? 0 : Math.round(finance.estimatedGrossMargin * 1000), null, null],
   ];
   for (const [metric, value, numerator, denominator] of rows) {
     await pool.query(
       `INSERT INTO metric_snapshots (metric_name,value_milli,numerator,denominator,dimensions) VALUES ($1,$2,$3,$4,$5::jsonb)`,
-      [metric, value, numerator, denominator, JSON.stringify({ windowDays: snapshot.windowDays })],
+      [metric, value, numerator, denominator, JSON.stringify({ windowDays: snapshot.windowDays, financeVerdict: finance.verdict })],
     );
   }
 }
@@ -62,13 +74,16 @@ async function eligibleLeadCount(): Promise<number> {
 
 export async function runAutonomyCycle(trigger = "scheduler"): Promise<AutonomyCycleResult> {
   if (!autonomyEnabled()) return { enabled: false };
-  const before = await collectBusinessSnapshot(30);
+  const [before, financeBefore] = await Promise.all([
+    collectBusinessSnapshot(30),
+    collectFinanceSnapshot(30),
+  ]);
   const beforeScore = objectiveScore(before);
   const runId = await startAutonomyRun("strategy", trigger, VOYCELAB_OBJECTIVE.northStar, beforeScore);
 
   try {
     const plan = await createAutonomyPlan(before);
-    await updateRunPlan(runId, plan);
+    await updateRunPlan(runId, { ...plan, finance: { verdict: financeBefore.verdict, reasons: financeBefore.reasons } });
 
     const findings = await persistProductFindings(detectProductFindings(before), runId);
     const topFinding = highestPriorityFinding(findings);
@@ -77,16 +92,18 @@ export async function runAutonomyCycle(trigger = "scheduler"): Promise<AutonomyC
       ...(await promoteReadyProductRepairs()),
       monitoring: await evaluateMergedProductRepairs(),
     };
+
+    // Sales runs before experiment evaluation so replies collected since the
+    // previous cycle can influence campaign winners immediately.
+    const sales = await runSalesInbox(runId);
     const experiments = await evaluateExperiments();
 
     const requested = new Set(plan.actions.map((action) => action.actionType));
-    let product: Record<string, unknown> = { findings: findings.length };
+    const product: Record<string, unknown> = { findings: findings.length };
     if (topFinding && (requested.has("code.product_fix") || materiallyDegraded(before))) {
       product.topFinding = topFinding.fingerprint;
       product.repair = await generateProductRepair(topFinding, runId);
     } else if (!materiallyDegraded(before)) {
-      // Healthy systems should improve, not merely wait to fail. Once per week,
-      // compare live usage/support evidence with the current market and product.
       const upgrades = await discoverProductUpgrades(before, runId);
       product.upgradeOpportunities = upgrades;
       const bestUpgrade = bestAutonomousUpgrade(upgrades, before);
@@ -95,29 +112,55 @@ export async function runAutonomyCycle(trigger = "scheduler"): Promise<AutonomyC
       }
     }
 
-    // Acquisition has a deterministic floor: keep a healthy qualified prospect
-    // pool even when the strategy model is focused elsewhere. Actual outbound is
-    // paused while product reliability is materially degraded so we do not buy
-    // or create demand for a broken experience.
     const leadCount = await eligibleLeadCount();
-    const growth: Record<string, unknown> = { eligibleLeadCountBefore: leadCount };
+    const growth: Record<string, unknown> = {
+      eligibleLeadCountBefore: leadCount,
+      financeVerdict: financeBefore.verdict,
+    };
     if (requested.has("growth.research") || leadCount < 20) {
       growth.research = await researchProspects(runId);
     }
-    if (!materiallyDegraded(before)) {
+
+    const productHealthy = !materiallyDegraded(before);
+    const financeHealthy = financeAllowsAcquisition(financeBefore);
+    if (productHealthy && financeHealthy && outboundEnabled()) {
+      growth.campaign = await ensureOutboundCampaign(before, runId);
       growth.outbound = await runOutboundBatch(runId);
-    } else {
+    } else if (!productHealthy) {
       growth.outbound = { paused: "product_reliability_veto" };
+    } else if (!financeHealthy) {
+      growth.outbound = { paused: "finance_unit_economics_veto", reasons: financeBefore.reasons };
+    } else {
+      growth.outbound = { paused: "outbound_disabled" };
     }
 
     const activation = await runActivationInterventions(runId);
+    // Sales consumes known prospect replies first; support then handles the
+    // remaining unread inbox so the two workers do not race to answer one mail.
     const support = await runSupportInbox(runId);
 
-    const after = await collectBusinessSnapshot(30);
+    const [after, financeAfter] = await Promise.all([
+      collectBusinessSnapshot(30),
+      collectFinanceSnapshot(30),
+    ]);
     const afterScore = objectiveScore(after);
-    await snapshotMetrics(after);
+    await snapshotMetrics(after, financeAfter);
 
-    const result = { enabled: true, runId, before, after, plan, product, growth, activation, support, experiments, promotion };
+    const result = {
+      enabled: true,
+      runId,
+      before,
+      after,
+      finance: { before: financeBefore, after: financeAfter },
+      plan,
+      product,
+      growth,
+      sales,
+      activation,
+      support,
+      experiments,
+      promotion,
+    };
     await finishAutonomyRun(runId, "completed", result, afterScore);
     return result;
   } catch (error) {
