@@ -5,7 +5,8 @@ import { runActivationInterventions } from "./activation";
 import { evaluateMergedProductRepairs, promoteReadyProductRepairs } from "./promotion";
 import { evaluateExperiments } from "./experiments";
 
-const timers: NodeJS.Timeout[] = [];
+const intervalTimers: NodeJS.Timeout[] = [];
+const timeoutTimers: NodeJS.Timeout[] = [];
 let supportRunning = false;
 let activationRunning = false;
 let promotionRunning = false;
@@ -18,11 +19,17 @@ function intervalMs(env: string, fallbackMinutes: number): number {
 function schedule(fn: () => Promise<void>, ms: number): void {
   const timer = setInterval(() => { void fn(); }, ms);
   timer.unref?.();
-  timers.push(timer);
+  intervalTimers.push(timer);
+}
+
+function scheduleOnce(fn: () => Promise<void>, ms: number): void {
+  const timer = setTimeout(() => { void fn(); }, ms);
+  timer.unref?.();
+  timeoutTimers.push(timer);
 }
 
 export function startAutonomyScheduler(): void {
-  if (!autonomyEnabled() || timers.length) return;
+  if (!autonomyEnabled() || intervalTimers.length || timeoutTimers.length) return;
 
   const strategy = async () => {
     try { await runAutonomyCycleLocked("scheduler"); }
@@ -58,14 +65,14 @@ export function startAutonomyScheduler(): void {
   schedule(activation, intervalMs("AUTONOMY_ACTIVATION_INTERVAL_MINUTES", 60));
   schedule(promotion, intervalMs("AUTONOMY_PROMOTION_INTERVAL_MINUTES", 10));
 
-  // Warm-start the evaluator shortly after boot; defer the expensive strategy
-  // pass so deploy startup/readiness remains fast.
-  const warm = setTimeout(() => { void promotion(); }, 20_000);
-  warm.unref?.();
-  timers.push(warm as unknown as NodeJS.Timeout);
+  // Keep readiness fast, then make the business operational immediately rather
+  // than waiting six hours for the first strategic/acquisition pass.
+  scheduleOnce(promotion, 20_000);
+  scheduleOnce(strategy, 60_000);
   console.log("[autonomy] scheduler started");
 }
 
 export function stopAutonomyScheduler(): void {
-  while (timers.length) clearInterval(timers.pop());
+  while (intervalTimers.length) clearInterval(intervalTimers.pop());
+  while (timeoutTimers.length) clearTimeout(timeoutTimers.pop());
 }
