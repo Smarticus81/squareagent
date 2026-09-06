@@ -7,6 +7,7 @@ import { assertSecretsEncryptionKey } from "./lib/secrets";
 import { ensureInfraTables } from "./lib/ensure-infra-tables";
 import { flushAllDirtySessions, stopSessionStoreBackgroundTasks } from "./lib/session-store";
 import { stopVoiceSessionSweeper } from "./lib/voice-session-metering";
+import { startAutonomyScheduler, stopAutonomyScheduler } from "./autonomy/scheduler";
 
 async function main() {
   assertJwtSecret();
@@ -34,8 +35,8 @@ async function main() {
       throw new Error("Configured DATABASE_URL is unreachable. Fix database connectivity before starting the API.");
     }
     // Operational tables (OAuth handshake state, pending token claims, rate
-    // limits) are created idempotently so a deploy never depends on a manual
-    // schema push for the app's own plumbing.
+    // limits, autonomy control-plane ledger) are created idempotently so a
+    // deploy never depends on a manual schema push for runtime plumbing.
     await ensureInfraTables();
   }
 
@@ -45,10 +46,12 @@ async function main() {
 
   server.listen(port, () => {
     console.log(`Server listening on port ${port}`);
+    startAutonomyScheduler();
   });
 
   const shutdown = async (signal: string) => {
     console.log(`\n${signal} received — shutting down gracefully…`);
+    stopAutonomyScheduler();
     stopVoiceSessionSweeper();
     stopSessionStoreBackgroundTasks();
 

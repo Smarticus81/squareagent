@@ -5,6 +5,7 @@ import { ClerkProvider, SignedIn, SignedOut, OrganizationProfile, OrganizationSw
 import { ThemeProvider } from "next-themes";
 import { Layout } from "@/components/layout";
 import { ClerkIdentityBridge } from "@/components/clerk-identity-bridge";
+import { AutonomyTelemetry } from "@/components/autonomy-telemetry";
 
 const Landing = lazy(() => import("@/pages/landing"));
 const Login = lazy(() => import("@/pages/login"));
@@ -17,6 +18,7 @@ const DataSources = lazy(() => import("@/pages/data-sources"));
 const Pricing = lazy(() => import("@/pages/pricing"));
 const BookDemo = lazy(() => import("@/pages/book-demo"));
 const Onboarding = lazy(() => import("@/pages/onboarding"));
+const Autonomy = lazy(() => import("@/pages/autonomy"));
 const NotFound = lazy(() => import("@/pages/not-found"));
 
 const clerkPublishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string | undefined;
@@ -34,14 +36,8 @@ function NavigateReplace({ to }: { to: string }) {
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      // Don't hammer the API on 4xx/5xx — a server error won't self-heal
-      // before the user can act, and a single failure should not cascade
-      // into 8–10 retries across page navigations.
       retry: false,
       refetchOnWindowFocus: false,
-      // Keep cache fresh across page navigations so visiting Assistants,
-      // Services, and assistant setup in sequence does not re-fetch
-      // /api/venues four times.
       staleTime: 30_000,
       gcTime: 5 * 60_000,
     },
@@ -81,6 +77,7 @@ function Router() {
           <Route path="/billing" component={Billing} />
           <Route path="/pricing" component={Pricing} />
           <Route path="/book-demo" component={BookDemo} />
+          <Route path="/autonomy" component={Autonomy} />
           {/* Legacy redirects so existing links still resolve */}
           <Route path="/agents" component={Assistants} />
           <Route path="/agents/new" component={CreateAssistant} />
@@ -168,6 +165,7 @@ function AppContent() {
       <QueryClientProvider client={queryClient}>
         {clerkPublishableKey && <ClerkIdentityBridge />}
         <WouterRouter base={import.meta.env.BASE_URL?.replace(/\/$/, "") || ""}>
+          <AutonomyTelemetry />
           <Router />
         </WouterRouter>
       </QueryClientProvider>

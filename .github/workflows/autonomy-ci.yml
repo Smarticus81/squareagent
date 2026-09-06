@@ -1,0 +1,48 @@
+name: Autonomy CI
+
+on:
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm --filter @workspace/voicelab-core test
+      - run: pnpm --filter @workspace/api-server test
+      - run: pnpm build
+
+  autonomy-protected-paths:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Block autonomous PRs from protected paths
+        shell: bash
+        run: |
+          if [[ "${{ github.head_ref }}" != autonomy/* ]]; then
+            echo "Human/non-autonomy branch; protected-path autonomy policy not applicable."
+            exit 0
+          fi
+          git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}" > /tmp/changed.txt
+          cat /tmp/changed.txt
+          if grep -E '(^|/)secrets\.ts$|(^|/)auth\.ts$|subscriptions\.ts$|autonomy/constitution\.ts$|lib/db/src/(schema|autonomy-schema)|(^|/)\.env|pnpm-lock\.yaml$|package-lock\.json$' /tmp/changed.txt; then
+            echo "Autonomous PR touched a protected path. Founder review required; refusing autonomous merge gate."
+            exit 1
+          fi
