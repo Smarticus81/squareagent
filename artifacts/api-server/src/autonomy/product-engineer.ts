@@ -58,13 +58,20 @@ const PATCH_SCHEMA = {
   },
 } as const;
 
+/**
+ * Product autonomy is intentionally unable to rewrite its own government.
+ * These are blocked twice: here before a model sees them, and again in CI for
+ * any `autonomy/*` branch. Human-authored changes can still modify them.
+ */
 const PROTECTED_PATH_PATTERNS = [
   /(^|\/)secrets\.ts$/i,
   /(^|\/)auth\.ts$/i,
   /subscriptions\.ts$/i,
-  /autonomy\/constitution\.ts$/i,
+  /^artifacts\/api-server\/src\/autonomy\//i,
+  /^\.github\/workflows\/autonomy-ci\.yml$/i,
   /lib\/db\/src\/schema/i,
   /lib\/db\/src\/autonomy-schema\.ts$/i,
+  /lib\/voicelab-core\/src\/pricing\//i,
   /\.env/i,
   /pnpm-lock\.yaml$/i,
   /package-lock\.json$/i,
@@ -107,7 +114,8 @@ export async function generateProductRepair(
       [
         "You are the repository triage worker for VoyceLab.",
         "Choose the smallest set of existing source/test files needed to diagnose and repair the supplied production finding.",
-        "Prefer files in the implicated subsystem plus an existing nearby test. Do not choose auth, secrets, billing/subscription, database schema, environment files, lockfiles, generated artifacts, or the autonomy constitution.",
+        "Prefer files in the implicated product subsystem plus an existing nearby test.",
+        "Never choose auth, secrets, billing/subscription, pricing, database schema, environment files, lockfiles, generated artifacts, CI policy, or any file under the autonomous business control plane itself.",
         "Choose at most six paths and only paths present in the supplied repository list.",
       ].join("\n"),
       { finding, repository: repositoryConfig(), files: allFiles.slice(0, 900) },
@@ -141,7 +149,7 @@ export async function generateProductRepair(
         "You are VoyceLab's production product-engineering worker.",
         "Repair the observed product problem with the smallest safe change. Return COMPLETE replacement contents only for files that must change.",
         "Preserve existing architecture and public behavior except where the finding requires correction. Add or update a focused regression test when a suitable test file is in context.",
-        "Do not modify files not supplied in context. Do not weaken auth, permissions, confirmations, encryption, billing, audit logging, rate limits, or secret handling.",
+        "Do not modify files not supplied in context. Do not weaken auth, permissions, confirmations, encryption, billing, pricing, audit logging, rate limits, secret handling, CI gates, finance thresholds, evaluator logic, or any part of the autonomy control plane.",
         "Do not add new dependencies unless absolutely necessary. Never place credentials or secret values in code.",
         "The change must have an explicit production success metric and rollback criterion.",
       ].join("\n"),
@@ -183,7 +191,7 @@ export async function generateProductRepair(
         `**Rollback criterion:** ${repair.rollbackCriterion}`,
         "",
         "### Safety boundary",
-        "This PR was generated from production telemetry. Protected auth, secret, billing, database-schema, lockfile, and constitution paths are excluded from autonomous repair.",
+        "This PR was generated from production telemetry. Authentication, secrets, billing, pricing, database schemas, the autonomous control plane, CI policy, lockfiles, and governance/evaluator files are excluded from autonomous repair.",
         "Merge should occur only after repository checks/evals succeed.",
       ].join("\n"),
     });
