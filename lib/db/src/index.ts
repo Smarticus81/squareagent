@@ -23,14 +23,18 @@ const poolMax = (() => {
   return Number.isInteger(raw) && raw > 0 ? raw : 20;
 })();
 
-export const pool = hasDatabaseConfig
+// Keep the nullable pool strongly typed. The previous `(null as any)` fallback
+// erased the Pool generic query signatures for every consumer, which made
+// control-plane query result typing impossible under strict TypeScript.
+export const pool: pg.Pool | null = hasDatabaseConfig
   ? new Pool({
       connectionString: databaseUrl,
       max: poolMax,
       idleTimeoutMillis: 30_000,
       connectionTimeoutMillis: 5_000,
     })
-  : (null as any);
+  : null;
+
 export const db = pool
   ? drizzle(pool, { schema: { ...schema, ...autonomySchema } })
   : (null as any);
