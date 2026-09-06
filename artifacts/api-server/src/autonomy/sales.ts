@@ -105,7 +105,8 @@ export async function runSalesInbox(runId?: string, maxMessages = 8): Promise<{ 
     const leadResult = await pool.query(
       `SELECT id,company_name,contact_name,contact_email,segment,stage,fit_score,evidence,profile,last_contacted_at
        FROM prospect_leads
-       WHERE lower(contact_email)=lower($1) AND stage <> 'do_not_contact'
+       WHERE lower(contact_email)=lower($1)
+         AND stage NOT IN ('do_not_contact','customer','closed_lost')
        ORDER BY last_contacted_at DESC NULLS LAST, updated_at DESC LIMIT 1`,
       [email],
     );
@@ -115,7 +116,10 @@ export async function runSalesInbox(runId?: string, maxMessages = 8): Promise<{ 
 
     const alreadyProcessed = await pool.query(`SELECT 1 FROM business_events WHERE dedupe_key=$1 LIMIT 1`, [`sales-reply:${id}`]);
     if (alreadyProcessed.rowCount) {
-      await markRead({ id }, ctx);
+      const escalatedBefore = await pool.query(`SELECT 1 FROM business_events WHERE dedupe_key=$1 LIMIT 1`, [`sales-escalated:${id}`]);
+      // Keep founder-required escalations unread. Everything else was already
+      // handled autonomously and can safely leave the inbox.
+      if (!escalatedBefore.rowCount) await markRead({ id }, ctx);
       continue;
     }
 
@@ -191,7 +195,7 @@ export async function runSalesInbox(runId?: string, maxMessages = 8): Promise<{ 
       runId,
       agent: "sales",
       actionType: triage.canAutoRespond ? "sales.respond" : "sales.escalate",
-      riskLevel: triage.canAutoRespond ? "medium" : "high",
+      riskLevel: triage.canAutoRespond ? "medium" : "low",
       input: { leadId: lead.id, gmailMessageId: id, intent: triage.intent, summary: triage.summary },
       expectedImpact: { metric: "qualified_pipeline_and_subscription_conversion" },
     });
@@ -199,6 +203,7 @@ export async function runSalesInbox(runId?: string, maxMessages = 8): Promise<{ 
     if (!triage.canAutoRespond || action.authority === "founder" || action.authority === "forbidden") {
       await pool.query(`UPDATE prospect_leads SET stage='needs_founder', next_contact_at=NULL, updated_at=now() WHERE id=$1`, [lead.id]);
       await recordBusinessEvent({ eventType: "sales_escalated", actorType: "agent", actorId: "sales", campaign: attribution.campaign, experimentId: attribution.experimentId, variant: attribution.variant, properties: { leadId: lead.id, intent: triage.intent, summary: triage.summary }, dedupeKey: `sales-escalated:${id}` });
+      await markActionExecuted(action.id, { escalated: true, nextStage: "needs_founder" });
       escalated += 1;
       continue;
     }
