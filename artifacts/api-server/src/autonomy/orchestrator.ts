@@ -45,6 +45,20 @@ async function snapshotMetrics(snapshot: Awaited<ReturnType<typeof collectBusine
   }
 }
 
+function materiallyDegraded(snapshot: Awaited<ReturnType<typeof collectBusinessSnapshot>>): boolean {
+  return (snapshot.product.toolCalls >= 20 && snapshot.product.toolFailureRate >= 0.12)
+    || (snapshot.product.voiceSessions >= 10 && snapshot.product.noSuccessfulToolRate >= 0.2);
+}
+
+async function eligibleLeadCount(): Promise<number> {
+  if (!pool) return 0;
+  const result = await pool.query<{ count: number }>(
+    `SELECT COUNT(*)::int AS count FROM prospect_leads
+     WHERE stage IN ('new','nurture','contacted') AND stage <> 'do_not_contact'`,
+  );
+  return Number(result.rows[0]?.count ?? 0);
+}
+
 export async function runAutonomyCycle(trigger = "scheduler"): Promise<AutonomyCycleResult> {
   if (!autonomyEnabled()) return { enabled: false };
   const before = await collectBusinessSnapshot(30);
@@ -66,16 +80,23 @@ export async function runAutonomyCycle(trigger = "scheduler"): Promise<AutonomyC
 
     const requested = new Set(plan.actions.map((action) => action.actionType));
     let product: unknown = { findings: findings.length };
-    if (topFinding && requested.has("code.product_fix")) {
+    if (topFinding && (requested.has("code.product_fix") || materiallyDegraded(before))) {
       product = { findings: findings.length, topFinding: topFinding.fingerprint, repair: await generateProductRepair(topFinding, runId) };
     }
 
-    let growth: unknown = {};
-    if (requested.has("growth.research")) {
-      growth = { ...(growth as object), research: await researchProspects(runId) };
+    // Acquisition has a deterministic floor: keep a healthy qualified prospect
+    // pool even when the strategy model is focused elsewhere. Actual outbound is
+    // paused while product reliability is materially degraded so we do not buy
+    // or create demand for a broken experience.
+    const leadCount = await eligibleLeadCount();
+    let growth: Record<string, unknown> = { eligibleLeadCountBefore: leadCount };
+    if (requested.has("growth.research") || leadCount < 20) {
+      growth.research = await researchProspects(runId);
     }
-    if (requested.has("outreach.email")) {
-      growth = { ...(growth as object), outbound: await runOutboundBatch(runId) };
+    if (!materiallyDegraded(before)) {
+      growth.outbound = await runOutboundBatch(runId);
+    } else {
+      growth.outbound = { paused: "product_reliability_veto" };
     }
 
     // Activation and support are continuous service loops rather than one-off
