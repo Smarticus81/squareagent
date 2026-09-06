@@ -3,6 +3,7 @@ import { runAutonomyCycleLocked } from "./orchestrator";
 import { runSalesInbox } from "./sales";
 import { runSupportInbox } from "./support";
 import { runActivationInterventions } from "./activation";
+import { reconcileOutboundSubscriptionAttribution } from "./marketing";
 import { evaluateMergedProductRepairs, promoteReadyProductRepairs } from "./promotion";
 import { evaluateExperiments } from "./experiments";
 
@@ -40,8 +41,6 @@ export function startAutonomyScheduler(): void {
     if (inboxRunning) return;
     inboxRunning = true;
     try {
-      // Known prospect replies are consumed first. Support then sees the
-      // remaining unread inbox, avoiding duplicate answers from two agents.
       await runSalesInbox(undefined, 8);
       await runSupportInbox(undefined, 6);
     } catch (error) { console.error("[autonomy] sales/support inbox loop failed", error instanceof Error ? error.message : error); }
@@ -60,6 +59,7 @@ export function startAutonomyScheduler(): void {
     try {
       await promoteReadyProductRepairs();
       await evaluateMergedProductRepairs();
+      await reconcileOutboundSubscriptionAttribution();
       await evaluateExperiments();
     } catch (error) { console.error("[autonomy] evaluator/promotion loop failed", error instanceof Error ? error.message : error); }
     finally { promotionRunning = false; }
