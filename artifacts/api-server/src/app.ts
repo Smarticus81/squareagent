@@ -15,9 +15,13 @@ const app: Express = express();
 // Railway / reverse-proxy: trust the first hop for req.ip and rate limiting.
 app.set("trust proxy", Number(process.env.TRUST_PROXY_HOPS ?? 1));
 
-const workspaceRoot = process.cwd();
-const landingDist = path.resolve(workspaceRoot, "artifacts", "voycelab-landing", "dist", "public");
-const voiceAgentDist = path.resolve(workspaceRoot, "artifacts", "voice-agent-pwa", "dist");
+// Resolve built frontend artifacts relative to the API bundle/source location,
+// not process.cwd(). Railway (and other process managers) may launch the server
+// from a service/workspace directory, which previously made deep SPA routes such
+// as /autonomy fall through to a 404 even though the route existed in React.
+const artifactsRoot = path.resolve(__dirname, "..", "..");
+const landingDist = path.resolve(artifactsRoot, "voycelab-landing", "dist", "public");
+const voiceAgentDist = path.resolve(artifactsRoot, "voice-agent-pwa", "dist");
 
 const publicOrigin =
   process.env.PUBLIC_BASE_URL ??
@@ -180,6 +184,11 @@ if (existsSync(voiceAgentDist)) {
 
 if (existsSync(landingDist)) {
 	app.use(express.static(landingDist, staticOptions));
+	// Explicit founder route keeps this mission-critical surface reachable even
+	// when a reverse proxy/process manager treats deep links differently.
+	app.get("/autonomy", (_req, res) => {
+		sendIndex(res, landingDist);
+	});
 	app.get(/^(?!\/api(?:\/|$)|\/agent(?:\/|$)).*/, (_req, res) => {
 		sendIndex(res, landingDist);
 	});
