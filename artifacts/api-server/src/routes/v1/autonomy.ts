@@ -13,8 +13,8 @@ const router = Router();
 
 const publicTelemetryLimit = rateLimit({
   windowMs: 60_000,
-  limit: 180,
-  standardHeaders: "draft-7",
+  max: 180,
+  standardHeaders: true,
   legacyHeaders: false,
   message: { error: "telemetry_rate_limited" },
 });
@@ -35,6 +35,10 @@ function cleanString(value: unknown, max = 160): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   return trimmed ? trimmed.slice(0, max) : null;
+}
+
+function routeParam(value: string | string[] | undefined): string | null {
+  return typeof value === "string" ? value : Array.isArray(value) ? value[0] ?? null : null;
 }
 
 // Public first-party telemetry endpoint used by the marketing site. The event
@@ -69,8 +73,10 @@ router.post("/events", publicTelemetryLimit, async (req: Request, res: Response)
 
 router.get("/experiments/:slug/assign", publicTelemetryLimit, async (req: Request, res: Response): Promise<void> => {
   const identity = cleanString(req.query.identity, 160);
+  const slug = routeParam(req.params.slug);
   if (!identity) { res.status(400).json({ error: "identity_required" }); return; }
-  const assignment = await assignExperiment(req.params.slug, identity);
+  if (!slug) { res.status(400).json({ error: "experiment_slug_required" }); return; }
+  const assignment = await assignExperiment(slug, identity);
   if (!assignment) { res.status(404).json({ error: "experiment_not_running" }); return; }
   res.json(assignment);
 });
@@ -88,13 +94,14 @@ router.use(requirePlatformAdmin);
 
 router.get("/status", async (_req: Request, res: Response): Promise<void> => {
   if (!pool) { res.status(503).json({ error: "database_unavailable" }); return; }
-  const [snapshot, runs, actions, findings, experiments, leads] = await Promise.all([
+  const [snapshot, runs, actions, findings, experiments, leads, opportunities] = await Promise.all([
     collectBusinessSnapshot(30),
     pool.query(`SELECT id,run_type,trigger,status,objective_score_before,objective_score_after,started_at,finished_at,error_message,plan,result FROM autonomy_runs ORDER BY started_at DESC LIMIT 12`),
     pool.query(`SELECT id,agent,action_type,risk_level,authority,status,external_ref,cost_cents,expected_impact,actual_impact,created_at,executed_at,rolled_back_at FROM autonomous_actions ORDER BY created_at DESC LIMIT 30`),
     pool.query(`SELECT id,fingerprint,status,severity,subsystem,title,evidence,recommended_change,github_pr_url,updated_at FROM product_findings ORDER BY updated_at DESC LIMIT 25`),
     pool.query(`SELECT id,slug,status,hypothesis,primary_metric,winner,result,started_at,ended_at FROM experiments ORDER BY created_at DESC LIMIT 20`),
     pool.query(`SELECT id,company_name,website,contact_name,contact_email,segment,stage,fit_score,evidence,last_contacted_at,next_contact_at FROM prospect_leads ORDER BY fit_score DESC,created_at DESC LIMIT 50`),
+    pool.query(`SELECT id,kind,status,title,description,priority_score,confidence_milli,estimated_impact,evidence,recommendation,effort,risk_level,created_at,updated_at FROM autonomy_opportunities ORDER BY priority_score DESC,updated_at DESC LIMIT 30`),
   ]);
   res.json({
     enabled: autonomyEnabled(),
@@ -109,6 +116,7 @@ router.get("/status", async (_req: Request, res: Response): Promise<void> => {
     productFindings: findings.rows,
     experiments: experiments.rows,
     leads: leads.rows,
+    opportunities: opportunities.rows,
   });
 });
 
@@ -150,7 +158,9 @@ router.post("/experiments", async (req: Request, res: Response): Promise<void> =
 });
 
 router.post("/leads/:id/opt-out", async (req: Request, res: Response): Promise<void> => {
-  await optOutLead(req.params.id, cleanString(req.body?.reason, 180) ?? "founder_marked_opt_out");
+  const leadId = routeParam(req.params.id);
+  if (!leadId) { res.status(400).json({ error: "lead_id_required" }); return; }
+  await optOutLead(leadId, cleanString(req.body?.reason, 180) ?? "founder_marked_opt_out");
   res.json({ ok: true });
 });
 
