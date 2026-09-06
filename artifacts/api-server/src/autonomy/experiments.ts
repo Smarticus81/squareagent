@@ -85,10 +85,6 @@ function zScore(successA: number, totalA: number, successB: number, totalB: numb
 
 async function metricCounts(experimentId: string, eventType: string): Promise<Map<string, number>> {
   if (!pool) return new Map();
-
-  // Opt-outs are recorded by the global do-not-contact handler and therefore
-  // intentionally do not trust campaign fields supplied by the inbound email.
-  // Attribute them back to the latest outbound touch for that exact lead.
   if (eventType === "outreach_opt_out") {
     const result = await pool.query<{ variant: string | null; count: number }>(
       `SELECT sent.variant,
@@ -127,6 +123,7 @@ export async function evaluateExperiments(): Promise<Array<{ slug: string; statu
   const active = await pool.query(`SELECT id,slug,primary_metric,variants,guardrails FROM experiments WHERE status='running' ORDER BY started_at ASC`);
   const outcomes: Array<{ slug: string; status: string; winner?: string; result: unknown }> = [];
   const minSample = Math.max(20, Number(process.env.AUTONOMY_EXPERIMENT_MIN_SAMPLE_PER_VARIANT ?? 50) || 50);
+  const maxSample = Math.max(minSample, Number(process.env.AUTONOMY_EXPERIMENT_MAX_SAMPLE_PER_VARIANT ?? 250) || 250);
   const guardrailMinSample = Math.max(10, Number(process.env.AUTONOMY_GUARDRAIL_MIN_SAMPLE_PER_VARIANT ?? 20) || 20);
 
   for (const experiment of active.rows) {
@@ -160,30 +157,42 @@ export async function evaluateExperiments(): Promise<Array<{ slug: string; statu
     const control = variants[0];
     const controlN = exposures.get(control.id) ?? 0;
     const controlSuccess = conversions.get(control.id) ?? 0;
-    let best: { id: string; z: number; rate: number; n: number; conversions: number } | null = null;
+    let bestCandidate: { id: string; z: number; rate: number; n: number; conversions: number } | null = null;
 
-    for (const candidate of variants.slice(1)) {
-      const n = exposures.get(candidate.id) ?? 0;
-      const success = conversions.get(candidate.id) ?? 0;
-      const z = zScore(controlSuccess, controlN, success, n);
-      const rate = n ? success / n : 0;
-      if (!best || z > best.z) best = { id: candidate.id, z, rate, n, conversions: success };
+    const stats = variants.map((variant) => {
+      const n = exposures.get(variant.id) ?? 0;
+      const converted = conversions.get(variant.id) ?? 0;
+      return { id: variant.id, n, conversions: converted, rate: n ? converted / n : 0 };
+    });
+
+    for (const candidate of stats.slice(1)) {
+      const z = zScore(controlSuccess, controlN, candidate.conversions, candidate.n);
+      if (!bestCandidate || z > bestCandidate.z) bestCandidate = { ...candidate, z };
     }
 
     const controlRate = controlN ? controlSuccess / controlN : 0;
+    const controlSignificantlyBest = controlN >= minSample && stats.slice(1).every((candidate) =>
+      candidate.n >= minSample && zScore(controlSuccess, controlN, candidate.conversions, candidate.n) <= -1.96,
+    );
+    const allAtMaxSample = stats.every((variant) => variant.n >= maxSample);
+    const highestObserved = [...stats].sort((a, b) => b.rate - a.rate || b.conversions - a.conversions)[0];
+
     const subscriptionCounts = await metricCounts(String(experiment.id), "outbound_subscription_attributed");
     const subscriptionByVariant = Object.fromEntries(variants.map((variant) => [variant.id, subscriptionCounts.get(variant.id) ?? 0]));
-    const summary = {
+    const summary: Record<string, unknown> = {
       control: { id: control.id, exposed: controlN, conversions: controlSuccess, rate: controlRate },
-      best,
+      variants: stats,
+      best: bestCandidate,
       guardrails: guardrailSummary,
       guardrailViolation,
       attributedSubscriptions: subscriptionByVariant,
       confidenceThreshold: 1.96,
       minSamplePerVariant: minSample,
+      maxSamplePerVariant: maxSample,
     };
 
     if (guardrailViolation) {
+      summary.selectionReason = "guardrail_violation";
       await pool.query(
         `UPDATE experiments SET status='stopped_guardrail',winner=NULL,result=$2::jsonb,ended_at=now(),updated_at=now() WHERE id=$1`,
         [experiment.id, JSON.stringify(summary)],
@@ -200,12 +209,26 @@ export async function evaluateExperiments(): Promise<Array<{ slug: string; statu
       continue;
     }
 
-    if (best && controlN >= minSample && best.n >= minSample && best.z >= 1.96 && best.rate > controlRate) {
+    let winner: string | null = null;
+    let selectionReason: string | null = null;
+    if (bestCandidate && controlN >= minSample && bestCandidate.n >= minSample && bestCandidate.z >= 1.96 && bestCandidate.rate > controlRate) {
+      winner = bestCandidate.id;
+      selectionReason = "statistically_significant_challenger";
+    } else if (controlSignificantlyBest) {
+      winner = control.id;
+      selectionReason = "statistically_significant_control";
+    } else if (allAtMaxSample && highestObserved) {
+      winner = highestObserved.id;
+      selectionReason = "max_sample_best_observed_rate";
+    }
+
+    if (winner) {
+      summary.selectionReason = selectionReason;
       await pool.query(
         `UPDATE experiments SET status='completed',winner=$2,result=$3::jsonb,ended_at=now(),updated_at=now() WHERE id=$1`,
-        [experiment.id, best.id, JSON.stringify(summary)],
+        [experiment.id, winner, JSON.stringify(summary)],
       );
-      outcomes.push({ slug: experiment.slug, status: "completed", winner: best.id, result: summary });
+      outcomes.push({ slug: experiment.slug, status: "completed", winner, result: summary });
     } else {
       await pool.query(`UPDATE experiments SET result=$2::jsonb,updated_at=now() WHERE id=$1`, [experiment.id, JSON.stringify(summary)]);
       outcomes.push({ slug: experiment.slug, status: "running", result: summary });
