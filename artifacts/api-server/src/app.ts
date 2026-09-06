@@ -17,8 +17,7 @@ app.set("trust proxy", Number(process.env.TRUST_PROXY_HOPS ?? 1));
 
 // Resolve built frontend artifacts relative to the API bundle/source location,
 // not process.cwd(). Railway (and other process managers) may launch the server
-// from a service/workspace directory, which previously made deep SPA routes such
-// as /autonomy fall through to a 404 even though the route existed in React.
+// from a service/workspace directory.
 const artifactsRoot = path.resolve(__dirname, "..", "..");
 const landingDist = path.resolve(artifactsRoot, "voycelab-landing", "dist", "public");
 const voiceAgentDist = path.resolve(artifactsRoot, "voice-agent-pwa", "dist");
@@ -54,7 +53,6 @@ app.use(helmet({
 
 // In production restrict CORS to the configured public origin.
 // In development allow all origins so Vite dev servers (ports 5173, 8081) work.
-
 app.use(
   cors(
     publicOrigin
@@ -122,76 +120,80 @@ app.use(["/api/realtime", "/api/realtime/gemini", "/api/realtime/xai"], rateLimi
 
 app.use("/api", router);
 
+// Mission Control must always have a server-level answer, even when the landing
+// artifact directory is absent/relocated in a Railway runtime image. The root
+// URL is the deployment's stable entry point; the SPA promotes this marker back
+// to the canonical /autonomy route without another network request.
+app.get(["/autonomy", "/mission-control"], (_req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  res.redirect(302, "/?view=autonomy");
+});
+
 // App-link association files for the native mobile wrapper. Universal links
 // (iOS) and verified app links (Android) let dashboard "Open assistant" URLs
 // open the installed app. Served 404 until the signing identifiers are set.
 app.get("/.well-known/apple-app-site-association", (_req, res) => {
-	const teamId = process.env.APPLE_TEAM_ID;
-	if (!teamId) {
-		res.status(404).json({ error: "not_configured" });
-		return;
-	}
-	res.setHeader("Cache-Control", "no-cache");
-	res.json({
-		applinks: {
-			apps: [],
-			details: [{ appID: `${teamId}.com.voycelab.app`, paths: ["/agent/*", "/agent"] }],
-		},
-	});
+  const teamId = process.env.APPLE_TEAM_ID;
+  if (!teamId) {
+    res.status(404).json({ error: "not_configured" });
+    return;
+  }
+  res.setHeader("Cache-Control", "no-cache");
+  res.json({
+    applinks: {
+      apps: [],
+      details: [{ appID: `${teamId}.com.voycelab.app`, paths: ["/agent/*", "/agent"] }],
+    },
+  });
 });
 app.get("/.well-known/assetlinks.json", (_req, res) => {
-	const sha256 = process.env.ANDROID_CERT_SHA256;
-	if (!sha256) {
-		res.status(404).json({ error: "not_configured" });
-		return;
-	}
-	res.setHeader("Cache-Control", "no-cache");
-	res.json([
-		{
-			relation: ["delegate_permission/common.handle_all_urls"],
-			target: {
-				namespace: "android_app",
-				package_name: "com.voycelab.app",
-				sha256_cert_fingerprints: [sha256],
-			},
-		},
-	]);
+  const sha256 = process.env.ANDROID_CERT_SHA256;
+  if (!sha256) {
+    res.status(404).json({ error: "not_configured" });
+    return;
+  }
+  res.setHeader("Cache-Control", "no-cache");
+  res.json([
+    {
+      relation: ["delegate_permission/common.handle_all_urls"],
+      target: {
+        namespace: "android_app",
+        package_name: "com.voycelab.app",
+        sha256_cert_fingerprints: [sha256],
+      },
+    },
+  ]);
 });
 
 // Hashed Vite assets are immutable; index.html must always revalidate so a
 // deploy doesn't leave clients holding a shell that points at purged chunks.
 const staticOptions = {
-	index: false as const,
-	maxAge: "1y",
-	immutable: true,
-	setHeaders: (res: express.Response, filePath: string) => {
-		if (filePath.endsWith(".html") || filePath.endsWith("sw.js") || filePath.endsWith("manifest.json")) {
-			res.setHeader("Cache-Control", "no-cache");
-		}
-	},
+  index: false as const,
+  maxAge: "1y",
+  immutable: true,
+  setHeaders: (res: express.Response, filePath: string) => {
+    if (filePath.endsWith(".html") || filePath.endsWith("sw.js") || filePath.endsWith("manifest.json")) {
+      res.setHeader("Cache-Control", "no-cache");
+    }
+  },
 };
 const sendIndex = (res: express.Response, dist: string) => {
-	res.setHeader("Cache-Control", "no-cache");
-	res.sendFile(path.join(dist, "index.html"));
+  res.setHeader("Cache-Control", "no-cache");
+  res.sendFile(path.join(dist, "index.html"));
 };
 
 if (existsSync(voiceAgentDist)) {
-	app.use("/agent", express.static(voiceAgentDist, staticOptions));
-	app.get(/^\/agent(?:\/.*)?$/, (_req, res) => {
-		sendIndex(res, voiceAgentDist);
-	});
+  app.use("/agent", express.static(voiceAgentDist, staticOptions));
+  app.get(/^\/agent(?:\/.*)?$/, (_req, res) => {
+    sendIndex(res, voiceAgentDist);
+  });
 }
 
 if (existsSync(landingDist)) {
-	app.use(express.static(landingDist, staticOptions));
-	// Explicit founder route keeps this mission-critical surface reachable even
-	// when a reverse proxy/process manager treats deep links differently.
-	app.get("/autonomy", (_req, res) => {
-		sendIndex(res, landingDist);
-	});
-	app.get(/^(?!\/api(?:\/|$)|\/agent(?:\/|$)).*/, (_req, res) => {
-		sendIndex(res, landingDist);
-	});
+  app.use(express.static(landingDist, staticOptions));
+  app.get(/^(?!\/api(?:\/|$)|\/agent(?:\/|$)).*/, (_req, res) => {
+    sendIndex(res, landingDist);
+  });
 }
 
 // ── Global error handler (sanitized responses)
