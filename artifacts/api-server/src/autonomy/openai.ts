@@ -6,8 +6,8 @@ function apiKey(): string {
   return key;
 }
 
-function model(): string {
-  return process.env.AUTONOMY_MODEL?.trim() || "gpt-5.6-sol";
+function defaultModel(): string {
+  return process.env.AUTONOMY_MODEL?.trim() || "gpt-5.6-terra";
 }
 
 /** Remove obvious credential-shaped strings before telemetry is sent to a model. */
@@ -47,8 +47,9 @@ function outputText(response: any): string {
 export interface StructuredModelOptions {
   schemaName: string;
   schema: Record<string, unknown>;
+  model?: string;
   useWebSearch?: boolean;
-  reasoningEffort?: "minimal" | "low" | "medium" | "high";
+  reasoningEffort?: "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
   maxOutputTokens?: number;
 }
 
@@ -58,7 +59,7 @@ export async function structuredModel<T>(
   options: StructuredModelOptions,
 ): Promise<T> {
   const body: Record<string, unknown> = {
-    model: model(),
+    model: options.model?.trim() || defaultModel(),
     instructions,
     input: JSON.stringify(scrubModelContext(input)),
     store: false,
