@@ -8,12 +8,18 @@ export interface ExperimentVariant {
   payload?: Record<string, unknown>;
 }
 
+export interface ExperimentGuardrail {
+  metric: string;
+  max?: number;
+  min?: number;
+}
+
 export async function createExperiment(params: {
   slug: string;
   hypothesis: string;
   primaryMetric: string;
   variants: ExperimentVariant[];
-  guardrails?: Array<{ metric: string; max?: number; min?: number }>;
+  guardrails?: ExperimentGuardrail[];
 }): Promise<string> {
   if (!pool) throw new Error("Database is required for experiments");
   const totalWeight = params.variants.reduce((sum, variant) => sum + variant.weight, 0);
@@ -28,6 +34,8 @@ export async function createExperiment(params: {
        variants=EXCLUDED.variants,
        guardrails=EXCLUDED.guardrails,
        allocation=EXCLUDED.allocation,
+       status=CASE WHEN experiments.status='draft' THEN 'running' ELSE experiments.status END,
+       started_at=COALESCE(experiments.started_at, now()),
        updated_at=now()
      RETURNING id`,
     [params.slug, params.hypothesis, params.primaryMetric, JSON.stringify(normalized), JSON.stringify(params.guardrails ?? []), JSON.stringify(Object.fromEntries(normalized.map((v) => [v.id, v.weight])))],
@@ -75,26 +83,54 @@ function zScore(successA: number, totalA: number, successB: number, totalB: numb
   return se > 0 ? (pB - pA) / se : 0;
 }
 
+async function metricCounts(experimentId: string, eventType: string): Promise<Map<string, number>> {
+  if (!pool) return new Map();
+  const result = await pool.query<{ variant: string | null; count: number }>(
+    `SELECT variant,
+            COUNT(DISTINCT COALESCE(visitor_id, user_id::text, session_id, actor_id, properties->>'leadId'))::int AS count
+     FROM business_events
+     WHERE experiment_id=$1 AND event_type=$2 AND variant IS NOT NULL
+     GROUP BY variant`,
+    [experimentId, eventType],
+  );
+  return new Map(result.rows.map((row) => [String(row.variant), Number(row.count)]));
+}
+
 export async function evaluateExperiments(): Promise<Array<{ slug: string; status: string; winner?: string; result: unknown }>> {
   if (!pool) return [];
-  const active = await pool.query(`SELECT id,slug,primary_metric,variants FROM experiments WHERE status='running' ORDER BY started_at ASC`);
+  const active = await pool.query(`SELECT id,slug,primary_metric,variants,guardrails FROM experiments WHERE status='running' ORDER BY started_at ASC`);
   const outcomes: Array<{ slug: string; status: string; winner?: string; result: unknown }> = [];
+  const minSample = Math.max(20, Number(process.env.AUTONOMY_EXPERIMENT_MIN_SAMPLE_PER_VARIANT ?? 50) || 50);
+  const guardrailMinSample = Math.max(10, Number(process.env.AUTONOMY_GUARDRAIL_MIN_SAMPLE_PER_VARIANT ?? 20) || 20);
 
   for (const experiment of active.rows) {
     const variants = (Array.isArray(experiment.variants) ? experiment.variants : []) as ExperimentVariant[];
+    const guardrails = (Array.isArray(experiment.guardrails) ? experiment.guardrails : []) as ExperimentGuardrail[];
     if (variants.length < 2) continue;
-    const exposureResult = await pool.query(
-      `SELECT variant, COUNT(DISTINCT COALESCE(visitor_id, user_id::text, session_id))::int AS exposed
-       FROM business_events WHERE experiment_id=$1 AND event_type='experiment_exposed' GROUP BY variant`,
-      [experiment.id],
-    );
-    const conversionResult = await pool.query(
-      `SELECT variant, COUNT(DISTINCT COALESCE(visitor_id, user_id::text, session_id))::int AS converted
-       FROM business_events WHERE experiment_id=$1 AND event_type=$2 GROUP BY variant`,
-      [experiment.id, experiment.primary_metric],
-    );
-    const exposures = new Map(exposureResult.rows.map((row) => [String(row.variant), Number(row.exposed)]));
-    const conversions = new Map(conversionResult.rows.map((row) => [String(row.variant), Number(row.converted)]));
+
+    const exposures = await metricCounts(String(experiment.id), "experiment_exposed");
+    const conversions = await metricCounts(String(experiment.id), String(experiment.primary_metric));
+
+    const guardrailSummary: Record<string, Record<string, { count: number; exposed: number; rate: number }>> = {};
+    let guardrailViolation: { metric: string; variant: string; rate: number; boundary: number; direction: "max" | "min" } | null = null;
+    for (const guardrail of guardrails) {
+      const counts = await metricCounts(String(experiment.id), guardrail.metric);
+      guardrailSummary[guardrail.metric] = {};
+      for (const variant of variants) {
+        const exposed = exposures.get(variant.id) ?? 0;
+        const count = counts.get(variant.id) ?? 0;
+        const rate = exposed ? count / exposed : 0;
+        guardrailSummary[guardrail.metric][variant.id] = { count, exposed, rate };
+        if (exposed < guardrailMinSample) continue;
+        if (typeof guardrail.max === "number" && rate > guardrail.max) {
+          guardrailViolation = { metric: guardrail.metric, variant: variant.id, rate, boundary: guardrail.max, direction: "max" };
+        }
+        if (typeof guardrail.min === "number" && rate < guardrail.min) {
+          guardrailViolation = { metric: guardrail.metric, variant: variant.id, rate, boundary: guardrail.min, direction: "min" };
+        }
+      }
+    }
+
     const control = variants[0];
     const controlN = exposures.get(control.id) ?? 0;
     const controlSuccess = conversions.get(control.id) ?? 0;
@@ -109,14 +145,36 @@ export async function evaluateExperiments(): Promise<Array<{ slug: string; statu
     }
 
     const controlRate = controlN ? controlSuccess / controlN : 0;
+    const subscriptionCounts = await metricCounts(String(experiment.id), "outbound_subscription_attributed");
+    const subscriptionByVariant = Object.fromEntries(variants.map((variant) => [variant.id, subscriptionCounts.get(variant.id) ?? 0]));
     const summary = {
       control: { id: control.id, exposed: controlN, conversions: controlSuccess, rate: controlRate },
       best,
+      guardrails: guardrailSummary,
+      guardrailViolation,
+      attributedSubscriptions: subscriptionByVariant,
       confidenceThreshold: 1.96,
-      minSamplePerVariant: 50,
+      minSamplePerVariant: minSample,
     };
 
-    if (best && controlN >= 50 && best.n >= 50 && best.z >= 1.96 && best.rate > controlRate) {
+    if (guardrailViolation) {
+      await pool.query(
+        `UPDATE experiments SET status='stopped_guardrail',winner=NULL,result=$2::jsonb,ended_at=now(),updated_at=now() WHERE id=$1`,
+        [experiment.id, JSON.stringify(summary)],
+      );
+      await recordBusinessEvent({
+        eventType: "experiment_guardrail_stopped",
+        actorType: "system",
+        actorId: "evaluator",
+        experimentId: String(experiment.id),
+        properties: { slug: experiment.slug, violation: guardrailViolation },
+        dedupeKey: `experiment-guardrail:${experiment.id}`,
+      });
+      outcomes.push({ slug: experiment.slug, status: "stopped_guardrail", result: summary });
+      continue;
+    }
+
+    if (best && controlN >= minSample && best.n >= minSample && best.z >= 1.96 && best.rate > controlRate) {
       await pool.query(
         `UPDATE experiments SET status='completed',winner=$2,result=$3::jsonb,ended_at=now(),updated_at=now() WHERE id=$1`,
         [experiment.id, best.id, JSON.stringify(summary)],
