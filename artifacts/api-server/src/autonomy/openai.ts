@@ -18,7 +18,7 @@ function fastModel(): string {
 export function scrubModelContext(value: unknown): unknown {
   if (typeof value === "string") {
     return value
-      .replace(/(?:Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi, "$1 [redacted]")
+      .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi, "$1 [redacted]")
       .replace(/\b(?:sk|sk-proj|ya29|ghp|github_pat)_[A-Za-z0-9._-]{12,}\b/gi, "[redacted]")
       .replace(/\b[A-Fa-f0-9]{64}\b/g, "[redacted]");
   }
