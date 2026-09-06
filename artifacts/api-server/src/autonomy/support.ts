@@ -77,6 +77,18 @@ async function accountContext(email: string): Promise<Record<string, unknown>> {
   };
 }
 
+async function ownedBySales(email: string): Promise<boolean> {
+  if (!pool) return false;
+  const result = await pool.query<{ stage: string }>(
+    `SELECT stage FROM prospect_leads
+     WHERE lower(contact_email)=lower($1)
+     ORDER BY updated_at DESC LIMIT 1`,
+    [email],
+  );
+  const stage = String(result.rows[0]?.stage ?? "");
+  return Boolean(stage && stage !== "customer" && stage !== "do_not_contact" && stage !== "closed_lost");
+}
+
 export async function runSupportInbox(runId?: string, maxMessages = 6): Promise<{ inspected: number; responded: number; escalated: number }> {
   if (!supportEnabled()) return { inspected: 0, responded: 0, escalated: 0 };
   const operatorUserId = Number(process.env.AUTONOMY_OPERATOR_USER_ID);
@@ -91,24 +103,30 @@ export async function runSupportInbox(runId?: string, maxMessages = 6): Promise<
   if (!list || !read || !markRead || !send) throw new Error("Email support executors are unavailable");
 
   const query = process.env.AUTONOMY_SUPPORT_GMAIL_QUERY?.trim() || "in:inbox is:unread newer_than:7d";
-  const listed = await list({ query, max_results: Math.max(1, Math.min(20, maxMessages)) }, ctx);
+  const listed = await list({ query, max_results: Math.max(1, Math.min(20, maxMessages * 2)) }, ctx);
   let parsed: any;
   try { parsed = JSON.parse(listed.result); } catch { return { inspected: 0, responded: 0, escalated: 0 }; }
-  const messages = Array.isArray(parsed?.messages) ? parsed.messages.slice(0, maxMessages) : [];
+  const messages = Array.isArray(parsed?.messages) ? parsed.messages : [];
   let inspected = 0;
   let responded = 0;
   let escalated = 0;
   const capabilities = await productContext();
 
   for (const metadata of messages) {
+    if (inspected >= maxMessages) break;
     const id = String(metadata.id ?? "");
     if (!id) continue;
     const full = await read({ id }, ctx);
     let message: any;
     try { message = JSON.parse(full.result); } catch { continue; }
-    inspected += 1;
     const email = senderEmail(String(message.from ?? ""));
     if (!email) continue;
+
+    // The sales worker owns active prospect conversations. Escalated sales
+    // threads intentionally remain unread for a founder, so support must not
+    // answer them a second time.
+    if (await ownedBySales(email)) continue;
+    inspected += 1;
 
     const acct = await accountContext(email);
     await recordBusinessEvent({
@@ -130,7 +148,7 @@ export async function runSupportInbox(runId?: string, maxMessages = 6): Promise<
         "You are VoyceLab customer support. Triage the incoming email and, only when safe, write the reply.",
         "Use only the supplied product and account context. Never invent account actions, refunds, credits, incident causes, timelines, customer data, or capabilities.",
         "Set canAutoRespond=false for security issues, legal threats, suspected data loss, billing disputes/refund requests, account ownership disputes, or anything requiring an irreversible/account-changing action.",
-        "Routine how-to, setup, known product behavior, basic troubleshooting, and sales questions may be auto-responded when the context is sufficient.",
+        "Routine how-to, setup, known product behavior, basic troubleshooting, and inbound sales questions may be auto-responded when the context is sufficient.",
         "For opt_out, response should simply acknowledge no further outreach. For escalated cases, response should acknowledge receipt without promising a resolution time.",
         "Keep the response concise and professional.",
       ].join("\n"),
@@ -139,19 +157,19 @@ export async function runSupportInbox(runId?: string, maxMessages = 6): Promise<
     );
 
     if (triage.intent === "opt_out") {
-      if (pool) {
-        const lead = await pool.query<{ id: string }>(`SELECT id FROM prospect_leads WHERE lower(contact_email)=lower($1) LIMIT 1`, [email]);
-        if (lead.rows[0]?.id) await optOutLead(lead.rows[0].id, "email_reply_opt_out");
-      }
+      const lead = await pool.query<{ id: string }>(`SELECT id FROM prospect_leads WHERE lower(contact_email)=lower($1) LIMIT 1`, [email]);
+      if (lead.rows[0]?.id) await optOutLead(lead.rows[0].id, "email_reply_opt_out");
     }
 
-    const risk = triage.severity === "critical" ? "critical" : triage.severity === "high" ? "high" : triage.severity === "medium" ? "medium" : "low";
+    const incidentRisk = triage.severity === "critical" ? "critical" : triage.severity === "high" ? "high" : triage.severity === "medium" ? "medium" : "low";
     const action = await recordAutonomousAction({
       runId,
       agent: "support",
       actionType: triage.canAutoRespond ? "support.respond" : "support.escalate",
-      riskLevel: risk,
-      input: { gmailMessageId: id, intent: triage.intent, summary: triage.summary },
+      // Escalating is itself a safe/reversible action even when the underlying
+      // incident is severe. Severity remains in the input/event for prioritization.
+      riskLevel: triage.canAutoRespond ? incidentRisk : "low",
+      input: { gmailMessageId: id, intent: triage.intent, severity: triage.severity, summary: triage.summary },
       expectedImpact: { metric: "support_resolution_and_customer_trust" },
     });
 
@@ -183,6 +201,7 @@ export async function runSupportInbox(runId?: string, maxMessages = 6): Promise<
         properties: { gmailMessageId: id, intent: triage.intent, severity: triage.severity, summary: triage.summary },
         dedupeKey: `support-escalated:${id}`,
       });
+      await markActionExecuted(action.id, { escalated: true, severity: triage.severity });
       escalated += 1;
     }
   }
