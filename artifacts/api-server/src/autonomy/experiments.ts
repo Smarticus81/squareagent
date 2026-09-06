@@ -85,6 +85,32 @@ function zScore(successA: number, totalA: number, successB: number, totalB: numb
 
 async function metricCounts(experimentId: string, eventType: string): Promise<Map<string, number>> {
   if (!pool) return new Map();
+
+  // Opt-outs are recorded by the global do-not-contact handler and therefore
+  // intentionally do not trust campaign fields supplied by the inbound email.
+  // Attribute them back to the latest outbound touch for that exact lead.
+  if (eventType === "outreach_opt_out") {
+    const result = await pool.query<{ variant: string | null; count: number }>(
+      `SELECT sent.variant,
+              COUNT(DISTINCT o.properties->>'leadId')::int AS count
+       FROM business_events o
+       JOIN LATERAL (
+         SELECT s.experiment_id, s.variant
+         FROM business_events s
+         WHERE s.event_type='outbound_sent'
+           AND s.properties->>'leadId'=o.properties->>'leadId'
+         ORDER BY s.occurred_at DESC
+         LIMIT 1
+       ) sent ON true
+       WHERE o.event_type='outreach_opt_out'
+         AND sent.experiment_id=$1::uuid
+         AND sent.variant IS NOT NULL
+       GROUP BY sent.variant`,
+      [experimentId],
+    );
+    return new Map(result.rows.map((row) => [String(row.variant), Number(row.count)]));
+  }
+
   const result = await pool.query<{ variant: string | null; count: number }>(
     `SELECT variant,
             COUNT(DISTINCT COALESCE(visitor_id, user_id::text, session_id, actor_id, properties->>'leadId'))::int AS count
