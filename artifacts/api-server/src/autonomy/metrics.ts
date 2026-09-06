@@ -54,12 +54,51 @@ export async function collectBusinessSnapshot(windowDays = 30): Promise<Business
   if (!pool) throw new Error("Database is required for autonomy metrics");
   const days = Math.max(1, Math.min(365, Math.floor(windowDays)));
 
-  const [eventsResult, toolsResult, toolBreakdownResult, voiceResult, subsResult] = await Promise.all([
+  const [eventsResult, cohortResult, toolsResult, toolBreakdownResult, voiceResult, subsResult, churnResult] = await Promise.all([
     pool.query(
       `SELECT event_type, COUNT(*)::int AS count
        FROM business_events
        WHERE occurred_at >= now() - ($1::text || ' days')::interval
        GROUP BY event_type`,
+      [days],
+    ),
+    // Cohort funnel is grounded in canonical product tables. A signup belongs
+    // to the window if the user was created in the window; later stages ask
+    // whether that same user has reached the milestone. This avoids mistaking
+    // tracking-pixel coverage for product conversion.
+    pool.query(
+      `WITH cohort AS (
+         SELECT u.id,
+           EXISTS (
+             SELECT 1 FROM venues v
+             WHERE v.user_id=u.id AND v.connected_at IS NOT NULL
+           ) OR EXISTS (
+             SELECT 1 FROM organization_memberships om
+             JOIN venues v ON v.organization_id=om.organization_id
+             WHERE om.user_id=u.id AND v.connected_at IS NOT NULL
+           ) AS connected,
+           EXISTS (
+             SELECT 1 FROM tool_calls tc
+             WHERE tc.user_id=u.id
+               AND tc.status NOT IN ('error','failed') AND tc.error_message IS NULL
+           ) OR EXISTS (
+             SELECT 1 FROM organization_memberships om
+             JOIN tool_calls tc ON tc.organization_id=om.organization_id
+             WHERE om.user_id=u.id
+               AND tc.status NOT IN ('error','failed') AND tc.error_message IS NULL
+           ) AS activated,
+           EXISTS (
+             SELECT 1 FROM subscriptions s
+             WHERE s.user_id=u.id AND s.plan<>'trial' AND s.status IN ('active','paid')
+           ) AS paid
+         FROM users u
+         WHERE u.created_at >= now() - ($1::text || ' days')::interval
+       )
+       SELECT COUNT(*)::int AS signups,
+              COUNT(*) FILTER (WHERE connected)::int AS connected,
+              COUNT(*) FILTER (WHERE connected AND activated)::int AS activated,
+              COUNT(*) FILTER (WHERE connected AND activated AND paid)::int AS paid
+       FROM cohort`,
       [days],
     ),
     pool.query(
@@ -102,19 +141,25 @@ export async function collectBusinessSnapshot(windowDays = 30): Promise<Business
     pool.query(
       `SELECT plan, COUNT(DISTINCT COALESCE(organization_id::text, 'user:' || user_id::text))::int AS count
        FROM subscriptions
-       WHERE status IN ('active','paid','trialing') AND plan <> 'trial'
+       WHERE status IN ('active','paid') AND plan <> 'trial'
        GROUP BY plan`,
+    ),
+    pool.query(
+      `SELECT COUNT(*)::int AS count FROM subscriptions
+       WHERE status IN ('canceled','cancelled')
+         AND updated_at >= now() - ($1::text || ' days')::interval`,
+      [days],
     ),
   ]);
 
   const events = new Map<string, number>();
   for (const row of eventsResult.rows) events.set(String(row.event_type), n(row.count));
-
+  const cohort = cohortResult.rows[0] ?? {};
   const visitors = events.get("visitor_seen") ?? 0;
-  const signups = events.get("signup_completed") ?? 0;
-  const squareConnected = events.get("square_connected") ?? 0;
-  const activated = events.get("activation_reached") ?? 0;
-  const paid = events.get("subscription_started") ?? 0;
+  const signups = n(cohort.signups);
+  const squareConnected = n(cohort.connected);
+  const activated = n(cohort.activated);
+  const paid = n(cohort.paid);
 
   const toolRow = toolsResult.rows[0] ?? {};
   const calls = n(toolRow.calls);
@@ -165,7 +210,7 @@ export async function collectBusinessSnapshot(windowDays = 30): Promise<Business
       })),
     },
     revenue: { mrrCents, paidOrganizations, activeByPlan },
-    churnEvents: events.get("subscription_cancelled") ?? 0,
+    churnEvents: n(churnResult.rows[0]?.count),
     supportOpened: events.get("support_opened") ?? 0,
     supportResolved: events.get("support_resolved") ?? 0,
   };
