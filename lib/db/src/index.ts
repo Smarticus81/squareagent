@@ -1,6 +1,7 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import * as schema from "./schema";
+import * as autonomySchema from "./autonomy-schema";
 
 const { Pool } = pg;
 
@@ -30,7 +31,9 @@ export const pool = hasDatabaseConfig
       connectionTimeoutMillis: 5_000,
     })
   : (null as any);
-export const db = pool ? drizzle(pool, { schema }) : (null as any);
+export const db = pool
+  ? drizzle(pool, { schema: { ...schema, ...autonomySchema } })
+  : (null as any);
 
 // Periodic pool saturation metrics. `waitingCount > 0` means requests are
 // queued for a connection — the signal that the pool is undersized or that
@@ -54,3 +57,4 @@ if (pool && process.env.DATABASE_POOL_METRICS === "1") {
 }
 
 export * from "./schema";
+export * from "./autonomy-schema";
