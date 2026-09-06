@@ -47,10 +47,15 @@ export async function getBaseCommitSha(): Promise<string> {
   return ref.object.sha;
 }
 
+export async function getCommit(commitSha: string): Promise<{ sha: string; treeSha: string; parents: string[] }> {
+  const commit = await github<{ sha: string; tree: { sha: string }; parents: Array<{ sha: string }> }>(`/git/commits/${commitSha}`);
+  return { sha: commit.sha, treeSha: commit.tree.sha, parents: (commit.parents ?? []).map((parent) => parent.sha) };
+}
+
 export async function listRepositoryFiles(): Promise<string[]> {
   const baseSha = await getBaseCommitSha();
-  const commit = await github<{ tree: { sha: string } }>(`/git/commits/${baseSha}`);
-  const tree = await github<{ tree: GithubTreeEntry[]; truncated?: boolean }>(`/git/trees/${commit.tree.sha}?recursive=1`);
+  const commit = await getCommit(baseSha);
+  const tree = await github<{ tree: GithubTreeEntry[]; truncated?: boolean }>(`/git/trees/${commit.treeSha}?recursive=1`);
   return (tree.tree ?? [])
     .filter((entry) => entry.type === "blob" && entry.path)
     .map((entry) => entry.path as string)
@@ -154,6 +159,31 @@ export async function mergePullRequest(prNumber: number, headSha: string): Promi
     method: "PUT",
     body: JSON.stringify({ sha: headSha, merge_method: "squash" }),
   });
+}
+
+/**
+ * Revert an autonomously merged commit only when it is still the current base
+ * branch HEAD. This avoids clobbering unrelated work that landed afterwards.
+ * The new revert commit points at the bad commit's first-parent tree and uses
+ * the bad commit as its parent, producing a normal forward-moving revert.
+ */
+export async function revertHeadCommitIfUnchanged(badCommitSha: string, message: string): Promise<{ reverted: boolean; sha?: string; reason?: string }> {
+  const currentHead = await getBaseCommitSha();
+  if (currentHead !== badCommitSha) return { reverted: false, reason: "base_branch_advanced" };
+  const bad = await getCommit(badCommitSha);
+  const parentSha = bad.parents[0];
+  if (!parentSha) return { reverted: false, reason: "no_parent_commit" };
+  const parent = await getCommit(parentSha);
+  const created = await github<{ sha: string }>("/git/commits", {
+    method: "POST",
+    body: JSON.stringify({ message, tree: parent.treeSha, parents: [badCommitSha] }),
+  });
+  const { baseBranch } = config();
+  await github(`/git/refs/heads/${encodeURIComponent(baseBranch)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ sha: created.sha, force: false }),
+  });
+  return { reverted: true, sha: created.sha };
 }
 
 export function repositoryConfig(): GithubRepoConfig {
