@@ -1,14 +1,23 @@
 import { Router, type NextFunction, type Request, type Response } from "express";
+import rateLimit from "express-rate-limit";
 import { pool } from "@workspace/db";
 import { collectBusinessSnapshot, objectiveScore } from "../../autonomy/metrics";
 import { runAutonomyCycleLocked } from "../../autonomy/orchestrator";
 import { recordBusinessEvent } from "../../autonomy/ledger";
-import { assignExperiment } from "../../autonomy/experiments";
+import { assignExperiment, createExperiment } from "../../autonomy/experiments";
 import { optOutLead } from "../../autonomy/growth";
 import { VOYCELAB_OBJECTIVE, autonomyEnabled, codeWritesEnabled, outboundEnabled, DEFAULT_AUTONOMY_BUDGET } from "../../autonomy/constitution";
 import { jsonError, v1RequireAuth } from "./_helpers";
 
 const router = Router();
+
+const publicTelemetryLimit = rateLimit({
+  windowMs: 60_000,
+  limit: 180,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { error: "telemetry_rate_limited" },
+});
 
 const PUBLIC_EVENT_TYPES = new Set([
   "visitor_seen",
@@ -30,7 +39,7 @@ function cleanString(value: unknown, max = 160): string | null {
 
 // Public first-party telemetry endpoint used by the marketing site. The event
 // allowlist prevents callers from forging internal support/finance/action events.
-router.post("/events", async (req: Request, res: Response): Promise<void> => {
+router.post("/events", publicTelemetryLimit, async (req: Request, res: Response): Promise<void> => {
   try {
     const eventType = cleanString(req.body?.eventType, 80);
     if (!eventType || !PUBLIC_EVENT_TYPES.has(eventType)) {
@@ -58,7 +67,7 @@ router.post("/events", async (req: Request, res: Response): Promise<void> => {
   }
 });
 
-router.get("/experiments/:slug/assign", async (req: Request, res: Response): Promise<void> => {
+router.get("/experiments/:slug/assign", publicTelemetryLimit, async (req: Request, res: Response): Promise<void> => {
   const identity = cleanString(req.query.identity, 160);
   if (!identity) { res.status(400).json({ error: "identity_required" }); return; }
   const assignment = await assignExperiment(req.params.slug, identity);
@@ -109,6 +118,34 @@ router.post("/run", async (_req: Request, res: Response): Promise<void> => {
     res.json(result);
   } catch (error) {
     res.status(500).json({ error: "autonomy_cycle_failed", message: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+router.post("/experiments", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const slug = cleanString(req.body?.slug, 100);
+    const hypothesis = cleanString(req.body?.hypothesis, 500);
+    const primaryMetric = cleanString(req.body?.primaryMetric, 100);
+    const variants = Array.isArray(req.body?.variants) ? req.body.variants.slice(0, 8) : [];
+    if (!slug || !hypothesis || !primaryMetric || variants.length < 2) {
+      res.status(400).json({ error: "invalid_experiment" });
+      return;
+    }
+    const cleanedVariants = variants.map((variant: any, index: number) => ({
+      id: cleanString(variant?.id, 80) ?? `variant-${index + 1}`,
+      weight: Math.max(0, Number(variant?.weight ?? 1)),
+      payload: variant?.payload && typeof variant.payload === "object" ? variant.payload : {},
+    }));
+    const id = await createExperiment({
+      slug,
+      hypothesis,
+      primaryMetric,
+      variants: cleanedVariants,
+      guardrails: Array.isArray(req.body?.guardrails) ? req.body.guardrails.slice(0, 12) : [],
+    });
+    res.status(201).json({ id, slug });
+  } catch (error) {
+    res.status(400).json({ error: "experiment_create_failed", message: error instanceof Error ? error.message : String(error) });
   }
 });
 
