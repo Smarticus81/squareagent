@@ -48,7 +48,9 @@ function campaignSlug(now = new Date()): string {
   const first = new Date(Date.UTC(now.getUTCFullYear(), 0, 1));
   const day = Math.floor((now.getTime() - first.getTime()) / 86_400_000);
   const week = Math.floor((day + first.getUTCDay()) / 7) + 1;
-  return `outbound-positioning-${now.getUTCFullYear()}-w${String(week).padStart(2, "0")}`;
+  // A campaign may complete or trip a guardrail before the week ends. The
+  // generation suffix preserves every experiment instead of overwriting it.
+  return `outbound-positioning-${now.getUTCFullYear()}-w${String(week).padStart(2, "0")}-${now.getTime().toString(36)}`;
 }
 
 async function existingRunningCampaign(): Promise<string | null> {
@@ -61,11 +63,6 @@ async function existingRunningCampaign(): Promise<string | null> {
   return result.rows[0]?.slug ?? null;
 }
 
-/**
- * Attribution bridge from outbound prospect -> same-email VoyceLab account ->
- * paid subscription. This intentionally requires a deterministic email match;
- * ambiguous cross-email identity is never guessed.
- */
 export async function reconcileOutboundSubscriptionAttribution(): Promise<{ attributed: number }> {
   if (!pool) return { attributed: 0 };
   const result = await pool.query<{
