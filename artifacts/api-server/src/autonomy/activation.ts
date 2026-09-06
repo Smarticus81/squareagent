@@ -35,9 +35,11 @@ export async function runActivationInterventions(runId?: string, maxBatch = 15):
        u.name,
        EXISTS (
          SELECT 1 FROM venues v
-         WHERE (s.organization_id IS NOT NULL AND v.organization_id=s.organization_id)
-            OR (s.organization_id IS NULL AND v.user_id=s.user_id)
-           AND v.connected_at IS NOT NULL
+         WHERE (
+           (s.organization_id IS NOT NULL AND v.organization_id=s.organization_id)
+           OR (s.organization_id IS NULL AND v.user_id=s.user_id)
+         )
+         AND v.connected_at IS NOT NULL
        ) AS square_connected,
        CASE WHEN s.organization_id IS NULL THEN 0 ELSE (
          SELECT COUNT(*)::int FROM agent_profiles ap WHERE ap.organization_id=s.organization_id
