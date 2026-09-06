@@ -1,9 +1,10 @@
 import { pool } from "@workspace/db";
-import { autonomyEnabled, VOYCELAB_OBJECTIVE } from "./constitution";
+import { autonomyEnabled, codeWritesEnabled, VOYCELAB_OBJECTIVE } from "./constitution";
 import { collectBusinessSnapshot, objectiveScore } from "./metrics";
 import { createAutonomyPlan } from "./planner";
 import { detectProductFindings, highestPriorityFinding, persistProductFindings } from "./product-diagnostics";
 import { generateProductRepair } from "./product-engineer";
+import { bestAutonomousUpgrade, discoverProductUpgrades } from "./product-opportunities";
 import { researchProspects, runOutboundBatch } from "./growth";
 import { runActivationInterventions } from "./activation";
 import { runSupportInbox } from "./support";
@@ -79,9 +80,19 @@ export async function runAutonomyCycle(trigger = "scheduler"): Promise<AutonomyC
     const experiments = await evaluateExperiments();
 
     const requested = new Set(plan.actions.map((action) => action.actionType));
-    let product: unknown = { findings: findings.length };
+    let product: Record<string, unknown> = { findings: findings.length };
     if (topFinding && (requested.has("code.product_fix") || materiallyDegraded(before))) {
-      product = { findings: findings.length, topFinding: topFinding.fingerprint, repair: await generateProductRepair(topFinding, runId) };
+      product.topFinding = topFinding.fingerprint;
+      product.repair = await generateProductRepair(topFinding, runId);
+    } else if (!materiallyDegraded(before)) {
+      // Healthy systems should improve, not merely wait to fail. Once per week,
+      // compare live usage/support evidence with the current market and product.
+      const upgrades = await discoverProductUpgrades(before, runId);
+      product.upgradeOpportunities = upgrades;
+      const bestUpgrade = bestAutonomousUpgrade(upgrades);
+      if (bestUpgrade && codeWritesEnabled()) {
+        product.upgrade = await generateProductRepair(bestUpgrade, runId);
+      }
     }
 
     // Acquisition has a deterministic floor: keep a healthy qualified prospect
@@ -89,7 +100,7 @@ export async function runAutonomyCycle(trigger = "scheduler"): Promise<AutonomyC
     // paused while product reliability is materially degraded so we do not buy
     // or create demand for a broken experience.
     const leadCount = await eligibleLeadCount();
-    let growth: Record<string, unknown> = { eligibleLeadCountBefore: leadCount };
+    const growth: Record<string, unknown> = { eligibleLeadCountBefore: leadCount };
     if (requested.has("growth.research") || leadCount < 20) {
       growth.research = await researchProspects(runId);
     }
@@ -99,9 +110,6 @@ export async function runAutonomyCycle(trigger = "scheduler"): Promise<AutonomyC
       growth.outbound = { paused: "product_reliability_veto" };
     }
 
-    // Activation and support are continuous service loops rather than one-off
-    // experiments; run a bounded batch every strategy cycle even when the CEO
-    // planner is focused elsewhere.
     const activation = await runActivationInterventions(runId);
     const support = await runSupportInbox(runId);
 
