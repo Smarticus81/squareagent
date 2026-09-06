@@ -1,6 +1,7 @@
 import { pool } from "@workspace/db";
 import { getPullRequestGate, mergePullRequest, revertHeadCommitIfUnchanged } from "./github";
 import { codeWritesEnabled } from "./constitution";
+import { collectBusinessSnapshot } from "./metrics";
 
 function autoMergeEnabled(): boolean {
   return codeWritesEnabled() && (process.env.AUTONOMY_AUTO_MERGE_CODE === "1" || process.env.AUTONOMY_AUTO_MERGE_CODE === "true");
@@ -50,10 +51,28 @@ export async function promoteReadyProductRepairs(): Promise<{ merged: number; wa
   return { merged, waiting, blocked };
 }
 
+async function upgradeMetric(input: any): Promise<{ value: number; sample: number } | null> {
+  const spec = Array.isArray(input?.evidence) && typeof input.evidence[0] === "object" ? input.evidence[0] : null;
+  const metric = String(spec?.metric ?? "");
+  if (!metric) return null;
+  const snapshot = await collectBusinessSnapshot(30);
+  switch (metric) {
+    case "visitor_to_signup": return { value: snapshot.funnel.visitorToSignup, sample: snapshot.funnel.visitors };
+    case "signup_to_connect": return { value: snapshot.funnel.signupToConnect, sample: snapshot.funnel.signups };
+    case "connect_to_activation": return { value: snapshot.funnel.connectToActivation, sample: snapshot.funnel.squareConnected };
+    case "activation_to_paid": return { value: snapshot.funnel.activationToPaid, sample: snapshot.funnel.activated };
+    case "tool_failure_rate": return { value: snapshot.product.toolFailureRate, sample: snapshot.product.toolCalls };
+    case "no_successful_tool_session_rate": return { value: snapshot.product.noSuccessfulToolRate, sample: snapshot.product.voiceSessions };
+    case "mrr_cents": return { value: snapshot.revenue.mrrCents, sample: Math.max(1, snapshot.revenue.paidOrganizations) };
+    default: return null;
+  }
+}
+
 async function currentMetricForAction(input: any, mergedAt: Date): Promise<{ value: number; sample: number } | null> {
   if (!pool) return null;
   const finding = input ?? {};
   const fingerprint = String(finding.fingerprint ?? "");
+  if (fingerprint.startsWith("product-upgrade:")) return upgradeMetric(input);
   if (fingerprint.startsWith("tool-failure:")) {
     const tool = fingerprint.slice("tool-failure:".length);
     const result = await pool.query(
@@ -94,11 +113,32 @@ async function currentMetricForAction(input: any, mergedAt: Date): Promise<{ val
 
 function baselineForFinding(input: any): number | null {
   const evidence = Array.isArray(input?.evidence) ? input.evidence[0] : null;
-  if (!evidence) return null;
+  if (!evidence || typeof evidence !== "object") return null;
+  if (typeof evidence.baseline === "number") return evidence.baseline;
   if (typeof evidence.failureRate === "number") return evidence.failureRate;
   if (typeof evidence.averageToolLatencyMs === "number") return evidence.averageToolLatencyMs;
   if (typeof evidence.rate === "number") return evidence.rate;
   return null;
+}
+
+function directionForFinding(input: any): "higher" | "lower" {
+  const evidence = Array.isArray(input?.evidence) ? input.evidence[0] : null;
+  return evidence && typeof evidence === "object" && evidence.direction === "higher" ? "higher" : "lower";
+}
+
+function minimumSampleForFinding(input: any): number {
+  const evidence = Array.isArray(input?.evidence) ? input.evidence[0] : null;
+  return evidence && typeof evidence === "object" && evidence.metric === "mrr_cents" ? 1 : 10;
+}
+
+function isWorse(baseline: number, current: number, direction: "higher" | "lower"): boolean {
+  if (direction === "lower") return baseline === 0 ? current > 0 : current > baseline * 1.2;
+  return baseline > 0 && current < baseline * 0.8;
+}
+
+function isImproved(baseline: number, current: number, direction: "higher" | "lower"): boolean {
+  if (direction === "lower") return baseline === 0 ? current === 0 : current <= baseline * 0.9;
+  return baseline === 0 ? current > 0 : current >= baseline * 1.1;
 }
 
 export async function evaluateMergedProductRepairs(): Promise<{ validated: number; reverted: number; monitoring: number }> {
@@ -119,10 +159,11 @@ export async function evaluateMergedProductRepairs(): Promise<{ validated: numbe
     const mergeSha = String(row.output?.mergeSha ?? "");
     const baseline = baselineForFinding(row.input);
     const current = await currentMetricForAction(row.input, mergedAt);
-    if (baseline === null || !current || current.sample < 10) { monitoring += 1; continue; }
+    const direction = directionForFinding(row.input);
+    if (baseline === null || !current || current.sample < minimumSampleForFinding(row.input)) { monitoring += 1; continue; }
 
     const ageHours = (Date.now() - mergedAt.getTime()) / 3_600_000;
-    const worse = baseline === 0 ? current.value > 0 : current.value > baseline * 1.2;
+    const worse = isWorse(baseline, current.value, direction);
     if (worse && mergeSha) {
       const rollback = await revertHeadCommitIfUnchanged(
         mergeSha,
@@ -131,7 +172,7 @@ export async function evaluateMergedProductRepairs(): Promise<{ validated: numbe
       if (rollback.reverted) {
         await pool.query(
           `UPDATE autonomous_actions SET status='rolled_back', rolled_back_at=now(), actual_impact=$2::jsonb WHERE id=$1`,
-          [row.id, JSON.stringify({ baseline, current: current.value, sample: current.sample, rollbackSha: rollback.sha })],
+          [row.id, JSON.stringify({ baseline, current: current.value, sample: current.sample, direction, rollbackSha: rollback.sha })],
         );
         await pool.query(`UPDATE product_findings SET status='open', updated_at=now() WHERE github_pr_url=$1`, [row.external_ref]);
         reverted += 1;
@@ -139,17 +180,17 @@ export async function evaluateMergedProductRepairs(): Promise<{ validated: numbe
       }
       await pool.query(
         `UPDATE autonomous_actions SET status='needs_founder', actual_impact=$2::jsonb WHERE id=$1`,
-        [row.id, JSON.stringify({ baseline, current: current.value, sample: current.sample, rollbackBlocked: rollback.reason })],
+        [row.id, JSON.stringify({ baseline, current: current.value, sample: current.sample, direction, rollbackBlocked: rollback.reason })],
       );
       monitoring += 1;
       continue;
     }
 
     if (ageHours >= 24) {
-      const improved = baseline === 0 ? current.value === 0 : current.value <= baseline * 0.9;
+      const improved = isImproved(baseline, current.value, direction);
       await pool.query(
         `UPDATE autonomous_actions SET status='validated', actual_impact=$2::jsonb WHERE id=$1`,
-        [row.id, JSON.stringify({ baseline, current: current.value, sample: current.sample, improved })],
+        [row.id, JSON.stringify({ baseline, current: current.value, sample: current.sample, direction, improved })],
       );
       await pool.query(
         `UPDATE product_findings SET status=$2, updated_at=now() WHERE github_pr_url=$1`,
