@@ -7,7 +7,7 @@ import { detectProductFindings, highestPriorityFinding, persistProductFindings }
 import { generateProductRepair } from "./product-engineer";
 import { bestAutonomousUpgrade, discoverProductUpgrades } from "./product-opportunities";
 import { researchProspects, runOutboundBatch } from "./growth";
-import { ensureOutboundCampaign } from "./marketing";
+import { ensureOutboundCampaign, reconcileOutboundSubscriptionAttribution } from "./marketing";
 import { runSalesInbox } from "./sales";
 import { runActivationInterventions } from "./activation";
 import { runSupportInbox } from "./support";
@@ -93,9 +93,8 @@ export async function runAutonomyCycle(trigger = "scheduler"): Promise<AutonomyC
       monitoring: await evaluateMergedProductRepairs(),
     };
 
-    // Sales runs before experiment evaluation so replies collected since the
-    // previous cycle can influence campaign winners immediately.
     const sales = await runSalesInbox(runId);
+    const attribution = await reconcileOutboundSubscriptionAttribution();
     const experiments = await evaluateExperiments();
 
     const requested = new Set(plan.actions.map((action) => action.actionType));
@@ -116,6 +115,7 @@ export async function runAutonomyCycle(trigger = "scheduler"): Promise<AutonomyC
     const growth: Record<string, unknown> = {
       eligibleLeadCountBefore: leadCount,
       financeVerdict: financeBefore.verdict,
+      attributedSubscriptions: attribution.attributed,
     };
     if (requested.has("growth.research") || leadCount < 20) {
       growth.research = await researchProspects(runId);
@@ -135,8 +135,6 @@ export async function runAutonomyCycle(trigger = "scheduler"): Promise<AutonomyC
     }
 
     const activation = await runActivationInterventions(runId);
-    // Sales consumes known prospect replies first; support then handles the
-    // remaining unread inbox so the two workers do not race to answer one mail.
     const support = await runSupportInbox(runId);
 
     const [after, financeAfter] = await Promise.all([
@@ -170,10 +168,6 @@ export async function runAutonomyCycle(trigger = "scheduler"): Promise<AutonomyC
   }
 }
 
-/**
- * Cross-instance lock for Railway horizontal scaling. A dedicated pg client
- * holds the advisory lock for the duration of the cycle; other instances skip.
- */
 export async function runAutonomyCycleLocked(trigger = "scheduler"): Promise<AutonomyCycleResult | { enabled: true; skipped: "already_running" }> {
   if (!autonomyEnabled()) return { enabled: false };
   if (!pool) return runAutonomyCycle(trigger);
