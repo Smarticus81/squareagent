@@ -9,6 +9,8 @@ export interface FinanceSnapshot {
   arpaCents: number;
   voiceMinutes: number;
   estimatedVoiceCostCents: number | null;
+  estimatedInfraCostCents: number | null;
+  estimatedAgentComputeCostCents: number | null;
   campaignSpendCents: number;
   cohortPaidCustomers: number;
   estimatedCacCents: number | null;
@@ -26,10 +28,6 @@ function envNumber(name: string): number | null {
   if (!raw) return null;
   const parsed = Number(raw);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
-}
-
-function ratio(a: number, b: number): number | null {
-  return b > 0 ? a / b : null;
 }
 
 export async function collectFinanceSnapshot(windowDays = 30): Promise<FinanceSnapshot> {
@@ -82,12 +80,17 @@ export async function collectFinanceSnapshot(windowDays = 30): Promise<FinanceSn
   const voiceMinutes = Number(usage.rows[0]?.minutes ?? 0);
   const blendedVoiceCostPerMinuteCents = envNumber("AUTONOMY_BLENDED_VOICE_COST_CENTS_PER_MINUTE");
   const fixedInfraCentsPerMonth = envNumber("AUTONOMY_FIXED_INFRA_COST_CENTS_MONTH");
+  const agentComputeCentsPerMonth = envNumber("AUTONOMY_AGENT_COMPUTE_COST_CENTS_MONTH");
   const estimatedVoiceCostCents = blendedVoiceCostPerMinuteCents === null
     ? null
     : Math.round(voiceMinutes * blendedVoiceCostPerMinuteCents);
-  const proratedFixedInfra = fixedInfraCentsPerMonth === null
+  const estimatedInfraCostCents = fixedInfraCentsPerMonth === null
     ? null
     : Math.round(fixedInfraCentsPerMonth * (days / 30));
+  const estimatedAgentComputeCostCents = agentComputeCentsPerMonth === null
+    ? null
+    : Math.round(agentComputeCentsPerMonth * (days / 30));
+
   const campaignSpendCents = Number(spend.rows[0]?.cents ?? 0);
   const cohortPaidCustomers = Number(cohort.rows[0]?.count ?? 0);
   const estimatedCacCents = campaignSpendCents > 0 && cohortPaidCustomers > 0
@@ -95,8 +98,12 @@ export async function collectFinanceSnapshot(windowDays = 30): Promise<FinanceSn
     : null;
 
   const periodRevenueCents = Math.round(mrrCents * (days / 30));
-  const costCoverageComplete = estimatedVoiceCostCents !== null && proratedFixedInfra !== null;
-  const directCosts = costCoverageComplete ? estimatedVoiceCostCents! + proratedFixedInfra! : null;
+  const costCoverageComplete = estimatedVoiceCostCents !== null
+    && estimatedInfraCostCents !== null
+    && estimatedAgentComputeCostCents !== null;
+  const directCosts = costCoverageComplete
+    ? estimatedVoiceCostCents! + estimatedInfraCostCents! + estimatedAgentComputeCostCents!
+    : null;
   const estimatedGrossContributionCents = directCosts === null ? null : periodRevenueCents - directCosts;
   const estimatedGrossMargin = estimatedGrossContributionCents === null || periodRevenueCents <= 0
     ? null
@@ -113,7 +120,7 @@ export async function collectFinanceSnapshot(windowDays = 30): Promise<FinanceSn
   let verdict: FinanceSnapshot["verdict"] = "healthy";
   if (!costCoverageComplete) {
     verdict = "insufficient_cost_data";
-    reasons.push("Set AUTONOMY_BLENDED_VOICE_COST_CENTS_PER_MINUTE and AUTONOMY_FIXED_INFRA_COST_CENTS_MONTH before finance can enforce gross-margin decisions.");
+    reasons.push("Configure blended voice, infrastructure, and autonomous-agent compute costs before finance can enforce gross-margin decisions.");
   } else {
     const minGrossMargin = (envNumber("AUTONOMY_MIN_GROSS_MARGIN_PERCENT") ?? 60) / 100;
     if (estimatedGrossMargin !== null && estimatedGrossMargin < minGrossMargin) {
@@ -146,6 +153,8 @@ export async function collectFinanceSnapshot(windowDays = 30): Promise<FinanceSn
     arpaCents,
     voiceMinutes,
     estimatedVoiceCostCents,
+    estimatedInfraCostCents,
+    estimatedAgentComputeCostCents,
     campaignSpendCents,
     cohortPaidCustomers,
     estimatedCacCents,
