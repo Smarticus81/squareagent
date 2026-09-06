@@ -28,6 +28,23 @@ type Snapshot = {
   supportResolved: number;
 };
 
+type FinanceSnapshot = {
+  verdict: "healthy" | "caution" | "veto" | "insufficient_cost_data";
+  reasons: string[];
+  arpaCents: number;
+  voiceMinutes: number;
+  estimatedVoiceCostCents: number | null;
+  estimatedInfraCostCents: number | null;
+  estimatedAgentComputeCostCents: number | null;
+  campaignSpendCents: number;
+  estimatedCacCents: number | null;
+  estimatedGrossContributionCents: number | null;
+  estimatedGrossMargin: number | null;
+  cacPaybackMonths: number | null;
+  costCoverageComplete: boolean;
+  acquisitionEconomicsCoverage: boolean;
+};
+
 type ControlPlaneStatus = {
   enabled: boolean;
   codeWritesEnabled: boolean;
@@ -36,11 +53,13 @@ type ControlPlaneStatus = {
   objective: { northStar: string; hardConstraints: string[] };
   budget: Record<string, number>;
   snapshot: Snapshot;
+  finance: FinanceSnapshot;
   runs: Array<Record<string, any>>;
   actions: Array<Record<string, any>>;
   productFindings: Array<Record<string, any>>;
   experiments: Array<Record<string, any>>;
   leads: Array<Record<string, any>>;
+  opportunities: Array<Record<string, any>>;
 };
 
 function headers(): Record<string, string> {
@@ -53,7 +72,8 @@ function pct(value: number | null | undefined): string {
 }
 
 function money(cents: number | null | undefined): string {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format((cents ?? 0) / 100);
+  if (cents === null || cents === undefined) return "—";
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(cents / 100);
 }
 
 function Stat({ label, value, note }: { label: string; value: string; note?: string }) {
@@ -120,6 +140,7 @@ export default function AutonomyPage() {
 
   const data = status.data;
   const s = data.snapshot;
+  const f = data.finance;
   const currentRun = data.runs[0];
   const openFindings = data.productFindings.filter((finding) => !["resolved", "dismissed"].includes(String(finding.status)));
   const activeExperiments = data.experiments.filter((experiment) => experiment.status === "running");
@@ -134,6 +155,7 @@ export default function AutonomyPage() {
               <StatusPill active={data.enabled}>{data.enabled ? "Brain online" : "Brain disabled"}</StatusPill>
               <StatusPill active={data.outboundEnabled}>{data.outboundEnabled ? "Outbound live" : "Outbound off"}</StatusPill>
               <StatusPill active={data.codeWritesEnabled}>{data.codeWritesEnabled ? "Code repair enabled" : "Code repair off"}</StatusPill>
+              <StatusPill active={f.verdict !== "veto"}>Finance: {f.verdict.replaceAll("_", " ")}</StatusPill>
             </div>
             <h1 className="vl-display mt-3 max-w-4xl text-[42px] leading-[1.02] sm:text-[54px]">The company can see itself, judge itself, and improve itself.</h1>
             <p className="mt-4 max-w-3xl text-[14px] leading-6" style={{ color: "var(--color-vl-ink-muted)" }}>{data.objective.northStar}</p>
@@ -152,6 +174,26 @@ export default function AutonomyPage() {
           <Stat label="Trial → paid" value={pct(s.funnel.activationToPaid)} note={`${s.funnel.paid}/${s.funnel.activated} activated`} />
           <Stat label="Tool failure" value={pct(s.product.toolFailureRate)} note={`${s.product.toolFailures}/${s.product.toolCalls} tool calls`} />
         </div>
+
+        <section className="vl-panel p-5">
+          <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
+            <div>
+              <p className="vl-eyebrow">Unit economics</p>
+              <h2 className="mt-2 text-[22px] font-semibold capitalize">Finance verdict: {f.verdict.replaceAll("_", " ")}</h2>
+            </div>
+            <span className="text-[11px]" style={{ color: "var(--color-vl-ink-faint)" }}>{f.costCoverageComplete ? "Cost coverage configured" : "Cost inputs incomplete — no margin veto from unknown costs"}</span>
+          </div>
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            <Stat label="ARPA" value={money(f.arpaCents)} />
+            <Stat label="Gross margin" value={f.estimatedGrossMargin === null ? "—" : pct(f.estimatedGrossMargin)} />
+            <Stat label="Gross contribution" value={money(f.estimatedGrossContributionCents)} />
+            <Stat label="Estimated CAC" value={money(f.estimatedCacCents)} note={`${money(f.campaignSpendCents)} measured campaign spend`} />
+            <Stat label="CAC payback" value={f.cacPaybackMonths === null ? "—" : `${f.cacPaybackMonths.toFixed(1)} mo`} />
+          </div>
+          <div className="mt-4 space-y-1">
+            {f.reasons.map((reason) => <p key={reason} className="text-[12px] leading-5" style={{ color: "var(--color-vl-ink-muted)" }}>• {reason}</p>)}
+          </div>
+        </section>
 
         <div className="grid gap-6 lg:grid-cols-[1.25fr_.75fr]">
           <section className="vl-panel overflow-hidden">
@@ -218,6 +260,7 @@ export default function AutonomyPage() {
                 <div key={experiment.id} className="py-3">
                   <div className="flex justify-between gap-4"><p className="text-[13px] font-medium">{experiment.slug}</p><span className="text-[10px] uppercase tracking-wider" style={{ color: "var(--color-vl-ink-faint)" }}>{experiment.status}</span></div>
                   <p className="mt-1 text-[11px] leading-5" style={{ color: "var(--color-vl-ink-muted)" }}>{experiment.hypothesis}</p>
+                  {experiment.winner && <p className="mt-1 text-[11px]" style={{ color: "var(--color-vl-ink-faint)" }}>Winner: {experiment.winner}</p>}
                 </div>
               ))}
               {!data.experiments.length && <p className="py-6 text-[13px]" style={{ color: "var(--color-vl-ink-muted)" }}>No experiments have been launched yet.</p>}
