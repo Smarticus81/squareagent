@@ -111,7 +111,13 @@ export async function generateProductRepair(
         "Choose at most six paths and only paths present in the supplied repository list.",
       ].join("\n"),
       { finding, repository: repositoryConfig(), files: allFiles.slice(0, 900) },
-      { schemaName: "voycelab_repo_path_selection", schema: PATH_SELECTION_SCHEMA as unknown as Record<string, unknown>, reasoningEffort: "medium", maxOutputTokens: 1200 },
+      {
+        schemaName: "voycelab_repo_path_selection",
+        schema: PATH_SELECTION_SCHEMA as unknown as Record<string, unknown>,
+        model: process.env.AUTONOMY_ENGINEERING_TRIAGE_MODEL?.trim() || "gpt-5.6-terra",
+        reasoningEffort: "medium",
+        maxOutputTokens: 1200,
+      },
     );
 
     const chosen = pathSelection.paths.filter((path) => allFiles.includes(path) && !protectedPath(path)).slice(0, 6);
@@ -120,8 +126,6 @@ export async function generateProductRepair(
     const fileContext: Array<{ path: string; content: string }> = [];
     for (const path of chosen) {
       const file = await readRepositoryFile(path);
-      // Keep a single repair run bounded. Oversized files remain inspectable in
-      // a later targeted run, but are not rewritten wholesale by this worker.
       if (file.content.length <= 45_000) fileContext.push({ path, content: file.content });
     }
     if (!fileContext.length) throw new Error("Selected files exceed safe autonomous rewrite size");
@@ -142,7 +146,13 @@ export async function generateProductRepair(
         "The change must have an explicit production success metric and rollback criterion.",
       ].join("\n"),
       { finding, files: fileContext },
-      { schemaName: "voycelab_product_repair", schema: PATCH_SCHEMA as unknown as Record<string, unknown>, reasoningEffort: "high", maxOutputTokens: 18_000 },
+      {
+        schemaName: "voycelab_product_repair",
+        schema: PATCH_SCHEMA as unknown as Record<string, unknown>,
+        model: process.env.AUTONOMY_ENGINEERING_MODEL?.trim() || "gpt-5.6-sol",
+        reasoningEffort: "high",
+        maxOutputTokens: 18_000,
+      },
     );
 
     const allowed = new Set(fileContext.map((file) => file.path));
