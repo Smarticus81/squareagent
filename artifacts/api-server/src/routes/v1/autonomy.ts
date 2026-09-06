@@ -2,6 +2,7 @@ import { Router, type NextFunction, type Request, type Response } from "express"
 import rateLimit from "express-rate-limit";
 import { pool } from "@workspace/db";
 import { collectBusinessSnapshot, objectiveScore } from "../../autonomy/metrics";
+import { collectFinanceSnapshot } from "../../autonomy/finance";
 import { runAutonomyCycleLocked } from "../../autonomy/orchestrator";
 import { recordBusinessEvent } from "../../autonomy/ledger";
 import { assignExperiment, createExperiment } from "../../autonomy/experiments";
@@ -41,8 +42,6 @@ function routeParam(value: string | string[] | undefined): string | null {
   return typeof value === "string" ? value : Array.isArray(value) ? value[0] ?? null : null;
 }
 
-// Public first-party telemetry endpoint used by the marketing site. The event
-// allowlist prevents callers from forging internal support/finance/action events.
 router.post("/events", publicTelemetryLimit, async (req: Request, res: Response): Promise<void> => {
   try {
     const eventType = cleanString(req.body?.eventType, 80);
@@ -94,8 +93,9 @@ router.use(requirePlatformAdmin);
 
 router.get("/status", async (_req: Request, res: Response): Promise<void> => {
   if (!pool) { res.status(503).json({ error: "database_unavailable" }); return; }
-  const [snapshot, runs, actions, findings, experiments, leads, opportunities] = await Promise.all([
+  const [snapshot, finance, runs, actions, findings, experiments, leads, opportunities] = await Promise.all([
     collectBusinessSnapshot(30),
+    collectFinanceSnapshot(30),
     pool.query(`SELECT id,run_type,trigger,status,objective_score_before,objective_score_after,started_at,finished_at,error_message,plan,result FROM autonomy_runs ORDER BY started_at DESC LIMIT 12`),
     pool.query(`SELECT id,agent,action_type,risk_level,authority,status,external_ref,cost_cents,expected_impact,actual_impact,created_at,executed_at,rolled_back_at FROM autonomous_actions ORDER BY created_at DESC LIMIT 30`),
     pool.query(`SELECT id,fingerprint,status,severity,subsystem,title,evidence,recommended_change,github_pr_url,updated_at FROM product_findings ORDER BY updated_at DESC LIMIT 25`),
@@ -110,6 +110,7 @@ router.get("/status", async (_req: Request, res: Response): Promise<void> => {
     objective: VOYCELAB_OBJECTIVE,
     budget: DEFAULT_AUTONOMY_BUDGET,
     snapshot,
+    finance,
     objectiveScore: objectiveScore(snapshot),
     runs: runs.rows,
     actions: actions.rows,
@@ -155,6 +156,38 @@ router.post("/experiments", async (req: Request, res: Response): Promise<void> =
   } catch (error) {
     res.status(400).json({ error: "experiment_create_failed", message: error instanceof Error ? error.message : String(error) });
   }
+});
+
+/**
+ * Record real external acquisition spend (ads, sponsorships, purchased media)
+ * for the finance evaluator. This is admin-only and never inferred by the model.
+ */
+router.post("/finance/campaign-spend", async (req: Request, res: Response): Promise<void> => {
+  const valueCents = Number(req.body?.valueCents);
+  const campaign = cleanString(req.body?.campaign, 120);
+  const source = cleanString(req.body?.source, 120) ?? "external_campaign_spend";
+  if (!Number.isFinite(valueCents) || valueCents < 0 || !campaign) {
+    res.status(400).json({ error: "invalid_campaign_spend" });
+    return;
+  }
+  const occurredAtRaw = cleanString(req.body?.occurredAt, 80);
+  const occurredAt = occurredAtRaw ? new Date(occurredAtRaw) : new Date();
+  if (Number.isNaN(occurredAt.getTime())) {
+    res.status(400).json({ error: "invalid_occurred_at" });
+    return;
+  }
+  const dedupeKey = cleanString(req.body?.dedupeKey, 220) ?? `campaign-spend:${campaign}:${occurredAt.toISOString()}:${Math.round(valueCents)}`;
+  const id = await recordBusinessEvent({
+    eventType: "campaign_spend",
+    actorType: "admin",
+    source,
+    campaign,
+    valueCents: Math.round(valueCents),
+    properties: req.body?.properties && typeof req.body.properties === "object" ? req.body.properties : {},
+    dedupeKey,
+    occurredAt,
+  });
+  res.status(201).json({ id, campaign, valueCents: Math.round(valueCents) });
 });
 
 router.post("/leads/:id/opt-out", async (req: Request, res: Response): Promise<void> => {
