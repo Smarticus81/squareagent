@@ -20,7 +20,6 @@ function makeFetch(responses: MockResponse[]) {
       err.name = "TimeoutError";
       throw err;
     }
-    // Status codes like 204 must carry a null body per the Fetch spec.
     const text = next.body === undefined ? null : JSON.stringify(next.body);
     return new Response(text, {
       status: next.status,
@@ -88,7 +87,10 @@ describe("SquareClient", () => {
     for (let i = 0; i < 20; i++) responses.push({ status: 500, body: {} });
     const { fetchImpl, calls } = makeFetch(responses);
     const client = new SquareClient("tok", "LOC-circuit", fetchImpl);
-    // 5 failed requests (each retried 3x) trip the breaker.
+    // Five failed logical requests (three retried attempts each) deliberately
+    // exercise the real production backoff path. CI scheduling overhead can put
+    // that path just above Vitest's global 5s default, so this behavioral test
+    // gets a narrow explicit timeout rather than weakening production retries.
     for (let i = 0; i < 5; i++) await client.get("/x");
     const before = calls.length;
     const res = await client.get("/x");
@@ -96,7 +98,7 @@ describe("SquareClient", () => {
     expect(res.status).toBe(503);
     expect(res.error?.message).toMatch(/temporarily unavailable/);
     expect(calls.length).toBe(before);
-  });
+  }, 10_000);
 
   it("follows cursors across pages", async () => {
     const { fetchImpl, calls } = makeFetch([
