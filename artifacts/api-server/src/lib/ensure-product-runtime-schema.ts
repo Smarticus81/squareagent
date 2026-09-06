@@ -14,6 +14,7 @@ export async function ensureProductRuntimeSchema(): Promise<void> {
     `ALTER TABLE "voice_sessions" ADD COLUMN IF NOT EXISTS "finalized_duration_ms" integer`,
     `ALTER TABLE "voice_sessions" ADD COLUMN IF NOT EXISTS "pipeline_provider" text`,
     `ALTER TABLE "voice_sessions" ADD COLUMN IF NOT EXISTS "agent_profile_id" uuid`,
+    `ALTER TABLE "voice_sessions" ADD COLUMN IF NOT EXISTS "venue_id" integer`,
     `CREATE INDEX IF NOT EXISTS "voice_sessions_finalized_idx" ON "voice_sessions" ("finalized_at")`,
     `CREATE INDEX IF NOT EXISTS "voice_sessions_stale_heartbeat_idx" ON "voice_sessions" ("last_heartbeat_at", "finalized_at")`,
     `ALTER TABLE "usage_events" ADD COLUMN IF NOT EXISTS "session_id" text`,
