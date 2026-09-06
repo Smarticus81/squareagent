@@ -10,6 +10,10 @@ function defaultModel(): string {
   return process.env.AUTONOMY_MODEL?.trim() || "gpt-5.6-terra";
 }
 
+function fastModel(): string {
+  return process.env.AUTONOMY_FAST_MODEL?.trim() || "gpt-5.6-luna";
+}
+
 /** Remove obvious credential-shaped strings before telemetry is sent to a model. */
 export function scrubModelContext(value: unknown): unknown {
   if (typeof value === "string") {
@@ -53,13 +57,19 @@ export interface StructuredModelOptions {
   maxOutputTokens?: number;
 }
 
+function modelFor(options: StructuredModelOptions): string {
+  if (options.model?.trim()) return options.model.trim();
+  const effort = options.reasoningEffort ?? "low";
+  return effort === "none" || effort === "minimal" || effort === "low" ? fastModel() : defaultModel();
+}
+
 export async function structuredModel<T>(
   instructions: string,
   input: unknown,
   options: StructuredModelOptions,
 ): Promise<T> {
   const body: Record<string, unknown> = {
-    model: options.model?.trim() || defaultModel(),
+    model: modelFor(options),
     instructions,
     input: JSON.stringify(scrubModelContext(input)),
     store: false,
