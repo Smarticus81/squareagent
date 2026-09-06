@@ -69,18 +69,30 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const canonicalPath = normalizeAppPath(location);
+  const missionControlQuery =
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("view") === "autonomy";
+  const effectivePath = missionControlQuery ? "/autonomy" : canonicalPath;
+  const isPlatformAdmin = Boolean(auth?.isAdmin ?? auth?.user?.isAdmin);
+
   // Onboarding is a full-screen guided flow — it renders its own minimal
   // chrome, so it gets the same bare shell as the auth pages.
   const isAuthPage =
-    canonicalPath === "/login" ||
-    canonicalPath === "/signup" ||
-    canonicalPath === "/onboarding";
-  const isLanding = canonicalPath === "/";
+    effectivePath === "/login" ||
+    effectivePath === "/signup" ||
+    effectivePath === "/onboarding";
+  const isLanding = effectivePath === "/";
 
   const showAppShellNav = Boolean(auth?.user) && !isLanding && !isAuthPage;
   const showPublicInteriorNav = !auth?.user && !isLanding && !isAuthPage;
 
-  const headerNavItems = showAppShellNav ? APP_NAV : isLanding ? LANDING_NAV : PUBLIC_SITE_NAV;
+  const adminAppNav = isPlatformAdmin
+    ? [...APP_NAV, { href: "/autonomy", label: "Mission Control" }]
+    : APP_NAV;
+  const landingNav = isPlatformAdmin
+    ? [...LANDING_NAV, { href: "/autonomy", label: "Mission Control" }]
+    : LANDING_NAV;
+  const headerNavItems = showAppShellNav ? adminAppNav : isLanding ? landingNav : PUBLIC_SITE_NAV;
 
   return (
     <div className="vl-app-shell min-h-screen flex flex-col relative">
@@ -102,8 +114,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   const isAnchor = item.href.startsWith("#");
                   const active =
                     !isAnchor &&
-                    (showAppShellNav || showPublicInteriorNav) &&
-                    navLinkActive(canonicalPath, item.href);
+                    (showAppShellNav || showPublicInteriorNav || (isLanding && isPlatformAdmin)) &&
+                    navLinkActive(effectivePath, item.href);
 
                   const cls = `rounded-full px-3.5 py-1.5 text-[13px] font-medium transition-colors ${
                     active ? "bg-white text-gray-900 shadow-sm" : "text-white/70 hover:bg-white/10 hover:text-white"
