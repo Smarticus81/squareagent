@@ -8,8 +8,8 @@ export interface PlannedAction {
   riskLevel: AutonomyRisk;
   title: string;
   rationale: string;
-  expectedImpact: Record<string, unknown>;
-  execution: Record<string, unknown>;
+  expectedImpact: string[];
+  executionSteps: string[];
 }
 
 export interface AutonomyPlan {
@@ -34,15 +34,15 @@ const PLAN_SCHEMA = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["agent", "actionType", "riskLevel", "title", "rationale", "expectedImpact", "execution"],
+        required: ["agent", "actionType", "riskLevel", "title", "rationale", "expectedImpact", "executionSteps"],
         properties: {
           agent: { type: "string", enum: ["growth", "activation", "product", "support", "finance", "evaluator"] },
           actionType: { type: "string" },
           riskLevel: { type: "string", enum: ["low", "medium", "high", "critical"] },
           title: { type: "string" },
           rationale: { type: "string" },
-          expectedImpact: { type: "object", additionalProperties: true },
-          execution: { type: "object", additionalProperties: true },
+          expectedImpact: { type: "array", minItems: 1, maxItems: 8, items: { type: "string" } },
+          executionSteps: { type: "array", minItems: 1, maxItems: 10, items: { type: "string" } },
         },
       },
     },
@@ -68,7 +68,7 @@ export async function createAutonomyPlan(snapshot: BusinessSnapshot): Promise<Au
     "Optimize durable paid customer growth, activation, retention, product reliability and gross-margin-aware efficiency; never optimize vanity traffic in isolation.",
     "Prefer the highest-leverage bottleneck. Product reliability and failed user workflows take precedence over buying more traffic when they are materially degraded.",
     "Every action must be measurable, bounded and reversible where possible. Do not propose weakening auth, billing integrity, encryption, audit logging, privacy, opt-out behavior, or the constitution.",
-    "For code improvements use actionType code.product_fix and include likely subsystem, evidence to inspect, success metric, and rollback criterion in execution.",
+    "For code improvements use actionType code.product_fix and put likely subsystem, evidence to inspect, success metric, test requirement and rollback criterion in executionSteps.",
     "For market research use growth.research. For outbound use outreach.email. For lifecycle changes use activation.experiment. For pricing tests use pricing.experiment and keep changes within 15%.",
     "Return no more than six actions, ordered by expected business value divided by effort/risk.",
   ].join("\n");
@@ -91,8 +91,15 @@ export async function createAutonomyPlan(snapshot: BusinessSnapshot): Promise<Au
         riskLevel: "medium",
         title: "Repair degraded production workflow before scaling acquisition",
         rationale: "Product telemetry breached the reliability threshold; acquiring more users would amplify a broken experience.",
-        expectedImpact: { toolFailureRate: "down", activationRate: "up", supportBurden: "down" },
-        execution: { subsystem: "highest-failure-path", successMetric: "tool_failure_rate", rollback: "revert if failure rate or latency worsens" },
+        expectedImpact: ["tool failure rate decreases", "activation rate increases", "support burden decreases"],
+        executionSteps: [
+          "inspect the highest-failure production tool or realtime path",
+          "identify the smallest root-cause fix",
+          "add focused regression coverage",
+          "open a bounded autonomy PR",
+          "require CI to pass before promotion",
+          "monitor the original failure metric and revert if it worsens",
+        ],
       });
     }
     plan.bottleneck = "product_reliability";
