@@ -23,14 +23,30 @@ const NotFound = lazy(() => import("@/pages/not-found"));
 
 const clerkPublishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string | undefined;
 
-function NavigateReplace({ to }: { to: string }) {
+function NavigateReplace({ to, preserveLocationExtras = true }: { to: string; preserveLocationExtras?: boolean }) {
   const [, setLocation] = useLocation();
   useLayoutEffect(() => {
-    const search = typeof window !== "undefined" ? window.location.search : "";
-    const hash = typeof window !== "undefined" ? window.location.hash : "";
+    const search = preserveLocationExtras && typeof window !== "undefined" ? window.location.search : "";
+    const hash = preserveLocationExtras && typeof window !== "undefined" ? window.location.hash : "";
     setLocation(`${to}${search}${hash}`, { replace: true });
-  }, [setLocation, to]);
+  }, [preserveLocationExtras, setLocation, to]);
   return null;
+}
+
+/**
+ * Railway/custom-domain deep links may arrive through the root fallback as
+ * /?view=autonomy. Promote that transport-safe URL back to the canonical
+ * client-side /autonomy route without another network request.
+ */
+function RootRoute() {
+  const missionControl =
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("view") === "autonomy";
+
+  if (missionControl) {
+    return <NavigateReplace to="/autonomy" preserveLocationExtras={false} />;
+  }
+  return <Landing />;
 }
 
 const queryClient = new QueryClient({
@@ -49,7 +65,7 @@ function Router() {
     <Layout>
       <Suspense fallback={<RouteFallback />}>
         <Switch>
-          <Route path="/" component={Landing} />
+          <Route path="/" component={RootRoute} />
           <Route path="/login" component={Login} />
           <Route path="/signup" component={Signup} />
           <Route path="/dashboard">
@@ -66,6 +82,9 @@ function Router() {
           </Route>
           <Route path="/console">
             <NavigateReplace to="/assistants" />
+          </Route>
+          <Route path="/mission-control">
+            <NavigateReplace to="/autonomy" preserveLocationExtras={false} />
           </Route>
           <Route path="/onboarding" component={Onboarding} />
           <Route path="/assistants" component={Assistants} />
