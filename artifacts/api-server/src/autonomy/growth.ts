@@ -56,6 +56,24 @@ function validEmail(v: string | null): v is string {
   return Boolean(v && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v));
 }
 
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char] ?? char));
+}
+
+function signupUrl(campaign: { slug: string; variantId: string } | null): string {
+  const base = (process.env.PUBLIC_BASE_URL ?? "https://voycelab.com").replace(/\/$/, "");
+  const params = new URLSearchParams({ utm_source: "autonomous_email", utm_medium: "email" });
+  if (campaign?.slug) params.set("utm_campaign", campaign.slug);
+  if (campaign?.variantId) params.set("utm_content", campaign.variantId);
+  return `${base}/signup?${params.toString()}`;
+}
+
+function brandedEmailHtml(params: { body: string; ctaUrl: string }): string {
+  const body = escapeHtml(params.body).replace(/\n+/g, "<br><br>");
+  const url = escapeHtml(params.ctaUrl);
+  return `<!doctype html><html><body style="margin:0;padding:0;background:#f4f7fb;font-family:Arial,Helvetica,sans-serif;color:#152033"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f4f7fb"><tr><td align="center" style="padding:24px 12px"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;background:#ffffff;border-radius:20px;overflow:hidden;border:1px solid #dbe4f0"><tr><td style="padding:26px 28px;background:#07111f;color:#ffffff"><div style="font-size:19px;font-weight:700;letter-spacing:-.3px"><span style="color:#65a8ff">▂▅█▅▂</span>&nbsp; Voyce<span style="color:#65a8ff">Lab</span></div><div style="margin-top:18px;font-size:28px;line-height:1.05;font-weight:750;letter-spacing:-.8px">Voice for event venues.</div><div style="margin-top:9px;font-size:15px;line-height:1.45;color:#b8c9df">Your bartenders can speak instead of tapping through Square.</div></td></tr><tr><td style="padding:26px 28px"><div style="font-size:15px;line-height:1.65;color:#34445a">${body}</div><table role="presentation" cellspacing="0" cellpadding="0" style="margin-top:24px"><tr><td style="border-radius:12px;background:#3f8df7"><a href="${url}" style="display:inline-block;padding:13px 22px;color:#ffffff;text-decoration:none;font-size:15px;font-weight:700">Start free →</a></td></tr></table><div style="margin-top:18px;font-size:12px;color:#7b8ba1">The demo is already on voycelab.com. No meeting required.</div></td></tr></table></td></tr></table></body></html>`;
+}
+
 export async function resolveOperatorUserId(): Promise<number> {
   if (!pool) throw new Error("Database is required for operator resolution");
   const raw = process.env.AUTONOMY_OPERATOR_USER_ID?.trim();
@@ -77,20 +95,22 @@ export async function researchProspects(runId?: string): Promise<{ discovered: n
   if (!pool) throw new Error("Database is required for autonomous growth");
   const research = await structuredModel<{ leads: ResearchLead[]; marketObservation: string }>(
     [
-      "You are VoyceLab's market intelligence worker. VoyceLab is a voice-powered operations assistant for hospitality venues, with Square-connected POS actions, inventory, reporting, customers/payments and team/labor workflows.",
-      "Use current public web information to find real US businesses that appear to be strong prospects, prioritizing event venues, wedding venues, multi-location hospitality groups, and operational environments where staff repeatedly leave the floor to interact with POS/back-office systems.",
+      "You are VoyceLab's market intelligence worker.",
+      "Find real US prospects where VoyceLab's voice control for Square is immediately understandable and useful.",
+      "Priority order: event venues, wedding venues, private-event spaces, bars/taprooms/breweries with significant live-event business, then multi-location hospitality groups with strong bar/event operations.",
+      "Strongly prefer businesses with public evidence of Square usage plus event-day operational complexity. Generic restaurants or cafes without meaningful event/bar operations should score lower.",
+      "VoyceLab lets bartenders and venue managers use voice for permitted Square-connected POS, inventory and reporting tasks while they keep serving guests.",
       "Only include contact names/emails when explicitly supported by public evidence. Never infer or fabricate an email address.",
       "Do not collect sensitive personal information. Business contact information only.",
-      "Prefer high-intent evidence such as Square usage, event volume, multiple venues, active hiring, operational complexity, or public descriptions of their venue operations.",
-      "Fit score should reflect likely product value and realistic salesability, not business prestige.",
+      "Fit score should reflect realistic likelihood of becoming a paying customer, not business prestige.",
     ].join("\n"),
-    { target: "qualified VoyceLab customers", geography: "United States", maxLeads: 10 },
+    { target: "event venues and bars likely to become paid VoyceLab customers", geography: "United States", maxLeads: 10 },
     { schemaName: "voycelab_growth_research", schema: LEAD_SCHEMA as unknown as Record<string, unknown>, useWebSearch: true, reasoningEffort: "medium", maxOutputTokens: 4200 },
   );
 
   let discovered = 0;
   for (const lead of research.leads) {
-    if (!lead.companyName || lead.fitScore < 55) continue;
+    if (!lead.companyName || lead.fitScore < 60) continue;
     const existing = await pool.query(
       `SELECT id FROM prospect_leads
        WHERE (website IS NOT NULL AND website=$1::text)
@@ -168,32 +188,47 @@ export async function runOutboundBatch(runId?: string, maxBatch = 12): Promise<{
     if (!domain || await sendsToDomainToday(domain) >= DEFAULT_AUTONOMY_BUDGET.maxOutboundPerDomainPerDay) { skipped++; continue; }
 
     const campaign = await assignOutboundCampaign(String(lead.id));
+    const ctaUrl = signupUrl(campaign ? { slug: campaign.slug, variantId: campaign.variantId } : null);
     const copy = await structuredModel<{ subject: string; body: string }>(
       [
-        "Write a short, respectful B2B first-touch email for VoyceLab.",
-        "Use ONLY supplied public evidence for personalization; never fabricate.",
-        "VoyceLab lets hospitality teams operate connected systems such as Square through voice commands for POS, inventory, reporting and venue operations.",
-        "Faithfully express the supplied campaign strategy while obeying its proofConstraint.",
-        "Plain text, under 120 words, one CTA, no fake urgency. End with: If this isn't relevant, just say so and I won't follow up.",
+        "Write an extremely short first-touch email for VoyceLab to an event venue or bar operator.",
+        "Plain English only. The reader is busy and should understand the product in five seconds.",
+        "State directly that VoyceLab lets bartenders and venue managers use voice to get things done in Square instead of tapping through screens.",
+        "Use at most one short personalization sentence and only if supplied public evidence makes it useful.",
+        "Body must be 35-65 words, 2-4 short paragraphs, no marketing jargon and no technical terminology.",
+        "Never use phrases like voice layer, orchestration, operational intelligence, workflow transformation, connected systems, AI-powered operations, streamline, unlock, leverage, or optimize.",
+        "Do not ask for a call, meeting, reply, demo booking, or calendar time. The demo is already on the website.",
+        "Do not invent results, integrations, customers, urgency, discounts or capabilities.",
+        "The subject should be concrete and under 45 characters. Examples of the tone: 'Use voice with Square at your venue' or 'Less tapping behind the bar'.",
+        "Do not put a URL in the generated body; the system appends the Start Free link.",
       ].join("\n"),
-      { companyName: lead.company_name, contactName: lead.contact_name, segment: lead.segment, evidence: lead.evidence, fitScore: lead.fit_score, campaign: campaign ? { slug: campaign.slug, variantId: campaign.variantId, strategy: campaign.payload } : null },
-      { schemaName: "voycelab_outbound_email", schema: EMAIL_SCHEMA as unknown as Record<string, unknown>, reasoningEffort: "low", maxOutputTokens: 700 },
+      {
+        companyName: lead.company_name,
+        contactName: lead.contact_name,
+        segment: lead.segment,
+        evidence: lead.evidence,
+        campaign: campaign ? { variantId: campaign.variantId, strategy: campaign.payload } : null,
+      },
+      { schemaName: "voycelab_outbound_email", schema: EMAIL_SCHEMA as unknown as Record<string, unknown>, reasoningEffort: "low", maxOutputTokens: 500 },
     );
+
+    const plainBody = `${copy.body.trim()}\n\nStart free: ${ctaUrl}\n\nIf this isn't relevant, just say so and I won't follow up.`;
+    const html = brandedEmailHtml({ body: copy.body.trim(), ctaUrl });
 
     const action = await recordAutonomousAction({
       runId,
       agent: "growth-outbound",
       actionType: "outreach.email",
       riskLevel: "medium",
-      input: { leadId: lead.id, to: email, subject: copy.subject, campaign: campaign?.slug ?? null, variant: campaign?.variantId ?? null },
-      expectedImpact: { goal: "qualified_reply_or_trial", primaryMetric: "outbound_positive_reply" },
+      input: { leadId: lead.id, to: email, subject: copy.subject, campaign: campaign?.slug ?? null, variant: campaign?.variantId ?? null, ctaUrl },
+      expectedImpact: { goal: "paid_customer_conversion", primaryMetric: "outbound_subscription_attributed", leadingMetric: "signup_completed" },
     });
     if (action.authority === "founder" || action.authority === "forbidden") { skipped++; continue; }
 
     try {
       const executor = emailExecutors.send_email;
       if (!executor) throw new Error("send_email executor is unavailable");
-      const result = await executor({ to: email, subject: copy.subject, body: copy.body }, { userId: operatorUserId, organizationId: operatorOrgId } as any);
+      const result = await executor({ to: email, subject: copy.subject, body: plainBody, html }, { userId: operatorUserId, organizationId: operatorOrgId } as any);
       if (/failed|error|missing|limit|rejected/i.test(result.result)) throw new Error(result.result);
 
       const providerMessageId = extractProviderMessageId(result.result);
@@ -212,12 +247,12 @@ export async function runOutboundBatch(runId?: string, maxBatch = 12): Promise<{
         campaign: campaign?.slug ?? null,
         experimentId: campaign?.experimentId ?? null,
         variant: campaign?.variantId ?? null,
-        properties: { leadId: lead.id, domain, segment: lead.segment, fitScore: lead.fit_score, ...(providerMessageId ? { providerMessageId } : {}) },
+        properties: { leadId: lead.id, domain, segment: lead.segment, fitScore: lead.fit_score, cta: "signup", ...(providerMessageId ? { providerMessageId } : {}) },
         dedupeKey: providerMessageId ? `outbound-provider:${providerMessageId}` : `outbound:${lead.id}:${new Date().toISOString().slice(0, 10)}`,
       });
       await markActionExecuted(
         action.id,
-        { providerResult: result.result, campaign: campaign?.slug ?? null, variant: campaign?.variantId ?? null, providerMessageId },
+        { providerResult: result.result, campaign: campaign?.slug ?? null, variant: campaign?.variantId ?? null, providerMessageId, cta: "signup" },
         providerMessageId ?? undefined,
       );
       sent++;
