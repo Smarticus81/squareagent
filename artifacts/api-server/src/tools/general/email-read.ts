@@ -58,6 +58,11 @@ function header(headers: gmail_v1.Schema$MessagePartHeader[] | undefined, name: 
   return h?.value ?? "";
 }
 
+function headerList(headers: gmail_v1.Schema$MessagePartHeader[] | undefined, name: string): string[] {
+  const raw = header(headers, name);
+  return raw.split(",").map((value) => value.trim()).filter(Boolean);
+}
+
 function decodeBody(part: gmail_v1.Schema$MessagePart | undefined): string {
   if (!part) return "";
   const data = part.body?.data;
@@ -67,7 +72,6 @@ function decodeBody(part: gmail_v1.Schema$MessagePart | undefined): string {
     } catch { return ""; }
   }
   if (part.parts) {
-    // Prefer text/plain
     const plain = part.parts.find((p) => p.mimeType === "text/plain");
     if (plain) return decodeBody(plain);
     const html = part.parts.find((p) => p.mimeType === "text/html");
@@ -100,8 +104,7 @@ export const definitions: ToolDefinition[] = [
   {
     type: "function",
     name: "list_inbox",
-    description:
-      "List recent emails in the user's Gmail inbox. Use `query` to filter (Gmail search syntax, e.g. 'is:unread', 'from:boss@x.com newer_than:2d').",
+    description: "List recent emails in the user's Gmail inbox. Use `query` to filter (Gmail search syntax, e.g. 'is:unread', 'from:boss@x.com newer_than:2d').",
     parameters: {
       type: "object",
       properties: {
@@ -114,8 +117,7 @@ export const definitions: ToolDefinition[] = [
   {
     type: "function",
     name: "search_email",
-    description:
-      "Search the user's Gmail using Gmail search syntax (e.g. 'from:stripe subject:invoice', 'has:attachment newer_than:7d'). Returns matching message metadata.",
+    description: "Search the user's Gmail using Gmail search syntax (e.g. 'from:stripe subject:invoice', 'has:attachment newer_than:7d'). Returns matching message metadata.",
     parameters: {
       type: "object",
       properties: {
@@ -128,13 +130,10 @@ export const definitions: ToolDefinition[] = [
   {
     type: "function",
     name: "read_email",
-    description:
-      "Fetch the full body of a specific email by its message id (returned by list_inbox or search_email).",
+    description: "Fetch the full body and delivery-status headers of a specific email by its message id.",
     parameters: {
       type: "object",
-      properties: {
-        id: { type: "string", description: "Gmail message id." },
-      },
+      properties: { id: { type: "string", description: "Gmail message id." } },
       required: ["id"],
     },
   },
@@ -142,37 +141,24 @@ export const definitions: ToolDefinition[] = [
     type: "function",
     name: "archive_email",
     description: "Archive a Gmail message (removes the INBOX label). Use after the user explicitly confirms.",
-    parameters: {
-      type: "object",
-      properties: { id: { type: "string", description: "Gmail message id." } },
-      required: ["id"],
-    },
+    parameters: { type: "object", properties: { id: { type: "string", description: "Gmail message id." } }, required: ["id"] },
   },
   {
     type: "function",
     name: "mark_email_read",
     description: "Mark a Gmail message as read (removes the UNREAD label).",
-    parameters: {
-      type: "object",
-      properties: { id: { type: "string", description: "Gmail message id." } },
-      required: ["id"],
-    },
+    parameters: { type: "object", properties: { id: { type: "string", description: "Gmail message id." } }, required: ["id"] },
   },
   {
     type: "function",
     name: "trash_email",
     description: "Move a Gmail message to Trash. Always confirm with the user out loud first.",
-    parameters: {
-      type: "object",
-      properties: { id: { type: "string", description: "Gmail message id." } },
-      required: ["id"],
-    },
+    parameters: { type: "object", properties: { id: { type: "string", description: "Gmail message id." } }, required: ["id"] },
   },
   {
     type: "function",
     name: "create_email_draft",
-    description:
-      "Create a Gmail draft (does NOT send). Use this when the user wants to compose without sending immediately.",
+    description: "Create a Gmail draft (does NOT send). Use this when the user wants to compose without sending immediately.",
     parameters: {
       type: "object",
       properties: {
@@ -196,20 +182,21 @@ async function listInbox(args: Record<string, unknown>, ctx: ToolContext): Promi
     const ids = (list.data.messages ?? []).map((m) => m.id).filter(Boolean) as string[];
     if (ids.length === 0) return { result: `No emails matched "${q}".` };
     const detailed = await Promise.all(
-      ids.map((id) =>
-        c.gmail.users.messages.get({
-          userId: "me",
-          id,
-          format: "metadata",
-          metadataHeaders: ["From", "Subject", "Date"],
-        }).then((r) => r.data),
-      ),
+      ids.map((id) => c.gmail.users.messages.get({
+        userId: "me",
+        id,
+        format: "metadata",
+        metadataHeaders: ["From", "Subject", "Date", "Auto-Submitted", "Return-Path", "X-Failed-Recipients"],
+      }).then((r) => r.data)),
     );
     const items = detailed.map((m) => ({
       id: m.id,
       from: header(m.payload?.headers, "From"),
       subject: header(m.payload?.headers, "Subject") || "(no subject)",
       date: header(m.payload?.headers, "Date"),
+      autoSubmitted: header(m.payload?.headers, "Auto-Submitted"),
+      returnPath: header(m.payload?.headers, "Return-Path"),
+      failedRecipients: headerList(m.payload?.headers, "X-Failed-Recipients"),
       snippet: m.snippet ?? "",
       unread: (m.labelIds ?? []).includes("UNREAD"),
     }));
@@ -240,7 +227,10 @@ async function readEmail(args: Record<string, unknown>, ctx: ToolContext): Promi
       cc: header(m.payload?.headers, "Cc"),
       subject: header(m.payload?.headers, "Subject"),
       date: header(m.payload?.headers, "Date"),
-      body: summarize(decodeBody(m.payload ?? undefined) || m.snippet || ""),
+      autoSubmitted: header(m.payload?.headers, "Auto-Submitted"),
+      returnPath: header(m.payload?.headers, "Return-Path"),
+      failedRecipients: headerList(m.payload?.headers, "X-Failed-Recipients"),
+      body: summarize(decodeBody(m.payload ?? undefined) || m.snippet || "", 2_000),
       labels: m.labelIds ?? [],
     };
     return { result: JSON.stringify(out) };
@@ -255,10 +245,7 @@ async function archiveEmail(args: Record<string, unknown>, ctx: ToolContext): Pr
   const id = String(args.id ?? "").trim();
   if (!id) return { result: "archive_email: id is required." };
   try {
-    await c.gmail.users.messages.modify({
-      userId: "me", id,
-      requestBody: { removeLabelIds: ["INBOX"] },
-    });
+    await c.gmail.users.messages.modify({ userId: "me", id, requestBody: { removeLabelIds: ["INBOX"] } });
     return { result: `Archived ${id}.` };
   } catch (e: any) {
     return { result: `archive_email error: ${safeGmailError(e)}` };
@@ -271,10 +258,7 @@ async function markEmailRead(args: Record<string, unknown>, ctx: ToolContext): P
   const id = String(args.id ?? "").trim();
   if (!id) return { result: "mark_email_read: id is required." };
   try {
-    await c.gmail.users.messages.modify({
-      userId: "me", id,
-      requestBody: { removeLabelIds: ["UNREAD"] },
-    });
+    await c.gmail.users.messages.modify({ userId: "me", id, requestBody: { removeLabelIds: ["UNREAD"] } });
     return { result: `Marked ${id} as read.` };
   } catch (e: any) {
     return { result: `mark_email_read error: ${safeGmailError(e)}` };
@@ -303,17 +287,10 @@ async function createEmailDraft(args: Record<string, unknown>, ctx: ToolContext)
   if (!to || !subject || !body) return { result: "create_email_draft: to, subject, and body are required." };
 
   const cc = args.cc ? String(args.cc).trim() : "";
-  // Look up the user's "from" address from creds
   let fromHeader = "";
   if (db && ctx.userId) {
-    const [creds] = await db
-      .select()
-      .from(emailCredentialsTable)
-      .where(tenantWhere(ctx.userId, ctx.organizationId))
-      .limit(1);
-    if (creds) {
-      fromHeader = creds.fromName ? `${creds.fromName} <${creds.fromAddress}>` : creds.fromAddress;
-    }
+    const [creds] = await db.select().from(emailCredentialsTable).where(tenantWhere(ctx.userId, ctx.organizationId)).limit(1);
+    if (creds) fromHeader = creds.fromName ? `${creds.fromName} <${creds.fromAddress}>` : creds.fromAddress;
   }
 
   const lines = [
@@ -327,14 +304,10 @@ async function createEmailDraft(args: Record<string, unknown>, ctx: ToolContext)
     "",
     body,
   ];
-  const raw = Buffer.from(lines.join("\r\n"), "utf8")
-    .toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  const raw = Buffer.from(lines.join("\r\n"), "utf8").toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 
   try {
-    const r = await c.gmail.users.drafts.create({
-      userId: "me",
-      requestBody: { message: { raw } },
-    });
+    const r = await c.gmail.users.drafts.create({ userId: "me", requestBody: { message: { raw } } });
     return { result: `Draft created (id=${r.data.id ?? "unknown"}) for ${to}.` };
   } catch (e: any) {
     return { result: `create_email_draft error: ${safeGmailError(e)}` };

@@ -4,6 +4,7 @@ import { structuredModel } from "./openai";
 import { recordAutonomousAction, markActionExecuted, markActionFailed, recordBusinessEvent } from "./ledger";
 import { assignOutboundCampaign } from "./marketing";
 import { extractProviderMessageId } from "./outbound-reconciliation";
+import { collectDeliverabilityHealth, verifyPublicBusinessContact } from "./deliverability";
 import { executors as emailExecutors } from "../tools/general/email";
 
 interface ResearchLead {
@@ -11,6 +12,7 @@ interface ResearchLead {
   website: string | null;
   contactName: string | null;
   contactEmail: string | null;
+  contactSourceUrl: string | null;
   segment: "wedding_venue" | "event_venue" | "bar_restaurant" | "hospitality_group" | "other";
   fitScore: number;
   reason: string;
@@ -29,12 +31,13 @@ const LEAD_SCHEMA = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["companyName", "website", "contactName", "contactEmail", "segment", "fitScore", "reason", "evidence"],
+        required: ["companyName", "website", "contactName", "contactEmail", "contactSourceUrl", "segment", "fitScore", "reason", "evidence"],
         properties: {
           companyName: { type: "string" },
           website: { type: ["string", "null"] },
           contactName: { type: ["string", "null"] },
           contactEmail: { type: ["string", "null"] },
+          contactSourceUrl: { type: ["string", "null"] },
           segment: { type: "string", enum: ["wedding_venue", "event_venue", "bar_restaurant", "hospitality_group", "other"] },
           fitScore: { type: "number", minimum: 0, maximum: 100 },
           reason: { type: "string" },
@@ -74,6 +77,10 @@ function brandedEmailHtml(params: { body: string; ctaUrl: string }): string {
   return `<!doctype html><html><body style="margin:0;padding:0;background:#f4f7fb;font-family:Arial,Helvetica,sans-serif;color:#152033"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f4f7fb"><tr><td align="center" style="padding:24px 12px"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;background:#ffffff;border-radius:20px;overflow:hidden;border:1px solid #dbe4f0"><tr><td style="padding:26px 28px;background:#07111f;color:#ffffff"><div style="font-size:19px;font-weight:700;letter-spacing:-.3px"><span style="color:#65a8ff">▂▅█▅▂</span>&nbsp; Voyce<span style="color:#65a8ff">Lab</span></div><div style="margin-top:18px;font-size:28px;line-height:1.05;font-weight:750;letter-spacing:-.8px">Voice for event venues.</div><div style="margin-top:9px;font-size:15px;line-height:1.45;color:#b8c9df">Your bartenders can speak instead of tapping through Square.</div></td></tr><tr><td style="padding:26px 28px"><div style="font-size:15px;line-height:1.65;color:#34445a">${body}</div><table role="presentation" cellspacing="0" cellpadding="0" style="margin-top:24px"><tr><td style="border-radius:12px;background:#3f8df7"><a href="${url}" style="display:inline-block;padding:13px 22px;color:#ffffff;text-decoration:none;font-size:15px;font-weight:700">Start free →</a></td></tr></table><div style="margin-top:18px;font-size:12px;color:#7b8ba1">The demo is already on voycelab.com. No meeting required.</div></td></tr></table></td></tr></table></body></html>`;
 }
 
+function profileObject(value: unknown): Record<string, any> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, any> : {};
+}
+
 export async function resolveOperatorUserId(): Promise<number> {
   if (!pool) throw new Error("Database is required for operator resolution");
   const raw = process.env.AUTONOMY_OPERATOR_USER_ID?.trim();
@@ -91,40 +98,86 @@ export async function resolveOperatorUserId(): Promise<number> {
   return id;
 }
 
-export async function researchProspects(runId?: string): Promise<{ discovered: number; marketObservation: string }> {
+export async function researchProspects(runId?: string): Promise<{ discovered: number; rejected: number; refreshed: number; marketObservation: string }> {
   if (!pool) throw new Error("Database is required for autonomous growth");
   const research = await structuredModel<{ leads: ResearchLead[]; marketObservation: string }>(
     [
-      "You are VoyceLab's market intelligence worker.",
+      "You are VoyceLab's market intelligence worker. Your job is to find real, currently operating businesses with verified public contact information, not merely plausible leads.",
       "Find real US prospects where VoyceLab's voice control for Square is immediately understandable and useful.",
       "Priority order: event venues, wedding venues, private-event spaces, bars/taprooms/breweries with significant live-event business, then multi-location hospitality groups with strong bar/event operations.",
+      "Every lead must have a real official business website that appears current and active.",
+      "Only return a contactEmail when that exact email address is visibly published on the business's own official website. Never infer, guess, pattern-generate, scrape a people-search site, or use a third-party directory as the source of an email.",
+      "When contactEmail is non-null, contactSourceUrl MUST be the exact page on the official business website where that exact email is publicly visible. If you cannot find such a page, set contactEmail and contactSourceUrl to null.",
+      "Free-mail addresses such as Gmail are acceptable only when the exact address is visibly published on the official business website.",
       "Strongly prefer businesses with public evidence of Square usage plus event-day operational complexity. Generic restaurants or cafes without meaningful event/bar operations should score lower.",
       "VoyceLab lets bartenders and venue managers use voice for permitted Square-connected POS, inventory and reporting tasks while they keep serving guests.",
-      "Only include contact names/emails when explicitly supported by public evidence. Never infer or fabricate an email address.",
       "Do not collect sensitive personal information. Business contact information only.",
-      "Fit score should reflect realistic likelihood of becoming a paying customer, not business prestige.",
+      "Fit score should reflect realistic likelihood of becoming a paying customer and confidence the business/contact are genuine, not business prestige.",
     ].join("\n"),
-    { target: "event venues and bars likely to become paid VoyceLab customers", geography: "United States", maxLeads: 10 },
-    { schemaName: "voycelab_growth_research", schema: LEAD_SCHEMA as unknown as Record<string, unknown>, useWebSearch: true, reasoningEffort: "medium", maxOutputTokens: 4200 },
+    { target: "verified event venues and bars likely to become paid VoyceLab customers", geography: "United States", maxLeads: 10 },
+    { schemaName: "voycelab_verified_growth_research", schema: LEAD_SCHEMA as unknown as Record<string, unknown>, useWebSearch: true, reasoningEffort: "medium", maxOutputTokens: 4800 },
   );
 
   let discovered = 0;
+  let rejected = 0;
+  let refreshed = 0;
   for (const lead of research.leads) {
-    if (!lead.companyName || lead.fitScore < 60) continue;
-    const existing = await pool.query(
-      `SELECT id FROM prospect_leads
+    if (!lead.companyName || lead.fitScore < 60 || !validEmail(lead.contactEmail)) { rejected++; continue; }
+
+    const verification = await verifyPublicBusinessContact({
+      email: lead.contactEmail,
+      website: lead.website,
+      contactSourceUrl: lead.contactSourceUrl,
+    });
+    if (!verification.verified) { rejected++; continue; }
+
+    const existing = await pool.query<{ id: string; stage: string; contact_email: string | null }>(
+      `SELECT id::text,stage,contact_email FROM prospect_leads
        WHERE (website IS NOT NULL AND website=$1::text)
-          OR (contact_email IS NOT NULL AND contact_email=$2::text)
-       LIMIT 1`,
+          OR (contact_email IS NOT NULL AND lower(contact_email)=lower($2::text))
+       ORDER BY updated_at DESC LIMIT 1`,
       [lead.website, lead.contactEmail],
     );
-    if (existing.rowCount) continue;
+    const prior = existing.rows[0];
+    const profile = {
+      reason: lead.reason,
+      contactSourceUrl: lead.contactSourceUrl,
+      deliverability: verification,
+    };
+
+    if (prior) {
+      if (["customer", "do_not_contact", "closed_lost"].includes(prior.stage)) continue;
+      const sameEmail = String(prior.contact_email ?? "").toLowerCase() === lead.contactEmail.toLowerCase();
+      if (sameEmail) {
+        const bounce = await pool.query<{ event_type: string; occurred_at: Date }>(
+          `SELECT event_type,occurred_at FROM business_events
+           WHERE event_type IN ('outbound_hard_bounce','outbound_soft_bounce')
+             AND properties->>'leadId'=$1
+           ORDER BY occurred_at DESC LIMIT 1`,
+          [prior.id],
+        );
+        const latest = bounce.rows[0];
+        if (latest?.event_type === "outbound_hard_bounce") { rejected++; continue; }
+        if (latest?.event_type === "outbound_soft_bounce" && new Date(latest.occurred_at).getTime() > Date.now() - 30 * 86_400_000) { rejected++; continue; }
+      }
+      await pool.query(
+        `UPDATE prospect_leads
+         SET company_name=$2,website=$3,contact_name=$4,contact_email=$5,segment=$6,fit_score=$7,evidence=$8::jsonb,profile=$9::jsonb,
+             stage=CASE WHEN stage IN ('invalid_email','needs_verification') THEN 'new' ELSE stage END,
+             next_contact_at=CASE WHEN stage IN ('invalid_email','needs_verification') THEN now() ELSE next_contact_at END,
+             updated_at=now()
+         WHERE id=$1::uuid`,
+        [prior.id, lead.companyName, lead.website, lead.contactName, lead.contactEmail, lead.segment, Math.round(lead.fitScore), JSON.stringify(lead.evidence), JSON.stringify(profile)],
+      );
+      refreshed++;
+      continue;
+    }
+
     await pool.query(
       `INSERT INTO prospect_leads
        (company_name,website,contact_name,contact_email,segment,fit_score,evidence,profile,next_contact_at)
-       VALUES ($1::text,$2::text,$3::text,$4::text,$5::text,$6::integer,$7::jsonb,$8::jsonb,
-               CASE WHEN $4::text IS NULL THEN NULL ELSE now() END)`,
-      [lead.companyName, lead.website, lead.contactName, validEmail(lead.contactEmail) ? lead.contactEmail : null, lead.segment, Math.round(lead.fitScore), JSON.stringify(lead.evidence), JSON.stringify({ reason: lead.reason })],
+       VALUES ($1::text,$2::text,$3::text,$4::text,$5::text,$6::integer,$7::jsonb,$8::jsonb,now())`,
+      [lead.companyName, lead.website, lead.contactName, lead.contactEmail, lead.segment, Math.round(lead.fitScore), JSON.stringify(lead.evidence), JSON.stringify(profile)],
     );
     discovered++;
   }
@@ -132,9 +185,9 @@ export async function researchProspects(runId?: string): Promise<{ discovered: n
     eventType: "growth_research_completed",
     actorType: "agent",
     actorId: "growth-research",
-    properties: { discovered, marketObservation: research.marketObservation, runId },
+    properties: { discovered, rejected, refreshed, marketObservation: research.marketObservation, runId, verificationPolicy: "official_site_exact_email_plus_mx" },
   });
-  return { discovered, marketObservation: research.marketObservation };
+  return { discovered, rejected, refreshed, marketObservation: research.marketObservation };
 }
 
 async function sendsToday() {
@@ -158,24 +211,42 @@ async function sendsToDomainToday(domain: string) {
   return Number(r.rows[0]?.count ?? 0);
 }
 
-export async function runOutboundBatch(runId?: string, maxBatch = 12): Promise<{ sent: number; skipped: number }> {
+async function quarantineLeadForVerification(lead: any, reason: string): Promise<void> {
+  if (!pool) return;
+  const profile = profileObject(lead.profile);
+  await pool.query(
+    `UPDATE prospect_leads SET stage='needs_verification',next_contact_at=NULL,updated_at=now(),profile=$2::jsonb WHERE id=$1::uuid`,
+    [lead.id, JSON.stringify({ ...profile, deliverability: { ...(profile.deliverability ?? {}), verified: false, checkedAt: new Date().toISOString(), reason } })],
+  );
+}
+
+export async function runOutboundBatch(runId?: string, maxBatch = 12): Promise<{ sent: number; skipped: number; deliverability: Awaited<ReturnType<typeof collectDeliverabilityHealth>> }> {
   if (!pool) throw new Error("Database is required for autonomous outbound");
-  if (!outboundEnabled()) return { sent: 0, skipped: 0 };
+  const deliverability = await collectDeliverabilityHealth();
+  if (!outboundEnabled() || deliverability.state === "veto") {
+    if (deliverability.state === "veto") {
+      await recordBusinessEvent({ eventType: "outbound_paused_deliverability", actorType: "system", actorId: "deliverability", properties: deliverability, dedupeKey: `deliverability-veto:${new Date().toISOString().slice(0,10)}` });
+    }
+    return { sent: 0, skipped: 0, deliverability };
+  }
 
   const operatorUserId = await resolveOperatorUserId();
   const operatorOrgId = process.env.AUTONOMY_OPERATOR_ORG_ID?.trim() || null;
   const remaining = Math.max(0, DEFAULT_AUTONOMY_BUDGET.maxOutboundPerDay - await sendsToday());
-  const limit = Math.max(0, Math.min(maxBatch, remaining));
-  if (!limit) return { sent: 0, skipped: 0 };
+  const healthCap = deliverability.batchCap == null ? maxBatch : Math.min(maxBatch, deliverability.batchCap);
+  const limit = Math.max(0, Math.min(healthCap, remaining));
+  if (!limit) return { sent: 0, skipped: 0, deliverability };
 
   const leads = await pool.query(
     `SELECT * FROM prospect_leads
      WHERE stage IN ('new','nurture')
        AND contact_email IS NOT NULL
+       AND COALESCE(profile->'deliverability'->>'verified','false')='true'
+       AND profile->>'contactSourceUrl' IS NOT NULL
        AND (next_contact_at IS NULL OR next_contact_at<=now())
      ORDER BY fit_score DESC,created_at ASC
      LIMIT $1::integer`,
-    [limit * 3],
+    [limit * 4],
   );
 
   let sent = 0;
@@ -183,9 +254,21 @@ export async function runOutboundBatch(runId?: string, maxBatch = 12): Promise<{
   for (const lead of leads.rows) {
     if (sent >= limit) break;
     const email = String(lead.contact_email ?? "").trim().toLowerCase();
-    if (!validEmail(email) || lead.stage === "do_not_contact") { skipped++; continue; }
+    if (!validEmail(email)) { skipped++; await quarantineLeadForVerification(lead, "invalid_email_syntax"); continue; }
     const domain = email.split("@")[1];
     if (!domain || await sendsToDomainToday(domain) >= DEFAULT_AUTONOMY_BUDGET.maxOutboundPerDomainPerDay) { skipped++; continue; }
+
+    const profile = profileObject(lead.profile);
+    const verification = await verifyPublicBusinessContact({
+      email,
+      website: typeof lead.website === "string" ? lead.website : null,
+      contactSourceUrl: typeof profile.contactSourceUrl === "string" ? profile.contactSourceUrl : null,
+    });
+    if (!verification.verified) {
+      skipped++;
+      await quarantineLeadForVerification(lead, verification.reason);
+      continue;
+    }
 
     const campaign = await assignOutboundCampaign(String(lead.id));
     const ctaUrl = signupUrl(campaign ? { slug: campaign.slug, variantId: campaign.variantId } : null);
@@ -199,7 +282,7 @@ export async function runOutboundBatch(runId?: string, maxBatch = 12): Promise<{
         "Never use phrases like voice layer, orchestration, operational intelligence, workflow transformation, connected systems, AI-powered operations, streamline, unlock, leverage, or optimize.",
         "Do not ask for a call, meeting, reply, demo booking, or calendar time. The demo is already on the website.",
         "Do not invent results, integrations, customers, urgency, discounts or capabilities.",
-        "The subject must be concrete and under 45 characters. Use ASCII punctuation only: straight apostrophes and normal hyphens, never curly quotes, smart apostrophes, or em dashes. Examples: 'Use voice with Square at your venue' or 'Less tapping behind the bar'.",
+        "The subject must be concrete and under 45 characters. Use ASCII punctuation only: straight apostrophes and normal hyphens, never curly quotes, smart apostrophes, or em dashes.",
         "Do not put a URL, 'Start Free', 'Try it', 'Sign up', or any CTA phrase in the generated body. The system adds the single Start Free button and link after the body.",
       ].join("\n"),
       {
@@ -207,6 +290,7 @@ export async function runOutboundBatch(runId?: string, maxBatch = 12): Promise<{
         contactName: lead.contact_name,
         segment: lead.segment,
         evidence: lead.evidence,
+        verifiedPublicContactSource: profile.contactSourceUrl,
         campaign: campaign ? { variantId: campaign.variantId, strategy: campaign.payload } : null,
       },
       { schemaName: "voycelab_outbound_email", schema: EMAIL_SCHEMA as unknown as Record<string, unknown>, reasoningEffort: "low", maxOutputTokens: 420 },
@@ -220,8 +304,8 @@ export async function runOutboundBatch(runId?: string, maxBatch = 12): Promise<{
       agent: "growth-outbound",
       actionType: "outreach.email",
       riskLevel: "medium",
-      input: { leadId: lead.id, to: email, subject: copy.subject, campaign: campaign?.slug ?? null, variant: campaign?.variantId ?? null, ctaUrl },
-      expectedImpact: { goal: "paid_customer_conversion", primaryMetric: "outbound_subscription_attributed", leadingMetric: "signup_completed" },
+      input: { leadId: lead.id, to: email, subject: copy.subject, campaign: campaign?.slug ?? null, variant: campaign?.variantId ?? null, ctaUrl, contactVerifiedAt: verification.checkedAt },
+      expectedImpact: { goal: "paid_customer_conversion", primaryMetric: "outbound_subscription_attributed", leadingMetric: "signup_completed", guardrail: "hard_bounce_rate" },
     });
     if (action.authority === "founder" || action.authority === "forbidden") { skipped++; continue; }
 
@@ -234,9 +318,10 @@ export async function runOutboundBatch(runId?: string, maxBatch = 12): Promise<{
       const providerMessageId = extractProviderMessageId(result.result);
       await pool.query(
         `UPDATE prospect_leads
-         SET stage='contacted',last_contacted_at=now(),next_contact_at=now()+interval '5 days',updated_at=now()
+         SET stage='contacted',last_contacted_at=now(),next_contact_at=now()+interval '5 days',updated_at=now(),
+             profile=COALESCE(profile,'{}'::jsonb) || jsonb_build_object('deliverability',$2::jsonb)
          WHERE id=$1::uuid`,
-        [lead.id],
+        [lead.id, JSON.stringify(verification)],
       );
 
       await recordBusinessEvent({
@@ -247,12 +332,12 @@ export async function runOutboundBatch(runId?: string, maxBatch = 12): Promise<{
         campaign: campaign?.slug ?? null,
         experimentId: campaign?.experimentId ?? null,
         variant: campaign?.variantId ?? null,
-        properties: { leadId: lead.id, domain, segment: lead.segment, fitScore: lead.fit_score, cta: "signup", ...(providerMessageId ? { providerMessageId } : {}) },
+        properties: { leadId: lead.id, domain, segment: lead.segment, fitScore: lead.fit_score, cta: "signup", contactVerification: "official_site_exact_email_plus_mx", ...(providerMessageId ? { providerMessageId } : {}) },
         dedupeKey: providerMessageId ? `outbound-provider:${providerMessageId}` : `outbound:${lead.id}:${new Date().toISOString().slice(0, 10)}`,
       });
       await markActionExecuted(
         action.id,
-        { providerResult: result.result, campaign: campaign?.slug ?? null, variant: campaign?.variantId ?? null, providerMessageId, cta: "signup" },
+        { providerResult: result.result, campaign: campaign?.slug ?? null, variant: campaign?.variantId ?? null, providerMessageId, cta: "signup", contactVerification: verification },
         providerMessageId ?? undefined,
       );
       sent++;
@@ -261,7 +346,7 @@ export async function runOutboundBatch(runId?: string, maxBatch = 12): Promise<{
       skipped++;
     }
   }
-  return { sent, skipped };
+  return { sent, skipped, deliverability };
 }
 
 export async function optOutLead(leadId: string, reason = "recipient_opt_out"): Promise<void> {
