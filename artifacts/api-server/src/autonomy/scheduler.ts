@@ -5,6 +5,7 @@ import { runSupportInbox } from "./support";
 import { runActivationInterventions } from "./activation";
 import { reconcileOutboundSubscriptionAttribution } from "./marketing";
 import { reconcileOutboundDeliveryReceipts } from "./outbound-reconciliation";
+import { runDeliveryFailureInbox } from "./deliverability";
 import { evaluateMergedProductRepairs, promoteReadyProductRepairs } from "./promotion";
 import { evaluateExperiments } from "./experiments";
 
@@ -71,6 +72,10 @@ export function startAutonomyScheduler(): void {
     if (inboxRunning) return;
     inboxRunning = true;
     try {
+      const delivery = await runDeliveryFailureInbox(undefined, 25);
+      if (delivery.hardSuppressed || delivery.softSuppressed) {
+        console.warn("[autonomy] delivery failures suppressed", delivery);
+      }
       await runSalesInbox(undefined, 8);
       await runSupportInbox(undefined, 6);
     } catch (error) {
