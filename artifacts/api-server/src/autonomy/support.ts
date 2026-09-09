@@ -137,14 +137,30 @@ export async function runSupportInbox(runId?: string, maxMessages = 6): Promise<
     const email = senderEmail(String(message.from ?? ""));
     if (!email) continue;
     if (await ownedBySales(email)) continue;
-    inspected += 1;
 
     const acct = await accountContext(email);
+
+    // This is a personal/operator inbox, not a generic helpdesk queue. Never let
+    // the support agent answer newsletters, vendor notifications, personal mail,
+    // cold inbound, or any other sender that is not an actual VoyceLab user.
+    // Prospects are owned by the sales loop above; support is customer-only.
+    if (acct.knownCustomer !== true) {
+      await recordBusinessEvent({
+        eventType: "support_ignored_unknown_sender",
+        actorType: "system",
+        actorId: "support-gate",
+        properties: { gmailMessageId: id, fromDomain: email.split("@")[1], runId },
+        dedupeKey: `support-ignored-unknown:${id}`,
+      });
+      continue;
+    }
+
+    inspected += 1;
     await recordBusinessEvent({
       userId: typeof acct.userId === "number" ? acct.userId : null,
       eventType: "support_opened",
       actorType: "customer",
-      properties: { gmailMessageId: id, fromDomain: email.split("@")[1], knownCustomer: acct.knownCustomer === true },
+      properties: { gmailMessageId: id, fromDomain: email.split("@")[1], knownCustomer: true },
       dedupeKey: `support-opened:${id}`,
     });
 
@@ -159,7 +175,7 @@ export async function runSupportInbox(runId?: string, maxMessages = 6): Promise<
         "You are VoyceLab customer support. Triage the incoming email and, only when safe, write the reply.",
         "Use only the supplied product and account context. Never invent account actions, refunds, credits, incident causes, timelines, customer data, or capabilities.",
         "Set canAutoRespond=false for security issues, legal threats, suspected data loss, billing disputes/refund requests, account ownership disputes, or anything requiring an irreversible/account-changing action.",
-        "Routine how-to, setup, known product behavior, basic troubleshooting, and inbound sales questions may be auto-responded when the context is sufficient.",
+        "Routine how-to, setup, known product behavior, and basic troubleshooting may be auto-responded when the context is sufficient.",
         "For opt_out, response should simply acknowledge no further outreach. For escalated cases, response should acknowledge receipt without promising a resolution time.",
         "Keep the response concise and professional.",
       ].join("\n"),
