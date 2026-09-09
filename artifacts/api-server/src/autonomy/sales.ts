@@ -5,6 +5,7 @@ import { autonomyEnabled } from "./constitution";
 import { structuredModel } from "./openai";
 import { markActionExecuted, markActionFailed, recordAutonomousAction, recordBusinessEvent } from "./ledger";
 import { optOutLead, resolveOperatorUserId } from "./growth";
+import { isAutomatedSystemMessage } from "./deliverability";
 import { executors as inboxExecutors } from "../tools/general/email-read";
 import { executors as emailExecutors } from "../tools/general/email";
 
@@ -102,6 +103,12 @@ export async function runSalesInbox(runId?: string, maxMessages = 8): Promise<{ 
     const full = await read({ id }, ctx);
     let message: any;
     try { message = JSON.parse(full.result); } catch { continue; }
+
+    if (isAutomatedSystemMessage(message)) {
+      await markRead({ id }, ctx);
+      continue;
+    }
+
     const email = senderEmail(String(message.from ?? ""));
     if (!email) continue;
 
