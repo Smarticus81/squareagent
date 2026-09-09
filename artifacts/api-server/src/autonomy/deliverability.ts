@@ -27,32 +27,9 @@ export interface DeliverabilityHealth {
   reason: string | null;
 }
 
-const RESERVED_DOMAINS = new Set([
-  "example.com",
-  "example.net",
-  "example.org",
-  "invalid",
-  "localhost",
-  "test",
-]);
-
-const DISPOSABLE_DOMAINS = new Set([
-  "mailinator.com",
-  "guerrillamail.com",
-  "10minutemail.com",
-  "tempmail.com",
-  "yopmail.com",
-]);
-
-const AUTOMATED_LOCAL_PARTS = [
-  "mailer-daemon",
-  "postmaster",
-  "noreply",
-  "no-reply",
-  "notifications",
-  "notification",
-  "notifications-bot",
-];
+const RESERVED_DOMAINS = new Set(["example.com", "example.net", "example.org", "invalid", "localhost", "test"]);
+const DISPOSABLE_DOMAINS = new Set(["mailinator.com", "guerrillamail.com", "10minutemail.com", "tempmail.com", "yopmail.com"]);
+const AUTOMATED_LOCAL_PARTS = ["mailer-daemon", "postmaster", "noreply", "no-reply", "notifications", "notification", "notifications-bot"];
 
 function parseEmail(value: string): { local: string; domain: string } | null {
   const email = value.trim().toLowerCase();
@@ -74,17 +51,16 @@ function sameWebsiteHost(a: string, b: string): boolean {
 function isPrivateIpv4(address: string): boolean {
   const parts = address.split(".").map(Number);
   if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) return true;
-  const [a, b] = parts;
+  const [a, b, c] = parts;
   if (a === 0 || a === 10 || a === 127) return true;
   if (a === 100 && b >= 64 && b <= 127) return true;
   if (a === 169 && b === 254) return true;
   if (a === 172 && b >= 16 && b <= 31) return true;
   if (a === 192 && b === 168) return true;
-  if (a === 192 && b === 0) return true;
-  if (a === 192 && b === 0 && parts[2] === 2) return true;
+  if (a === 192 && b === 0 && c <= 2) return true;
   if (a === 198 && (b === 18 || b === 19)) return true;
-  if (a === 198 && b === 51 && parts[2] === 100) return true;
-  if (a === 203 && b === 0 && parts[2] === 113) return true;
+  if (a === 198 && b === 51 && c === 100) return true;
+  if (a === 203 && b === 0 && c === 113) return true;
   if (a >= 224) return true;
   return false;
 }
@@ -112,11 +88,7 @@ async function publicHostname(hostname: string): Promise<boolean> {
 }
 
 function decodeEmailEntities(html: string): string {
-  return html
-    .replace(/&#64;|&#x40;|&commat;/gi, "@")
-    .replace(/&#46;|&#x2e;/gi, ".")
-    .replace(/&amp;/gi, "&")
-    .toLowerCase();
+  return html.replace(/&#64;|&#x40;|&commat;/gi, "@").replace(/&#46;|&#x2e;/gi, ".").replace(/&amp;/gi, "&").toLowerCase();
 }
 
 async function fetchPublicContactSource(urlText: string, expectedWebsite: string, email: string): Promise<{ ok: boolean; reason: string }> {
@@ -128,7 +100,7 @@ async function fetchPublicContactSource(urlText: string, expectedWebsite: string
   } catch {
     return { ok: false, reason: "invalid_public_source_url" };
   }
-  if (!['http:', 'https:'].includes(source.protocol) || !['http:', 'https:'].includes(website.protocol)) return { ok: false, reason: "unsupported_public_source_protocol" };
+  if (!["http:", "https:"].includes(source.protocol) || !["http:", "https:"].includes(website.protocol)) return { ok: false, reason: "unsupported_public_source_protocol" };
   if (!sameWebsiteHost(source.hostname, website.hostname)) return { ok: false, reason: "contact_source_not_on_official_website" };
   if (!(await publicHostname(source.hostname))) return { ok: false, reason: "contact_source_not_public" };
 
@@ -284,7 +256,9 @@ export async function runDeliveryFailureInbox(runId?: string, maxMessages = 25):
       if (kind === "hard") {
         await pool.query(
           `UPDATE prospect_leads
-           SET stage='do_not_contact',next_contact_at=NULL,updated_at=now(),
+           SET stage=CASE WHEN stage IN ('customer','do_not_contact','closed_lost') THEN stage ELSE 'invalid_email' END,
+               next_contact_at=CASE WHEN stage IN ('customer','do_not_contact','closed_lost') THEN next_contact_at ELSE NULL END,
+               updated_at=now(),
                profile=COALESCE(profile,'{}'::jsonb) || jsonb_build_object('deliverability',jsonb_build_object('verified',false,'status','hard_bounce','suppressedAt',now(),'reason','provider_hard_bounce'))
            WHERE id=$1::uuid`,
           [lead.id],
