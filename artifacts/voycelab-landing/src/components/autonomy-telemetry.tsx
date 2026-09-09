@@ -3,6 +3,9 @@ import { useLocation } from "wouter";
 
 const VISITOR_KEY = "voycelab_visitor_id";
 const SESSION_KEY = "voycelab_session_id";
+const ATTRIBUTION_KEY = "voycelab_campaign_attribution";
+
+type Attribution = { source: string | null; campaign: string | null; variant: string | null };
 
 function id(storage: Storage, key: string): string {
   const existing = storage.getItem(key);
@@ -14,20 +17,30 @@ function id(storage: Storage, key: string): string {
   return created;
 }
 
-function attribution(): { source: string | null; campaign: string | null } {
+function attribution(): Attribution {
   const params = new URLSearchParams(window.location.search);
-  return {
-    source: params.get("utm_source") || document.referrer || null,
+  const direct: Attribution = {
+    source: params.get("utm_source") || null,
     campaign: params.get("utm_campaign") || null,
+    variant: params.get("utm_content") || null,
   };
+  if (direct.source || direct.campaign || direct.variant) {
+    sessionStorage.setItem(ATTRIBUTION_KEY, JSON.stringify(direct));
+    return direct;
+  }
+  try {
+    const persisted = JSON.parse(sessionStorage.getItem(ATTRIBUTION_KEY) || "null") as Attribution | null;
+    if (persisted) return persisted;
+  } catch { /* ignore malformed session attribution */ }
+  return { source: document.referrer || null, campaign: null, variant: null };
 }
 
 export function trackBusinessEvent(eventType: string, properties: Record<string, unknown> = {}): void {
   if (typeof window === "undefined") return;
   const visitorId = id(localStorage, VISITOR_KEY);
   const sessionId = id(sessionStorage, SESSION_KEY);
-  const { source, campaign } = attribution();
-  const payload = JSON.stringify({ visitorId, sessionId, eventType, source, campaign, properties });
+  const { source, campaign, variant } = attribution();
+  const payload = JSON.stringify({ visitorId, sessionId, eventType, source, campaign, variant, properties });
   void fetch("/api/v1/autonomy/events", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -36,11 +49,6 @@ export function trackBusinessEvent(eventType: string, properties: Record<string,
   }).catch(() => undefined);
 }
 
-/**
- * Lightweight first-party telemetry for the autonomous business evaluator.
- * It records one visit per route and observes CTA links globally, so the
- * marketing site does not need vendor analytics to understand acquisition.
- */
 export function AutonomyTelemetry() {
   const [location] = useLocation();
 
@@ -55,7 +63,7 @@ export function AutonomyTelemetry() {
       const anchor = element instanceof HTMLAnchorElement ? element : null;
       const href = anchor?.getAttribute("href") ?? "";
       const text = (element.textContent ?? "").trim().replace(/\s+/g, " ").slice(0, 120);
-      if (/\/signup|\/book-demo|\/pricing/.test(href) || /start free|book.*demo|pricing|pick pro|pick business/i.test(text)) {
+      if (/\/signup|\/pricing/.test(href) || /start free|pricing|pick pro|pick business/i.test(text)) {
         trackBusinessEvent("cta_clicked", { path: window.location.pathname, href, label: text });
       }
     };
