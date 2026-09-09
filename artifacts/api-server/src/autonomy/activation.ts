@@ -1,6 +1,7 @@
 import { pool } from "@workspace/db";
 import { structuredModel } from "./openai";
 import { recordAutonomousAction, markActionExecuted, markActionFailed, recordBusinessEvent } from "./ledger";
+import { resolveOperatorUserId } from "./growth";
 import { executors as emailExecutors } from "../tools/general/email";
 import { autonomyEnabled } from "./constitution";
 
@@ -21,9 +22,14 @@ function customerSuccessEnabled(): boolean {
 export async function runActivationInterventions(runId?: string, maxBatch = 15): Promise<{ sent: number; considered: number }> {
   if (!pool || !customerSuccessEnabled()) return { sent: 0, considered: 0 };
 
-  const operatorUserId = Number(process.env.AUTONOMY_OPERATOR_USER_ID);
+  let operatorUserId: number;
+  try {
+    operatorUserId = await resolveOperatorUserId();
+  } catch (error) {
+    console.error("[autonomy] activation operator resolution failed", error instanceof Error ? error.message : error);
+    return { sent: 0, considered: 0 };
+  }
   const operatorOrgId = process.env.AUTONOMY_OPERATOR_ORG_ID?.trim() || null;
-  if (!Number.isInteger(operatorUserId) || operatorUserId <= 0) return { sent: 0, considered: 0 };
 
   const candidates = await pool.query(
     `SELECT
