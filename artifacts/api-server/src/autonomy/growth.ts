@@ -195,12 +195,12 @@ export async function runOutboundBatch(runId?: string, maxBatch = 12): Promise<{
         "Plain English only. The reader is busy and should understand the product in five seconds.",
         "State directly that VoyceLab lets bartenders and venue managers use voice to get things done in Square instead of tapping through screens.",
         "Use at most one short personalization sentence and only if supplied public evidence makes it useful.",
-        "Body must be 35-65 words, 2-4 short paragraphs, no marketing jargon and no technical terminology.",
+        "Body must be 30-55 words, 2-3 short paragraphs, no marketing jargon and no technical terminology.",
         "Never use phrases like voice layer, orchestration, operational intelligence, workflow transformation, connected systems, AI-powered operations, streamline, unlock, leverage, or optimize.",
         "Do not ask for a call, meeting, reply, demo booking, or calendar time. The demo is already on the website.",
         "Do not invent results, integrations, customers, urgency, discounts or capabilities.",
-        "The subject should be concrete and under 45 characters. Examples of the tone: 'Use voice with Square at your venue' or 'Less tapping behind the bar'.",
-        "Do not put a URL in the generated body; the system appends the Start Free link.",
+        "The subject must be concrete and under 45 characters. Use ASCII punctuation only: straight apostrophes and normal hyphens, never curly quotes, smart apostrophes, or em dashes. Examples: 'Use voice with Square at your venue' or 'Less tapping behind the bar'.",
+        "Do not put a URL, 'Start Free', 'Try it', 'Sign up', or any CTA phrase in the generated body. The system adds the single Start Free button and link after the body.",
       ].join("\n"),
       {
         companyName: lead.company_name,
@@ -209,7 +209,7 @@ export async function runOutboundBatch(runId?: string, maxBatch = 12): Promise<{
         evidence: lead.evidence,
         campaign: campaign ? { variantId: campaign.variantId, strategy: campaign.payload } : null,
       },
-      { schemaName: "voycelab_outbound_email", schema: EMAIL_SCHEMA as unknown as Record<string, unknown>, reasoningEffort: "low", maxOutputTokens: 500 },
+      { schemaName: "voycelab_outbound_email", schema: EMAIL_SCHEMA as unknown as Record<string, unknown>, reasoningEffort: "low", maxOutputTokens: 420 },
     );
 
     const plainBody = `${copy.body.trim()}\n\nStart free: ${ctaUrl}\n\nIf this isn't relevant, just say so and I won't follow up.`;

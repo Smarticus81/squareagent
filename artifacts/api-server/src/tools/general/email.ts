@@ -53,8 +53,14 @@ function cleanHtml(value: unknown): string | undefined {
     .slice(0, 24_000);
 }
 
+function encodeHeaderValue(value: string): string {
+  const clean = value.replace(/[\r\n]+/g, " ").trim();
+  if (/^[\x20-\x7E]*$/.test(clean)) return clean;
+  return `=?UTF-8?B?${Buffer.from(clean, "utf8").toString("base64")}?=`;
+}
+
 function encodeGmailMessage(params: { from: string; to: string; cc?: string; subject: string; text: string; html?: string }): string {
-  const subject = params.subject.replace(/[\r\n]+/g, " ");
+  const subject = encodeHeaderValue(params.subject);
   const baseHeaders = [
     `From: ${params.from}`,
     `To: ${params.to}`,
