@@ -4,7 +4,7 @@ import { pool } from "@workspace/db";
 import { autonomyEnabled } from "./constitution";
 import { structuredModel } from "./openai";
 import { markActionExecuted, markActionFailed, recordAutonomousAction, recordBusinessEvent } from "./ledger";
-import { optOutLead } from "./growth";
+import { optOutLead, resolveOperatorUserId } from "./growth";
 import { executors as inboxExecutors } from "../tools/general/email-read";
 import { executors as emailExecutors } from "../tools/general/email";
 
@@ -68,9 +68,14 @@ function trialUrl(): string {
 export async function runSalesInbox(runId?: string, maxMessages = 8): Promise<{ inspected: number; responded: number; positive: number; escalated: number; optedOut: number }> {
   if (!pool || !salesEnabled()) return { inspected: 0, responded: 0, positive: 0, escalated: 0, optedOut: 0 };
 
-  const operatorUserId = Number(process.env.AUTONOMY_OPERATOR_USER_ID);
+  let operatorUserId: number;
+  try {
+    operatorUserId = await resolveOperatorUserId();
+  } catch (error) {
+    console.error("[autonomy] sales inbox operator resolution failed", error instanceof Error ? error.message : error);
+    return { inspected: 0, responded: 0, positive: 0, escalated: 0, optedOut: 0 };
+  }
   const operatorOrgId = process.env.AUTONOMY_OPERATOR_ORG_ID?.trim() || null;
-  if (!Number.isInteger(operatorUserId) || operatorUserId <= 0) return { inspected: 0, responded: 0, positive: 0, escalated: 0, optedOut: 0 };
 
   const ctx = { userId: operatorUserId, organizationId: operatorOrgId } as any;
   const list = inboxExecutors.list_inbox;
@@ -117,8 +122,6 @@ export async function runSalesInbox(runId?: string, maxMessages = 8): Promise<{ 
     const alreadyProcessed = await pool.query(`SELECT 1 FROM business_events WHERE dedupe_key=$1 LIMIT 1`, [`sales-reply:${id}`]);
     if (alreadyProcessed.rowCount) {
       const escalatedBefore = await pool.query(`SELECT 1 FROM business_events WHERE dedupe_key=$1 LIMIT 1`, [`sales-escalated:${id}`]);
-      // Keep founder-required escalations unread. Everything else was already
-      // handled autonomously and can safely leave the inbox.
       if (!escalatedBefore.rowCount) await markRead({ id }, ctx);
       continue;
     }
@@ -131,7 +134,7 @@ export async function runSalesInbox(runId?: string, maxMessages = 8): Promise<{ 
       campaign: attribution.campaign,
       experimentId: attribution.experimentId,
       variant: attribution.variant,
-      properties: { leadId: lead.id, segment: lead.segment },
+      properties: { leadId: lead.id, segment: lead.segment, gmailMessageId: id },
       dedupeKey: `sales-reply:${id}`,
     });
 
@@ -178,17 +181,17 @@ export async function runSalesInbox(runId?: string, maxMessages = 8): Promise<{ 
         campaign: attribution.campaign,
         experimentId: attribution.experimentId,
         variant: attribution.variant,
-        properties: { leadId: lead.id, intent: triage.intent, nextStage: triage.nextStage },
+        properties: { leadId: lead.id, intent: triage.intent, nextStage: triage.nextStage, gmailMessageId: id },
         dedupeKey: `positive-reply:${id}`,
       });
       positive += 1;
     }
 
     if (triage.intent === "demo") {
-      await recordBusinessEvent({ eventType: "demo_requested", actorType: "prospect", actorId: String(lead.id), campaign: attribution.campaign, experimentId: attribution.experimentId, variant: attribution.variant, properties: { leadId: lead.id }, dedupeKey: `demo-request:${id}` });
+      await recordBusinessEvent({ eventType: "demo_requested", actorType: "prospect", actorId: String(lead.id), campaign: attribution.campaign, experimentId: attribution.experimentId, variant: attribution.variant, properties: { leadId: lead.id, gmailMessageId: id }, dedupeKey: `demo-request:${id}` });
     }
     if (triage.intent === "trial") {
-      await recordBusinessEvent({ eventType: "trial_interest", actorType: "prospect", actorId: String(lead.id), campaign: attribution.campaign, experimentId: attribution.experimentId, variant: attribution.variant, properties: { leadId: lead.id }, dedupeKey: `trial-interest:${id}` });
+      await recordBusinessEvent({ eventType: "trial_interest", actorType: "prospect", actorId: String(lead.id), campaign: attribution.campaign, experimentId: attribution.experimentId, variant: attribution.variant, properties: { leadId: lead.id, gmailMessageId: id }, dedupeKey: `trial-interest:${id}` });
     }
 
     const action = await recordAutonomousAction({
@@ -198,12 +201,13 @@ export async function runSalesInbox(runId?: string, maxMessages = 8): Promise<{ 
       riskLevel: triage.canAutoRespond ? "medium" : "low",
       input: { leadId: lead.id, gmailMessageId: id, intent: triage.intent, summary: triage.summary },
       expectedImpact: { metric: "qualified_pipeline_and_subscription_conversion" },
+      externalRef: id,
     });
 
     if (!triage.canAutoRespond || action.authority === "founder" || action.authority === "forbidden") {
       await pool.query(`UPDATE prospect_leads SET stage='needs_founder', next_contact_at=NULL, updated_at=now() WHERE id=$1`, [lead.id]);
-      await recordBusinessEvent({ eventType: "sales_escalated", actorType: "agent", actorId: "sales", campaign: attribution.campaign, experimentId: attribution.experimentId, variant: attribution.variant, properties: { leadId: lead.id, intent: triage.intent, summary: triage.summary }, dedupeKey: `sales-escalated:${id}` });
-      await markActionExecuted(action.id, { escalated: true, nextStage: "needs_founder" });
+      await recordBusinessEvent({ eventType: "sales_escalated", actorType: "agent", actorId: "sales", campaign: attribution.campaign, experimentId: attribution.experimentId, variant: attribution.variant, properties: { leadId: lead.id, intent: triage.intent, summary: triage.summary, gmailMessageId: id }, dedupeKey: `sales-escalated:${id}` });
+      await markActionExecuted(action.id, { escalated: true, nextStage: "needs_founder" }, id);
       escalated += 1;
       continue;
     }
@@ -213,8 +217,8 @@ export async function runSalesInbox(runId?: string, maxMessages = 8): Promise<{ 
       if (/failed|error|missing|limit|rejected/i.test(result.result)) throw new Error(result.result);
       await markRead({ id }, ctx);
       await pool.query(`UPDATE prospect_leads SET stage=$2, next_contact_at=$3, updated_at=now() WHERE id=$1`, [lead.id, triage.nextStage, triage.nextStage === "nurture" ? new Date(Date.now() + 30 * 86_400_000) : null]);
-      await recordBusinessEvent({ eventType: "sales_response_sent", actorType: "agent", actorId: "sales", campaign: attribution.campaign, experimentId: attribution.experimentId, variant: attribution.variant, properties: { leadId: lead.id, intent: triage.intent, nextStage: triage.nextStage }, dedupeKey: `sales-response:${id}` });
-      await markActionExecuted(action.id, { providerResult: result.result, nextStage: triage.nextStage });
+      await recordBusinessEvent({ eventType: "sales_response_sent", actorType: "agent", actorId: "sales", campaign: attribution.campaign, experimentId: attribution.experimentId, variant: attribution.variant, properties: { leadId: lead.id, intent: triage.intent, nextStage: triage.nextStage, gmailMessageId: id }, dedupeKey: `sales-response:${id}` });
+      await markActionExecuted(action.id, { providerResult: result.result, nextStage: triage.nextStage }, id);
       responded += 1;
     } catch (error) {
       await markActionFailed(action.id, { error: error instanceof Error ? error.message : String(error) });
