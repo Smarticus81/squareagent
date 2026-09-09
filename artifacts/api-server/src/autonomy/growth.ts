@@ -149,17 +149,22 @@ export async function researchProspects(runId?: string): Promise<{ discovered: n
       if (["customer", "do_not_contact", "closed_lost"].includes(prior.stage)) continue;
       const sameEmail = String(prior.contact_email ?? "").toLowerCase() === lead.contactEmail.toLowerCase();
       if (sameEmail) {
-        const hardBounce = await pool.query(
-          `SELECT 1 FROM business_events WHERE event_type='outbound_hard_bounce' AND properties->>'leadId'=$1 LIMIT 1`,
+        const bounce = await pool.query<{ event_type: string; occurred_at: Date }>(
+          `SELECT event_type,occurred_at FROM business_events
+           WHERE event_type IN ('outbound_hard_bounce','outbound_soft_bounce')
+             AND properties->>'leadId'=$1
+           ORDER BY occurred_at DESC LIMIT 1`,
           [prior.id],
         );
-        if (hardBounce.rowCount) { rejected++; continue; }
+        const latest = bounce.rows[0];
+        if (latest?.event_type === "outbound_hard_bounce") { rejected++; continue; }
+        if (latest?.event_type === "outbound_soft_bounce" && new Date(latest.occurred_at).getTime() > Date.now() - 30 * 86_400_000) { rejected++; continue; }
       }
       await pool.query(
         `UPDATE prospect_leads
          SET company_name=$2,website=$3,contact_name=$4,contact_email=$5,segment=$6,fit_score=$7,evidence=$8::jsonb,profile=$9::jsonb,
-             stage=CASE WHEN stage IN ('invalid_email','needs_verification','nurture') THEN 'new' ELSE stage END,
-             next_contact_at=CASE WHEN stage IN ('invalid_email','needs_verification','nurture') THEN now() ELSE next_contact_at END,
+             stage=CASE WHEN stage IN ('invalid_email','needs_verification') THEN 'new' ELSE stage END,
+             next_contact_at=CASE WHEN stage IN ('invalid_email','needs_verification') THEN now() ELSE next_contact_at END,
              updated_at=now()
          WHERE id=$1::uuid`,
         [prior.id, lead.companyName, lead.website, lead.contactName, lead.contactEmail, lead.segment, Math.round(lead.fitScore), JSON.stringify(lead.evidence), JSON.stringify(profile)],
