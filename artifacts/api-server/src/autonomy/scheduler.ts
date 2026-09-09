@@ -4,6 +4,7 @@ import { runSalesInbox } from "./sales";
 import { runSupportInbox } from "./support";
 import { runActivationInterventions } from "./activation";
 import { reconcileOutboundSubscriptionAttribution } from "./marketing";
+import { reconcileOutboundDeliveryReceipts } from "./outbound-reconciliation";
 import { evaluateMergedProductRepairs, promoteReadyProductRepairs } from "./promotion";
 import { evaluateExperiments } from "./experiments";
 
@@ -65,32 +66,49 @@ export function startAutonomyScheduler(): void {
       strategyRunning = false;
     }
   };
+
   const inbox = async () => {
     if (inboxRunning) return;
     inboxRunning = true;
     try {
       await runSalesInbox(undefined, 8);
       await runSupportInbox(undefined, 6);
-    } catch (error) { console.error("[autonomy] sales/support inbox loop failed", error instanceof Error ? error.message : error); }
-    finally { inboxRunning = false; }
+    } catch (error) {
+      console.error("[autonomy] sales/support inbox loop failed", error instanceof Error ? error.message : error);
+    } finally {
+      inboxRunning = false;
+    }
   };
+
   const activation = async () => {
     if (activationRunning) return;
     activationRunning = true;
-    try { await runActivationInterventions(undefined, 15); }
-    catch (error) { console.error("[autonomy] activation loop failed", error instanceof Error ? error.message : error); }
-    finally { activationRunning = false; }
+    try {
+      await runActivationInterventions(undefined, 15);
+    } catch (error) {
+      console.error("[autonomy] activation loop failed", error instanceof Error ? error.message : error);
+    } finally {
+      activationRunning = false;
+    }
   };
+
   const promotion = async () => {
     if (promotionRunning) return;
     promotionRunning = true;
     try {
+      const reconciliation = await reconcileOutboundDeliveryReceipts(30);
+      if (reconciliation.inserted || reconciliation.enriched || reconciliation.responseAttributionRepaired) {
+        console.log("[autonomy] outbound delivery receipts reconciled", reconciliation);
+      }
       await promoteReadyProductRepairs();
       await evaluateMergedProductRepairs();
       await reconcileOutboundSubscriptionAttribution();
       await evaluateExperiments();
-    } catch (error) { console.error("[autonomy] evaluator/promotion loop failed", error instanceof Error ? error.message : error); }
-    finally { promotionRunning = false; }
+    } catch (error) {
+      console.error("[autonomy] evaluator/promotion loop failed", error instanceof Error ? error.message : error);
+    } finally {
+      promotionRunning = false;
+    }
   };
 
   schedule(strategy, strategyInterval);
