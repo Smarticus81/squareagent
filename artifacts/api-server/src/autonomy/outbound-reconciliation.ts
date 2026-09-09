@@ -45,12 +45,6 @@ async function experimentIdForCampaign(campaign: string | null, cache: Map<strin
   return id;
 }
 
-/**
- * Rebuilds outbound_sent business events from executed outreach actions whose
- * provider result proves that Gmail/SMTP accepted the message. This makes the
- * provider delivery receipt authoritative instead of relying on a best-effort
- * ledger write after the send call.
- */
 export async function reconcileOutboundDeliveryReceipts(windowDays = 30): Promise<{
   inspected: number;
   inserted: number;
@@ -176,59 +170,65 @@ export async function reconcileOutboundDeliveryReceipts(windowDays = 30): Promis
   };
 }
 
+type CampaignPerformanceRow = {
+  campaign: string | null;
+  sent: number;
+  unique_recipients: number;
+  signups: number;
+  replied: number;
+  positive_replies: number;
+  attributed_subscriptions: number;
+  attributed_mrr_cents: number;
+  opt_outs: number;
+};
+
 export async function collectOutboundCampaignPerformance(windowDays = 30): Promise<{
   windowDays: number;
   totals: {
     sent: number;
     uniqueRecipients: number;
+    signups: number;
+    attributedSubscriptions: number;
+    attributedMrrCents: number;
+    optOuts: number;
+    signupRate: number;
+    paidConversionRate: number;
     replied: number;
     positiveReplies: number;
-    demoRequests: number;
-    trialInterest: number;
-    attributedSubscriptions: number;
-    optOuts: number;
     replyRate: number;
-    positiveReplyRate: number;
-    paidConversionRate: number;
   };
   campaigns: Array<{
     campaign: string;
     sent: number;
+    signups: number;
+    attributedSubscriptions: number;
+    attributedMrrCents: number;
+    optOuts: number;
     replied: number;
     positiveReplies: number;
-    demoRequests: number;
-    trialInterest: number;
-    attributedSubscriptions: number;
-    optOuts: number;
   }>;
 }> {
   if (!pool) {
-    return { windowDays, totals: { sent: 0, uniqueRecipients: 0, replied: 0, positiveReplies: 0, demoRequests: 0, trialInterest: 0, attributedSubscriptions: 0, optOuts: 0, replyRate: 0, positiveReplyRate: 0, paidConversionRate: 0 }, campaigns: [] };
+    return {
+      windowDays,
+      totals: { sent: 0, uniqueRecipients: 0, signups: 0, attributedSubscriptions: 0, attributedMrrCents: 0, optOuts: 0, signupRate: 0, paidConversionRate: 0, replied: 0, positiveReplies: 0, replyRate: 0 },
+      campaigns: [],
+    };
   }
   const days = Math.max(1, Math.min(365, Math.floor(windowDays)));
-  const result = await pool.query<{
-    campaign: string | null;
-    sent: number;
-    unique_recipients: number;
-    replied: number;
-    positive_replies: number;
-    demo_requests: number;
-    trial_interest: number;
-    attributed_subscriptions: number;
-    opt_outs: number;
-  }>(
+  const result = await pool.query<CampaignPerformanceRow>(
     `SELECT COALESCE(campaign,'unattributed') AS campaign,
             COUNT(*) FILTER (WHERE event_type='outbound_sent')::int AS sent,
             COUNT(DISTINCT properties->>'leadId') FILTER (WHERE event_type='outbound_sent')::int AS unique_recipients,
+            COUNT(*) FILTER (WHERE event_type='signup_completed')::int AS signups,
             COUNT(*) FILTER (WHERE event_type='outbound_replied')::int AS replied,
             COUNT(*) FILTER (WHERE event_type='outbound_positive_reply')::int AS positive_replies,
-            COUNT(*) FILTER (WHERE event_type='demo_requested')::int AS demo_requests,
-            COUNT(*) FILTER (WHERE event_type='trial_interest')::int AS trial_interest,
             COUNT(*) FILTER (WHERE event_type='outbound_subscription_attributed')::int AS attributed_subscriptions,
+            COALESCE(SUM(value_cents) FILTER (WHERE event_type='outbound_subscription_attributed'),0)::int AS attributed_mrr_cents,
             COUNT(*) FILTER (WHERE event_type='outreach_opt_out')::int AS opt_outs
      FROM business_events
      WHERE occurred_at >= now() - ($1::text || ' days')::interval
-       AND event_type IN ('outbound_sent','outbound_replied','outbound_positive_reply','demo_requested','trial_interest','outbound_subscription_attributed','outreach_opt_out')
+       AND event_type IN ('outbound_sent','signup_completed','outbound_replied','outbound_positive_reply','outbound_subscription_attributed','outreach_opt_out')
      GROUP BY COALESCE(campaign,'unattributed')
      ORDER BY MAX(occurred_at) DESC`,
     [days],
@@ -237,21 +237,21 @@ export async function collectOutboundCampaignPerformance(windowDays = 30): Promi
   const campaigns = result.rows.map((row) => ({
     campaign: String(row.campaign ?? "unattributed"),
     sent: Number(row.sent ?? 0),
+    signups: Number(row.signups ?? 0),
+    attributedSubscriptions: Number(row.attributed_subscriptions ?? 0),
+    attributedMrrCents: Number(row.attributed_mrr_cents ?? 0),
+    optOuts: Number(row.opt_outs ?? 0),
     replied: Number(row.replied ?? 0),
     positiveReplies: Number(row.positive_replies ?? 0),
-    demoRequests: Number(row.demo_requests ?? 0),
-    trialInterest: Number(row.trial_interest ?? 0),
-    attributedSubscriptions: Number(row.attributed_subscriptions ?? 0),
-    optOuts: Number(row.opt_outs ?? 0),
   }));
   const sent = result.rows.reduce((sum, row) => sum + Number(row.sent ?? 0), 0);
   const uniqueRecipients = result.rows.reduce((sum, row) => sum + Number(row.unique_recipients ?? 0), 0);
+  const signups = campaigns.reduce((sum, row) => sum + row.signups, 0);
+  const attributedSubscriptions = campaigns.reduce((sum, row) => sum + row.attributedSubscriptions, 0);
+  const attributedMrrCents = campaigns.reduce((sum, row) => sum + row.attributedMrrCents, 0);
+  const optOuts = campaigns.reduce((sum, row) => sum + row.optOuts, 0);
   const replied = campaigns.reduce((sum, row) => sum + row.replied, 0);
   const positiveReplies = campaigns.reduce((sum, row) => sum + row.positiveReplies, 0);
-  const demoRequests = campaigns.reduce((sum, row) => sum + row.demoRequests, 0);
-  const trialInterest = campaigns.reduce((sum, row) => sum + row.trialInterest, 0);
-  const attributedSubscriptions = campaigns.reduce((sum, row) => sum + row.attributedSubscriptions, 0);
-  const optOuts = campaigns.reduce((sum, row) => sum + row.optOuts, 0);
   const ratio = (n: number, d: number) => d > 0 ? n / d : 0;
 
   return {
@@ -259,15 +259,15 @@ export async function collectOutboundCampaignPerformance(windowDays = 30): Promi
     totals: {
       sent,
       uniqueRecipients,
+      signups,
+      attributedSubscriptions,
+      attributedMrrCents,
+      optOuts,
+      signupRate: ratio(signups, sent),
+      paidConversionRate: ratio(attributedSubscriptions, sent),
       replied,
       positiveReplies,
-      demoRequests,
-      trialInterest,
-      attributedSubscriptions,
-      optOuts,
       replyRate: ratio(replied, sent),
-      positiveReplyRate: ratio(positiveReplies, sent),
-      paidConversionRate: ratio(attributedSubscriptions, sent),
     },
     campaigns,
   };

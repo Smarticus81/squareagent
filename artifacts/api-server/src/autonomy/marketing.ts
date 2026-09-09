@@ -13,9 +13,7 @@ interface CampaignVariantPayload {
   cta: string;
 }
 
-interface CampaignVariantProposal extends CampaignVariantPayload {
-  id: string;
-}
+interface CampaignVariantProposal extends CampaignVariantPayload { id: string; }
 
 const CAMPAIGN_SCHEMA = {
   type: "object",
@@ -44,21 +42,22 @@ const CAMPAIGN_SCHEMA = {
   },
 } as const;
 
+const PRIMARY_METRIC = "outbound_subscription_attributed";
+
 function campaignSlug(now = new Date()): string {
   const first = new Date(Date.UTC(now.getUTCFullYear(), 0, 1));
   const day = Math.floor((now.getTime() - first.getTime()) / 86_400_000);
   const week = Math.floor((day + first.getUTCDay()) / 7) + 1;
-  // A campaign may complete or trip a guardrail before the week ends. The
-  // generation suffix preserves every experiment instead of overwriting it.
-  return `outbound-positioning-${now.getUTCFullYear()}-w${String(week).padStart(2, "0")}-${now.getTime().toString(36)}`;
+  return `paid-conversion-${now.getUTCFullYear()}-w${String(week).padStart(2, "0")}-${now.getTime().toString(36)}`;
 }
 
 async function existingRunningCampaign(): Promise<string | null> {
   if (!pool) return null;
   const result = await pool.query<{ slug: string }>(
     `SELECT slug FROM experiments
-     WHERE status='running' AND primary_metric='outbound_positive_reply'
+     WHERE status='running' AND primary_metric=$1
      ORDER BY started_at DESC NULLS LAST, created_at DESC LIMIT 1`,
+    [PRIMARY_METRIC],
   );
   return result.rows[0]?.slug ?? null;
 }
@@ -119,52 +118,62 @@ export async function ensureOutboundCampaign(snapshot: BusinessSnapshot, runId?:
   const running = await existingRunningCampaign();
   if (running) return running;
 
+  // Legacy reply-optimized campaigns are explicitly retired. They can remain in
+  // history for learning, but they may not keep driving new sends.
+  await pool.query(
+    `UPDATE experiments
+     SET status='superseded', ended_at=COALESCE(ended_at,now()), updated_at=now()
+     WHERE status='running' AND primary_metric='outbound_positive_reply'`,
+  );
+
   const segments = await pool.query(
     `SELECT segment,
        COUNT(*)::int AS leads,
-       COUNT(*) FILTER (WHERE stage IN ('replied_positive','demo_requested','trial_requested','customer'))::int AS positive,
+       COUNT(*) FILTER (WHERE stage='customer')::int AS customers,
+       COUNT(*) FILTER (WHERE stage IN ('replied_positive','demo_requested','trial_requested'))::int AS interested,
        AVG(fit_score)::float AS avg_fit
      FROM prospect_leads
      GROUP BY segment
-     ORDER BY leads DESC`,
+     ORDER BY customers DESC, leads DESC`,
   );
 
   const recentSignals = await pool.query(
     `SELECT event_type, variant, campaign, value_cents, properties
      FROM business_events
      WHERE event_type IN (
-       'outbound_sent','outbound_replied','outbound_positive_reply','demo_requested',
+       'outbound_sent','signup_completed','outbound_replied','outbound_positive_reply',
        'trial_interest','outbound_subscription_attributed','outreach_opt_out'
      )
        AND occurred_at >= now()-interval '60 days'
-     ORDER BY occurred_at DESC LIMIT 200`,
+     ORDER BY occurred_at DESC LIMIT 300`,
   );
 
   const priorCampaigns = await pool.query(
-    `SELECT slug,status,hypothesis,winner,result
+    `SELECT slug,status,hypothesis,primary_metric,winner,result
      FROM experiments
-     WHERE primary_metric='outbound_positive_reply'
-     ORDER BY created_at DESC LIMIT 8`,
+     WHERE primary_metric IN ('outbound_subscription_attributed','outbound_positive_reply')
+     ORDER BY created_at DESC LIMIT 10`,
   );
 
   const proposed = await structuredModel<{ campaignThesis: string; variants: CampaignVariantProposal[] }>(
     [
-      "You are VoyceLab's autonomous B2B growth strategist.",
-      "Design exactly three materially different outbound positioning variants for real hospitality operators.",
-      "VoyceLab is a voice-powered operations assistant that can connect to systems such as Square and perform permitted POS, reporting, inventory, customer/payment and team/labor actions by voice.",
-      "Use current public web information to ground the pains operators actually discuss now. Prefer event venues, wedding venues, bars/restaurants and multi-location hospitality groups when the data supports them.",
-      "Learn from prior campaign winners, opt-outs, positive replies, demos, trial interest and attributed paid subscriptions supplied in the data. Do not merely rename a losing variant.",
-      "Do not invent customer results, integrations, statistics, testimonials, logos or capabilities. proofConstraint must explicitly state what the copy writer must NOT claim.",
-      "Variants must differ in strategic angle, not just wording. Each CTA should be low-friction: reply, try the live demo, start a trial, or book a demo.",
-      "Optimize durable paid conversion while using qualified positive reply as the faster experimental signal. Avoid variants that increase opt-outs.",
+      "You are VoyceLab's B2B growth strategist. Your score is paid customer conversions and recurring revenue, not replies.",
+      "Design exactly three materially different direct-response email angles for event venues and bars using Square.",
+      "VoyceLab is simple: bartenders and venue managers can speak to get common Square tasks done instead of tapping through screens. Owners can get quick answers on sales, inventory and open tabs.",
+      "Use current public information only to understand real operator pains. Prefer event venues, wedding venues, private-event spaces, bars, taprooms and breweries with live-event operations.",
+      "Customer-facing language must be plain enough to understand in five seconds. Never use: voice layer, orchestration, operational intelligence, workflow transformation, connected systems, AI-powered operations, streamline, unlock, leverage, optimize, ecosystem, or platform transformation.",
+      "The only CTA is Start Free. The live demo is already on the website. Never ask prospects to book a demo, schedule a call, reply for more information, or take a meeting.",
+      "Each variant should express one concrete reason to sign up: less tapping during service, faster answers for managers, or clearer owner visibility during events.",
+      "Do not invent customer results, statistics, testimonials, logos, integrations, discounts or capabilities.",
+      "Use paid subscriptions and attributed MRR as the winner signal. Signup completion is a diagnostic leading indicator only. Replies and positive sentiment are not success.",
     ].join("\n"),
     { snapshot, leadSegments: segments.rows, recentSignals: recentSignals.rows, priorCampaigns: priorCampaigns.rows },
     {
-      schemaName: "voycelab_outbound_campaign",
+      schemaName: "voycelab_paid_conversion_campaign",
       schema: CAMPAIGN_SCHEMA as unknown as Record<string, unknown>,
       useWebSearch: true,
       reasoningEffort: "medium",
-      maxOutputTokens: 3000,
+      maxOutputTokens: 2600,
     },
   );
 
@@ -177,7 +186,7 @@ export async function ensureOutboundCampaign(snapshot: BusinessSnapshot, runId?:
       targetPain: variant.targetPain,
       promise: variant.promise,
       proofConstraint: variant.proofConstraint,
-      cta: variant.cta,
+      cta: "Start Free",
     },
   }));
 
@@ -187,13 +196,13 @@ export async function ensureOutboundCampaign(snapshot: BusinessSnapshot, runId?:
     actionType: "marketing.campaign_launch",
     riskLevel: "low",
     input: { slug, campaignThesis: proposed.campaignThesis, variants },
-    expectedImpact: { primaryMetric: "outbound_positive_reply", longTermMetric: "outbound_subscription_attributed" },
+    expectedImpact: { primaryMetric: PRIMARY_METRIC, leadingMetric: "signup_completed", diagnosticMetrics: ["outbound_replied", "outreach_opt_out"] },
   });
 
   const experimentId = await createExperiment({
     slug,
     hypothesis: proposed.campaignThesis,
-    primaryMetric: "outbound_positive_reply",
+    primaryMetric: PRIMARY_METRIC,
     variants,
     guardrails: [{ metric: "outreach_opt_out", max: 0.05 }],
   });
@@ -204,10 +213,10 @@ export async function ensureOutboundCampaign(snapshot: BusinessSnapshot, runId?:
     actorId: "marketing",
     campaign: slug,
     experimentId,
-    properties: { campaignThesis: proposed.campaignThesis },
+    properties: { campaignThesis: proposed.campaignThesis, successDefinition: "paid_customer_and_mrr" },
     dedupeKey: `campaign-created:${slug}`,
   });
-  await markActionExecuted(action.id, { experimentId, slug });
+  await markActionExecuted(action.id, { experimentId, slug, primaryMetric: PRIMARY_METRIC });
   return slug;
 }
 

@@ -62,10 +62,6 @@ export async function collectBusinessSnapshot(windowDays = 30): Promise<Business
        GROUP BY event_type`,
       [days],
     ),
-    // Cohort funnel is grounded in canonical product tables. A signup belongs
-    // to the window if the user was created in the window; later stages ask
-    // whether that same user has reached the milestone. This avoids mistaking
-    // tracking-pixel coverage for product conversion.
     pool.query(
       `WITH cohort AS (
          SELECT u.id,
@@ -216,12 +212,15 @@ export async function collectBusinessSnapshot(windowDays = 30): Promise<Business
   };
 }
 
+/**
+ * Founder-facing score: only customers and recurring revenue create positive
+ * points. Activation, traffic, replies and other leading indicators are shown
+ * elsewhere but cannot make the business score look successful.
+ */
 export function objectiveScore(snapshot: BusinessSnapshot): number {
-  const mrr = snapshot.revenue.mrrCents / 100;
-  const activation = snapshot.funnel.connectToActivation * 1_000;
-  const conversion = snapshot.funnel.activationToPaid * 1_500;
-  const reliabilityPenalty = snapshot.product.toolFailureRate * 2_000;
-  const deadSessionPenalty = snapshot.product.noSuccessfulToolRate * 1_000;
-  const churnPenalty = snapshot.churnEvents * 75;
-  return Math.round(mrr + activation + conversion - reliabilityPenalty - deadSessionPenalty - churnPenalty);
+  const mrrDollars = snapshot.revenue.mrrCents / 100;
+  const paidCustomerValue = snapshot.revenue.paidOrganizations * 1_000;
+  const recentPaidCohortValue = snapshot.funnel.paid * 500;
+  const churnPenalty = snapshot.churnEvents * 500;
+  return Math.round(mrrDollars + paidCustomerValue + recentPaidCohortValue - churnPenalty);
 }
