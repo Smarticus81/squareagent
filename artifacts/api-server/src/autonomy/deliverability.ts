@@ -213,10 +213,25 @@ export async function runDeliveryFailureInbox(runId?: string, maxMessages = 25):
   const markRead = inboxExecutors.mark_email_read;
   if (!list || !read || !markRead) throw new Error("Gmail inbox executors are unavailable for delivery reconciliation");
 
-  const listed = await list({ query: "in:inbox newer_than:30d {from:mailer-daemon@googlemail.com from:postmaster@microsoft.com}", max_results: Math.max(1, Math.min(25, maxMessages)) }, ctx);
-  let parsed: any;
-  try { parsed = JSON.parse(listed.result); } catch { return { inspected: 0, matchedProspects: 0, hardSuppressed: 0, softSuppressed: 0, ignored: 0 }; }
-  const messages = Array.isArray(parsed?.messages) ? parsed.messages : [];
+  // Query providers separately so one noisy delivery system cannot crowd older
+  // failures from the other out of Gmail's 25-message per-query window.
+  const perProviderLimit = Math.max(1, Math.min(25, maxMessages));
+  const providerQueries = [
+    "in:inbox newer_than:30d from:mailer-daemon@googlemail.com",
+    "in:inbox newer_than:30d from:postmaster@microsoft.com",
+  ];
+  const messageById = new Map<string, any>();
+  for (const query of providerQueries) {
+    const listed = await list({ query, max_results: perProviderLimit }, ctx);
+    let parsed: any;
+    try { parsed = JSON.parse(listed.result); } catch { continue; }
+    const providerMessages = Array.isArray(parsed?.messages) ? parsed.messages : [];
+    for (const metadata of providerMessages) {
+      const id = String(metadata?.id ?? "");
+      if (id) messageById.set(id, metadata);
+    }
+  }
+  const messages = [...messageById.values()];
 
   let inspected = 0;
   let matchedProspects = 0;
