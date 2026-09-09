@@ -13,24 +13,34 @@ export interface AutonomyBudget {
 }
 
 export const VOYCELAB_OBJECTIVE = Object.freeze({
-  northStar: "maximize durable net new recurring revenue from customers who receive measurable product value",
+  northStar: "maximize paid customer conversions and net recurring revenue; marketing activity is not success unless it produces customers and revenue",
   optimize: [
+    "paid_customer_conversions",
     "new_mrr",
-    "expansion_mrr",
+    "net_revenue_after_acquisition_cost",
+    "trial_to_paid_conversion",
     "retained_mrr",
-    "activation_rate",
-    "customer_value_realization",
-    "qualified_pipeline_value",
+  ],
+  diagnosticOnly: [
+    "emails_sent",
+    "opens",
+    "clicks",
+    "replies",
+    "positive_replies",
+    "demo_interest",
+    "traffic",
   ],
   minimize: [
     "cac",
     "churn",
     "refunds",
+    "time_to_first_value",
     "support_burden",
     "voice_compute_cost",
     "operational_risk",
   ],
   hardConstraints: [
+    "never report an email send, click, reply, demo request, or positive sentiment as business success unless it results in a paid conversion or revenue",
     "never fabricate customers, testimonials, evidence, or product capabilities",
     "honor opt-out and communication preferences immediately",
     "never expose secrets or customer credentials to model context",
