@@ -107,7 +107,7 @@ async function fetchPublicContactSource(urlText: string, expectedWebsite: string
   try {
     const response = await fetch(source, {
       method: "GET",
-      redirect: "follow",
+      redirect: "manual",
       signal: AbortSignal.timeout(7_000),
       headers: { "User-Agent": "VoyceLab-Contact-Verifier/1.0" },
     });
