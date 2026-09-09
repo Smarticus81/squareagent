@@ -19,6 +19,7 @@ export interface ContactVerificationResult {
 }
 
 export interface DeliverabilityHealth {
+  [key: string]: unknown;
   state: "green" | "caution" | "veto";
   sent7d: number;
   hardBounces7d: number;
