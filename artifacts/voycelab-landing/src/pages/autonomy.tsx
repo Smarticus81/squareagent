@@ -2,367 +2,171 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 
 type Snapshot = {
-  generatedAt: string;
-  funnel: {
-    visitors: number;
-    signups: number;
-    squareConnected: number;
-    activated: number;
-    paid: number;
-    visitorToSignup: number;
-    signupToConnect: number;
-    connectToActivation: number;
-    activationToPaid: number;
-  };
-  product: {
-    toolCalls: number;
-    toolFailures: number;
-    toolFailureRate: number;
-    averageToolLatencyMs: number;
-    voiceSessions: number;
-    noSuccessfulToolRate: number;
-  };
-  revenue: { mrrCents: number; paidOrganizations: number; activeByPlan: Record<string, number> };
-  churnEvents: number;
-  supportOpened: number;
-  supportResolved: number;
+  funnel: { visitors:number; signups:number; squareConnected:number; activated:number; paid:number; visitorToSignup:number; signupToConnect:number; connectToActivation:number; activationToPaid:number };
+  product: { toolCalls:number; toolFailures:number; toolFailureRate:number; averageToolLatencyMs:number; voiceSessions:number; noSuccessfulToolRate:number };
+  revenue: { mrrCents:number; paidOrganizations:number; activeByPlan:Record<string,number> };
+  churnEvents:number;
 };
 
 type FinanceSnapshot = {
-  verdict: "healthy" | "caution" | "veto" | "insufficient_cost_data";
-  reasons: string[];
-  arpaCents: number;
-  voiceMinutes: number;
-  estimatedVoiceCostCents: number | null;
-  estimatedInfraCostCents: number | null;
-  estimatedAgentComputeCostCents: number | null;
-  campaignSpendCents: number;
-  estimatedCacCents: number | null;
-  estimatedGrossContributionCents: number | null;
-  estimatedGrossMargin: number | null;
-  cacPaybackMonths: number | null;
-  costCoverageComplete: boolean;
-  acquisitionEconomicsCoverage: boolean;
+  verdict:"healthy"|"caution"|"veto"|"insufficient_cost_data";
+  reasons:string[];
+  arpaCents:number;
+  campaignSpendCents:number;
+  estimatedCacCents:number|null;
+  estimatedGrossContributionCents:number|null;
+  estimatedGrossMargin:number|null;
+  cacPaybackMonths:number|null;
+  costCoverageComplete:boolean;
 };
 
 type OutboundPerformance = {
-  windowDays: number;
-  totals: {
-    sent: number;
-    uniqueRecipients: number;
-    replied: number;
-    positiveReplies: number;
-    demoRequests: number;
-    trialInterest: number;
-    attributedSubscriptions: number;
-    optOuts: number;
-    replyRate: number;
-    positiveReplyRate: number;
-    paidConversionRate: number;
+  windowDays:number;
+  totals:{
+    sent:number;
+    uniqueRecipients:number;
+    signups:number;
+    attributedSubscriptions:number;
+    attributedMrrCents:number;
+    optOuts:number;
+    signupRate:number;
+    paidConversionRate:number;
+    replied:number;
+    positiveReplies:number;
+    replyRate:number;
   };
-  campaigns: Array<{
-    campaign: string;
-    sent: number;
-    replied: number;
-    positiveReplies: number;
-    demoRequests: number;
-    trialInterest: number;
-    attributedSubscriptions: number;
-    optOuts: number;
+  campaigns:Array<{
+    campaign:string;
+    sent:number;
+    signups:number;
+    attributedSubscriptions:number;
+    attributedMrrCents:number;
+    optOuts:number;
+    replied:number;
+    positiveReplies:number;
   }>;
 };
 
 type ControlPlaneStatus = {
-  enabled: boolean;
-  codeWritesEnabled: boolean;
-  outboundEnabled: boolean;
-  objectiveScore: number;
-  objective: { northStar: string; hardConstraints: string[] };
-  budget: Record<string, number>;
-  snapshot: Snapshot;
-  finance: FinanceSnapshot;
-  outbound: OutboundPerformance;
-  runs: Array<Record<string, any>>;
-  actions: Array<Record<string, any>>;
-  productFindings: Array<Record<string, any>>;
-  experiments: Array<Record<string, any>>;
-  leads: Array<Record<string, any>>;
-  opportunities: Array<Record<string, any>>;
+  enabled:boolean;
+  codeWritesEnabled:boolean;
+  outboundEnabled:boolean;
+  objectiveScore:number;
+  objective:{ northStar:string; hardConstraints:string[] };
+  snapshot:Snapshot;
+  finance:FinanceSnapshot;
+  outbound:OutboundPerformance;
+  runs:Array<Record<string,any>>;
+  actions:Array<Record<string,any>>;
+  productFindings:Array<Record<string,any>>;
+  experiments:Array<Record<string,any>>;
+  leads:Array<Record<string,any>>;
+  opportunities:Array<Record<string,any>>;
 };
 
-function headers(): Record<string, string> {
-  const token = localStorage.getItem("voycelab_token") || "";
-  return token ? { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } : { "Content-Type": "application/json" };
+function headers():Record<string,string>{
+  const token=localStorage.getItem("voycelab_token")||"";
+  return token?{Authorization:`Bearer ${token}`,"Content-Type":"application/json"}:{"Content-Type":"application/json"};
+}
+function pct(v:number|null|undefined){return `${((v??0)*100).toFixed(1)}%`;}
+function money(c:number|null|undefined){return c==null?"—":new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0}).format(c/100);}
+
+function Stat({label,value,note,priority=false}:{label:string;value:string;note?:string;priority?:boolean}){
+  return <div className={`vl-panel p-5 ${priority?"ring-1 ring-blue-300/20":""}`}>
+    <p className="text-[11px] font-semibold uppercase tracking-[.16em]" style={{color:"var(--color-vl-ink-faint)"}}>{label}</p>
+    <p className={`${priority?"text-[34px]":"text-[30px]"} mt-2 font-semibold tracking-[-.04em]`} style={{color:"var(--color-vl-ink)"}}>{value}</p>
+    {note&&<p className="mt-1 text-[12px]" style={{color:"var(--color-vl-ink-muted)"}}>{note}</p>}
+  </div>;
+}
+function Pill({active,children}:{active:boolean;children:React.ReactNode}){
+  return <span className="inline-flex rounded-full border px-2.5 py-1 text-[11px] font-medium" style={{borderColor:active?"rgba(75,180,120,.35)":"rgba(255,255,255,.12)",background:active?"rgba(75,180,120,.10)":"rgba(255,255,255,.04)",color:active?"#8DDBAF":"var(--color-vl-ink-muted)"}}>{children}</span>;
 }
 
-function pct(value: number | null | undefined): string {
-  return `${((value ?? 0) * 100).toFixed(1)}%`;
-}
-
-function money(cents: number | null | undefined): string {
-  if (cents === null || cents === undefined) return "—";
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(cents / 100);
-}
-
-function Stat({ label, value, note }: { label: string; value: string; note?: string }) {
-  return (
-    <div className="vl-panel p-5">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: "var(--color-vl-ink-faint)" }}>{label}</p>
-      <p className="mt-2 text-[30px] font-semibold tracking-[-0.04em]" style={{ color: "var(--color-vl-ink)" }}>{value}</p>
-      {note && <p className="mt-1 text-[12px]" style={{ color: "var(--color-vl-ink-muted)" }}>{note}</p>}
-    </div>
-  );
-}
-
-function StatusPill({ active, children }: { active: boolean; children: React.ReactNode }) {
-  return (
-    <span className="inline-flex rounded-full border px-2.5 py-1 text-[11px] font-medium" style={{
-      borderColor: active ? "rgba(75, 180, 120, .35)" : "rgba(255,255,255,.12)",
-      background: active ? "rgba(75, 180, 120, .10)" : "rgba(255,255,255,.04)",
-      color: active ? "#8DDBAF" : "var(--color-vl-ink-muted)",
-    }}>{children}</span>
-  );
-}
-
-export default function AutonomyPage() {
-  const auth = useAuth();
-  const queryClient = useQueryClient();
-  const isAdmin = Boolean(auth.data?.isAdmin ?? auth.data?.user?.isAdmin);
-
-  const status = useQuery<ControlPlaneStatus>({
-    queryKey: ["/api/v1/autonomy/status"],
-    enabled: isAdmin,
-    refetchInterval: 30_000,
-    queryFn: async () => {
-      const res = await fetch("/api/v1/autonomy/status", { headers: headers() });
-      if (!res.ok) throw new Error(`Control plane returned ${res.status}`);
-      return res.json();
-    },
+export default function AutonomyPage(){
+  const auth=useAuth();
+  const queryClient=useQueryClient();
+  const isAdmin=Boolean(auth.data?.isAdmin??auth.data?.user?.isAdmin);
+  const status=useQuery<ControlPlaneStatus>({
+    queryKey:["/api/v1/autonomy/status"],enabled:isAdmin,refetchInterval:30000,
+    queryFn:async()=>{const r=await fetch("/api/v1/autonomy/status",{headers:headers()});if(!r.ok)throw new Error(`Control plane returned ${r.status}`);return r.json();}
+  });
+  const run=useMutation({
+    mutationFn:async()=>{const r=await fetch("/api/v1/autonomy/run",{method:"POST",headers:headers()});const b=await r.json().catch(()=>({}));if(!r.ok)throw new Error(b?.message??`Autonomy run failed (${r.status})`);return b;},
+    onSuccess:()=>queryClient.invalidateQueries({queryKey:["/api/v1/autonomy/status"]})
   });
 
-  const run = useMutation({
-    mutationFn: async () => {
-      const res = await fetch("/api/v1/autonomy/run", { method: "POST", headers: headers() });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body?.message ?? `Autonomy run failed (${res.status})`);
-      return body;
-    },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/v1/autonomy/status"] }),
-  });
+  if(auth.isLoading)return <div className="vl-page-shell flex-1 px-6 pt-28">Loading…</div>;
+  if(!isAdmin)return <div className="vl-page-shell flex-1 px-4 pb-24 pt-24 sm:px-6 lg:px-10"><div className="vl-panel mx-auto max-w-2xl p-8"><p className="vl-eyebrow">Founder control plane</p><h1 className="vl-display mt-3 text-[36px]">Platform admin access required.</h1></div></div>;
+  if(status.isLoading||!status.data)return <div className="vl-page-shell flex-1 px-6 pt-28">Loading control plane…</div>;
+  if(status.error)return <div className="vl-page-shell flex-1 px-6 pt-28">{String(status.error)}</div>;
 
-  if (auth.isLoading) return <div className="vl-page-shell flex-1 px-6 pt-28">Loading…</div>;
-  if (!isAdmin) {
-    return (
-      <div className="vl-page-shell flex-1 px-4 pb-24 pt-24 sm:px-6 lg:px-10">
-        <div className="vl-panel mx-auto max-w-2xl p-8">
-          <p className="vl-eyebrow">Founder control plane</p>
-          <h1 className="vl-display mt-3 text-[36px]">Platform admin access required.</h1>
-          <p className="mt-3 text-[14px]" style={{ color: "var(--color-vl-ink-muted)" }}>This surface can inspect and trigger company-wide autonomous operations.</p>
+  const d=status.data,s=d.snapshot,f=d.finance,o=d.outbound,current=d.runs[0];
+  const openFindings=d.productFindings.filter(x=>!["resolved","dismissed"].includes(String(x.status)));
+
+  return <div className="vl-page-shell flex-1 px-4 pb-24 pt-24 sm:px-6 lg:px-10">
+    <div className="mx-auto max-w-7xl space-y-6">
+      <header className="flex flex-col justify-between gap-5 lg:flex-row lg:items-end">
+        <div>
+          <div className="flex flex-wrap items-center gap-2"><p className="vl-eyebrow">VoyceLab Mission Control</p><Pill active={d.enabled}>{d.enabled?"Brain online":"Brain disabled"}</Pill><Pill active={d.outboundEnabled}>{d.outboundEnabled?"Outbound live":"Outbound off"}</Pill><Pill active={f.verdict!=="veto"}>Finance: {f.verdict.replaceAll("_"," ")}</Pill></div>
+          <h1 className="vl-display mt-3 max-w-4xl text-[42px] leading-[1.02] sm:text-[54px]">Customers and revenue. Everything else is diagnostic.</h1>
+          <p className="mt-4 max-w-3xl text-[14px] leading-6" style={{color:"var(--color-vl-ink-muted)"}}>{d.objective.northStar}</p>
         </div>
-      </div>
-    );
-  }
+        <button className="vl-btn-primary min-w-40 px-5 py-3 text-[13px]" disabled={run.isPending||!d.enabled} onClick={()=>run.mutate()}>{run.isPending?"Running cycle…":"Run strategy cycle"}</button>
+      </header>
 
-  if (status.isLoading || !status.data) return <div className="vl-page-shell flex-1 px-6 pt-28">Loading control plane…</div>;
-  if (status.error) return <div className="vl-page-shell flex-1 px-6 pt-28">{String(status.error)}</div>;
+      {run.error&&<div className="vl-panel border-red-400/20 p-4 text-[13px] text-red-300">{String(run.error)}</div>}
 
-  const data = status.data;
-  const s = data.snapshot;
-  const f = data.finance;
-  const o = data.outbound;
-  const currentRun = data.runs[0];
-  const openFindings = data.productFindings.filter((finding) => !["resolved", "dismissed"].includes(String(finding.status)));
-  const activeExperiments = data.experiments.filter((experiment) => experiment.status === "running");
-
-  return (
-    <div className="vl-page-shell flex-1 px-4 pb-24 pt-24 sm:px-6 lg:px-10">
-      <div className="mx-auto max-w-7xl space-y-6">
-        <div className="flex flex-col justify-between gap-5 lg:flex-row lg:items-end">
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <p className="vl-eyebrow">VoyceLab autonomous operations</p>
-              <StatusPill active={data.enabled}>{data.enabled ? "Brain online" : "Brain disabled"}</StatusPill>
-              <StatusPill active={data.outboundEnabled}>{data.outboundEnabled ? "Outbound live" : "Outbound off"}</StatusPill>
-              <StatusPill active={data.codeWritesEnabled}>{data.codeWritesEnabled ? "Code repair enabled" : "Code repair off"}</StatusPill>
-              <StatusPill active={f.verdict !== "veto"}>Finance: {f.verdict.replaceAll("_", " ")}</StatusPill>
-            </div>
-            <h1 className="vl-display mt-3 max-w-4xl text-[42px] leading-[1.02] sm:text-[54px]">The company can see itself, judge itself, and improve itself.</h1>
-            <p className="mt-4 max-w-3xl text-[14px] leading-6" style={{ color: "var(--color-vl-ink-muted)" }}>{data.objective.northStar}</p>
-          </div>
-          <button className="vl-btn-primary min-w-40 px-5 py-3 text-[13px]" disabled={run.isPending || !data.enabled} onClick={() => run.mutate()}>
-            {run.isPending ? "Running cycle…" : "Run strategy cycle"}
-          </button>
-        </div>
-
-        {run.error && <div className="vl-panel border-red-400/20 p-4 text-[13px] text-red-300">{String(run.error)}</div>}
-
+      <section>
+        <div className="mb-3 flex items-end justify-between"><div><p className="vl-eyebrow">Bottom line</p><h2 className="mt-2 text-[22px] font-semibold">The only scoreboard that counts</h2></div><span className="text-[11px]" style={{color:"var(--color-vl-ink-faint)"}}>30-day campaign window</span></div>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-          <Stat label="Objective score" value={String(data.objectiveScore)} note="MRR + activation + conversion − reliability/churn" />
-          <Stat label="MRR" value={money(s.revenue.mrrCents)} note={`${s.revenue.paidOrganizations} paid organization(s)`} />
-          <Stat label="Activation" value={pct(s.funnel.connectToActivation)} note={`${s.funnel.activated}/${s.funnel.squareConnected} connected signups`} />
-          <Stat label="Trial → paid" value={pct(s.funnel.activationToPaid)} note={`${s.funnel.paid}/${s.funnel.activated} activated`} />
-          <Stat label="Tool failure" value={pct(s.product.toolFailureRate)} note={`${s.product.toolFailures}/${s.product.toolCalls} tool calls`} />
+          <Stat priority label="Paid customers" value={String(s.revenue.paidOrganizations)} note="Current paid organizations" />
+          <Stat priority label="MRR" value={money(s.revenue.mrrCents)} note="Current recurring revenue" />
+          <Stat priority label="Campaign paid" value={String(o.totals.attributedSubscriptions)} note={`${pct(o.totals.paidConversionRate)} of delivered emails`} />
+          <Stat priority label="Campaign MRR" value={money(o.totals.attributedMrrCents)} note="Attributed recurring revenue" />
+          <Stat label="Bottom-line score" value={String(d.objectiveScore)} note="Customers + MRR − churn" />
         </div>
+      </section>
 
-        <section className="vl-panel overflow-hidden">
-          <div className="flex flex-col justify-between gap-3 border-b border-white/8 p-5 sm:flex-row sm:items-end">
-            <div>
-              <p className="vl-eyebrow">Campaign performance</p>
-              <h2 className="mt-2 text-[22px] font-semibold">Provider-confirmed outbound</h2>
-            </div>
-            <div className="flex items-center gap-2">
-              <StatusPill active={true}>Gmail / provider reconciled</StatusPill>
-              <span className="text-[11px]" style={{ color: "var(--color-vl-ink-faint)" }}>{o.windowDays}-day window</span>
-            </div>
-          </div>
-          <div className="grid gap-3 p-5 sm:grid-cols-2 lg:grid-cols-6">
-            <Stat label="Sent" value={String(o.totals.sent)} note={`${o.totals.uniqueRecipients} unique lead(s)`} />
-            <Stat label="Replies" value={String(o.totals.replied)} note={`${pct(o.totals.replyRate)} reply rate`} />
-            <Stat label="Positive" value={String(o.totals.positiveReplies)} note={`${pct(o.totals.positiveReplyRate)} of sends`} />
-            <Stat label="Demo / trial" value={String(o.totals.demoRequests + o.totals.trialInterest)} note={`${o.totals.demoRequests} demo · ${o.totals.trialInterest} trial`} />
-            <Stat label="Paid attributed" value={String(o.totals.attributedSubscriptions)} note={`${pct(o.totals.paidConversionRate)} of sends`} />
-            <Stat label="Opt-outs" value={String(o.totals.optOuts)} note="Campaign guardrail" />
-          </div>
-          <div className="border-t border-white/8 px-5 pb-5">
-            <div className="divide-y divide-white/7">
-              {o.campaigns.slice(0, 5).map((campaign) => (
-                <div key={campaign.campaign} className="grid gap-2 py-3 text-[11px] sm:grid-cols-[1fr_repeat(5,auto)] sm:items-center sm:gap-5">
-                  <span className="min-w-0 truncate font-medium">{campaign.campaign}</span>
-                  <span style={{ color: "var(--color-vl-ink-muted)" }}>{campaign.sent} sent</span>
-                  <span style={{ color: "var(--color-vl-ink-muted)" }}>{campaign.replied} replies</span>
-                  <span style={{ color: "var(--color-vl-ink-muted)" }}>{campaign.positiveReplies} positive</span>
-                  <span style={{ color: "var(--color-vl-ink-muted)" }}>{campaign.demoRequests + campaign.trialInterest} intent</span>
-                  <span style={{ color: "var(--color-vl-ink-muted)" }}>{campaign.attributedSubscriptions} paid</span>
-                </div>
-              ))}
-              {!o.campaigns.length && <p className="py-5 text-[12px]" style={{ color: "var(--color-vl-ink-muted)" }}>No provider-confirmed campaign events in this window.</p>}
-            </div>
-          </div>
-        </section>
-
-        <section className="vl-panel p-5">
-          <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
-            <div>
-              <p className="vl-eyebrow">Unit economics</p>
-              <h2 className="mt-2 text-[22px] font-semibold capitalize">Finance verdict: {f.verdict.replaceAll("_", " ")}</h2>
-            </div>
-            <span className="text-[11px]" style={{ color: "var(--color-vl-ink-faint)" }}>{f.costCoverageComplete ? "Cost coverage configured" : "Cost inputs incomplete — no margin veto from unknown costs"}</span>
-          </div>
-          <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-            <Stat label="ARPA" value={money(f.arpaCents)} />
-            <Stat label="Gross margin" value={f.estimatedGrossMargin === null ? "—" : pct(f.estimatedGrossMargin)} />
-            <Stat label="Gross contribution" value={money(f.estimatedGrossContributionCents)} />
-            <Stat label="Estimated CAC" value={money(f.estimatedCacCents)} note={`${money(f.campaignSpendCents)} measured campaign spend`} />
-            <Stat label="CAC payback" value={f.cacPaybackMonths === null ? "—" : `${f.cacPaybackMonths.toFixed(1)} mo`} />
-          </div>
-          <div className="mt-4 space-y-1">
-            {f.reasons.map((reason) => <p key={reason} className="text-[12px] leading-5" style={{ color: "var(--color-vl-ink-muted)" }}>• {reason}</p>)}
-          </div>
-        </section>
-
-        <div className="grid gap-6 lg:grid-cols-[1.25fr_.75fr]">
-          <section className="vl-panel overflow-hidden">
-            <div className="border-b border-white/8 p-5">
-              <p className="vl-eyebrow">Current business brain</p>
-              <h2 className="mt-2 text-[24px] font-semibold">{String(currentRun?.plan?.bottleneck ?? "No completed strategy cycle yet")}</h2>
-              <p className="mt-2 text-[13px] leading-6" style={{ color: "var(--color-vl-ink-muted)" }}>{String(currentRun?.plan?.diagnosis ?? "The scheduler will produce the first diagnosis after autonomy is enabled.")}</p>
-            </div>
-            <div className="divide-y divide-white/8">
-              {(currentRun?.plan?.actions ?? []).slice(0, 6).map((action: any, index: number) => (
-                <div key={`${action.actionType}-${index}`} className="grid gap-2 p-5 sm:grid-cols-[28px_1fr_auto] sm:items-start">
-                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-white/6 text-[11px]">{index + 1}</div>
-                  <div>
-                    <p className="text-[14px] font-medium">{action.title}</p>
-                    <p className="mt-1 text-[12px] leading-5" style={{ color: "var(--color-vl-ink-muted)" }}>{action.rationale}</p>
-                  </div>
-                  <span className="text-[11px]" style={{ color: "var(--color-vl-ink-faint)" }}>{action.agent} · {action.riskLevel}</span>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          <section className="vl-panel p-5">
-            <p className="vl-eyebrow">30-day funnel</p>
-            <div className="mt-5 space-y-4">
-              {[
-                ["Visitors", s.funnel.visitors, null],
-                ["Signups", s.funnel.signups, s.funnel.visitorToSignup],
-                ["Square connected", s.funnel.squareConnected, s.funnel.signupToConnect],
-                ["Activated", s.funnel.activated, s.funnel.connectToActivation],
-                ["Paid", s.funnel.paid, s.funnel.activationToPaid],
-              ].map(([label, count, rate]) => (
-                <div key={String(label)} className="flex items-baseline justify-between border-b border-white/7 pb-3">
-                  <span className="text-[13px]" style={{ color: "var(--color-vl-ink-muted)" }}>{String(label)}</span>
-                  <div className="text-right"><span className="text-[19px] font-semibold">{Number(count)}</span>{rate !== null && <span className="ml-2 text-[11px]" style={{ color: "var(--color-vl-ink-faint)" }}>{pct(Number(rate))}</span>}</div>
-                </div>
-              ))}
-            </div>
-          </section>
+      <section className="vl-panel overflow-hidden">
+        <div className="flex flex-col justify-between gap-3 border-b border-white/8 p-5 sm:flex-row sm:items-end">
+          <div><p className="vl-eyebrow">Conversion funnel</p><h2 className="mt-2 text-[22px] font-semibold">Delivered email → signup → paid</h2></div>
+          <Pill active={true}>Provider-confirmed sends</Pill>
         </div>
-
-        <div className="grid gap-6 lg:grid-cols-2">
-          <section className="vl-panel p-5">
-            <div className="flex items-end justify-between gap-4">
-              <div><p className="vl-eyebrow">Product self-repair</p><h2 className="mt-2 text-[22px] font-semibold">{openFindings.length} open finding(s)</h2></div>
-              <span className="text-[12px]" style={{ color: "var(--color-vl-ink-muted)" }}>{s.product.averageToolLatencyMs} ms avg tool latency</span>
-            </div>
-            <div className="mt-4 divide-y divide-white/8">
-              {openFindings.slice(0, 8).map((finding) => (
-                <div key={finding.id} className="py-3">
-                  <div className="flex items-start justify-between gap-4"><p className="text-[13px] font-medium">{finding.title}</p><span className="text-[10px] uppercase tracking-wider" style={{ color: "var(--color-vl-ink-faint)" }}>{finding.severity} · {finding.status}</span></div>
-                  <p className="mt-1 text-[11px]" style={{ color: "var(--color-vl-ink-muted)" }}>{finding.subsystem}{finding.github_pr_url ? " · repair PR opened" : ""}</p>
-                </div>
-              ))}
-              {!openFindings.length && <p className="py-6 text-[13px]" style={{ color: "var(--color-vl-ink-muted)" }}>No unresolved product regressions detected.</p>}
-            </div>
-          </section>
-
-          <section className="vl-panel p-5">
-            <p className="vl-eyebrow">Experiment engine</p>
-            <h2 className="mt-2 text-[22px] font-semibold">{activeExperiments.length} running experiment(s)</h2>
-            <div className="mt-4 divide-y divide-white/8">
-              {data.experiments.slice(0, 8).map((experiment) => (
-                <div key={experiment.id} className="py-3">
-                  <div className="flex justify-between gap-4"><p className="text-[13px] font-medium">{experiment.slug}</p><span className="text-[10px] uppercase tracking-wider" style={{ color: "var(--color-vl-ink-faint)" }}>{experiment.status}</span></div>
-                  <p className="mt-1 text-[11px] leading-5" style={{ color: "var(--color-vl-ink-muted)" }}>{experiment.hypothesis}</p>
-                  {experiment.winner && <p className="mt-1 text-[11px]" style={{ color: "var(--color-vl-ink-faint)" }}>Winner: {experiment.winner}</p>}
-                </div>
-              ))}
-              {!data.experiments.length && <p className="py-6 text-[13px]" style={{ color: "var(--color-vl-ink-muted)" }}>No experiments have been launched yet.</p>}
-            </div>
-          </section>
+        <div className="grid gap-3 p-5 sm:grid-cols-2 lg:grid-cols-5">
+          <Stat label="Delivered" value={String(o.totals.sent)} note={`${o.totals.uniqueRecipients} unique leads`} />
+          <Stat label="Signups" value={String(o.totals.signups)} note={`${pct(o.totals.signupRate)} signup rate`} />
+          <Stat label="Paid" value={String(o.totals.attributedSubscriptions)} note={`${pct(o.totals.paidConversionRate)} paid conversion`} />
+          <Stat label="Attributed MRR" value={money(o.totals.attributedMrrCents)} />
+          <Stat label="Opt-outs" value={String(o.totals.optOuts)} note="Guardrail, not success" />
         </div>
+        <div className="border-t border-white/8 px-5 pb-5">
+          {o.campaigns.slice(0,6).map(c=><div key={c.campaign} className="grid gap-2 border-b border-white/7 py-3 text-[11px] sm:grid-cols-[1fr_repeat(5,auto)] sm:items-center sm:gap-5"><span className="min-w-0 truncate font-medium">{c.campaign}</span><span style={{color:"var(--color-vl-ink-muted)"}}>{c.sent} sent</span><span style={{color:"var(--color-vl-ink-muted)"}}>{c.signups} signup</span><span style={{color:"var(--color-vl-ink-muted)"}}>{c.attributedSubscriptions} paid</span><span style={{color:"var(--color-vl-ink-muted)"}}>{money(c.attributedMrrCents)} MRR</span><span style={{color:"var(--color-vl-ink-muted)"}}>{c.optOuts} opt-out</span></div>)}
+        </div>
+      </section>
 
-        <section className="vl-panel overflow-hidden">
-          <div className="flex flex-col justify-between gap-3 border-b border-white/8 p-5 sm:flex-row sm:items-end">
-            <div><p className="vl-eyebrow">Autonomous activity</p><h2 className="mt-2 text-[22px] font-semibold">Latest actions</h2></div>
-            <span className="text-[11px]" style={{ color: "var(--color-vl-ink-faint)" }}>Everything is auditable; founder-gated actions remain blocked until approved.</span>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[780px] text-left text-[12px]">
-              <thead style={{ color: "var(--color-vl-ink-faint)" }}><tr className="border-b border-white/8"><th className="p-4 font-medium">Agent</th><th className="p-4 font-medium">Action</th><th className="p-4 font-medium">Risk</th><th className="p-4 font-medium">Authority</th><th className="p-4 font-medium">Status</th><th className="p-4 font-medium">External result</th></tr></thead>
-              <tbody className="divide-y divide-white/7">
-                {data.actions.slice(0, 20).map((action) => (
-                  <tr key={action.id}><td className="p-4">{action.agent}</td><td className="p-4">{action.action_type}</td><td className="p-4">{action.risk_level}</td><td className="p-4">{action.authority}</td><td className="p-4">{action.status}</td><td className="max-w-[260px] truncate p-4" style={{ color: "var(--color-vl-ink-muted)" }}>{action.external_ref || "—"}</td></tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
+      <section className="vl-panel p-5">
+        <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end"><div><p className="vl-eyebrow">Diagnostic signals</p><h2 className="mt-2 text-[22px] font-semibold">Useful for diagnosis. Never counted as success.</h2></div></div>
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <Stat label="Replies" value={String(o.totals.replied)} note={`${pct(o.totals.replyRate)} reply rate`} />
+          <Stat label="Positive replies" value={String(o.totals.positiveReplies)} />
+          <Stat label="Site signups" value={String(s.funnel.signups)} note="All acquisition sources" />
+          <Stat label="Square connected" value={String(s.funnel.squareConnected)} note={`${pct(s.funnel.signupToConnect)} of signups`} />
+          <Stat label="Activated" value={String(s.funnel.activated)} note={`${pct(s.funnel.connectToActivation)} of connected`} />
+        </div>
+      </section>
 
-        <section className="vl-panel p-5">
-          <p className="vl-eyebrow">Qualified acquisition graph</p>
-          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {data.leads.slice(0, 12).map((lead) => (
-              <div key={lead.id} className="rounded-2xl border border-white/8 bg-white/[.025] p-4">
-                <div className="flex items-start justify-between gap-3"><p className="text-[13px] font-medium">{lead.company_name}</p><span className="text-[11px]">{lead.fit_score}/100</span></div>
-                <p className="mt-1 text-[11px]" style={{ color: "var(--color-vl-ink-muted)" }}>{lead.segment} · {lead.stage}</p>
-              </div>
-            ))}
-            {!data.leads.length && <p className="text-[13px]" style={{ color: "var(--color-vl-ink-muted)" }}>The acquisition worker has not populated leads yet.</p>}
-          </div>
-        </section>
+      <section className="vl-panel p-5">
+        <p className="vl-eyebrow">Unit economics</p><h2 className="mt-2 text-[22px] font-semibold capitalize">Finance verdict: {f.verdict.replaceAll("_"," ")}</h2>
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5"><Stat label="ARPA" value={money(f.arpaCents)}/><Stat label="Gross margin" value={f.estimatedGrossMargin==null?"—":pct(f.estimatedGrossMargin)}/><Stat label="Gross contribution" value={money(f.estimatedGrossContributionCents)}/><Stat label="Estimated CAC" value={money(f.estimatedCacCents)} note={`${money(f.campaignSpendCents)} measured spend`}/><Stat label="CAC payback" value={f.cacPaybackMonths==null?"—":`${f.cacPaybackMonths.toFixed(1)} mo`}/></div>
+        <div className="mt-4 space-y-1">{f.reasons.map(r=><p key={r} className="text-[12px] leading-5" style={{color:"var(--color-vl-ink-muted)"}}>• {r}</p>)}</div>
+      </section>
+
+      <div className="grid gap-6 lg:grid-cols-[1.1fr_.9fr]">
+        <section className="vl-panel overflow-hidden"><div className="border-b border-white/8 p-5"><p className="vl-eyebrow">Current business brain</p><h2 className="mt-2 text-[24px] font-semibold">{String(current?.plan?.bottleneck??"No completed strategy cycle yet")}</h2><p className="mt-2 text-[13px] leading-6" style={{color:"var(--color-vl-ink-muted)"}}>{String(current?.plan?.diagnosis??"Waiting for the next strategy cycle.")}</p></div><div className="divide-y divide-white/8">{(current?.plan?.actions??[]).slice(0,6).map((a:any,i:number)=><div key={`${a.actionType}-${i}`} className="p-5"><div className="flex justify-between gap-4"><p className="text-[14px] font-medium">{a.title}</p><span className="text-[10px]" style={{color:"var(--color-vl-ink-faint)"}}>{a.agent} · {a.riskLevel}</span></div><p className="mt-1 text-[12px] leading-5" style={{color:"var(--color-vl-ink-muted)"}}>{a.rationale}</p></div>)}</div></section>
+        <section className="vl-panel p-5"><p className="vl-eyebrow">Product health</p><h2 className="mt-2 text-[22px] font-semibold">{openFindings.length} open finding(s)</h2><div className="mt-4 grid gap-3 sm:grid-cols-2"><Stat label="Tool failure" value={pct(s.product.toolFailureRate)} note={`${s.product.toolFailures}/${s.product.toolCalls} calls`}/><Stat label="No-success sessions" value={pct(s.product.noSuccessfulToolRate)} note={`${s.product.voiceSessions} sessions`}/></div><div className="mt-4 divide-y divide-white/8">{openFindings.slice(0,5).map(x=><div key={x.id} className="py-3"><p className="text-[13px] font-medium">{x.title}</p><p className="mt-1 text-[11px]" style={{color:"var(--color-vl-ink-muted)"}}>{x.severity} · {x.status} · {x.subsystem}</p></div>)}</div></section>
       </div>
+
+      <section className="vl-panel overflow-hidden"><div className="border-b border-white/8 p-5"><p className="vl-eyebrow">Latest autonomous actions</p><h2 className="mt-2 text-[22px] font-semibold">Auditable execution</h2></div><div className="overflow-x-auto"><table className="w-full min-w-[760px] text-left text-[12px]"><thead style={{color:"var(--color-vl-ink-faint)"}}><tr className="border-b border-white/8"><th className="p-4">Agent</th><th className="p-4">Action</th><th className="p-4">Status</th><th className="p-4">External result</th></tr></thead><tbody className="divide-y divide-white/7">{d.actions.slice(0,18).map(a=><tr key={a.id}><td className="p-4">{a.agent}</td><td className="p-4">{a.action_type}</td><td className="p-4">{a.status}</td><td className="max-w-[320px] truncate p-4" style={{color:"var(--color-vl-ink-muted)"}}>{a.external_ref||"—"}</td></tr>)}</tbody></table></div></section>
     </div>
-  );
+  </div>;
 }
