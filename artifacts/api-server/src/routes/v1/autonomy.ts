@@ -3,6 +3,7 @@ import rateLimit from "express-rate-limit";
 import { pool } from "@workspace/db";
 import { collectBusinessSnapshot, objectiveScore } from "../../autonomy/metrics";
 import { collectFinanceSnapshot } from "../../autonomy/finance";
+import { collectOutboundCampaignPerformance } from "../../autonomy/outbound-reconciliation";
 import { runAutonomyCycleLocked } from "../../autonomy/orchestrator";
 import { recordBusinessEvent } from "../../autonomy/ledger";
 import { assignExperiment, createExperiment } from "../../autonomy/experiments";
@@ -93,9 +94,10 @@ router.use(requirePlatformAdmin);
 
 router.get("/status", async (_req: Request, res: Response): Promise<void> => {
   if (!pool) { res.status(503).json({ error: "database_unavailable" }); return; }
-  const [snapshot, finance, runs, actions, findings, experiments, leads, opportunities] = await Promise.all([
+  const [snapshot, finance, outbound, runs, actions, findings, experiments, leads, opportunities] = await Promise.all([
     collectBusinessSnapshot(30),
     collectFinanceSnapshot(30),
+    collectOutboundCampaignPerformance(30),
     pool.query(`SELECT id,run_type,trigger,status,objective_score_before,objective_score_after,started_at,finished_at,error_message,plan,result FROM autonomy_runs ORDER BY started_at DESC LIMIT 12`),
     pool.query(`SELECT id,agent,action_type,risk_level,authority,status,external_ref,cost_cents,expected_impact,actual_impact,created_at,executed_at,rolled_back_at FROM autonomous_actions ORDER BY created_at DESC LIMIT 30`),
     pool.query(`SELECT id,fingerprint,status,severity,subsystem,title,evidence,recommended_change,github_pr_url,updated_at FROM product_findings ORDER BY updated_at DESC LIMIT 25`),
@@ -111,6 +113,7 @@ router.get("/status", async (_req: Request, res: Response): Promise<void> => {
     budget: DEFAULT_AUTONOMY_BUDGET,
     snapshot,
     finance,
+    outbound,
     objectiveScore: objectiveScore(snapshot),
     runs: runs.rows,
     actions: actions.rows,
@@ -158,10 +161,6 @@ router.post("/experiments", async (req: Request, res: Response): Promise<void> =
   }
 });
 
-/**
- * Record real external acquisition spend (ads, sponsorships, purchased media)
- * for the finance evaluator. This is admin-only and never inferred by the model.
- */
 router.post("/finance/campaign-spend", async (req: Request, res: Response): Promise<void> => {
   const valueCents = Number(req.body?.valueCents);
   const campaign = cleanString(req.body?.campaign, 120);

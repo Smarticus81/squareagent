@@ -4,7 +4,7 @@ import { pool } from "@workspace/db";
 import { autonomyEnabled } from "./constitution";
 import { structuredModel } from "./openai";
 import { recordAutonomousAction, markActionExecuted, markActionFailed, recordBusinessEvent } from "./ledger";
-import { optOutLead } from "./growth";
+import { optOutLead, resolveOperatorUserId } from "./growth";
 import { executors as inboxExecutors } from "../tools/general/email-read";
 import { executors as emailExecutors } from "../tools/general/email";
 
@@ -91,9 +91,15 @@ async function ownedBySales(email: string): Promise<boolean> {
 
 export async function runSupportInbox(runId?: string, maxMessages = 6): Promise<{ inspected: number; responded: number; escalated: number }> {
   if (!supportEnabled()) return { inspected: 0, responded: 0, escalated: 0 };
-  const operatorUserId = Number(process.env.AUTONOMY_OPERATOR_USER_ID);
+
+  let operatorUserId: number;
+  try {
+    operatorUserId = await resolveOperatorUserId();
+  } catch (error) {
+    console.error("[autonomy] support inbox operator resolution failed", error instanceof Error ? error.message : error);
+    return { inspected: 0, responded: 0, escalated: 0 };
+  }
   const operatorOrgId = process.env.AUTONOMY_OPERATOR_ORG_ID?.trim() || null;
-  if (!Number.isInteger(operatorUserId) || operatorUserId <= 0) return { inspected: 0, responded: 0, escalated: 0 };
 
   const ctx = { userId: operatorUserId, organizationId: operatorOrgId } as any;
   const list = inboxExecutors.list_inbox;
@@ -122,9 +128,6 @@ export async function runSupportInbox(runId?: string, maxMessages = 6): Promise<
     const email = senderEmail(String(message.from ?? ""));
     if (!email) continue;
 
-    // The sales worker owns active prospect conversations. Escalated sales
-    // threads intentionally remain unread for a founder, so support must not
-    // answer them a second time.
     if (await ownedBySales(email)) continue;
     inspected += 1;
 
@@ -166,11 +169,10 @@ export async function runSupportInbox(runId?: string, maxMessages = 6): Promise<
       runId,
       agent: "support",
       actionType: triage.canAutoRespond ? "support.respond" : "support.escalate",
-      // Escalating is itself a safe/reversible action even when the underlying
-      // incident is severe. Severity remains in the input/event for prioritization.
       riskLevel: triage.canAutoRespond ? incidentRisk : "low",
       input: { gmailMessageId: id, intent: triage.intent, severity: triage.severity, summary: triage.summary },
       expectedImpact: { metric: "support_resolution_and_customer_trust" },
+      externalRef: id,
     });
 
     if (triage.canAutoRespond && action.authority !== "founder" && action.authority !== "forbidden") {
@@ -186,7 +188,7 @@ export async function runSupportInbox(runId?: string, maxMessages = 6): Promise<
           properties: { gmailMessageId: id, intent: triage.intent },
           dedupeKey: `support-resolved:${id}`,
         });
-        await markActionExecuted(action.id, { providerResult: result.result });
+        await markActionExecuted(action.id, { providerResult: result.result }, id);
         responded += 1;
       } catch (error) {
         await markActionFailed(action.id, { error: error instanceof Error ? error.message : String(error) });
@@ -201,7 +203,7 @@ export async function runSupportInbox(runId?: string, maxMessages = 6): Promise<
         properties: { gmailMessageId: id, intent: triage.intent, severity: triage.severity, summary: triage.summary },
         dedupeKey: `support-escalated:${id}`,
       });
-      await markActionExecuted(action.id, { escalated: true, severity: triage.severity });
+      await markActionExecuted(action.id, { escalated: true, severity: triage.severity }, id);
       escalated += 1;
     }
   }

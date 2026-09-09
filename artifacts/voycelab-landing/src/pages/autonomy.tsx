@@ -45,6 +45,33 @@ type FinanceSnapshot = {
   acquisitionEconomicsCoverage: boolean;
 };
 
+type OutboundPerformance = {
+  windowDays: number;
+  totals: {
+    sent: number;
+    uniqueRecipients: number;
+    replied: number;
+    positiveReplies: number;
+    demoRequests: number;
+    trialInterest: number;
+    attributedSubscriptions: number;
+    optOuts: number;
+    replyRate: number;
+    positiveReplyRate: number;
+    paidConversionRate: number;
+  };
+  campaigns: Array<{
+    campaign: string;
+    sent: number;
+    replied: number;
+    positiveReplies: number;
+    demoRequests: number;
+    trialInterest: number;
+    attributedSubscriptions: number;
+    optOuts: number;
+  }>;
+};
+
 type ControlPlaneStatus = {
   enabled: boolean;
   codeWritesEnabled: boolean;
@@ -54,6 +81,7 @@ type ControlPlaneStatus = {
   budget: Record<string, number>;
   snapshot: Snapshot;
   finance: FinanceSnapshot;
+  outbound: OutboundPerformance;
   runs: Array<Record<string, any>>;
   actions: Array<Record<string, any>>;
   productFindings: Array<Record<string, any>>;
@@ -141,6 +169,7 @@ export default function AutonomyPage() {
   const data = status.data;
   const s = data.snapshot;
   const f = data.finance;
+  const o = data.outbound;
   const currentRun = data.runs[0];
   const openFindings = data.productFindings.filter((finding) => !["resolved", "dismissed"].includes(String(finding.status)));
   const activeExperiments = data.experiments.filter((experiment) => experiment.status === "running");
@@ -174,6 +203,42 @@ export default function AutonomyPage() {
           <Stat label="Trial → paid" value={pct(s.funnel.activationToPaid)} note={`${s.funnel.paid}/${s.funnel.activated} activated`} />
           <Stat label="Tool failure" value={pct(s.product.toolFailureRate)} note={`${s.product.toolFailures}/${s.product.toolCalls} tool calls`} />
         </div>
+
+        <section className="vl-panel overflow-hidden">
+          <div className="flex flex-col justify-between gap-3 border-b border-white/8 p-5 sm:flex-row sm:items-end">
+            <div>
+              <p className="vl-eyebrow">Campaign performance</p>
+              <h2 className="mt-2 text-[22px] font-semibold">Provider-confirmed outbound</h2>
+            </div>
+            <div className="flex items-center gap-2">
+              <StatusPill active={true}>Gmail / provider reconciled</StatusPill>
+              <span className="text-[11px]" style={{ color: "var(--color-vl-ink-faint)" }}>{o.windowDays}-day window</span>
+            </div>
+          </div>
+          <div className="grid gap-3 p-5 sm:grid-cols-2 lg:grid-cols-6">
+            <Stat label="Sent" value={String(o.totals.sent)} note={`${o.totals.uniqueRecipients} unique lead(s)`} />
+            <Stat label="Replies" value={String(o.totals.replied)} note={`${pct(o.totals.replyRate)} reply rate`} />
+            <Stat label="Positive" value={String(o.totals.positiveReplies)} note={`${pct(o.totals.positiveReplyRate)} of sends`} />
+            <Stat label="Demo / trial" value={String(o.totals.demoRequests + o.totals.trialInterest)} note={`${o.totals.demoRequests} demo · ${o.totals.trialInterest} trial`} />
+            <Stat label="Paid attributed" value={String(o.totals.attributedSubscriptions)} note={`${pct(o.totals.paidConversionRate)} of sends`} />
+            <Stat label="Opt-outs" value={String(o.totals.optOuts)} note="Campaign guardrail" />
+          </div>
+          <div className="border-t border-white/8 px-5 pb-5">
+            <div className="divide-y divide-white/7">
+              {o.campaigns.slice(0, 5).map((campaign) => (
+                <div key={campaign.campaign} className="grid gap-2 py-3 text-[11px] sm:grid-cols-[1fr_repeat(5,auto)] sm:items-center sm:gap-5">
+                  <span className="min-w-0 truncate font-medium">{campaign.campaign}</span>
+                  <span style={{ color: "var(--color-vl-ink-muted)" }}>{campaign.sent} sent</span>
+                  <span style={{ color: "var(--color-vl-ink-muted)" }}>{campaign.replied} replies</span>
+                  <span style={{ color: "var(--color-vl-ink-muted)" }}>{campaign.positiveReplies} positive</span>
+                  <span style={{ color: "var(--color-vl-ink-muted)" }}>{campaign.demoRequests + campaign.trialInterest} intent</span>
+                  <span style={{ color: "var(--color-vl-ink-muted)" }}>{campaign.attributedSubscriptions} paid</span>
+                </div>
+              ))}
+              {!o.campaigns.length && <p className="py-5 text-[12px]" style={{ color: "var(--color-vl-ink-muted)" }}>No provider-confirmed campaign events in this window.</p>}
+            </div>
+          </div>
+        </section>
 
         <section className="vl-panel p-5">
           <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
