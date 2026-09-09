@@ -131,9 +131,9 @@ export async function evaluateExperiments(): Promise<Array<{ slug: string; statu
     const guardrails = (Array.isArray(experiment.guardrails) ? experiment.guardrails : []) as ExperimentGuardrail[];
     if (variants.length < 2) continue;
 
-    // For outbound campaigns, a lead is only exposed when the provider actually
-    // accepts the email. Assignment alone is not a real marketing exposure.
-    const denominatorEventType = String(experiment.primary_metric) === "outbound_positive_reply"
+    // Outbound experiments always use provider-confirmed sends as the denominator.
+    // Assignment is not exposure; delivered email is exposure.
+    const denominatorEventType = String(experiment.primary_metric).startsWith("outbound_")
       ? "outbound_sent"
       : "experiment_exposed";
     const exposures = await metricCounts(String(experiment.id), denominatorEventType);
