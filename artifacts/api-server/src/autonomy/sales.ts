@@ -36,7 +36,7 @@ async function capabilities(): Promise<string> {
   try {
     return (await readFile(path.resolve(process.cwd(), "CAPABILITIES.md"), "utf8")).slice(0, 30_000);
   } catch {
-    return "VoyceLab is a Square-connected voice operations platform for hospitality with permitted POS, reporting, inventory, catalog, customer/payment and team/labor workflows.";
+    return "VoyceLab lets event-venue and bar teams use voice for permitted Square-connected POS, reporting and inventory tasks.";
   }
 }
 
@@ -53,16 +53,15 @@ async function latestAttribution(leadId: string): Promise<{ campaign: string | n
   return { campaign: row?.campaign ?? null, experimentId: row?.experiment_id ?? null, variant: row?.variant ?? null };
 }
 
-function bookingUrl(): string {
-  const explicit = process.env.AUTONOMY_DEMO_URL?.trim();
-  if (explicit) return explicit;
-  const base = (process.env.PUBLIC_BASE_URL ?? "https://www.voycelab.com").replace(/\/$/, "");
-  return `${base}/book-demo`;
+function siteUrl(): string {
+  return (process.env.PUBLIC_BASE_URL ?? "https://voycelab.com").replace(/\/$/, "");
 }
 
-function trialUrl(): string {
-  const base = (process.env.PUBLIC_BASE_URL ?? "https://www.voycelab.com").replace(/\/$/, "");
-  return `${base}/signup`;
+function trialUrl(attribution?: { campaign: string | null; variant: string | null }): string {
+  const params = new URLSearchParams({ utm_source: "sales_reply", utm_medium: "email" });
+  if (attribution?.campaign) params.set("utm_campaign", attribution.campaign);
+  if (attribution?.variant) params.set("utm_content", attribution.variant);
+  return `${siteUrl()}/signup?${params.toString()}`;
 }
 
 export async function runSalesInbox(runId?: string, maxMessages = 8): Promise<{ inspected: number; responded: number; positive: number; escalated: number; optedOut: number }> {
@@ -76,7 +75,6 @@ export async function runSalesInbox(runId?: string, maxMessages = 8): Promise<{ 
     return { inspected: 0, responded: 0, positive: 0, escalated: 0, optedOut: 0 };
   }
   const operatorOrgId = process.env.AUTONOMY_OPERATOR_ORG_ID?.trim() || null;
-
   const ctx = { userId: operatorUserId, organizationId: operatorOrgId } as any;
   const list = inboxExecutors.list_inbox;
   const read = inboxExecutors.read_email;
@@ -147,22 +145,25 @@ export async function runSalesInbox(runId?: string, maxMessages = 8): Promise<{ 
       response: string;
     }>(
       [
-        "You are VoyceLab's B2B sales agent handling a reply from a real prospect.",
-        "Use only the supplied email, public prospect evidence, and product context. Never invent customers, results, discounts, integrations, security certifications, roadmap commitments, implementation dates, or pricing exceptions.",
-        "Positive interest, normal product questions, demo requests and trial requests may be answered autonomously when the supplied context is sufficient.",
-        "Set canAutoRespond=false and nextStage=needs_founder for procurement negotiations, custom contract terms, security questionnaires requiring attestations, enterprise pricing exceptions, legal terms, or commitments not explicitly in the context.",
-        "For demo interest, point to the supplied demo URL. For trial interest, point to the supplied trial URL. Do not claim a meeting is booked until the prospect actually books it.",
-        "For not_now, be respectful and concise; do not pressure them. For negative, close politely. For opt_out, only acknowledge opt-out.",
-        "Keep autonomous responses under 150 words and directly answer the prospect's question before the CTA.",
+        "You are VoyceLab's sales reply agent for event venues and bars.",
+        "Answer in plain English. Keep normal replies under 90 words. The recipient is busy.",
+        "VoyceLab lets bartenders and venue managers use voice to get common Square tasks done instead of tapping through screens.",
+        "Never use vague marketing jargon such as voice layer, orchestration, operational intelligence, workflow transformation, connected systems, streamline, unlock, leverage, or optimize.",
+        "Use only the supplied email and product context. Never invent customers, results, discounts, integrations, security certifications, roadmap commitments, implementation dates, or pricing exceptions.",
+        "For ordinary product questions, answer directly. If useful, say the live demo is already on the homepage at the supplied site URL.",
+        "For demo interest: do NOT book or offer a meeting. Tell them the live demo is already on the homepage, then offer the Start Free URL.",
+        "For trial or positive interest: send the Start Free URL. The preferred next action is signup, not a call.",
+        "Set canAutoRespond=false and nextStage=needs_founder for procurement negotiations, custom contracts, security attestations, enterprise pricing exceptions, legal terms, or commitments not explicitly in context.",
+        "For not_now, be respectful and concise. For negative, close politely. For opt_out, only acknowledge the opt-out.",
       ].join("\n"),
       {
         lead: { companyName: lead.company_name, contactName: lead.contact_name, segment: lead.segment, fitScore: lead.fit_score, evidence: lead.evidence, profile: lead.profile },
         message: { subject: message.subject, body: message.body },
         productContext,
-        demoUrl: bookingUrl(),
-        trialUrl: trialUrl(),
+        siteUrl: siteUrl(),
+        startFreeUrl: trialUrl(attribution),
       },
-      { schemaName: "voycelab_sales_reply", schema: SALES_SCHEMA as unknown as Record<string, unknown>, reasoningEffort: "medium", maxOutputTokens: 1600 },
+      { schemaName: "voycelab_sales_reply", schema: SALES_SCHEMA as unknown as Record<string, unknown>, reasoningEffort: "medium", maxOutputTokens: 1200 },
     );
 
     if (triage.intent === "opt_out" || triage.nextStage === "do_not_contact") {
@@ -188,7 +189,7 @@ export async function runSalesInbox(runId?: string, maxMessages = 8): Promise<{ 
     }
 
     if (triage.intent === "demo") {
-      await recordBusinessEvent({ eventType: "demo_requested", actorType: "prospect", actorId: String(lead.id), campaign: attribution.campaign, experimentId: attribution.experimentId, variant: attribution.variant, properties: { leadId: lead.id, gmailMessageId: id }, dedupeKey: `demo-request:${id}` });
+      await recordBusinessEvent({ eventType: "demo_requested", actorType: "prospect", actorId: String(lead.id), campaign: attribution.campaign, experimentId: attribution.experimentId, variant: attribution.variant, properties: { leadId: lead.id, gmailMessageId: id, fulfillment: "onsite_demo" }, dedupeKey: `demo-request:${id}` });
     }
     if (triage.intent === "trial") {
       await recordBusinessEvent({ eventType: "trial_interest", actorType: "prospect", actorId: String(lead.id), campaign: attribution.campaign, experimentId: attribution.experimentId, variant: attribution.variant, properties: { leadId: lead.id, gmailMessageId: id }, dedupeKey: `trial-interest:${id}` });
@@ -200,7 +201,7 @@ export async function runSalesInbox(runId?: string, maxMessages = 8): Promise<{ 
       actionType: triage.canAutoRespond ? "sales.respond" : "sales.escalate",
       riskLevel: triage.canAutoRespond ? "medium" : "low",
       input: { leadId: lead.id, gmailMessageId: id, intent: triage.intent, summary: triage.summary },
-      expectedImpact: { metric: "qualified_pipeline_and_subscription_conversion" },
+      expectedImpact: { metric: "paid_customer_conversion", leadingMetric: "signup_completed" },
       externalRef: id,
     });
 
@@ -217,8 +218,8 @@ export async function runSalesInbox(runId?: string, maxMessages = 8): Promise<{ 
       if (/failed|error|missing|limit|rejected/i.test(result.result)) throw new Error(result.result);
       await markRead({ id }, ctx);
       await pool.query(`UPDATE prospect_leads SET stage=$2, next_contact_at=$3, updated_at=now() WHERE id=$1`, [lead.id, triage.nextStage, triage.nextStage === "nurture" ? new Date(Date.now() + 30 * 86_400_000) : null]);
-      await recordBusinessEvent({ eventType: "sales_response_sent", actorType: "agent", actorId: "sales", campaign: attribution.campaign, experimentId: attribution.experimentId, variant: attribution.variant, properties: { leadId: lead.id, intent: triage.intent, nextStage: triage.nextStage, gmailMessageId: id }, dedupeKey: `sales-response:${id}` });
-      await markActionExecuted(action.id, { providerResult: result.result, nextStage: triage.nextStage }, id);
+      await recordBusinessEvent({ eventType: "sales_response_sent", actorType: "agent", actorId: "sales", campaign: attribution.campaign, experimentId: attribution.experimentId, variant: attribution.variant, properties: { leadId: lead.id, intent: triage.intent, nextStage: triage.nextStage, gmailMessageId: id, preferredCta: "signup" }, dedupeKey: `sales-response:${id}` });
+      await markActionExecuted(action.id, { providerResult: result.result, nextStage: triage.nextStage, preferredCta: "signup" }, id);
       responded += 1;
     } catch (error) {
       await markActionFailed(action.id, { error: error instanceof Error ? error.message : String(error) });
