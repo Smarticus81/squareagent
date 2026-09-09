@@ -3,6 +3,7 @@ import { useLocation } from "wouter";
 import { AnimatePresence, motion } from "framer-motion";
 import { Eye, EyeOff, Info, ShieldCheck } from "lucide-react";
 import { useSignup } from "@/hooks/use-auth";
+import { trackBusinessEvent } from "@/components/autonomy-telemetry";
 import {
   AuthHeader,
   AuthShell,
@@ -27,6 +28,10 @@ export default function Signup() {
   const hasPendingPlan = typeof window !== "undefined" && Boolean(sessionStorage.getItem("voycelab.pending_plan"));
 
   useEffect(() => {
+    trackBusinessEvent("signup_started", { path: "/signup" });
+  }, []);
+
+  useEffect(() => {
     if (!socialNotice) return;
     const id = window.setTimeout(() => setSocialNotice(null), 4500);
     return () => window.clearTimeout(id);
@@ -38,6 +43,7 @@ export default function Signup() {
       { name: name.trim(), email: email.trim(), password },
       {
         onSuccess: () => {
+          trackBusinessEvent("signup_completed", { path: "/signup", signupMethod: "email" });
           setLocation(sessionStorage.getItem("voycelab.pending_plan") ? "/pricing" : "/onboarding");
         },
       },
@@ -123,7 +129,7 @@ export default function Signup() {
                 {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
             }
-            action={<ConicSubmitButton label={hasPendingPlan ? "Continue to checkout" : "Start free trial"} pending={signup.isPending} />}
+            action={<ConicSubmitButton label={hasPendingPlan ? "Continue to checkout" : "Start free"} pending={signup.isPending} />}
           >
             <input
               id="signup-password"
