@@ -5,6 +5,7 @@ import { autonomyEnabled } from "./constitution";
 import { structuredModel } from "./openai";
 import { recordAutonomousAction, markActionExecuted, markActionFailed, recordBusinessEvent } from "./ledger";
 import { optOutLead, resolveOperatorUserId } from "./growth";
+import { isAutomatedSystemMessage } from "./deliverability";
 import { executors as inboxExecutors } from "../tools/general/email-read";
 import { executors as emailExecutors } from "../tools/general/email";
 
@@ -125,9 +126,16 @@ export async function runSupportInbox(runId?: string, maxMessages = 6): Promise<
     const full = await read({ id }, ctx);
     let message: any;
     try { message = JSON.parse(full.result); } catch { continue; }
+
+    // Delivery-status notifications, no-reply systems, GitHub notifications and
+    // other auto-submitted mail are operational signals, never customers.
+    if (isAutomatedSystemMessage(message)) {
+      await markRead({ id }, ctx);
+      continue;
+    }
+
     const email = senderEmail(String(message.from ?? ""));
     if (!email) continue;
-
     if (await ownedBySales(email)) continue;
     inspected += 1;
 
