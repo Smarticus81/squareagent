@@ -131,7 +131,12 @@ export async function evaluateExperiments(): Promise<Array<{ slug: string; statu
     const guardrails = (Array.isArray(experiment.guardrails) ? experiment.guardrails : []) as ExperimentGuardrail[];
     if (variants.length < 2) continue;
 
-    const exposures = await metricCounts(String(experiment.id), "experiment_exposed");
+    // For outbound campaigns, a lead is only exposed when the provider actually
+    // accepts the email. Assignment alone is not a real marketing exposure.
+    const denominatorEventType = String(experiment.primary_metric) === "outbound_positive_reply"
+      ? "outbound_sent"
+      : "experiment_exposed";
+    const exposures = await metricCounts(String(experiment.id), denominatorEventType);
     const conversions = await metricCounts(String(experiment.id), String(experiment.primary_metric));
 
     const guardrailSummary: Record<string, Record<string, { count: number; exposed: number; rate: number }>> = {};
@@ -180,6 +185,7 @@ export async function evaluateExperiments(): Promise<Array<{ slug: string; statu
     const subscriptionCounts = await metricCounts(String(experiment.id), "outbound_subscription_attributed");
     const subscriptionByVariant = Object.fromEntries(variants.map((variant) => [variant.id, subscriptionCounts.get(variant.id) ?? 0]));
     const summary: Record<string, unknown> = {
+      denominatorEventType,
       control: { id: control.id, exposed: controlN, conversions: controlSuccess, rate: controlRate },
       variants: stats,
       best: bestCandidate,
