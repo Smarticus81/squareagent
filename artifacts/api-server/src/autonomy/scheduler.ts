@@ -36,9 +36,12 @@ function scheduleOnce(fn: () => Promise<void>, ms: number): void {
 export function startAutonomyScheduler(): void {
   if (!autonomyEnabled() || intervalTimers.length || timeoutTimers.length) return;
 
-  const strategyInterval = intervalMs("AUTONOMY_STRATEGY_INTERVAL_MINUTES", 360);
+  // Revenue decisions are hourly; warm prospects and activated signups are
+  // worked every 15 minutes. Send caps and deliverability guards still limit
+  // acquisition volume independently.
+  const strategyInterval = intervalMs("AUTONOMY_STRATEGY_INTERVAL_MINUTES", 60);
   const inboxInterval = intervalMs("AUTONOMY_INBOX_INTERVAL_MINUTES", 10);
-  const activationInterval = intervalMs("AUTONOMY_ACTIVATION_INTERVAL_MINUTES", 60);
+  const activationInterval = intervalMs("AUTONOMY_ACTIVATION_INTERVAL_MINUTES", 15);
   const promotionInterval = intervalMs("AUTONOMY_PROMOTION_INTERVAL_MINUTES", 10);
 
   const strategy = async () => {
