@@ -14,6 +14,7 @@ import { runSupportInbox } from "./support";
 import { evaluateExperiments } from "./experiments";
 import { evaluateMergedProductRepairs, promoteReadyProductRepairs } from "./promotion";
 import { runDeliveryFailureInbox } from "./deliverability";
+import { collectRevenuePressure, killZeroRevenueCampaigns } from "./revenue-operator";
 import { finishAutonomyRun, startAutonomyRun, updateRunPlan } from "./ledger";
 
 export interface AutonomyCycleResult {
@@ -22,6 +23,7 @@ export interface AutonomyCycleResult {
   before?: unknown;
   after?: unknown;
   finance?: unknown;
+  revenuePressure?: unknown;
   plan?: unknown;
   product?: unknown;
   growth?: unknown;
@@ -33,11 +35,18 @@ export interface AutonomyCycleResult {
   promotion?: unknown;
 }
 
-async function snapshotMetrics(snapshot: Awaited<ReturnType<typeof collectBusinessSnapshot>>, finance: Awaited<ReturnType<typeof collectFinanceSnapshot>>): Promise<void> {
+async function snapshotMetrics(
+  snapshot: Awaited<ReturnType<typeof collectBusinessSnapshot>>,
+  finance: Awaited<ReturnType<typeof collectFinanceSnapshot>>,
+  revenuePressure: Awaited<ReturnType<typeof collectRevenuePressure>>,
+): Promise<void> {
   if (!pool) return;
   const rows: Array<[string, number, number | null, number | null]> = [
     ["objective_score", objectiveScore(snapshot), null, null],
     ["mrr_cents", snapshot.revenue.mrrCents, null, null],
+    ["new_paid_customers_7d", revenuePressure.paidStarts7d, null, null],
+    ["new_mrr_cents_7d", revenuePressure.newMrrCents7d, null, null],
+    ["net_paid_growth_7d", revenuePressure.netPaidGrowth7d, revenuePressure.paidStarts7d, revenuePressure.cancellations7d],
     ["visitor_to_signup", Math.round(snapshot.funnel.visitorToSignup * 1000), snapshot.funnel.signups, snapshot.funnel.visitors],
     ["signup_to_connect", Math.round(snapshot.funnel.signupToConnect * 1000), snapshot.funnel.squareConnected, snapshot.funnel.signups],
     ["connect_to_activation", Math.round(snapshot.funnel.connectToActivation * 1000), snapshot.funnel.activated, snapshot.funnel.squareConnected],
@@ -53,7 +62,7 @@ async function snapshotMetrics(snapshot: Awaited<ReturnType<typeof collectBusine
     await pool.query(
       `INSERT INTO metric_snapshots (metric_name,value_milli,numerator,denominator,dimensions)
        VALUES ($1::text,$2::integer,$3::integer,$4::integer,$5::jsonb)`,
-      [metric, value, numerator, denominator, JSON.stringify({ windowDays: snapshot.windowDays, financeVerdict: finance.verdict })],
+      [metric, value, numerator, denominator, JSON.stringify({ windowDays: snapshot.windowDays, financeVerdict: finance.verdict, revenueEmergency: revenuePressure.revenueEmergency })],
     );
   }
 }
@@ -78,13 +87,21 @@ async function eligibleLeadCount(): Promise<number> {
 
 export async function runAutonomyCycle(trigger = "scheduler"): Promise<AutonomyCycleResult> {
   if (!autonomyEnabled()) return { enabled: false };
-  const [before, financeBefore] = await Promise.all([collectBusinessSnapshot(30), collectFinanceSnapshot(30)]);
+  const [before, financeBefore, revenueBefore] = await Promise.all([
+    collectBusinessSnapshot(30),
+    collectFinanceSnapshot(30),
+    collectRevenuePressure(),
+  ]);
   const beforeScore = objectiveScore(before);
   const runId = await startAutonomyRun("strategy", trigger, VOYCELAB_OBJECTIVE.northStar, beforeScore);
 
   try {
-    const plan = await createAutonomyPlan(before);
-    await updateRunPlan(runId, { ...plan, finance: { verdict: financeBefore.verdict, reasons: financeBefore.reasons } });
+    const plan = await createAutonomyPlan(before, revenueBefore);
+    await updateRunPlan(runId, {
+      ...plan,
+      revenuePressure: revenueBefore,
+      finance: { verdict: financeBefore.verdict, reasons: financeBefore.reasons },
+    });
 
     let deliverabilitySafe = true;
     let deliverability: unknown;
@@ -96,33 +113,28 @@ export async function runAutonomyCycle(trigger = "scheduler"): Promise<AutonomyC
       console.error("[autonomy] delivery-failure reconciliation failed; acquisition paused", error instanceof Error ? error.message : error);
     }
 
-    const findings = await persistProductFindings(detectProductFindings(before), runId);
-    const topFinding = highestPriorityFinding(findings);
-    const promotion = { ...(await promoteReadyProductRepairs()), monitoring: await evaluateMergedProductRepairs() };
+    // Money first: reconcile revenue, work active buyers/signups, and kill a
+    // campaign that has had enough real deliveries without producing a buyer.
     const sales = await runSalesInbox(runId);
     const attribution = await reconcileOutboundSubscriptionAttribution();
+    const campaignRotation = await killZeroRevenueCampaigns();
     const experiments = await evaluateExperiments();
+    const activation = await runActivationInterventions(runId);
     const requested = new Set(plan.actions.map((a) => a.actionType));
 
-    const product: Record<string, unknown> = { findings: findings.length };
-    if (topFinding && (requested.has("code.product_fix") || materiallyDegraded(before))) {
-      product.topFinding = topFinding.fingerprint;
-      product.repair = await generateProductRepair(topFinding, runId);
-    } else if (!materiallyDegraded(before)) {
-      const upgrades = await discoverProductUpgrades(before, runId);
-      product.upgradeOpportunities = upgrades;
-      const best = bestAutonomousUpgrade(upgrades, before);
-      if (best && codeWritesEnabled()) product.upgrade = await generateProductRepair(best, runId);
-    }
+    const findings = await persistProductFindings(detectProductFindings(before), runId);
+    const topFinding = highestPriorityFinding(findings);
 
     const leadCount = await eligibleLeadCount();
     const growth: Record<string, unknown> = {
       verifiedEligibleLeadCountBefore: leadCount,
       financeVerdict: financeBefore.verdict,
       attributedSubscriptions: attribution.attributed,
+      campaignRotation,
       deliveryFailureReconciliation: deliverability,
     };
-    if (requested.has("growth.research") || leadCount < 20) growth.research = await researchProspects(runId);
+    // Build a deeper verified pipeline without increasing daily send caps.
+    if (requested.has("growth.research") || leadCount < 50) growth.research = await researchProspects(runId);
 
     const productHealthy = !materiallyDegraded(before);
     const financeHealthy = financeAllowsAcquisition(financeBefore);
@@ -139,11 +151,28 @@ export async function runAutonomyCycle(trigger = "scheduler"): Promise<AutonomyC
       growth.outbound = { paused: "outbound_disabled" };
     }
 
-    const activation = await runActivationInterventions(runId);
+    const product: Record<string, unknown> = { findings: findings.length };
+    if (topFinding && (requested.has("code.product_fix") || materiallyDegraded(before))) {
+      product.topFinding = topFinding.fingerprint;
+      product.repair = await generateProductRepair(topFinding, runId);
+    } else if (revenueBefore.revenueEmergency) {
+      product.skipped = "revenue_emergency_non_conversion_product_work_deferred";
+    } else if (!materiallyDegraded(before)) {
+      const upgrades = await discoverProductUpgrades(before, runId);
+      product.upgradeOpportunities = upgrades;
+      const best = bestAutonomousUpgrade(upgrades, before);
+      if (best && codeWritesEnabled()) product.upgrade = await generateProductRepair(best, runId);
+    }
+
+    const promotion = { ...(await promoteReadyProductRepairs()), monitoring: await evaluateMergedProductRepairs() };
     const support = await runSupportInbox(runId);
-    const [after, financeAfter] = await Promise.all([collectBusinessSnapshot(30), collectFinanceSnapshot(30)]);
+    const [after, financeAfter, revenueAfter] = await Promise.all([
+      collectBusinessSnapshot(30),
+      collectFinanceSnapshot(30),
+      collectRevenuePressure(),
+    ]);
     const afterScore = objectiveScore(after);
-    await snapshotMetrics(after, financeAfter);
+    await snapshotMetrics(after, financeAfter, revenueAfter);
 
     const result = {
       enabled: true,
@@ -151,6 +180,7 @@ export async function runAutonomyCycle(trigger = "scheduler"): Promise<AutonomyC
       before,
       after,
       finance: { before: financeBefore, after: financeAfter },
+      revenuePressure: { before: revenueBefore, after: revenueAfter },
       plan,
       product,
       growth,
