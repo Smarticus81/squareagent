@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="675" viewBox="0 0 1200 675" fill="none">
+  <defs>
+    <radialGradient id="glow" cx="0" cy="0" r="1" gradientTransform="translate(390 280) rotate(28) scale(730 530)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#183B64"/>
+      <stop offset="1" stop-color="#07111F"/>
+    </radialGradient>
+    <linearGradient id="wave" x1="115" y1="290" x2="595" y2="420" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#93C5FD"/>
+      <stop offset="1" stop-color="#818CF8"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="675" fill="url(#glow)"/>
+  <circle cx="350" cy="320" r="235" stroke="#93C5FD" stroke-opacity=".07"/>
+  <circle cx="350" cy="320" r="185" stroke="#93C5FD" stroke-opacity=".1"/>
+  <g font-family="Inter, Arial, sans-serif">
+    <text x="70" y="85" fill="#DBEAFE" font-size="24" font-weight="700" letter-spacing="4">VOYCELAB</text>
+    <text x="70" y="120" fill="#94A3B8" font-size="18">Keep your hands on the job.</text>
+    <g stroke="url(#wave)" stroke-width="13" stroke-linecap="round">
+      <path d="M132 320v30 M165 300v70 M198 277v116 M231 305v62 M264 260v151 M297 226v218 M330 277v115 M363 206v258 M396 250v171 M429 282v105 M462 266v137 M495 298v75 M528 311v48"/>
+    </g>
+    <rect x="90" y="490" width="485" height="76" rx="24" fill="#102238" stroke="#334A66"/>
+    <text x="332" y="536" text-anchor="middle" fill="#EFF6FF" font-size="25">“Add two Old Fashioneds.”</text>
+    <path d="M585 335h60m-12-12 12 12-12 12" stroke="#93C5FD" stroke-opacity=".6" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="700" y="150" width="415" height="390" rx="28" fill="#0D1D30" stroke="#314761"/>
+    <text x="735" y="203" fill="#F8FAFC" font-size="23" font-weight="600">Order preview</text>
+    <text x="735" y="235" fill="#94A3B8" font-size="17">From your voice to the ticket</text>
+    <path d="M735 266h345" stroke="#263C54"/>
+    <rect x="735" y="294" width="48" height="48" rx="12" fill="#1C3552"/>
+    <text x="759" y="326" text-anchor="middle" fill="#BFDBFE" font-size="24" font-weight="600">2</text>
+    <text x="803" y="325" fill="#E2E8F0" font-size="23">Old Fashioned</text>
+    <path d="M735 378h345" stroke="#263C54"/>
+    <circle cx="751" cy="424" r="15" fill="#183D38"/>
+    <path d="m744 424 5 5 9-10" stroke="#6EE7B7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="782" y="432" fill="#A7F3D0" font-size="20">Ready for the next request</text>
+    <text x="735" y="488" fill="#94A3B8" font-size="16">Illustrative example</text>
+  </g>
+</svg>

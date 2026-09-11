@@ -1,6 +1,6 @@
 import WebSocket from "ws";
 import { readServerApiKey, requiredApiKeyEnv } from "../src/lib/api-keys";
-import { OPENAI_REALTIME_MODEL, buildRealtimeSessionPayload } from "../src/lib/openai-realtime";
+import { OPENAI_LIVE_MODEL, OPENAI_LIVE_WS_URL, buildLiveSessionPayload } from "../src/lib/openai-live";
 import {
   buildGeminiLiveSetupMessage,
   buildGeminiLiveUrl,
@@ -30,53 +30,25 @@ async function checkOpenAiRealtime(): Promise<CheckResult> {
     return { provider: "openai", ok: false, detail: `${requiredApiKeyEnv("openai")} is missing` };
   }
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
-  try {
-    const response = await fetch("https://api.openai.com/v1/realtime/client_secrets", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      signal: controller.signal,
-      // Mirror the production session shape (semantic_vad + transcription +
-      // reasoning) so this check fails on any parameter real sessions would
-      // trip over — a turn_detection:null probe once passed while every
-      // production session was rejected.
-      body: JSON.stringify({
-        session: buildRealtimeSessionPayload({
-          instructions: "Voice provider readiness check. Do not generate a response.",
-          voice: "ash",
-          speed: 1,
-          turnDetection: {
-            type: "semantic_vad",
-            eagerness: "auto",
-            create_response: true,
-            interrupt_response: true,
-          },
-        }),
-      }),
-    });
-    if (!response.ok) {
-      const body = await response.text().catch(() => "");
-      return {
-        provider: "openai",
-        ok: false,
-        detail: `Realtime client_secret failed with HTTP ${response.status}: ${sanitizeError(body)}`,
-      };
-    }
-    const data = (await response.json()) as { value?: string; session?: { id?: string } };
-    return {
-      provider: "openai",
-      ok: Boolean(data.value),
-      detail: data.value ? `Realtime session minted for ${OPENAI_REALTIME_MODEL}` : "No client secret returned",
+  return new Promise(resolve => {
+    const ws = new WebSocket(OPENAI_LIVE_WS_URL, { headers: { Authorization: `Bearer ${apiKey}` } });
+    let started = false;
+    let settled = false;
+    const done = (ok: boolean, detail: string) => {
+      if (settled) return; settled = true; clearTimeout(timer); ws.terminate();
+      resolve({ provider: "openai", ok, detail });
     };
-  } catch (err) {
-    return { provider: "openai", ok: false, detail: sanitizeError(err) };
-  } finally {
-    clearTimeout(timeout);
-  }
+    const timer = setTimeout(() => done(false, "Live startup/finalization timed out"), TIMEOUT_MS);
+    ws.on("open", () => ws.send(JSON.stringify({ type: "session.start", session: buildLiveSessionPayload({ instructions: "Readiness check. Stay silent.", transport: "websocket" }) })));
+    ws.on("message", raw => {
+      const event = JSON.parse(raw.toString());
+      if (event.type === "session.started") { started = true; ws.send(JSON.stringify({ type: "session.close" })); }
+      if (event.type === "session.closed") done(started, `${OPENAI_LIVE_MODEL} started and finalized`);
+      if (event.type === "error") done(false, sanitizeError(event.error?.code ?? "Live error"));
+    });
+    ws.on("error", error => done(false, sanitizeError(error)));
+    ws.on("close", () => done(false, "Live closed before finalization"));
+  });
 }
 
 function waitForGeminiSetupComplete(ws: WebSocket): Promise<CheckResult> {
@@ -171,7 +143,7 @@ async function checkGeminiLive(): Promise<CheckResult> {
   });
 }
 
-const results = await Promise.all([checkOpenAiRealtime(), checkGeminiLive()]);
+const results = await Promise.all([checkOpenAiRealtime()]);
 for (const result of results) {
   console.log(`${result.ok ? "PASS" : "FAIL"} ${result.provider}: ${result.detail}`);
 }

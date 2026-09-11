@@ -1,3 +1,4 @@
+import { resolveVoicePipelineProvider } from "@workspace/voicelab-core/voice-pipeline";
 import type {
   VoicePipelineAdapter,
   VoicePipelineEnvContext,
@@ -27,13 +28,13 @@ register(new PushToTalkTextAdapter());
 register(new TextOnlyAdapter());
 
 export function getVoicePipelineAdapter(provider: VoicePipelineProvider): VoicePipelineAdapter {
-  const a = adapters.get(provider);
+  const a = adapters.get(resolveVoicePipelineProvider(provider));
   if (!a) throw new Error(`No voice pipeline adapter registered for "${provider}"`);
   return a;
 }
 
 function listVoicePipelineAdapters(): VoicePipelineAdapter[] {
-  return Array.from(adapters.values());
+  return Array.from(adapters.values()).filter(adapter => resolveVoicePipelineProvider(adapter.provider) === adapter.provider);
 }
 
 /** Snapshot of credential env vars that pipeline adapters care about. */

@@ -13,12 +13,8 @@ import type { VoicePipelineProvider } from "../voice-pipeline/types";
  * Premium tiers are priced for multi-venue groups, where the platform
  * replaces full-time night-of-event coordinators.
  *
- * Underlying voice cost (verified against provider price sheets):
- *   - Gemini 3.1 Flash Live / 2.5 Native Audio: ~$0.005/min audio in +
- *     ~$0.018/min audio out => ~$0.01 per conversation-minute.
- *   - OpenAI gpt-realtime: ~$0.06/min in / ~$0.24/min out => ~$0.10-0.14
- *     per command-style conversation-minute with cached input.
- *   Blended across the engine mix: ~$0.03-0.06 per spoken minute.
+ * GPT-Live bills connected session time, including silence. Delegated backend
+ * usage is billed separately. See docs/gpt-live-migration.md for operations.
  *
  * Sizing basis: a single busy venue uses 15-30 spoken minutes/day
  * (~450-900 min/month). Included minutes must cover normal full-shift use
@@ -126,7 +122,7 @@ export const PLANS: PlanDefinition[] = [
   {
     id: "pro",
     name: "Pro",
-    tagline: "Multi-venue teams that need every skill and Gemini-class voice.",
+    tagline: "Multi-venue teams that need every skill and expressive voice.",
     monthlyPriceUsd: 149,
     yearlyPriceUsdPerMonth: 125,
     highlighted: true,
@@ -143,7 +139,7 @@ export const PLANS: PlanDefinition[] = [
       { text: "Up to 3 venues, 10 assistants" },
       { text: "1,500 voice minutes / month included" },
       {
-        text: "OpenAI Realtime + Gemini 3.1 Flash Live + Gemini 2.5 Native Audio",
+        text: "Expressive conversations powered by GPT-Live 1",
         emphasis: true,
       },
       { text: "Every skill: POS, inventory, catalog, customers, payments, team & labor" },
@@ -168,7 +164,7 @@ export const PLANS: PlanDefinition[] = [
     bullets: [
       { text: "Unlimited venues and assistants" },
       { text: "6,000 voice minutes / month included" },
-      { text: "Every skill and every voice engine", emphasis: true },
+      { text: "Every skill with expressive GPT-Live 1 voice", emphasis: true },
       { text: "Team & labor: shifts, clock-in, who's on the floor right now" },
       { text: "Overage billed at $0.10/min — assistants never hard-stop mid-shift" },
       { text: "24/7 chat + dedicated customer success" },

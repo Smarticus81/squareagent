@@ -1,3 +1,5 @@
+import { LiveProtocol, LiveCaptions } from "@workspace/voicelab-client/live-protocol";
+import { createLiveOffer, observeLivePlayback, closeLiveChannel } from "@workspace/voicelab-client/live-browser";
 /**
  * Voice Agent Context — WebRTC direct connection to OpenAI Realtime API
  * Client connects directly to OpenAI via RTCPeerConnection. Server provides
@@ -270,6 +272,10 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const dcRef = useRef<RTCDataChannel | null>(null);
+  const liveProtocolRef = useRef<LiveProtocol | null>(null);
+  const liveCaptionsRef = useRef(new LiveCaptions());
+  const stopLivePlaybackRef = useRef<(() => void) | null>(null);
+  const sendLive = (raw: string) => { try { liveProtocolRef.current?.send(JSON.parse(raw)); } catch {} };
   const audioElRef = useRef<HTMLAudioElement | null>(null);
   const commandHandlerRef = useRef<CommandHandler | null>(null);
   const catalogRef = useRef<unknown[]>([]);
@@ -364,7 +370,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
     venueIdRef.current = venueId;
     authTokenRef.current = authToken;
     agentProfileIdRef.current = agentProfileId ?? "";
-    voicePipelineProviderRef.current = voicePipelineProvider ?? "";
+    voicePipelineProviderRef.current = voicePipelineProvider?.startsWith(GEMINI_PROVIDER_PREFIX) || voicePipelineProvider === XAI_REALTIME_WS_PROVIDER ? OPENAI_SERVER_WS_PROVIDER : voicePipelineProvider ?? "";
     voicePipelineConfigRef.current = voicePipelineConfig ?? {};
   }, []);
 
@@ -504,7 +510,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
     }
 
     if (dc?.readyState === "open") {
-      dc.send(JSON.stringify({
+      sendLive(JSON.stringify({
         type: "conversation.item.create",
         item: {
           type: "message",
@@ -522,6 +528,14 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
   const requestResponse = useCallback((response?: Record<string, unknown>) => {
     const dc = dcRef.current;
     const ws = wsRef.current;
+    if (dc?.readyState === "open") {
+      liveProtocolRef.current?.send(response ? { type: "response.create", response } : { type: "response.create" });
+      return;
+    }
+    if (ws?.readyState === WebSocket.OPEN && voicePipelineProviderRef.current === OPENAI_SERVER_WS_PROVIDER) {
+      ws.send(JSON.stringify(response ? { type: "response.create", response } : { type: "response.create" }));
+      return;
+    }
     const isGeminiWs =
       ws?.readyState === WebSocket.OPEN &&
       voicePipelineProviderRef.current.startsWith(GEMINI_PROVIDER_PREFIX);
@@ -537,11 +551,6 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
     const payload = JSON.stringify(
       response ? { type: "response.create", response } : { type: "response.create" },
     );
-    if (dc?.readyState === "open") {
-      dc.send(payload);
-      activeResponseRef.current = true;
-      return;
-    }
     if (ws?.readyState === WebSocket.OPEN) {
       ws.send(payload);
       activeResponseRef.current = true;
@@ -575,7 +584,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
     const ws = wsRef.current;
     const sendToolOutput = (output: string) => {
       if (dc?.readyState === "open") {
-        dc.send(JSON.stringify({
+        sendLive(JSON.stringify({
           type: "conversation.item.create",
           item: {
             type: "function_call_output",
@@ -634,6 +643,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
       });
 
       const data = await res.json();
+      if (dc !== dcRef.current || ws !== wsRef.current) return;
       debugVoiceLog(`[WebRTC] Tool result (${toolName}) received`);
 
       let parsed: any = null;
@@ -641,7 +651,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
 
       if (parsed?.status === "REQUIRES_CONFIRMATION" && parsed.confirmation) {
         setPendingConfirmation({ ...parsed.confirmation, call_id: callId });
-        sendToolOutput(`Waiting for user confirmation for ${toolName}. Tell the user you need their confirmation before proceeding.`);
+        if (dc?.readyState === "open") liveProtocolRef.current?.send({ type: "session.commentary.append", delegation_id: null, content: "Please confirm or cancel this action using the on-screen confirmation." });
         return;
       }
 
@@ -762,6 +772,16 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
 
     const setAs = (s: AgentState) => { agentStateRef.current = s; setAgentState(s); };
 
+    const caption = liveCaptionsRef.current.append(event);
+    if (caption) {
+      setConversation(previous => {
+        const existing = previous.find(message => message.id === caption.id);
+        return existing ? previous.map(message => message.id === caption.id ? { ...message, content: caption.text } : message)
+          : [...previous, { id: caption.id, role: caption.role, content: caption.text, timestamp: new Date() }];
+      });
+      if (caption.role === "agent") setPartialTranscript(caption.text);
+      return;
+    }
     switch (event.type) {
       case "x.order_command":
         if (event.command && typeof event.command === "object") {
@@ -801,12 +821,21 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
         // Ack — no action needed
         break;
 
+      case "session.closed":
+        userInitiatedDisconnectRef.current = true;
+        isRunning.current = false;
+        setPendingConfirmation(null);
+        setMicEnabled(false);
+        closeTransportRef.current?.();
+        setAs("disconnected");
+        break;
+
       case "input_audio_buffer.speech_started":
         // Only acoustic barge-in (full-duplex) should cancel the agent here. In
         // half-duplex the mic is gated during playback, so a speech_started while
         // "speaking" can only be residual echo — ignore it rather than self-cut.
         if (fullDuplexRef.current && agentStateRef.current === "speaking") {
-          dcRef.current?.send(JSON.stringify({ type: "response.cancel" }));
+          sendLive(JSON.stringify({ type: "response.cancel" }));
           if (wsRef.current?.readyState === WebSocket.OPEN) {
             wsRef.current.send(JSON.stringify({ type: "response.cancel" }));
           }
@@ -946,6 +975,9 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
       clearInterval(heartbeatIntervalRef.current);
       heartbeatIntervalRef.current = null;
     }
+    stopLivePlaybackRef.current?.();
+    stopLivePlaybackRef.current = null;
+    liveProtocolRef.current = null;
     cancelMicReopen();
     resetResponseGuard();
     isRunning.current = false;
@@ -1047,7 +1079,14 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
     const startAt = Math.max(ctx.currentTime + 0.02, wsPlaybackTimeRef.current || 0);
     source.start(startAt);
     wsPlaybackTimeRef.current = startAt + buffer.duration;
-    scheduleWsPlaybackDone();
+    // Live emits a continuous PCM stream, including silence. Only audible
+    // frames extend the speaking state; trailing silence must let it settle.
+    const energy = Math.sqrt(samples.reduce((sum, value) => sum + value * value, 0) / samples.length);
+    if (energy > 0.008) {
+      agentStateRef.current = "speaking";
+      setAgentState("speaking");
+      scheduleWsPlaybackDone();
+    }
   }, [scheduleWsPlaybackDone]);
 
   const startWsMicStreaming = useCallback(async (ws: WebSocket, inputSampleRate: number) => {
@@ -1108,7 +1147,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
 
     const sessionData = await sessionRes.json();
     sessionIdRef.current = String(sessionData.sessionId ?? sessionData.id ?? `gemini-${Date.now()}`);
-    fullDuplexRef.current = Boolean(sessionData.capabilities?.bargeIn);
+    fullDuplexRef.current = true;
     const handshake = sessionData.clientHandshake;
     if (handshake?.kind !== "ws_relay") {
       throw new Error("Voice session did not return a WebSocket relay handshake.");
@@ -1167,20 +1206,34 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
       }
     };
 
+    const setupMessages: string[] = [];
     await new Promise<void>((resolve, reject) => {
-      const failTimer = window.setTimeout(() => reject(new Error("Voice relay connection timed out")), 15000);
-      ws.onmessage = (event) => captureRelayError(String(event.data));
+      const failTimer = window.setTimeout(() => reject(new Error("Voice relay connection timed out")), 25000);
+      let providerStarted = false;
+      let microphoneReady = false;
+      const finishSetup = () => {
+        if (!providerStarted || !microphoneReady) return;
+        window.clearTimeout(failTimer);
+        startHeartbeat();
+        resolve();
+      };
+      ws.onmessage = (event) => {
+        const raw = String(event.data);
+        captureRelayError(raw);
+        setupMessages.push(raw);
+        try { if (JSON.parse(raw).type === "session.created") providerStarted = true; } catch {}
+        finishSetup();
+      };
       ws.onclose = (event) => {
         window.clearTimeout(failTimer);
         reject(new Error(relaySetupError || event.reason || "Voice relay connection closed before the session started"));
       };
       ws.onopen = async () => {
-        window.clearTimeout(failTimer);
         isRunning.current = true;
         sessionStartTsRef.current = Date.now();
         try {
           await startWsMicStreaming(ws, isGemini ? GEMINI_INPUT_SAMPLE_RATE : OPENAI_RELAY_INPUT_SAMPLE_RATE);
-          if (ws.readyState !== WebSocket.OPEN) {
+          if (wsRef.current !== ws || ws.readyState !== WebSocket.OPEN) {
             throw new Error(relaySetupError || "Voice relay connection closed before the session started");
           }
           ws.send(JSON.stringify({
@@ -1194,9 +1247,10 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
             affectiveDialog: voiceConfig.affectiveDialog,
             thinkingLevel: voiceConfig.thinkingLevel,
           }));
-          startHeartbeat();
-          resolve();
+          microphoneReady = true;
+          finishSetup();
         } catch (e) {
+          window.clearTimeout(failTimer);
           reject(e);
         }
       };
@@ -1206,21 +1260,24 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
       };
     });
 
-    ws.onmessage = (event) => {
-      const raw = String(event.data);
+    const receiveRelayMessage = (raw: string) => {
+      if (wsRef.current !== ws) return;
       try {
         const parsed = JSON.parse(raw) as Record<string, unknown>;
         if (parsed.type === "response.audio.delta" && typeof parsed.delta === "string") {
-          gateMicForPlayback();
           playWsAudioDelta(parsed.delta);
+          return;
         }
       } catch {
         // Shared handler below will ignore non-JSON.
       }
       handleDcEvent(raw);
     };
+    ws.onmessage = (event) => receiveRelayMessage(String(event.data));
+    for (const raw of setupMessages) receiveRelayMessage(raw);
 
     ws.onclose = () => {
+      if (wsRef.current !== ws) return;
       cleanupWsAudio();
       wsRef.current = null;
       if (isRunning.current) {
@@ -1234,11 +1291,10 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
       setError("Voice relay connection failed");
       setAgentState("error");
     };
-  }, [cleanupWsAudio, gateMicForPlayback, handleDcEvent, playWsAudioDelta, reopenMicNow, startWsMicStreaming, startHeartbeat]);
+  }, [cleanupWsAudio, gateMicForPlayback, handleDcEvent, playWsAudioDelta, scheduleWsPlaybackDone, reopenMicNow, startWsMicStreaming, startHeartbeat]);
 
   // ── Connect via WebRTC ─────────────────────────────────────────────────────
-  // standby=true establishes a warm, mic-gated, unmetered connection (wake-word
-  // mode). standby=false is a normal live connect.
+  // Live sessions are created only on activation because connected time is billed.
 
   const connectInternal = useCallback(async (standby: boolean) => {
     if (isRunning.current) return;
@@ -1268,6 +1324,114 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
         return;
       }
 
+      // 2. Create RTCPeerConnection
+      const pc = new RTCPeerConnection();
+      pcRef.current = pc;
+
+      // A half-dead connection (media stalls, DC still "open") would otherwise
+      // leave the UI on "Listening" forever with no recovery path.
+      pc.onconnectionstatechange = () => {
+        const state = pc.connectionState;
+        if (pcRef.current !== pc) return;
+        if (state === "connected") {
+          iceRestartAttemptedRef.current = false;
+          reconnectAttemptRef.current = 0;
+          return;
+        }
+        if (state === "disconnected" && !iceRestartAttemptedRef.current) {
+          iceRestartAttemptedRef.current = true;
+          try { pc.restartIce(); } catch { /* ignore */ }
+          return;
+        }
+        if (state === "failed" || state === "disconnected") {
+          if (standbyRef.current) return;
+          debugVoiceLog(`[WebRTC] Connection ${state} mid-session`);
+          closeTransportRef.current?.();
+          scheduleReconnect(`pc_${state}`);
+        }
+      };
+
+      // 3. Set up audio playback — remote audio track goes to an <audio> element.
+      // The element is attached to the DOM (hidden) and marked playsInline so
+      // the browser's echo canceller has a real render reference and iOS Safari
+      // allows autoplay of the WebRTC stream.
+      const audioEl = document.createElement("audio");
+      audioEl.autoplay = true;
+      audioEl.setAttribute("playsinline", "true");
+      audioEl.style.display = "none";
+      document.body.appendChild(audioEl);
+      audioElRef.current = audioEl;
+
+      pc.ontrack = (e) => {
+        debugVoiceLog("[WebRTC] Got remote audio track");
+        audioEl.srcObject = e.streams[0];
+        audioEl.play?.().catch(() => {});
+        setRemoteStream(e.streams[0] ?? null);
+        stopLivePlaybackRef.current?.();
+        if (e.streams[0]) stopLivePlaybackRef.current = observeLivePlayback(e.streams[0], speaking => {
+          if (!isRunning.current) return;
+          agentStateRef.current = speaking ? "speaking" : "listening";
+          setAgentState(agentStateRef.current);
+        });
+      };
+
+      // 4. Add the outgoing audio track. Live sessions use the real mic.
+      // Standby sessions use generated silence so Web Speech can keep owning
+      // the microphone for wake-word detection; activation swaps in the mic.
+      if (standby) {
+        const silentTrack = createStandbyAudioTrack();
+        if (!silentTrack) throw new Error("Could not create standby audio track");
+        realtimeAudioSenderRef.current = pc.addTrack(silentTrack, new MediaStream([silentTrack]));
+      } else {
+        const { stream, track } = await openLiveMic();
+        micTrackRef.current = track;
+        realtimeAudioSenderRef.current = pc.addTrack(track, stream);
+      }
+
+      // 5. Create data channel for events
+      const dc = pc.createDataChannel("oai-events");
+      dcRef.current = dc;
+
+      dc.onopen = () => {
+        debugVoiceLog("[WebRTC] Data channel open");
+        isRunning.current = true;
+        if (standbyRef.current) {
+          // Warm standby: no metering until activation; recycle before the
+          // session hits OpenAI's age limit so it's always fresh.
+          scheduleStandbyExpire();
+        } else {
+          sessionStartTsRef.current = Date.now();
+          startHeartbeat();
+          startStallWatchdog();
+          reconnectAttemptRef.current = 0;
+        }
+      };
+
+      const protocol = new LiveProtocol(event => { if (dc.readyState === "open") dc.send(JSON.stringify(event)); });
+      liveProtocolRef.current = protocol;
+      liveCaptionsRef.current = new LiveCaptions();
+      dc.onmessage = (e) => {
+        if (dcRef.current !== dc) return;
+        try { for (const event of protocol.receive(JSON.parse(e.data))) handleDcEvent(JSON.stringify(event)); } catch {}
+      };
+
+      dc.onclose = () => {
+        debugVoiceLog("[WebRTC] Data channel closed");
+        const wasStandby = standbyRef.current;
+        const wasRunning = isRunning.current;
+        if (isRunning.current) {
+          isRunning.current = false;
+          if (!wasStandby) setAgentState((prev) => (prev === "error" ? "error" : "disconnected"));
+        }
+        if (wasStandby) {
+          setTimeout(() => standbyRecycleRef.current(), 500);
+        } else if (wasRunning && !userInitiatedDisconnectRef.current) {
+          closeTransportRef.current?.();
+          scheduleReconnect("dc_close");
+        }
+      };
+
+      const offerSdp = await createLiveOffer(pc);
       // 1. Get ephemeral token from our server
       const sessionPath = "api/realtime/session";
       debugVoiceLog("[WebRTC] Requesting ephemeral token...");
@@ -1278,6 +1442,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
         method: "POST",
         headers: sessionHeaders,
         body: JSON.stringify({
+          sdp: offerSdp,
           voice,
           speed,
           catalog: catalogRef.current,
@@ -1326,131 +1491,12 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
         }, rotateMs);
       }
       // Server decides duplex behavior per noise mode. Default = half-duplex.
-      fullDuplexRef.current = Boolean(sessionData?.voicelab?.bargeIn);
+      fullDuplexRef.current = true;
       // Server-authoritative wake greeting (fired via response.create on activation).
       greetingRef.current = typeof sessionData.greeting === "string" && sessionData.greeting
         ? sessionData.greeting
         : DEFAULT_GREETING_INSTRUCTIONS;
-      const ephemeralKey = sessionData.client_secret?.value;
-      if (!ephemeralKey) throw new Error("No ephemeral key in session response");
-
-      debugVoiceLog("[WebRTC] Got ephemeral token, creating peer connection...");
-
-      // 2. Create RTCPeerConnection
-      const pc = new RTCPeerConnection();
-      pcRef.current = pc;
-
-      // A half-dead connection (media stalls, DC still "open") would otherwise
-      // leave the UI on "Listening" forever with no recovery path.
-      pc.onconnectionstatechange = () => {
-        const state = pc.connectionState;
-        if (pcRef.current !== pc) return;
-        if (state === "connected") {
-          iceRestartAttemptedRef.current = false;
-          reconnectAttemptRef.current = 0;
-          return;
-        }
-        if (state === "disconnected" && !iceRestartAttemptedRef.current) {
-          iceRestartAttemptedRef.current = true;
-          try { pc.restartIce(); } catch { /* ignore */ }
-          return;
-        }
-        if (state === "failed" || state === "disconnected") {
-          if (standbyRef.current) return;
-          debugVoiceLog(`[WebRTC] Connection ${state} mid-session`);
-          closeTransportRef.current?.();
-          scheduleReconnect(`pc_${state}`);
-        }
-      };
-
-      // 3. Set up audio playback — remote audio track goes to an <audio> element.
-      // The element is attached to the DOM (hidden) and marked playsInline so
-      // the browser's echo canceller has a real render reference and iOS Safari
-      // allows autoplay of the WebRTC stream.
-      const audioEl = document.createElement("audio");
-      audioEl.autoplay = true;
-      audioEl.setAttribute("playsinline", "true");
-      audioEl.style.display = "none";
-      document.body.appendChild(audioEl);
-      audioElRef.current = audioEl;
-
-      pc.ontrack = (e) => {
-        debugVoiceLog("[WebRTC] Got remote audio track");
-        audioEl.srcObject = e.streams[0];
-        audioEl.play?.().catch(() => {});
-        setRemoteStream(e.streams[0] ?? null);
-      };
-
-      // 4. Add the outgoing audio track. Live sessions use the real mic.
-      // Standby sessions use generated silence so Web Speech can keep owning
-      // the microphone for wake-word detection; activation swaps in the mic.
-      if (standby) {
-        const silentTrack = createStandbyAudioTrack();
-        if (!silentTrack) throw new Error("Could not create standby audio track");
-        realtimeAudioSenderRef.current = pc.addTrack(silentTrack, new MediaStream([silentTrack]));
-      } else {
-        const { stream, track } = await openLiveMic();
-        micTrackRef.current = track;
-        realtimeAudioSenderRef.current = pc.addTrack(track, stream);
-      }
-
-      // 5. Create data channel for events
-      const dc = pc.createDataChannel("oai-events");
-      dcRef.current = dc;
-
-      dc.onopen = () => {
-        debugVoiceLog("[WebRTC] Data channel open");
-        isRunning.current = true;
-        if (standbyRef.current) {
-          // Warm standby: no metering until activation; recycle before the
-          // session hits OpenAI's age limit so it's always fresh.
-          scheduleStandbyExpire();
-        } else {
-          sessionStartTsRef.current = Date.now();
-          startHeartbeat();
-          startStallWatchdog();
-          reconnectAttemptRef.current = 0;
-        }
-      };
-
-      dc.onmessage = (e) => handleDcEvent(e.data);
-
-      dc.onclose = () => {
-        debugVoiceLog("[WebRTC] Data channel closed");
-        const wasStandby = standbyRef.current;
-        if (isRunning.current) {
-          isRunning.current = false;
-          if (!wasStandby) setAgentState((prev) => (prev === "error" ? "error" : "disconnected"));
-        }
-        if (wasStandby) {
-          setTimeout(() => standbyRecycleRef.current(), 500);
-        } else if (isRunning.current) {
-          closeTransportRef.current?.();
-          scheduleReconnect("dc_close");
-        }
-      };
-
-      // 6. Create SDP offer
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-
-      // 7. Send offer to OpenAI, get SDP answer (GA endpoint)
-      const sdpRes = await fetch("https://api.openai.com/v1/realtime/calls", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${ephemeralKey}`,
-          "Content-Type": "application/sdp",
-        },
-        body: offer.sdp,
-      });
-
-      if (!sdpRes.ok) {
-        const errText = await sdpRes.text();
-        throw new Error(`OpenAI SDP exchange failed: ${sdpRes.status} ${errText}`);
-      }
-
-      const answerSdp = await sdpRes.text();
-      await pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
+      await pc.setRemoteDescription({ type: "answer", sdp: sessionData.transport.sdp });
 
       debugVoiceLog(standby ? "[WebRTC] Standby connection established" : "[WebRTC] Connection established");
     } catch (e: any) {
@@ -1521,12 +1567,15 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
     pendingActivationRef.current = null;
     clearStandbyExpire();
 
+    setMicEnabled(false);
+    await closeLiveChannel(dcRef.current);
     sendSessionEnd();
 
     agentStateRef.current = "disconnected";
     sessionStartTsRef.current = 0;
 
     closeTransport();
+    setPendingConfirmation(null);
     setAgentState("disconnected");
     setSessionUsage(null);
   }, [sendSessionEnd, clearStandbyExpire, closeTransport]);
@@ -1535,28 +1584,9 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
 
   /** Pre-connect a warm, mic-gated, unmetered session so wake-word activation is near-instant. */
   const prewarm = useCallback(async () => {
-    if (!authTokenRef.current) return;
-    // Only the browser-direct OpenAI WebRTC pipeline supports hot standby.
-    if (voicePipelineProviderRef.current.startsWith(GEMINI_PROVIDER_PREFIX)) return;
-    if (voicePipelineProviderRef.current === XAI_REALTIME_WS_PROVIDER) return;
-    if (isRunning.current || pcRef.current || prewarmingRef.current) return;
-    wantStandbyRef.current = true;
-    prewarmingRef.current = true;
-    standbyRef.current = true;
-    standbySessionCreatedRef.current = false;
-    debugVoiceLog("[WebRTC] Pre-warming standby session...");
-    try {
-      await connectInternal(true);
-    } finally {
-      prewarmingRef.current = false;
-      if (!pcRef.current) {
-        standbyRef.current = false;
-        // The wake word may have fired while the failed prewarm was in flight —
-        // don't leave the user hanging; fall back to a cold connect.
-        if (pendingActivationRef.current) void connectInternal(false);
-      }
-    }
-  }, [connectInternal]);
+    // Live bills connected duration, including silence. Wake detection stays local.
+    wantStandbyRef.current = false;
+  }, []);
 
   /** Promote the standby session to live (wake word / tap), or cold-connect if none. */
   const activate = useCallback(async (opts?: { greet?: boolean }) => {
@@ -1631,7 +1661,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
   const interrupt = useCallback(() => {
     const dc = dcRef.current;
     if (dc?.readyState === "open") {
-      dc.send(JSON.stringify({ type: "response.cancel" }));
+      sendLive(JSON.stringify({ type: "response.cancel" }));
     }
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: "response.cancel" }));
@@ -1675,7 +1705,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
         item: { type: "function_call_output", call_id: conf.call_id, output },
       });
       if (dc?.readyState === "open") {
-        dc.send(payload);
+        sendLive(payload);
         requestResponse();
         return true;
       }
@@ -1715,6 +1745,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
         orderHandlingMode: orderHandlingModeRef.current,
       }),
     }).then(r => r.json()).then(data => {
+      if (dc !== dcRef.current || ws !== wsRef.current) return;
       if (data.command) applyServerOrderCommand(data.command);
       sendToolOutput(data.result ?? "Confirmed and executed.");
     }).catch(e => {
@@ -1733,7 +1764,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
       item: { type: "function_call_output", call_id: conf.call_id, output: "User declined this action." },
     });
     if (dc?.readyState === "open") {
-      dc.send(payload);
+      sendLive(payload);
       requestResponse();
     } else if (ws?.readyState === WebSocket.OPEN) {
       if (voicePipelineProviderRef.current.startsWith(GEMINI_PROVIDER_PREFIX)) {

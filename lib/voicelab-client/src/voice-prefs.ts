@@ -1,4 +1,16 @@
 export const VOICES = [
+  { id: "quartz", label: "Quartz", desc: "Australian" },
+  { id: "ripple", label: "Ripple", desc: "Australian" },
+  { id: "vesper", label: "Vesper", desc: "British" },
+  { id: "willow", label: "Willow", desc: "Irish" },
+  { id: "stone", label: "Stone", desc: "Irish" },
+  { id: "gleam", label: "Gleam", desc: "North American" },
+  { id: "meridian", label: "Meridian", desc: "North American" },
+  { id: "bossa", label: "Bossa", desc: "Brazilian Portuguese" },
+  { id: "tempo", label: "Tempo", desc: "Brazilian Portuguese" },
+  { id: "beacon", label: "Beacon", desc: "Filipino" },
+  { id: "delta", label: "Delta", desc: "Southern U.S." },
+  { id: "cinder", label: "Cinder", desc: "Southern U.S." },
   { id: "alloy", label: "Alloy", desc: "Neutral" },
   { id: "ash", label: "Ash", desc: "Warm" },
   { id: "ballad", label: "Ballad", desc: "Melodic" },
@@ -19,7 +31,7 @@ export const SPEEDS = [
 export type VoiceId = (typeof VOICES)[number]["id"];
 
 const SUPPORTED = new Set(VOICES.map((v) => v.id));
-const DEFAULT_VOICE: VoiceId = "ash";
+const DEFAULT_VOICE: VoiceId = "marin";
 const DEFAULT_SPEED = 1.0;
 
 export interface VoicePrefsStorage {

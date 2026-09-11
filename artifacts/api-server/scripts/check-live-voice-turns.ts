@@ -1,6 +1,6 @@
 import WebSocket from "ws";
 import { readServerApiKey, requiredApiKeyEnv } from "../src/lib/api-keys";
-import { OPENAI_REALTIME_MODEL, buildRealtimeSessionPayload } from "../src/lib/openai-realtime";
+import { renderLivePreview } from "../src/lib/openai-live-preview";
 import {
   buildGeminiLiveSetupMessage,
   buildGeminiLiveUrl,
@@ -36,134 +36,12 @@ async function checkOpenAiAudioTurn(): Promise<TurnResult> {
     return { provider: "openai", ok: false, detail: `${requiredApiKeyEnv("openai")} is missing` };
   }
 
-  return new Promise((resolve) => {
-    const ws = new WebSocket(`wss://api.openai.com/v1/realtime?model=${encodeURIComponent(OPENAI_REALTIME_MODEL)}`, {
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-      },
-    });
-    let audioBytes = 0;
-    let transcript = "";
-    let sentPrompt = false;
-
-    const timeout = setTimeout(() => {
-      cleanup();
-      resolve({ provider: "openai", ok: false, detail: "Timed out waiting for audio delta" });
-    }, TIMEOUT_MS);
-
-    function cleanup(): void {
-      clearTimeout(timeout);
-      ws.removeAllListeners();
-      closeSocket(ws);
-    }
-
-    function sendPrompt(): void {
-      if (sentPrompt || ws.readyState !== WebSocket.OPEN) return;
-      sentPrompt = true;
-      ws.send(JSON.stringify({
-        type: "conversation.item.create",
-        item: {
-          type: "message",
-          role: "user",
-          content: [
-            {
-              type: "input_text",
-              text: "Say exactly: ready.",
-            },
-          ],
-        },
-      }));
-      ws.send(JSON.stringify({
-        type: "response.create",
-        response: {
-          output_modalities: ["audio"],
-          instructions: "Reply with one short spoken word: ready.",
-        },
-      }));
-    }
-
-    ws.on("open", () => {
-      // Mirror the production session shape (semantic_vad + transcription +
-      // reasoning) so this check fails on any parameter the real sessions
-      // would trip over — a turn_detection:null probe once passed while every
-      // production session was rejected.
-      const { model: _model, ...session } = buildRealtimeSessionPayload({
-        instructions: "Live audio-turn verification. Keep the response to one spoken word.",
-        voice: "ash",
-        speed: 1,
-        turnDetection: {
-          type: "semantic_vad",
-          eagerness: "auto",
-          create_response: true,
-          interrupt_response: true,
-        },
-      });
-      ws.send(JSON.stringify({ type: "session.update", session }));
-    });
-
-    ws.on("message", (data) => {
-      try {
-        const event = JSON.parse(data.toString()) as Record<string, unknown>;
-        if (event.type === "session.updated" || event.type === "session.created") {
-          sendPrompt();
-          return;
-        }
-        if (event.type === "error") {
-          cleanup();
-          resolve({ provider: "openai", ok: false, detail: sanitizeError(JSON.stringify(event.error ?? event)) });
-          return;
-        }
-        if (
-          typeof event.type === "string" &&
-          event.type.includes("audio") &&
-          event.type.endsWith(".delta") &&
-          typeof event.delta === "string"
-        ) {
-          audioBytes += Buffer.byteLength(event.delta, "base64");
-        }
-        if (
-          typeof event.type === "string" &&
-          event.type.includes("audio_transcript") &&
-          typeof event.delta === "string"
-        ) {
-          transcript += event.delta;
-        }
-        if (event.type === "response.done" && audioBytes > 0) {
-          cleanup();
-          resolve({
-            provider: "openai",
-            ok: true,
-            detail: `Audio turn completed on ${OPENAI_REALTIME_MODEL} (${audioBytes} decoded bytes${transcript ? `, transcript: ${transcript.trim()}` : ""})`,
-          });
-        }
-      } catch {
-        // Ignore non-JSON frames.
-      }
-    });
-
-    ws.on("error", (err) => {
-      cleanup();
-      resolve({ provider: "openai", ok: false, detail: sanitizeError(err) });
-    });
-
-    ws.on("close", (code, reason) => {
-      if (audioBytes > 0) {
-        cleanup();
-        resolve({
-          provider: "openai",
-          ok: true,
-          detail: `Audio turn produced ${audioBytes} decoded bytes before close ${code}`,
-        });
-        return;
-      }
-      cleanup();
-      resolve({
-        provider: "openai",
-        ok: false,
-        detail: `Socket closed before audio: ${code} ${sanitizeError(reason.toString())}`,
-      });
-    });
-  });
+  try {
+    const result = await renderLivePreview("marin", "Ready when you are.");
+    return { provider: "openai", ok: result.pcm.length > 0, detail: `gpt-live-1 produced ${result.pcm.length} PCM bytes; finalized ${result.seconds} seconds` };
+  } catch (error) {
+    return { provider: "openai", ok: false, detail: sanitizeError(error) };
+  }
 }
 
 async function checkGeminiAudioTurn(): Promise<TurnResult> {
@@ -296,7 +174,7 @@ async function checkGeminiAudioTurn(): Promise<TurnResult> {
   });
 }
 
-const results = await Promise.all([checkOpenAiAudioTurn(), checkGeminiAudioTurn()]);
+const results = await Promise.all([checkOpenAiAudioTurn()]);
 for (const result of results) {
   console.log(`${result.ok ? "PASS" : "FAIL"} ${result.provider}: ${result.detail}`);
 }

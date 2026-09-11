@@ -465,7 +465,7 @@ function pipelineLabel(provider: string): string {
   if (provider.includes("browser_speech")) return "Browser Speech";
   if (provider.includes("push_to_talk")) return "Push-to-talk";
   if (provider.includes("text_only")) return "Text only";
-  return "OpenAI Realtime";
+  return "OpenAI GPT-Live 1";
 }
 
 function roomLabel(noiseMode: string): string {

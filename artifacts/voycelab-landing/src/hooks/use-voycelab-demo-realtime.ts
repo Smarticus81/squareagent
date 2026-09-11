@@ -1,8 +1,10 @@
+import { LiveProtocol, LiveCaptions } from "@workspace/voicelab-client/live-protocol";
+import { createLiveOffer, observeLivePlayback, closeLiveChannel } from "@workspace/voicelab-client/live-browser";
 import { useCallback, useRef, useState, type MutableRefObject } from "react";
 
 /**
- * VoyceLab landing live demo: browser WebRTC direct to OpenAI using a
- * short-lived ephemeral token, running against The Den — a sandbox bar with a
+ * VoyceLab landing live demo: browser WebRTC to GPT-Live with a server-created
+ * SDP handshake, running against The Den — a sandbox bar with a
  * mock catalog. Spoken orders trigger real tool calls, executed server-side
  * (/api/realtime/demo-bar-tools), and the live ticket state is exposed so the
  * landing page can render the order building in real time.
@@ -123,6 +125,10 @@ export function useVoycelabDemoRealtime() {
   const sessionIdRef = useRef<string>("");
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const dcRef = useRef<RTCDataChannel | null>(null);
+  const liveProtocolRef = useRef<LiveProtocol | null>(null);
+  const liveCaptionsRef = useRef(new LiveCaptions());
+  const stopLivePlaybackRef = useRef<(() => void) | null>(null);
+  const sendLive = (raw: string) => { try { liveProtocolRef.current?.send(JSON.parse(raw)); } catch {} };
   const audioElRef = useRef<HTMLAudioElement | null>(null);
   const fallbackAudioCtxRef = useRef<AudioContext | null>(null);
   const isRunning = useRef(false);
@@ -179,6 +185,11 @@ export function useVoycelabDemoRealtime() {
   }, [cancelMicReopen, setMicEnabled]);
 
   const disconnect = useCallback(async () => {
+    setMicEnabled(false);
+    await closeLiveChannel(dcRef.current);
+    stopLivePlaybackRef.current?.();
+    stopLivePlaybackRef.current = null;
+    liveProtocolRef.current = null;
     isRunning.current = false;
     agentStateRef.current = "idle";
     cancelMicReopen();
@@ -228,6 +239,7 @@ export function useVoycelabDemoRealtime() {
       /* malformed args — execute with empty args */
     }
 
+    const sourceChannel = dcRef.current;
     let output = "Something went wrong — ask the guest to repeat that.";
     try {
       const res = await fetch("/api/realtime/demo-bar-tools", {
@@ -242,6 +254,7 @@ export function useVoycelabDemoRealtime() {
       });
       if (res.ok) {
         const data = (await res.json()) as { result?: string; order?: DemoOrderItem[] };
+        if (dcRef.current !== sourceChannel) return;
         if (Array.isArray(data.order)) setOrder(data.order);
         if (typeof data.result === "string" && data.result) output = data.result;
       }
@@ -250,14 +263,14 @@ export function useVoycelabDemoRealtime() {
     }
 
     const dc = dcRef.current;
-    if (dc?.readyState === "open") {
-      dc.send(
+    if (dc === sourceChannel && dc?.readyState === "open") {
+      sendLive(
         JSON.stringify({
           type: "conversation.item.create",
           item: { type: "function_call_output", call_id: callId, output },
         }),
       );
-      dc.send(JSON.stringify({ type: "response.create" }));
+      sendLive(JSON.stringify({ type: "response.create" }));
     }
   }, []);
 
@@ -275,7 +288,26 @@ export function useVoycelabDemoRealtime() {
         setAgentState(s);
       };
 
+      const caption = liveCaptionsRef.current.append(event);
+      if (caption) {
+        setConversation(previous => previous.some(message => message.id === caption.id)
+          ? previous.map(message => message.id === caption.id ? { ...message, content: caption.text } : message)
+          : [...previous, { id: caption.id, role: caption.role, content: caption.text, timestamp: new Date() }]);
+        if (caption.role === "agent") setPartialTranscript(caption.text);
+        return;
+      }
       switch (event.type) {
+        case "session.closed":
+          isRunning.current = false;
+          setMicEnabled(false);
+          stopLivePlaybackRef.current?.();
+          stopLivePlaybackRef.current = null;
+          pcRef.current?.getSenders().forEach(sender => sender.track?.stop());
+          pcRef.current?.close();
+          dcRef.current = null;
+          pcRef.current = null;
+          setAs("idle");
+          break;
         case "session.created":
           setAs("listening");
           break;
@@ -285,7 +317,7 @@ export function useVoycelabDemoRealtime() {
           // half-duplex the mic is gated during playback, so a speech_started
           // while "speaking" can only be residual echo — ignore it.
           if (fullDuplexRef.current && agentStateRef.current === "speaking") {
-            dcRef.current?.send(JSON.stringify({ type: "response.cancel" }));
+            sendLive(JSON.stringify({ type: "response.cancel" }));
             reopenMicNow();
           }
           setAs("listening");
@@ -350,7 +382,7 @@ export function useVoycelabDemoRealtime() {
           break;
       }
     },
-    [addMessage, executeToolCall, gateMicForPlayback, reopenMic, reopenMicNow],
+    [addMessage, executeToolCall, gateMicForPlayback, reopenMic, reopenMicNow, setMicEnabled],
   );
 
   const connect = useCallback(async (existingStream?: MediaStream) => {
@@ -375,32 +407,6 @@ export function useVoycelabDemoRealtime() {
     const unmuteHooked = new WeakSet<MediaStreamTrack>();
 
     try {
-      const tokenRes = await fetch("/api/realtime/demo", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ voice: "coral", speed: 1.05, mode: "bar" }),
-      });
-
-      if (!tokenRes.ok) {
-        const err = (await tokenRes.json().catch(() => null)) as { detail?: string; error?: string } | null;
-        throw new Error(err?.detail ?? err?.error ?? `Voice session failed (${tokenRes.status})`);
-      }
-
-      const sessionData = (await tokenRes.json()) as {
-        id?: string;
-        client_secret?: { value?: string };
-        voicelab?: { bargeIn?: boolean };
-        catalog?: DemoCatalogItem[];
-      };
-      sessionIdRef.current = sessionData.id || genId();
-      if (Array.isArray(sessionData.catalog)) setCatalog(sessionData.catalog);
-      setOrder([]);
-      const ephemeralKey = sessionData.client_secret?.value;
-      if (!ephemeralKey) throw new Error("Voice session did not return an ephemeral key");
-      // Server decides duplex behavior. Default = half-duplex (gate the mic).
-      fullDuplexRef.current = Boolean(sessionData.voicelab?.bargeIn);
-
       const pc = new RTCPeerConnection();
       pcRef.current = pc;
 
@@ -414,6 +420,12 @@ export function useVoycelabDemoRealtime() {
         const ms = new MediaStream([...remoteAudioTracks]);
         setAssistantStream(ms);
         void routeRemotePlayback(audioEl, ms, fallbackAudioCtxRef);
+        stopLivePlaybackRef.current?.();
+        stopLivePlaybackRef.current = observeLivePlayback(ms, speaking => {
+          if (!isRunning.current) return;
+          agentStateRef.current = speaking ? "speaking" : "listening";
+          setAgentState(agentStateRef.current);
+        });
         if (!unmuteHooked.has(e.track)) {
           unmuteHooked.add(e.track);
           e.track.addEventListener("unmute", () => {
@@ -443,7 +455,13 @@ export function useVoycelabDemoRealtime() {
         isRunning.current = true;
       };
 
-      dc.onmessage = (e) => handleDcEvent(e.data);
+      const protocol = new LiveProtocol(event => { if (dc.readyState === "open") dc.send(JSON.stringify(event)); });
+      liveProtocolRef.current = protocol;
+      liveCaptionsRef.current = new LiveCaptions();
+      dc.onmessage = (e) => {
+        if (dcRef.current !== dc) return;
+        try { for (const event of protocol.receive(JSON.parse(e.data))) handleDcEvent(JSON.stringify(event)); } catch {}
+      };
 
       dc.onclose = () => {
         if (isRunning.current) {
@@ -452,39 +470,32 @@ export function useVoycelabDemoRealtime() {
         }
       };
 
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-
-      const sdpRes = await fetch("https://api.openai.com/v1/realtime/calls", {
+      const offerSdp = await createLiveOffer(pc);
+      const tokenRes = await fetch("/api/realtime/demo", {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${ephemeralKey}`,
-          "Content-Type": "application/sdp",
-        },
-        body: offer.sdp,
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ sdp: offerSdp, voice: "coral", speed: 1.05, mode: "bar" }),
       });
 
-      const ct = sdpRes.headers.get("content-type") ?? "";
-
-      if (!sdpRes.ok) {
-        let detail = `Voice connection failed (${sdpRes.status})`;
-        try {
-          if (ct.includes("application/json")) {
-            const j = (await sdpRes.json()) as { detail?: string; error?: string };
-            if (typeof j.detail === "string") detail = j.detail;
-            else if (typeof j.error === "string") detail = j.error;
-          } else {
-            const t = await sdpRes.text();
-            if (t) detail = `${detail}: ${t.slice(0, 180)}`;
-          }
-        } catch {
-          /* ignore */
-        }
-        throw new Error(detail);
+      if (!tokenRes.ok) {
+        const err = (await tokenRes.json().catch(() => null)) as { detail?: string; error?: string } | null;
+        throw new Error(err?.detail ?? err?.error ?? `Voice session failed (${tokenRes.status})`);
       }
 
-      const answerSdp = await sdpRes.text();
-      await pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
+      const sessionData = (await tokenRes.json()) as {
+        id?: string;
+        transport: { sdp: string };
+        voicelab?: { bargeIn?: boolean };
+        catalog?: DemoCatalogItem[];
+      };
+      sessionIdRef.current = sessionData.id || genId();
+      if (Array.isArray(sessionData.catalog)) setCatalog(sessionData.catalog);
+      setOrder([]);
+      // Server decides duplex behavior. Default = half-duplex (gate the mic).
+      fullDuplexRef.current = true;
+
+      await pc.setRemoteDescription({ type: "answer", sdp: sessionData.transport.sdp });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Could not start voice demo";
       console.error("[DemoRealtime]", msg);
@@ -492,7 +503,9 @@ export function useVoycelabDemoRealtime() {
       setAgentState("error");
       setAssistantStream(null);
       cancelMicReopen();
+      micTrackRef.current?.stop();
       micTrackRef.current = null;
+      stopLivePlaybackRef.current?.();
       pcRef.current?.close();
       pcRef.current = null;
       dcRef.current = null;
@@ -518,7 +531,7 @@ export function useVoycelabDemoRealtime() {
   const interrupt = useCallback(() => {
     const dc = dcRef.current;
     if (dc?.readyState === "open") {
-      dc.send(JSON.stringify({ type: "response.cancel" }));
+      sendLive(JSON.stringify({ type: "response.cancel" }));
     }
     // Deliberate barge-in: re-open the mic immediately.
     reopenMicNow();

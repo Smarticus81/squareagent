@@ -9,21 +9,21 @@ import type {
   VoicePipelineInterruptContext,
 } from "@workspace/voicelab-core/voice-pipeline";
 import { readServerApiKey, requireServerApiKey, requiredApiKeyEnv } from "../../lib/api-keys";
-import { OPENAI_REALTIME_MODEL, buildRealtimeSessionPayload } from "../../lib/openai-realtime";
+import { buildLiveSessionPayload, createLiveWebRtcSession, validLiveSdp } from "../../lib/openai-live";
 
 function readApiKey(): string {
   return readServerApiKey("openai")?.value ?? "";
 }
 
 /**
- * OpenAI Realtime via WebRTC. The server only mints the ephemeral client
- * secret; the browser connects directly to OpenAI for audio. Tool calls
+ * GPT-Live via WebRTC. The server exchanges the browser SDP offer;
+ * the browser connects directly to OpenAI for audio. Delegated tool calls
  * arrive on the data channel and the client posts them to /api/v1/tool-calls.
  */
 export class OpenAiRealtimeWebRtcAdapter implements VoicePipelineAdapter {
   readonly provider = "openai_realtime_webrtc" as const;
   readonly category = "native_realtime_speech_to_speech" as const;
-  readonly displayName = "OpenAI Realtime (WebRTC)";
+  readonly displayName = "OpenAI GPT-Live 1 (WebRTC)";
   readonly recommendedFor: VoicePipelineAdapter["recommendedFor"] = [
     "lowest_latency_browser",
     "best_tool_control",
@@ -32,9 +32,9 @@ export class OpenAiRealtimeWebRtcAdapter implements VoicePipelineAdapter {
   readonly supportsNativeAudio = true;
   readonly supportsRealtimeToolCalling = true;
   readonly supportsBargeIn = true;
-  readonly supportsServerVAD = true;
+  readonly supportsServerVAD = false;
   readonly supportsClientVAD = false;
-  readonly supportsTurnDetection = true;
+  readonly supportsTurnDetection = false;
   readonly supportsNoiseSuppression = false;
   readonly supportsWakeWord = true;
   readonly supportsMultilingual = true;
@@ -42,7 +42,7 @@ export class OpenAiRealtimeWebRtcAdapter implements VoicePipelineAdapter {
   readonly supportsBrowser = true;
 
   readonly requiresServerRelay = false;
-  readonly requiresEphemeralToken = true;
+  readonly requiresEphemeralToken = false;
   readonly requiresProviderAgentConfig = false;
 
   async availability(_ctx: VoicePipelineEnvContext): Promise<VoicePipelineAvailability> {
@@ -57,55 +57,20 @@ export class OpenAiRealtimeWebRtcAdapter implements VoicePipelineAdapter {
   }
 
   async createSession(ctx: VoicePipelineSessionContext): Promise<VoicePipelineSession> {
-    const apiKey = requireServerApiKey("openai").value;
-    const session = buildRealtimeSessionPayload({
+    const sdp = ctx.providerOptions.sdp;
+    if (!validLiveSdp(sdp)) throw new Error("A valid audio SDP offer is required");
+    const data = await createLiveWebRtcSession(requireServerApiKey("openai").value, buildLiveSessionPayload({
       instructions: ctx.instructions,
-      tools: ctx.providerOptions.tools as unknown[] | undefined,
-      voice: ctx.providerOptions.voice ?? "ash",
+      displayName: ctx.agentDisplayName,
+      tools: ctx.providerOptions.tools as unknown[],
+      voice: ctx.providerOptions.voice,
       speed: ctx.providerOptions.speed,
-      turnDetection: {
-        type: "semantic_vad",
-        eagerness: "auto",
-        create_response: true,
-        interrupt_response: true,
-      },
-    });
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
-    try {
-      const res = await fetch("https://api.openai.com/v1/realtime/client_secrets", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-        signal: controller.signal,
-        body: JSON.stringify({ session }),
-      });
-      if (!res.ok) {
-        const detail = await res.text();
-        throw new Error(`OpenAI client_secret HTTP ${res.status}: ${detail}`);
-      }
-      const data = (await res.json()) as { value?: string; expires_at?: string; session?: { id?: string } };
-      return {
-        sessionId: data.session?.id ?? `oa-rt-${Date.now()}`,
-        provider: this.provider,
-        clientHandshake: {
-          kind: "ephemeral_token",
-          expiresAt: data.expires_at,
-          payload: { value: data.value, model: OPENAI_REALTIME_MODEL },
-        },
-        capabilities: {
-          nativeAudio: true,
-          realtimeToolCalling: true,
-          bargeIn: true,
-          serverVAD: true,
-        },
-      };
-    } finally {
-      clearTimeout(timeout);
-    }
+    }), sdp);
+    return {
+      sessionId: data.id, provider: this.provider,
+      clientHandshake: { kind: "sdp_answer", payload: { ...data } },
+      capabilities: { nativeAudio: true, realtimeToolCalling: true, bargeIn: true, serverVAD: false },
+    };
   }
 
   async sendToolResult(_ctx: VoicePipelineToolResultContext): Promise<void> {

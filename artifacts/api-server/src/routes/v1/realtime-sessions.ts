@@ -1,3 +1,4 @@
+import { resolveVoicePipelineProvider } from "@workspace/voicelab-core/voice-pipeline";
 /** @deprecated Use POST /api/realtime/session instead. Kept for relay-based pipeline clients. */
 
 import { Router, type Request, type Response } from "express";
@@ -101,8 +102,8 @@ router.post("/", async (req: Request, res: Response) => {
   }
 
   const isAdmin = Boolean((req as Request & { isAdmin?: boolean }).isAdmin);
-  const savedProvider = profile.voicePipelineProvider as VoicePipelineProvider;
-  const provider: VoicePipelineProvider = parsed.data.pipelineOverride ?? savedProvider;
+  const savedProvider = resolveVoicePipelineProvider(profile.voicePipelineProvider);
+  const provider: VoicePipelineProvider = resolveVoicePipelineProvider(parsed.data.pipelineOverride ?? savedProvider);
   if (provider !== savedProvider && !isAdmin) {
     jsonError(
       res,
@@ -250,7 +251,7 @@ router.post("/", async (req: Request, res: Response) => {
       agentDisplayName: profile.displayName,
       userId: String(user.id),
       allowedToolNames: tools.map((t) => t.name),
-      providerOptions: { ...(profile.voicePipelineConfig as Record<string, unknown>), noiseMode, tools },
+      providerOptions: { ...(profile.voicePipelineConfig as Record<string, unknown>), noiseMode, tools, sdp: req.body.sdp },
       instructions,
     });
     const behavior = getNoiseModeBehavior(noiseMode);
@@ -262,7 +263,7 @@ router.post("/", async (req: Request, res: Response) => {
       clientHandshake: session.clientHandshake,
       capabilities: {
         ...session.capabilities,
-        bargeIn: session.capabilities.bargeIn && behavior.bargeInEnabled,
+        bargeIn: session.capabilities.bargeIn,
       },
     });
   } catch (e) {

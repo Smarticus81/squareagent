@@ -80,6 +80,9 @@ importers:
       '@workspace/db':
         specifier: workspace:*
         version: link:../../lib/db
+      '@workspace/voicelab-client':
+        specifier: workspace:*
+        version: link:../../lib/voicelab-client
       '@workspace/voicelab-core':
         specifier: workspace:*
         version: link:../../lib/voicelab-core
@@ -202,6 +205,9 @@ importers:
       '@clerk/clerk-react':
         specifier: ^5.61.3
         version: 5.61.3(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@workspace/voicelab-client':
+        specifier: workspace:*
+        version: link:../../lib/voicelab-client
       '@workspace/voicelab-core':
         specifier: workspace:*
         version: link:../../lib/voicelab-core

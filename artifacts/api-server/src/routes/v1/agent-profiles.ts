@@ -1,3 +1,4 @@
+import { resolveVoicePipelineProvider } from "@workspace/voicelab-core/voice-pipeline";
 import { Router, type Request, type Response } from "express";
 import { v1 } from "@workspace/api-zod";
 import { db, agentProfilesTable, serviceConnectionsTable, venuesTable } from "@workspace/db";
@@ -19,6 +20,7 @@ import { DEFAULT_CONFIRMATION_POLICY } from "@workspace/voicelab-core/confirmati
 import { planAllowsPipeline } from "@workspace/voicelab-core/pricing";
 import type { VoicePipelineProvider } from "@workspace/voicelab-core/voice-pipeline";
 import { invalidateAgentProfile } from "../../lib/agent-profile-cache";
+import { sanitizeLiveVoice } from "../../lib/openai-realtime";
 import { getVoicePipelineAdapter, readVoicePipelineEnvCredentials } from "../../voice-pipelines";
 
 const router = Router();
@@ -53,8 +55,10 @@ function rowToResponse(row: AgentProfileRow): Record<string, unknown> {
     displayName: row.displayName,
     wakePhrase: row.wakePhrase,
     wakeMode: row.wakeMode ?? "ambient",
-    voicePipelineProvider: row.voicePipelineProvider,
-    voicePipelineConfig: row.voicePipelineConfig,
+    voicePipelineProvider: resolveVoicePipelineProvider(row.voicePipelineProvider),
+    voicePipelineConfig: resolveVoicePipelineProvider(row.voicePipelineProvider).startsWith("openai_")
+      ? { ...row.voicePipelineConfig, voice: sanitizeLiveVoice(row.voicePipelineConfig?.voice) }
+      : row.voicePipelineConfig,
     noiseMode: row.noiseMode,
     orderHandlingMode: row.orderHandlingMode ?? "auto_complete",
     allowedTools: row.allowedTools,
