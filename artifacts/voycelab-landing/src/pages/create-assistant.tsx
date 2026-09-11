@@ -88,33 +88,15 @@ interface VoicePipelineApiItem {
 const FALLBACK_VOICE_ENGINES: VoiceEngine[] = [
   {
     id: "openai_realtime_webrtc",
-    label: "OpenAI Realtime",
+    label: "OpenAI GPT-Live 1",
     description: "Lowest-friction browser voice.",
     defaultVoice: "verse",
   },
   {
     id: "openai_realtime_server_ws",
-    label: "OpenAI Realtime Relay",
+    label: "OpenAI GPT-Live 1 Relay",
     description: "Server-routed OpenAI voice for managed observability.",
     defaultVoice: "ash",
-  },
-  {
-    id: "google_gemini_3_1_flash_live",
-    label: "Gemini 3.1 Flash Live",
-    description: "Newest low-latency native audio for busy rooms.",
-    defaultVoice: "Kore",
-  },
-  {
-    id: "google_gemini_2_5_flash_native_audio",
-    label: "Gemini 2.5 Native Audio",
-    description: "Stable native audio over the low-latency relay.",
-    defaultVoice: "Aoede",
-  },
-  {
-    id: "xai_grok_realtime_ws",
-    label: "xAI Grok Voice",
-    description: "xAI's premium Grok realtime voice with expressive native audio.",
-    defaultVoice: "eve",
   },
 ] as const;
 

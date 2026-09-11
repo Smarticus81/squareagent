@@ -87,7 +87,7 @@ export interface VoicePipelineSession {
   provider: VoicePipelineProvider;
   /** When non-null, client connects directly using this opaque payload. */
   clientHandshake?: {
-    kind: "ephemeral_token" | "signed_url" | "ws_relay" | "config_only" | "noop";
+    kind: "sdp_answer" | "ephemeral_token" | "signed_url" | "ws_relay" | "config_only" | "noop";
     /** Tokens / URLs expire — clients refresh via /sessions. */
     expiresAt?: string;
     payload: Record<string, unknown>;

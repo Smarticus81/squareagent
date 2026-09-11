@@ -19,6 +19,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@workspace/voicelab-client": "workspace:*",
     "@clerk/express": "^2.1.23",
     "@types/multer": "^2.1.0",
     "@workspace/api-zod": "workspace:*",

@@ -8,6 +8,8 @@
     "node": "22"
   },
   "exports": {
+    "./live-protocol": "./src/live-protocol.ts",
+    "./live-browser": "./src/live-browser.ts",
     "./voice-termination": "./src/voice-termination.ts",
     "./voice-prefs": "./src/voice-prefs.ts"
   },

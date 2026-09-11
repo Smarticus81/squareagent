@@ -13,7 +13,7 @@ function readApiKey(): string {
 }
 
 /**
- * Server-controlled WebSocket relay to OpenAI Realtime. Mobile clients and
+ * Server-controlled WebSocket relay to OpenAI GPT-Live 1. Mobile clients and
  * enterprise deployments connect to the VoyceLab WS gateway; the gateway
  * owns the OpenAI session and proxies audio/events.
  *
@@ -23,7 +23,7 @@ function readApiKey(): string {
 export class OpenAiRealtimeServerWsAdapter implements VoicePipelineAdapter {
   readonly provider = "openai_realtime_server_ws" as const;
   readonly category = "native_realtime_speech_to_speech" as const;
-  readonly displayName = "OpenAI Realtime (Server WebSocket)";
+  readonly displayName = "OpenAI GPT-Live 1 (Server WebSocket)";
   readonly recommendedFor: VoicePipelineAdapter["recommendedFor"] = [
     "enterprise_observability",
     "lowest_latency_mobile",
@@ -33,9 +33,9 @@ export class OpenAiRealtimeServerWsAdapter implements VoicePipelineAdapter {
   readonly supportsNativeAudio = true;
   readonly supportsRealtimeToolCalling = true;
   readonly supportsBargeIn = true;
-  readonly supportsServerVAD = true;
+  readonly supportsServerVAD = false;
   readonly supportsClientVAD = true;
-  readonly supportsTurnDetection = true;
+  readonly supportsTurnDetection = false;
   readonly supportsNoiseSuppression = false;
   // The relay itself does not do wake detection, but VoyceLab clients can use
   // the shared PWA/mobile wake layer before opening the server WS session.
@@ -75,7 +75,7 @@ export class OpenAiRealtimeServerWsAdapter implements VoicePipelineAdapter {
         nativeAudio: true,
         realtimeToolCalling: true,
         bargeIn: true,
-        serverVAD: true,
+        serverVAD: false,
       },
     };
   }

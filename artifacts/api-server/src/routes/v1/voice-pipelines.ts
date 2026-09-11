@@ -1,3 +1,5 @@
+import { renderLivePreview } from "../../lib/openai-live-preview";
+import { resolveVoicePipelineProvider } from "@workspace/voicelab-core/voice-pipeline";
 import { Router, type Request, type Response } from "express";
 import WebSocket from "ws";
 import { v1 } from "@workspace/api-zod";
@@ -59,16 +61,16 @@ router.post("/recommend", (req: Request, res: Response) => {
 const SAMPLE_LINE = "Hey, ready when you are. Two ranch waters and a Bud heavy?";
 
 const SAMPLE_VOICE_OPTIONS: Record<string, string[]> = {
-  openai_realtime_webrtc: ["ash", "alloy", "ballad", "coral", "sage", "verse"],
-  openai_realtime_server_ws: ["ash", "alloy", "ballad", "coral", "sage", "verse"],
+  openai_realtime_webrtc: ["marin", "cedar", "quartz", "ripple", "vesper", "willow", "stone", "gleam", "meridian", "bossa", "tempo", "beacon", "delta", "cinder", "ash", "alloy", "ballad", "coral", "sage", "verse"],
+  openai_realtime_server_ws: ["marin", "cedar", "quartz", "ripple", "vesper", "willow", "stone", "gleam", "meridian", "bossa", "tempo", "beacon", "delta", "cinder", "ash", "alloy", "ballad", "coral", "sage", "verse"],
   google_gemini_3_1_flash_live: ["Kore", "Aoede", "Puck", "Charon", "Leda", "Fenrir"],
   google_gemini_2_5_flash_native_audio: ["Aoede", "Kore", "Puck", "Zephyr", "Charon", "Leda"],
   xai_grok_realtime_ws: ["eve", "ara", "leo", "rex", "sal"],
 };
 
 const SAMPLE_DEFAULT_VOICE: Record<string, string> = {
-  openai_realtime_webrtc: "ash",
-  openai_realtime_server_ws: "ash",
+  openai_realtime_webrtc: "marin",
+  openai_realtime_server_ws: "marin",
   google_gemini_3_1_flash_live: "Kore",
   google_gemini_2_5_flash_native_audio: "Aoede",
   xai_grok_realtime_ws: "eve",
@@ -153,48 +155,8 @@ class OpenAiQuotaError extends Error {
 }
 
 async function synthesizeOpenAISample(voice: string, text: string): Promise<{ bytes: Buffer; contentType: string }> {
-  const apiKey = readServerApiKey("openai")?.value;
-  if (!apiKey) throw new Error(`${requiredApiKeyEnv("openai")} not configured`);
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15000);
-  try {
-    const res = await fetch("https://api.openai.com/v1/audio/speech", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      signal: controller.signal,
-      body: JSON.stringify({
-        model: "gpt-4o-mini-tts",
-        voice,
-        input: text,
-        response_format: "wav",
-      }),
-    });
-    if (!res.ok) {
-      const detail = await res.text();
-      let parsed: { error?: { code?: string; type?: string; message?: string } } | null = null;
-      try { parsed = JSON.parse(detail); } catch { /* not JSON */ }
-      const errCode = parsed?.error?.code ?? "";
-      const errType = parsed?.error?.type ?? "";
-      const errMsg = parsed?.error?.message ?? detail;
-      if (res.status === 429 && (errCode === "insufficient_quota" || errType === "insufficient_quota")) {
-        throw new OpenAiQuotaError("insufficient_quota", 429, errMsg);
-      }
-      if (res.status === 401 || res.status === 403) {
-        throw new OpenAiQuotaError("billing_disabled", res.status, errMsg);
-      }
-      if (res.status === 429) {
-        throw new OpenAiQuotaError("rate_limited", 429, errMsg);
-      }
-      throw new Error(`OpenAI TTS HTTP ${res.status}: ${detail}`);
-    }
-    const arr = new Uint8Array(await res.arrayBuffer());
-    return { bytes: Buffer.from(arr), contentType: "audio/wav" };
-  } finally {
-    clearTimeout(timeout);
-  }
+  const { pcm } = await renderLivePreview(voice, text);
+  return { bytes: pcm16ToWav(pcm, 24000, 1), contentType: "audio/wav" };
 }
 
 async function synthesizeGeminiSample(voice: string, text: string): Promise<{ bytes: Buffer; contentType: string }> {
@@ -369,7 +331,7 @@ router.get("/:provider/sample", async (req: Request, res: Response) => {
     });
     return;
   }
-  const provider = String(req.params.provider);
+  const provider = resolveVoicePipelineProvider(String(req.params.provider));
   const kind = SAMPLE_PROVIDER_KIND[provider];
   if (!kind) {
     res.status(404).json({
@@ -443,7 +405,7 @@ router.get("/:provider/sample", async (req: Request, res: Response) => {
       });
       return;
     }
-    const provider = String(req.params.provider);
+    const provider = resolveVoicePipelineProvider(String(req.params.provider));
     log.warn(
       {
         provider,

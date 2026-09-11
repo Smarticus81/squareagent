@@ -398,8 +398,8 @@ export default function Pricing() {
             />
             <Tile
               kicker="No surprises"
-              title="Switch engines without re-pricing"
-              body="OpenAI Realtime, Gemini 3.1 Flash Live, Gemini 2.5 Native Audio, and xAI Grok Voice — same minute, same price to you. We absorb provider differences so you can pick the best voice for the room without watching cost."
+              title="Expressive voice on every plan"
+              body="Every assistant uses GPT-Live 1 for natural, expressive conversations. Choose the voice and speaking pace that fit your team, with the same voice-minute pricing across your assistants."
             />
           </div>
         </section>
@@ -436,8 +436,8 @@ export default function Pricing() {
           </h2>
           <div className="mt-6 grid md:grid-cols-2 gap-4">
             <Faq
-              q="Can I change voice engines after I start?"
-              a="Yes. Each assistant carries its own engine choice. Switch any time from the assistant settings — no migration, no re-onboarding. Existing orders keep flowing."
+              q="Can I change my assistant's voice?"
+              a="Yes. Choose a different voice or speaking pace from your assistant settings. Your new preferences take effect the next time you start a conversation."
             />
             <Faq
               q="What happens if my POS goes down?"

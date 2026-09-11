@@ -1,7 +1,8 @@
+import { resolveVoicePipelineProvider } from "@workspace/voicelab-core/voice-pipeline";
 /**
  * Unified VoyceLab Agent — REST endpoints for WebRTC-based Realtime API
  *
- * POST /session  → Mint ephemeral OpenAI token, return tools + instructions
+ * POST /session  → Create a GPT-Live WebRTC session, return tools + instructions
  * POST /tools    → Execute a tool call server-side, return result + optional order command
  *
  * The client connects directly to OpenAI via WebRTC using the ephemeral token.
@@ -53,7 +54,7 @@ import {
   withSessionLock,
 } from "../lib/session-store";
 import { readServerApiKey, requiredApiKeyEnv } from "../lib/api-keys";
-import { OPENAI_REALTIME_MODEL, buildRealtimeSessionPayload } from "../lib/openai-realtime";
+import { OPENAI_LIVE_MODEL, buildLiveSessionPayload, createLiveWebRtcSession, validLiveSdp } from "../lib/openai-live";
 import { getCachedVoiceMinutes } from "../lib/usage-cache";
 import { hasGeneralConnectedSystemsCached } from "../lib/connected-systems-cache";
 import { beginCommandExecution, completeCommandExecution } from "../lib/command-ledger";
@@ -69,14 +70,6 @@ const router = Router();
 
 // Start PostgreSQL-backed stale session sweeper
 startVoiceSessionSweeper();
-
-// Master switch for acoustic (full-duplex) barge-in. Off by default because
-// browser echo cancellation does not reliably suppress the agent's own voice
-// on external speakers / Bluetooth, which made the agent interrupt itself
-// after a word or two. When false, the server never auto-cancels on detected
-// speech and the client runs half-duplex (mic gated during playback) with
-// tap-to-interrupt. Set ACOUSTIC_BARGE_IN=1 to opt back in.
-const ACOUSTIC_BARGE_IN_ENABLED = process.env.ACOUSTIC_BARGE_IN === "1";
 
 function includedVoiceMinutesForPlan(planId: string | null | undefined): number {
   if (planId === "admin") return -1;
@@ -233,7 +226,7 @@ Square details:
 Voice experiences:
 ${voiceEngines}
 - Fallback options are always available for resilience: ${fallbackVoiceOptions}.
-- Trial includes OpenAI Realtime voice. Pro and Business add Gemini-class native voice and all engines.
+- Every plan uses expressive GPT-Live 1 voice. Pro and Business add more venues, assistants, minutes, and commands.
 - Customers can change an assistant's voice engine later from assistant settings.
 
 Pricing and trial:
@@ -246,7 +239,7 @@ ${planSummary}
 
 Who should use each plan:
 - Trial: any venue that wants to test voice POS with core commands before committing.
-- Pro: multi-venue operators that need every skill including inventory, catalog, customers, payments, team & labor, and Gemini-class voice.
+- Pro: multi-venue operators that need every skill including inventory, catalog, customers, payments, and team & labor.
 - Business: hospitality groups and event venues that need unlimited venues and assistants, every voice engine, and dedicated support.
 
 Good answers to common questions:
@@ -290,57 +283,13 @@ function clientIp(req: { headers: Record<string, string | string[] | undefined>;
 }
 
 function buildDemoRealtimeSessionConfig(voice: string, speed: number) {
-  return buildRealtimeSessionPayload({
+  return buildLiveSessionPayload({
     instructions: VOYCELAB_DEMO_INSTRUCTIONS,
     voice,
     speed,
-    // semantic_vad uses a model to detect natural turn ends rather than
-    // a fixed silence timer. eagerness="auto" commits the turn as soon
-    // as the model judges the user finished — "low" added a long silence
-    // tail that made every exchange feel laggy, while semantic detection
-    // still tolerates mid-sentence pauses far better than the old
-    // server_vad 180ms timer that clipped every breath.
-    // interrupt_response follows ACOUSTIC_BARGE_IN_ENABLED: off by default
-    // so the agent's own audio on speaker / Bluetooth can't truncate the
-    // reply. The demo client half-duplex-gates the mic during playback.
-    turnDetection: {
-      type: "semantic_vad",
-      eagerness: "auto",
-      create_response: true,
-      interrupt_response: ACOUSTIC_BARGE_IN_ENABLED,
-    },
+    displayName: "Bev",
+    personality: "You are VoyceLab's friendly product assistant. Delegate product questions to the backend.",
   });
-}
-
-function buildTurnDetection(noiseMode: NoiseMode): Record<string, unknown> | null {
-  switch (noiseMode) {
-    case "standard":
-      // interrupt_response is gated by ACOUSTIC_BARGE_IN_ENABLED. With it off
-      // (default), the agent's own audio bleeding into the mic on speaker /
-      // Bluetooth no longer truncates the response — the client half-duplex
-      // gates the mic during playback and offers tap-to-interrupt instead.
-      // See VoiceAgentContext "mic gating".
-      // eagerness="auto" lets semantic detection commit the turn the moment
-      // the user sounds finished — "low" waited out a long silence tail and
-      // made back-to-back commands feel laggy.
-      return {
-        type: "semantic_vad",
-        eagerness: "auto",
-        create_response: true,
-        interrupt_response: ACOUSTIC_BARGE_IN_ENABLED,
-      };
-    case "loud":
-      return {
-        type: "server_vad",
-        threshold: 0.6,
-        prefix_padding_ms: 400,
-        silence_duration_ms: 600,
-        create_response: true,
-        interrupt_response: ACOUSTIC_BARGE_IN_ENABLED,
-      };
-    case "push_to_talk":
-      return null;
-  }
 }
 
 function buildRealtimeSessionConfig(voice: string, speed: number, catalog: CatalogItem[], order: OrderItem[], plan?: string, assistantKind: "venue" | "general" = "venue", noiseMode: NoiseMode = "standard", includeGeneralTools = false, profileDisplayName = "", profilePersonality = "", orderHandlingMode: "auto_complete" | "hold_for_review" = "auto_complete") {
@@ -361,12 +310,13 @@ function buildRealtimeSessionConfig(voice: string, speed: number, catalog: Catal
     instructions = `${instructions}\n\nORDER HANDLING: This venue reviews orders at close-out. When you submit an order, it is held as an open ticket on the POS for the team to settle later — payment is NOT taken now. After submitting, confirm with phrasing like "Sent to the POS for review" or "Added to the tab for close-out". Never say it was paid, charged, or completed.`;
   }
 
-  return buildRealtimeSessionPayload({
+  return buildLiveSessionPayload({
     instructions,
     tools,
     voice,
     speed,
-    turnDetection: buildTurnDetection(noiseMode),
+    displayName: profileDisplayName,
+    personality: profilePersonality,
     noiseMode,
   });
 }
@@ -616,6 +566,7 @@ async function handleDemoSession(req: any, res: any) {
     return;
   }
 
+  if (!validLiveSdp(req.body?.sdp)) { res.status(400).json({ error: "audio_sdp_required" }); return; }
   const { voice = "coral", speed = 1.05, mode: rawMode } = req.body ?? {};
   // Resolve mode: explicit body param > path-based inference > default "bar"
   let mode: "faq" | "bar" = "bar";
@@ -632,51 +583,26 @@ async function handleDemoSession(req: any, res: any) {
   const isBar = mode === "bar";
   const instructions = isBar ? MOCK_BAR_PERSONA : VOYCELAB_DEMO_INSTRUCTIONS;
   const sessionConfig = isBar
-    ? buildRealtimeSessionPayload({
+    ? buildLiveSessionPayload({
         instructions,
+        displayName: "Bev",
+        personality: "You are a friendly bartender at The Den, a sandbox bar demo. Keep it casual and welcoming.",
         tools: MOCK_BAR_TOOLS,
         voice: voiceStr,
         speed: speedNum,
-        turnDetection: {
-          type: "semantic_vad",
-          eagerness: "auto",
-          create_response: true,
-          interrupt_response: true,
-        },
       })
     : buildDemoRealtimeSessionConfig(voiceStr, speedNum);
 
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
-
-    const response = await fetch("https://api.openai.com/v1/realtime/client_secrets", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      signal: controller.signal,
-      body: JSON.stringify({ session: sessionConfig }),
-    });
-    clearTimeout(timeout);
-
-    if (!response.ok) {
-      const errText = await response.text();
-      console.error(`[Realtime] Demo (${mode}) ephemeral token failed:`, errText);
-      res.status(response.status).json({ error: "demo_session_failed", detail: errText });
-      return;
-    }
-
-    const data = (await response.json()) as any;
+    const data = await createLiveWebRtcSession(apiKey, sessionConfig, req.body.sdp);
     demoRateLimitOk(ip);
 
     const payload: Record<string, unknown> = {
-      id: data.session?.id ?? "",
-      client_secret: { value: data.value, expires_at: data.expires_at },
+      ...data,
+      voicelab: { bargeIn: true },
     };
     if (isBar) {
-      payload.model = OPENAI_REALTIME_MODEL;
+      payload.model = OPENAI_LIVE_MODEL;
       payload.instructions = instructions;
       payload.catalog = MOCK_BAR_CATALOG;
     }
@@ -710,9 +636,10 @@ router.post("/demo-bar-tools", async (req: any, res: any) => {
   res.json({ result, order });
 });
 
-// ── POST /session — Mint ephemeral OpenAI token ───────────────────────────────
+// ── POST /session — Create a GPT-Live WebRTC session ───────────────────────────────
 
 router.post("/session", requireAuth as any, requirePlan() as any, async (req: any, res: any) => {
+  if (!validLiveSdp(req.body?.sdp)) { res.status(400).json({ error: "audio_sdp_required" }); return; }
   const apiKey = readServerApiKey("openai")?.value ?? "";
   if (!apiKey) {
     res.status(500).json({ error: `${requiredApiKeyEnv("openai")} not configured` });
@@ -773,7 +700,7 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
       res.status(403).json({ error: "agent_profile_forbidden" });
       return;
     }
-    provider = profile.voicePipelineProvider;
+    provider = resolveVoicePipelineProvider(profile.voicePipelineProvider);
     providerConfig = (profile.voicePipelineConfig as Record<string, unknown>) ?? {};
     orderHandlingMode = normalizeOrderHandlingMode(profile.orderHandlingMode);
     if (profile.venueId !== null && requestedVenueId !== null && profile.venueId !== requestedVenueId) {
@@ -854,7 +781,7 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
   if (provider !== "openai_realtime_webrtc") {
     res.status(409).json({
       error: "pipeline_requires_relay",
-      detail: `${provider} is saved on this assistant. Open it in the Expo/web relay client path; this browser WebRTC surface only supports OpenAI Realtime today.`,
+      detail: `${provider} is saved on this assistant. Open it using its configured voice connection.`,
       provider,
     });
     return;
@@ -877,31 +804,8 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
   );
 
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
-
-    const response = await fetch("https://api.openai.com/v1/realtime/client_secrets", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      signal: controller.signal,
-      body: JSON.stringify({ session: sessionConfig }),
-    });
-    clearTimeout(timeout);
-
-    if (!response.ok) {
-      const errText = await response.text();
-      console.error("[Realtime] Ephemeral token failed:", errText);
-      res.status(response.status).json({ error: "Failed to create session", detail: errText });
-      return;
-    }
-
-    const data = (await response.json()) as any;
-    const transportSessionId = data.session?.id ?? "";
-    const ephemeralExpiresAt = data.expires_at ?? null;
-
+    const data = await createLiveWebRtcSession(apiKey, sessionConfig, req.body.sdp);
+    const transportSessionId = data.id;
     // Register durable voice session for metering and order recovery
     const logicalSessionId = transportSessionId;
     try {
@@ -918,26 +822,24 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
     }
 
     const behavior = getNoiseModeBehavior(noiseMode);
-    const acousticBargeIn = ACOUSTIC_BARGE_IN_ENABLED && behavior.bargeInEnabled;
-    // Server-authoritative wake greeting: the client fires this verbatim as
-    // response.create instructions the moment the wake word lands, so the
-    // assistant speaks first with minimal time-to-first-token.
+    // The client appends this server-built greeting after session.started.
     const greetingPersona = profileDisplayName ? ` You are ${profileDisplayName}.` : "";
     const greeting = `The user just summoned you with your wake phrase.${greetingPersona} Immediately say one short, warm greeting — under eight words, e.g. "Hey! What can I do for you?". Do not list capabilities or mention commands. Then stop speaking and wait for their request.`;
     res.json({
       id: transportSessionId,
-      client_secret: { value: data.value, expires_at: ephemeralExpiresAt },
+      transport: data.transport,
+      model: OPENAI_LIVE_MODEL,
       instructions: sessionConfig.instructions,
       greeting,
       assistantKind,
       voicelab: {
         noiseMode,
-        bargeIn: acousticBargeIn,
+        bargeIn: true,
         pushToTalk: behavior.pushToTalkRequired,
         orderHandlingMode,
         logicalSessionId,
-        sessionRotateRecommendedMs: 420_000,
-        ephemeralExpiresAt,
+        // Live manages context continuously; no token-driven rotation.
+        sessionRotateRecommendedMs: null,
         usage: usageLimits ? {
           used: usedMinutes,
           limit: usageLimits.includedMinutes,

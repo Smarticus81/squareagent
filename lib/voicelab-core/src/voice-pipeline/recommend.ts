@@ -60,58 +60,10 @@ export function recommendVoicePipeline(
   const warnings: string[] = [];
   const { availableCredentials, environment, deviceType } = input;
 
-  // Build candidate ordering per the spec, then filter to credential-available.
-  let candidates: VoicePipelineProvider[];
-  let baseReason: string;
-
-  // 1. Noisy environments take priority. Gemini 3.1 Flash Live ships with
-  //    the strongest background-noise rejection in this class, so prefer it
-  //    when its credentials are present.
-  if (environment === "loud" || environment === "push_to_talk") {
-    candidates = [
-      "google_gemini_3_1_flash_live",
-      "openai_realtime_webrtc",
-      "push_to_talk_text_fallback",
-    ];
-    baseReason = `noise mode=${environment}: prefer native-audio model with best-in-class noise rejection`;
-  }
-  // 2. Enterprise observability.
-  else if (input.requiresEnterpriseObservability) {
-    candidates = [
-      "openai_realtime_server_ws",
-      "openai_realtime_webrtc",
-      "push_to_talk_text_fallback",
-    ];
-    baseReason = "enterprise observability requested: prefer server-controlled relay";
-  }
-  // 3. Best voice quality.
-  else if (input.requiresBestVoiceQuality) {
-    candidates = [
-      "google_gemini_2_5_flash_native_audio",
-      "openai_realtime_webrtc",
-      "push_to_talk_text_fallback",
-    ];
-    baseReason = "best voice quality requested: prefer native audio models";
-  }
-  // 4. Mobile native.
-  else if (deviceType === "ios_native" || deviceType === "android_native") {
-    candidates = [
-      "openai_realtime_server_ws",
-      "openai_realtime_webrtc",
-      "push_to_talk_text_fallback",
-    ];
-    baseReason = `mobile native (${deviceType}): prefer server-controlled relay`;
-  }
-  // 5. Default -- browser/PWA low-latency.
-  else {
-    candidates = [
-      "openai_realtime_webrtc",
-      "google_gemini_3_1_flash_live",
-      "google_gemini_2_5_flash_native_audio",
-      "push_to_talk_text_fallback",
-    ];
-    baseReason = `browser/PWA low-latency default for device=${deviceType}`;
-  }
+  const candidates: VoicePipelineProvider[] = input.requiresEnterpriseObservability || deviceType === "server" || deviceType === "ios_native" || deviceType === "android_native"
+    ? ["openai_realtime_server_ws", "openai_realtime_webrtc", "push_to_talk_text_fallback"]
+    : ["openai_realtime_webrtc", "openai_realtime_server_ws", "push_to_talk_text_fallback"];
+  const baseReason = "GPT-Live 1 provides expressive conversation with delegated business commands.";
 
   const recommended = firstAvailable(candidates, availableCredentials)
     ?? "push_to_talk_text_fallback";

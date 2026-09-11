@@ -106,7 +106,7 @@ function Hero({ reduceMotion }: { reduceMotion: boolean }) {
           <div className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-[#07111f] shadow-[0_45px_100px_-35px_rgba(0,0,0,.9)]">
             <img
               src={HERO_GRAPHIC}
-              alt="VoyceLab voice assistant for bartenders and event venue owners"
+              alt="Illustration of a voice request adding two Old Fashioneds to an order preview"
               className="aspect-video w-full object-cover"
             />
           </div>

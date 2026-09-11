@@ -4,6 +4,14 @@ import type {
   VoicePipelineUseCase,
 } from "./types";
 
+/** Migrate saved native voice profiles at read time; retain stable database IDs.
+ * Text/offline fallbacks remain available without a paid voice connection.
+ */
+export function resolveVoicePipelineProvider(provider: string): VoicePipelineProvider {
+  if (provider.startsWith("google_gemini_") || provider === "xai_grok_realtime_ws") return "openai_realtime_server_ws";
+  return provider as VoicePipelineProvider;
+}
+
 export interface VoicePipelineProviderMetadata {
   provider: VoicePipelineProvider;
   category: VoicePipelineCategory;
@@ -28,16 +36,16 @@ export const VOICE_PIPELINE_PROVIDERS: Record<
   openai_realtime_webrtc: {
     provider: "openai_realtime_webrtc",
     category: "native_realtime_speech_to_speech",
-    displayName: "OpenAI Realtime (WebRTC)",
+    displayName: "OpenAI GPT-Live 1 (WebRTC)",
     shortDescription:
-      "Default browser/PWA path. Lowest-latency client voice with native S2S, server VAD, and tool calling over data channel.",
+      "Expressive browser conversation with full-duplex audio and delegated business commands.",
     recommendedFor: ["lowest_latency_browser", "best_tool_control"],
     requiredCredentials: ["OPENAI_API_KEY"],
   },
   openai_realtime_server_ws: {
     provider: "openai_realtime_server_ws",
     category: "native_realtime_speech_to_speech",
-    displayName: "OpenAI Realtime (Server WebSocket)",
+    displayName: "OpenAI GPT-Live 1 (Server WebSocket)",
     shortDescription:
       "Server-controlled relay. Best for native apps, enterprise logging, and future telephony.",
     recommendedFor: ["enterprise_observability", "lowest_latency_mobile", "telephony_future"],

@@ -1,3 +1,4 @@
+import { resolveVoicePipelineProvider } from "@workspace/voicelab-core/voice-pipeline";
 /**
  * WebSocket Relay for Native (iOS/Android) Voice Agent
  *
@@ -49,12 +50,8 @@ import type { NoiseMode } from "@workspace/voicelab-core/noise";
 import { planAllowsPipeline } from "@workspace/voicelab-core/pricing";
 import type { VoicePipelineProvider } from "@workspace/voicelab-core/voice-pipeline";
 import { isAdminEmail, JWT_SECRET } from "./auth";
-import {
-  OPENAI_REALTIME_MODEL,
-  buildRealtimeSessionPayload,
-  sanitizeRealtimeVoice,
-  sanitizeRealtimeSpeed,
-} from "../lib/openai-realtime";
+import { OPENAI_LIVE_WS_URL, buildLiveSessionPayload } from "../lib/openai-live";
+import { LiveProtocol } from "@workspace/voicelab-client/live-protocol";
 import { finalizeVoiceSessionUsage, registerVoiceSession } from "../lib/voice-session-metering";
 import { getSessionOrRehydrate, persistSessionNow } from "../lib/session-store";
 
@@ -477,7 +474,7 @@ async function validateRelayScope(
     if (!profile) return { ok: false, status: 404 };
     profileVenueId = profile.venueId ?? null;
     connectedServiceId = profile.connectedServiceId ?? null;
-    voicePipelineProvider = profile.voicePipelineProvider as VoicePipelineProvider;
+    voicePipelineProvider = resolveVoicePipelineProvider(profile.voicePipelineProvider);
     profileDisplayName = profile.displayName ?? "";
     profilePersonality = profile.personality ?? "";
     if (profile.noiseMode === "standard" || profile.noiseMode === "loud" || profile.noiseMode === "push_to_talk") {
@@ -503,8 +500,8 @@ async function validateRelayScope(
         return { ok: false, status: 400 };
       }
     } else if (
-      profile.voicePipelineProvider !== "openai_realtime_server_ws" &&
-      profile.voicePipelineProvider !== "openai_realtime_webrtc"
+      voicePipelineProvider !== "openai_realtime_server_ws" &&
+      voicePipelineProvider !== "openai_realtime_webrtc"
     ) {
       return { ok: false, status: 400 };
     }
@@ -645,8 +642,8 @@ export function attachWebSocketRelay(server: Server): void {
     let kind: RelayKind;
     switch (url.pathname) {
       case "/api/realtime": kind = "openai"; break;
-      case "/api/realtime/gemini": kind = "gemini"; break;
-      case "/api/realtime/xai": kind = "xai"; break;
+      case "/api/realtime/gemini": kind = "openai"; break;
+      case "/api/realtime/xai": kind = "openai"; break;
       default:
         socket.destroy();
         return;
@@ -774,7 +771,7 @@ export function attachWebSocketRelay(server: Server): void {
         voicePipelineProvider: scope.voicePipelineProvider,
         profileDisplayName: scope.profileDisplayName,
         profilePersonality: scope.profilePersonality,
-        geminiModelId: kind === "gemini" ? scope.geminiModelId : requestedGeminiModelId,
+        geminiModelId: requestedGeminiModelId,
         noiseMode: scope.noiseMode,
         query: queryParams,
       };
@@ -845,54 +842,47 @@ export function attachWebSocketRelay(server: Server): void {
       "relay connected",
     );
 
-    // Connect to OpenAI Realtime API
-    const openaiUrl = `wss://api.openai.com/v1/realtime?model=${OPENAI_REALTIME_MODEL}`;
+    // Connect to GPT-Live; wait for session.started before forwarding audio.
+    const openaiUrl = OPENAI_LIVE_WS_URL;
     const openaiWs = new WebSocket(openaiUrl, {
       headers: {
         "Authorization": `Bearer ${apiKey}`,
       },
     });
 
+    const protocol = new LiveProtocol(event => {
+      if (openaiWs.readyState === WebSocket.OPEN) openaiWs.send(JSON.stringify(event));
+    });
+    const sendLive = (raw: string) => protocol.send(JSON.parse(raw));
     let openaiReady = false;
+    let finalUsageSeconds: number | null = null;
+    const startupTimeout = setTimeout(() => {
+      if (openaiReady) return;
+      if (clientWs.readyState === WebSocket.OPEN) {
+        clientWs.send(JSON.stringify({ type: "error", error: { message: "Voice session startup timed out" } }));
+        clientWs.close();
+      }
+      openaiWs.terminate();
+    }, 20000);
     let pendingFromClient: string[] = [];
     const pendingConfirmationCallIds = new Set<string>();
 
     openaiWs.on("open", async () => {
       relayLog.info({ scope: "openai", userId: ctx.userId }, "upstream connected");
       await awaitCatalog(catalogReady);
-      openaiReady = true;
-
-      // Configure session. The model is fixed by the connection URL, so strip
-      // it from the session.update payload; voice/speed arrive as raw query
-      // params and are sanitized inside the builder.
-      const { model: _model, ...session } = buildRealtimeSessionPayload({
+      if (openaiWs.readyState !== WebSocket.OPEN) return;
+      const config = buildLiveSessionPayload({
         instructions: buildInstructions(ctx, catalog, order, assistantKind),
-        tools: relayTools,
-        voice: ctx.query.voice || "ash",
-        speed: ctx.query.speed,
-        turnDetection: {
-          type: "semantic_vad",
-          eagerness: "auto",
-          create_response: true,
-          interrupt_response: true,
-        },
-        noiseMode: ctx.noiseMode,
+        tools: relayTools, voice: ctx.query.voice, speed: ctx.query.speed,
+        displayName: ctx.profileDisplayName, personality: ctx.profilePersonality,
+        transport: "websocket",
       });
-      openaiWs.send(JSON.stringify({ type: "session.update", session }));
-
-      // Flush any messages that arrived before OpenAI was ready
-      for (const msg of pendingFromClient) {
-        openaiWs.send(msg);
-      }
-      pendingFromClient = [];
+      openaiWs.send(JSON.stringify({ type: "session.start", session: config }));
     });
 
     // Handle messages FROM OpenAI -> relay to client (intercept tool calls)
-    openaiWs.on("message", async (data) => {
-      const raw = data.toString();
-      let event: Record<string, unknown>;
-      try { event = JSON.parse(raw); } catch { clientWs.send(raw); return; }
-
+    const handleLiveEvent = async (event: Record<string, unknown>) => {
+      const raw = JSON.stringify(event);
       // Intercept tool call completion -> execute server-side
       if (event.type === "response.function_call_arguments.done") {
         const toolName = String(event.name ?? "");
@@ -931,11 +921,12 @@ export function attachWebSocketRelay(server: Server): void {
               confirmation: pendingConfirmation,
               call_id: callId,
             }));
+            protocol.send({ type: "session.commentary.append", delegation_id: null, content: "Please confirm or cancel this action using the on-screen confirmation." });
             return;
           }
 
           // Send tool output back to OpenAI
-          openaiWs.send(JSON.stringify({
+          sendLive(JSON.stringify({
             type: "conversation.item.create",
             item: {
               type: "function_call_output",
@@ -943,7 +934,7 @@ export function attachWebSocketRelay(server: Server): void {
               output: result,
             },
           }));
-          openaiWs.send(JSON.stringify({ type: "response.create" }));
+          sendLive(JSON.stringify({ type: "response.create" }));
 
           // Send order command to client
           if (command) {
@@ -951,7 +942,7 @@ export function attachWebSocketRelay(server: Server): void {
           }
         } catch (e: any) {
           relayLog.error({ scope: "openai", userId: ctx.userId, toolName, err: e.message }, "relay tool error");
-          openaiWs.send(JSON.stringify({
+          sendLive(JSON.stringify({
             type: "conversation.item.create",
             item: {
               type: "function_call_output",
@@ -959,7 +950,7 @@ export function attachWebSocketRelay(server: Server): void {
               output: `Error: ${e.message}`,
             },
           }));
-          openaiWs.send(JSON.stringify({ type: "response.create" }));
+          sendLive(JSON.stringify({ type: "response.create" }));
         }
 
         // The relay has already executed this command and returned the result
@@ -972,6 +963,23 @@ export function attachWebSocketRelay(server: Server): void {
       if (clientWs.readyState === WebSocket.OPEN) {
         clientWs.send(raw);
       }
+    };
+    openaiWs.on("message", data => {
+      let envelope: Record<string, any>;
+      try { envelope = JSON.parse(data.toString()); } catch { return; }
+      if (envelope.type === "session.started") {
+        clearTimeout(startupTimeout);
+        openaiReady = true;
+        for (const message of pendingFromClient) sendLive(message);
+        pendingFromClient = [];
+      }
+      for (const event of protocol.receive(envelope)) void handleLiveEvent(event);
+      if (envelope.type === "session.closed") {
+        const seconds = envelope.usage?.seconds;
+        if (typeof seconds === "number" && Number.isFinite(seconds) && seconds >= 0) finalUsageSeconds = seconds;
+        relayLog.info({ sessionId: relaySessionId, seconds: finalUsageSeconds, reason: envelope.reason }, "Live session finalized");
+        openaiWs.close();
+      }
     });
 
     openaiWs.on("error", (err) => {
@@ -981,6 +989,8 @@ export function attachWebSocketRelay(server: Server): void {
     });
 
     openaiWs.on("close", () => {
+      clearTimeout(startupTimeout);
+      void finalizeRelayUsage(ctx, relaySessionId, finalUsageSeconds === null ? Date.now() - connectionStartMs : finalUsageSeconds * 1000);
       relayLog.info({ scope: "openai", userId: ctx.userId }, "upstream websocket closed");
       if (clientWs.readyState === WebSocket.OPEN) clientWs.close();
     });
@@ -998,33 +1008,10 @@ export function attachWebSocketRelay(server: Server): void {
         if (Array.isArray(event.catalog) && catalog.length === 0) catalog = event.catalog as CatalogItem[];
         if (Array.isArray(event.order)) order = event.order as OrderItem[];
 
-        const voice = event.voice ? sanitizeRealtimeVoice(event.voice) : undefined;
-        const speed = typeof event.speed === "number" && Number.isFinite(event.speed)
-          ? sanitizeRealtimeSpeed(event.speed)
-          : undefined;
-
-        // Send updated instructions to OpenAI
-        if (openaiReady) {
-          openaiWs.send(JSON.stringify({
-            type: "session.update",
-            session: {
-              // GA session objects are discriminated on `type`; updates
-              // without it are rejected as invalid.
-              type: "realtime",
-              instructions: buildInstructions(ctx, catalog, order, assistantKind),
-              ...(voice || speed
-                ? {
-                    audio: {
-                      output: {
-                        ...(voice ? { voice } : {}),
-                        ...(speed ? { speed } : {}),
-                      },
-                    },
-                  }
-                : {}),
-            },
-          }));
-        }
+        if (openaiReady) protocol.send({
+          type: "session.update",
+          session: { delegation: { responses: { instructions: buildInstructions(ctx, catalog, order, assistantKind) } } },
+        });
         return;
       }
 
@@ -1055,7 +1042,7 @@ export function attachWebSocketRelay(server: Server): void {
           audio: resamplePcm16Base64(event.audio, inputRate, 24000),
         });
         if (openaiReady) {
-          openaiWs.send(payload);
+          sendLive(payload);
         } else {
           pendingFromClient.push(payload);
         }
@@ -1064,7 +1051,7 @@ export function attachWebSocketRelay(server: Server): void {
 
       // Forward standard Realtime API messages to OpenAI
       if (openaiReady) {
-        openaiWs.send(raw);
+        sendLive(raw);
       } else {
         pendingFromClient.push(raw);
       }
@@ -1076,12 +1063,14 @@ export function attachWebSocketRelay(server: Server): void {
         cancelLiveOrder(session, sessionSquareToken, sessionLocationId).catch(() => {});
       }
       if (openaiWs.readyState === WebSocket.OPEN || openaiWs.readyState === WebSocket.CONNECTING) {
-        openaiWs.close();
+        if (openaiReady && openaiWs.readyState === WebSocket.OPEN) {
+          protocol.send({ type: "session.close" });
+          const closeTimer = setTimeout(() => openaiWs.close(), 2000);
+          openaiWs.once("close", () => clearTimeout(closeTimer));
+        } else openaiWs.close();
       }
 
-      // Record voice session minutes in database
-      const durationMs = Date.now() - connectionStartMs;
-      void finalizeRelayUsage(ctx, relaySessionId, durationMs);
+      // Finalize usage on upstream close, after receiving final provider usage.
     });
 
     clientWs.on("error", (err) => {
