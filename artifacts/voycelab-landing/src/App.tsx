@@ -33,10 +33,12 @@ function NavigateReplace({ to, preserveLocationExtras = true }: { to: string; pr
 }
 
 function RootRoute() {
-  const missionControl =
-    typeof window !== "undefined" &&
-    new URLSearchParams(window.location.search).get("view") === "autonomy";
-  if (missionControl) return <NavigateReplace to="/autonomy" preserveLocationExtras={false} />;
+  const view =
+    typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search).get("view")
+      : null;
+  if (view === "autonomy") return <NavigateReplace to="/autonomy" preserveLocationExtras={false} />;
+  if (view === "signup") return <NavigateReplace to="/signup" />;
   return <Landing />;
 }
 
