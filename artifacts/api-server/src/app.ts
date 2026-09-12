@@ -129,6 +129,17 @@ app.get(["/autonomy", "/mission-control"], (_req, res) => {
   res.redirect(302, "/?view=autonomy");
 });
 
+// Email clients and link scanners are much more reliable when they enter the
+// application through the root document. Preserve campaign attribution while
+// turning old/new deep signup links into a stable root marker; the SPA promotes
+// the marker to /signup client-side without a second document request.
+app.get(["/signup", "/start-free"], (req, res) => {
+  const queryIndex = req.originalUrl.indexOf("?");
+  const originalQuery = queryIndex >= 0 ? req.originalUrl.slice(queryIndex + 1) : "";
+  res.setHeader("Cache-Control", "no-store");
+  res.redirect(302, `/?view=signup${originalQuery ? `&${originalQuery}` : ""}`);
+});
+
 // App-link association files for the native mobile wrapper. Universal links
 // (iOS) and verified app links (Android) let dashboard "Open assistant" URLs
 // open the installed app. Served 404 until the signing identifiers are set.
