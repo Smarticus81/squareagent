@@ -19,6 +19,29 @@ function customerSuccessEnabled(): boolean {
   return autonomyEnabled() && process.env.AUTONOMY_ENABLE_CUSTOMER_SUCCESS !== "false" && process.env.AUTONOMY_ENABLE_CUSTOMER_SUCCESS !== "0";
 }
 
+function emailSet(...values: Array<string | undefined>): Set<string> {
+  const emails = new Set<string>();
+  for (const value of values) {
+    for (const part of String(value ?? "").split(/[;,\s]+/)) {
+      const email = part.trim().toLowerCase();
+      if (email.includes("@")) emails.add(email);
+    }
+  }
+  return emails;
+}
+
+function isObviouslyTestAddress(email: string): boolean {
+  const normalized = email.trim().toLowerCase();
+  const at = normalized.lastIndexOf("@");
+  if (at <= 0) return true;
+  const local = normalized.slice(0, at);
+  const domain = normalized.slice(at + 1);
+  if (["example.com", "example.net", "example.org", "localhost"].includes(domain)) return true;
+  if (domain.endsWith(".invalid") || domain.endsWith(".test")) return true;
+  if (local === "test" || local.startsWith("test+") || local.includes("smoke")) return true;
+  return false;
+}
+
 export async function runActivationInterventions(runId?: string, maxBatch = 15): Promise<{ sent: number; considered: number }> {
   if (!pool || !customerSuccessEnabled()) return { sent: 0, considered: 0 };
 
@@ -30,6 +53,11 @@ export async function runActivationInterventions(runId?: string, maxBatch = 15):
     return { sent: 0, considered: 0 };
   }
   const operatorOrgId = process.env.AUTONOMY_OPERATOR_ORG_ID?.trim() || null;
+  const internalEmails = emailSet(
+    process.env.AUTONOMY_INTERNAL_EMAILS,
+    process.env.ADMIN_EMAILS,
+    process.env.AUTONOMY_OPERATOR_USER_ID?.includes("@") ? process.env.AUTONOMY_OPERATOR_USER_ID : undefined,
+  );
 
   const candidates = await pool.query(
     `SELECT
@@ -76,6 +104,25 @@ export async function runActivationInterventions(runId?: string, maxBatch = 15):
   for (const row of candidates.rows) {
     if (sent >= maxBatch) break;
     considered += 1;
+
+    const email = String(row.email ?? "").trim().toLowerCase();
+    const internalOrTest = Number(row.user_id) === operatorUserId || internalEmails.has(email) || isObviouslyTestAddress(email);
+    if (!email || internalOrTest) {
+      await recordBusinessEvent({
+        organizationId: row.organization_id,
+        userId: row.user_id,
+        eventType: "lifecycle_email_skipped_internal",
+        actorType: "system",
+        actorId: "customer-success-gate",
+        properties: {
+          userId: row.user_id,
+          reason: Number(row.user_id) === operatorUserId ? "operator_account" : isObviouslyTestAddress(email) ? "test_address" : "configured_internal_email",
+          runId,
+        },
+        dedupeKey: `lifecycle-internal-skip:${row.user_id}:${new Date().toISOString().slice(0, 10)}`,
+      });
+      continue;
+    }
 
     const recent = await pool.query(
       `SELECT 1 FROM business_events
@@ -130,7 +177,7 @@ export async function runActivationInterventions(runId?: string, maxBatch = 15):
       const executor = emailExecutors.send_email;
       if (!executor) throw new Error("send_email executor is unavailable");
       const result = await executor(
-        { to: String(row.email), subject: copy.subject, body: copy.body },
+        { to: email, subject: copy.subject, body: copy.body },
         { userId: operatorUserId, organizationId: operatorOrgId } as any,
       );
       if (/failed|error|missing|limit|rejected/i.test(result.result)) throw new Error(result.result);
