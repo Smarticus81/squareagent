@@ -51,6 +51,37 @@ const getHeaders = () => {
 
 const getBillingHeaders = () => withClerkBillingHeader(getHeaders());
 
+async function readResponseBody(res: Response): Promise<any> {
+  const text = await res.text();
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { error: text.slice(0, 240) };
+  }
+}
+
+function normalizeAuthResponse(data: any) {
+  const full = AuthResponseSchema.safeParse(data);
+  if (full.success) return full.data;
+
+  // Account creation/login only needs a valid token + user to continue. Do not
+  // strand a newly created account if an optional subscription field changes
+  // shape independently of authentication.
+  const essential = z.object({ token: z.string(), user: UserSchema }).safeParse(data);
+  if (!essential.success) {
+    throw new Error("Account was created but VoyceLab could not start your session. Please sign in and continue.");
+  }
+  return {
+    token: essential.data.token,
+    user: essential.data.user,
+    subscription: null,
+    organizationId: typeof data?.organizationId === "string" ? data.organizationId : null,
+    trialEndsAt: typeof data?.trialEndsAt === "string" ? data.trialEndsAt : null,
+    isAdmin: Boolean(data?.isAdmin ?? essential.data.user.isAdmin),
+  };
+}
+
 // Hooks
 export function useAuth() {
   return useQuery({
@@ -100,7 +131,7 @@ export function useLogin() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Login failed");
       
-      const validated = AuthResponseSchema.parse(data);
+      const validated = normalizeAuthResponse(data);
       setToken(validated.token);
       return validated;
     },
@@ -120,16 +151,26 @@ export function useSignup() {
 
   return useMutation({
     mutationFn: async (userData: { email: string; password: string; name: string }) => {
-      const res = await fetch("/api/auth/signup", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(userData),
-      });
+      let res: Response;
+      try {
+        res = await fetch("/api/auth/signup", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(userData),
+        });
+      } catch {
+        throw new Error("VoyceLab could not reach the signup service. Check your connection and try again.");
+      }
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Signup failed");
+      const data = await readResponseBody(res);
+      if (!res.ok) {
+        const message = typeof data?.error === "string" && data.error
+          ? data.error
+          : `Signup failed (${res.status}). Please try again.`;
+        throw new Error(message);
+      }
 
-      const validated = AuthResponseSchema.parse(data);
+      const validated = normalizeAuthResponse(data);
       setToken(validated.token);
       return validated;
     },
