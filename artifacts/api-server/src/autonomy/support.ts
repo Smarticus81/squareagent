@@ -32,6 +32,29 @@ function senderEmail(from: string): string | null {
   return (angled?.[1] ?? plain?.[0] ?? "").trim().toLowerCase() || null;
 }
 
+function emailSet(...values: Array<string | undefined>): Set<string> {
+  const emails = new Set<string>();
+  for (const value of values) {
+    for (const part of String(value ?? "").split(/[;,\s]+/)) {
+      const email = part.trim().toLowerCase();
+      if (email.includes("@")) emails.add(email);
+    }
+  }
+  return emails;
+}
+
+function isObviouslyTestAddress(email: string): boolean {
+  const normalized = email.trim().toLowerCase();
+  const at = normalized.lastIndexOf("@");
+  if (at <= 0) return true;
+  const local = normalized.slice(0, at);
+  const domain = normalized.slice(at + 1);
+  if (["example.com", "example.net", "example.org", "localhost"].includes(domain)) return true;
+  if (domain.endsWith(".invalid") || domain.endsWith(".test")) return true;
+  if (local === "test" || local.startsWith("test+") || local.includes("smoke")) return true;
+  return false;
+}
+
 async function productContext(): Promise<string> {
   try {
     const file = await readFile(path.resolve(process.cwd(), "CAPABILITIES.md"), "utf8");
@@ -101,6 +124,11 @@ export async function runSupportInbox(runId?: string, maxMessages = 6): Promise<
     return { inspected: 0, responded: 0, escalated: 0 };
   }
   const operatorOrgId = process.env.AUTONOMY_OPERATOR_ORG_ID?.trim() || null;
+  const internalEmails = emailSet(
+    process.env.AUTONOMY_INTERNAL_EMAILS,
+    process.env.ADMIN_EMAILS,
+    process.env.AUTONOMY_OPERATOR_USER_ID?.includes("@") ? process.env.AUTONOMY_OPERATOR_USER_ID : undefined,
+  );
 
   const ctx = { userId: operatorUserId, organizationId: operatorOrgId } as any;
   const list = inboxExecutors.list_inbox;
@@ -109,7 +137,7 @@ export async function runSupportInbox(runId?: string, maxMessages = 6): Promise<
   const send = emailExecutors.send_email;
   if (!list || !read || !markRead || !send) throw new Error("Email support executors are unavailable");
 
-  const query = process.env.AUTONOMY_SUPPORT_GMAIL_QUERY?.trim() || "in:inbox is:unread newer_than:7d";
+  const query = process.env.AUTONOMY_SUPPORT_GMAIL_QUERY?.trim() || "in:inbox is:unread newer_than:7d -from:me";
   const listed = await list({ query, max_results: Math.max(1, Math.min(20, maxMessages * 2)) }, ctx);
   let parsed: any;
   try { parsed = JSON.parse(listed.result); } catch { return { inspected: 0, responded: 0, escalated: 0 }; }
@@ -136,9 +164,36 @@ export async function runSupportInbox(runId?: string, maxMessages = 6): Promise<
 
     const email = senderEmail(String(message.from ?? ""));
     if (!email) continue;
+
+    // Never let the autonomous support agent answer the operator, admin/test
+    // accounts, or mail sent from the same Gmail identity it uses to reply.
+    if (internalEmails.has(email) || isObviouslyTestAddress(email)) {
+      await markRead({ id }, ctx);
+      await recordBusinessEvent({
+        eventType: "support_ignored_internal_sender",
+        actorType: "system",
+        actorId: "support-gate",
+        properties: { gmailMessageId: id, fromDomain: email.split("@")[1], runId },
+        dedupeKey: `support-ignored-internal:${id}`,
+      });
+      continue;
+    }
+
     if (await ownedBySales(email)) continue;
 
     const acct = await accountContext(email);
+    if (Number(acct.userId ?? 0) === operatorUserId) {
+      await markRead({ id }, ctx);
+      await recordBusinessEvent({
+        userId: operatorUserId,
+        eventType: "support_ignored_internal_sender",
+        actorType: "system",
+        actorId: "support-gate",
+        properties: { gmailMessageId: id, reason: "operator_account", runId },
+        dedupeKey: `support-ignored-operator:${id}`,
+      });
+      continue;
+    }
 
     // This is a personal/operator inbox, not a generic helpdesk queue. Never let
     // the support agent answer newsletters, vendor notifications, personal mail,
