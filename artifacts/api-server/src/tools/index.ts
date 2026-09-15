@@ -29,6 +29,7 @@ import * as generalEmail from "./general/email";
 import * as generalEmailRead from "./general/email-read";
 import * as generalDatabase from "./general/database";
 import metaSkill from "../skills/meta.skill";
+import { getSquareClient } from "../lib/square-client";
 
 // Re-export types for convenience
 export type { ToolDefinition } from "./types";
@@ -85,6 +86,9 @@ export async function executeToolCall(
   const executor = EXECUTOR_MAP[toolName];
   if (!executor) {
     return { result: `Unknown tool: ${toolName}` };
+  }
+  if (!ctx.squareClient && ctx.squareToken && ctx.squareLocationId) {
+    ctx.squareClient = getSquareClient(ctx.squareToken, ctx.squareLocationId);
   }
   return executor(args, ctx);
 }

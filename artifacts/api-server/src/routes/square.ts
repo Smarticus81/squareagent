@@ -1,5 +1,7 @@
 import { Router, type IRouter, Request, Response } from "express";
 import crypto from "crypto";
+import { db, squareOAuthStatesTable } from "@workspace/db";
+import { eq, lt } from "drizzle-orm";
 import { requireAuth } from "./auth";
 import { ensureUserOrganization } from "./v1/_helpers";
 import {
@@ -7,11 +9,10 @@ import {
   purgeExpiredSquareOAuthTokens,
   storePendingSquareOAuthToken,
 } from "../lib/square-oauth-claims";
+import { SQUARE_OAUTH_BASE, SquareClient } from "../lib/square-client";
+import { exchangeSquareAuthorizationCode } from "../lib/square-oauth";
 
 const router: IRouter = Router();
-
-const SQUARE_BASE = "https://connect.squareup.com/v2";
-const SQUARE_OAUTH_BASE = "https://connect.squareup.com/oauth2";
 
 function getRequestOrigin(req: Request): string | null {
   // Prefer forwarded headers for deployments behind reverse proxies/load balancers.
@@ -70,14 +71,6 @@ function getRedirectUri(req?: Request): string {
   return `${protocol}://${domain}/api/square/oauth/callback`;
 }
 
-function squareHeaders(token: string) {
-  return {
-    "Authorization": `Bearer ${token}`,
-    "Content-Type": "application/json",
-    "Square-Version": "2024-12-18",
-  };
-}
-
 // ── In-memory state stores (TTL: 10 min) ─────────────────────────────────────
 
 interface PendingState {
@@ -91,11 +84,49 @@ interface PendingState {
 }
 const pendingStates = new Map<string, PendingState>();
 
+async function storeOAuthState(state: string, pending: PendingState): Promise<void> {
+  await db.insert(squareOAuthStatesTable).values({
+    state,
+    userId: pending.userId,
+    organizationId: pending.organizationId,
+    redirectUri: pending.redirectUri,
+    mode: pending.mode ?? null,
+    returnUrl: pending.returnUrl ?? null,
+    returnOrigin: pending.returnOrigin ?? null,
+    expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+  }).catch(() => {});
+  pendingStates.set(state, pending);
+}
+
+async function loadOAuthState(state: string): Promise<PendingState | undefined> {
+  const cached = pendingStates.get(state);
+  if (cached) return cached;
+  const [row] = await db.select().from(squareOAuthStatesTable).where(eq(squareOAuthStatesTable.state, state)).limit(1);
+  if (!row || row.expiresAt < new Date()) return undefined;
+  const pending: PendingState = {
+    timestamp: row.createdAt.getTime(),
+    redirectUri: row.redirectUri,
+    userId: row.userId,
+    organizationId: row.organizationId,
+    mode: row.mode ?? undefined,
+    returnUrl: row.returnUrl ?? undefined,
+    returnOrigin: row.returnOrigin ?? undefined,
+  };
+  pendingStates.set(state, pending);
+  return pending;
+}
+
+async function deleteOAuthState(state: string): Promise<void> {
+  pendingStates.delete(state);
+  await db.delete(squareOAuthStatesTable).where(eq(squareOAuthStatesTable.state, state)).catch(() => {});
+}
+
 // Clean up stale entries every 5 minutes
 setInterval(() => {
   const cutoff = Date.now() - 10 * 60 * 1000;
   for (const [k, v] of pendingStates) if (v.timestamp < cutoff) pendingStates.delete(k);
-  purgeExpiredSquareOAuthTokens();
+  void purgeExpiredSquareOAuthTokens();
+  void db.delete(squareOAuthStatesTable).where(lt(squareOAuthStatesTable.expiresAt, new Date())).catch(() => {});
 }, 5 * 60 * 1000);
 
 // ── OAuth routes ──────────────────────────────────────────────────────────────
@@ -136,7 +167,7 @@ router.get("/oauth/authorize", requireAuth as any, async (req: Request, res: Res
     pendingState.returnUrl = returnUrl;
     pendingState.returnOrigin = getBrowserOrigin(req) || undefined;
   }
-  pendingStates.set(state, pendingState);
+  await storeOAuthState(state, pendingState);
 
   const params = new URLSearchParams({
     client_id: appId,
@@ -168,7 +199,7 @@ router.get("/oauth/callback", async (req: Request, res: Response): Promise<void>
   const { code, state, error } = req.query as Record<string, string>;
 
   // Retrieve the pending state to check mode
-  const pendingOAuthState = state ? pendingStates.get(state) : undefined;
+  const pendingOAuthState = state ? await loadOAuthState(state) : undefined;
   const isRedirectMode = pendingOAuthState?.mode === "redirect";
   const returnUrl = pendingOAuthState?.returnUrl ?? "/";
   const returnTarget = pendingOAuthState?.returnOrigin
@@ -177,7 +208,7 @@ router.get("/oauth/callback", async (req: Request, res: Response): Promise<void>
 
   if (error) {
     if (isRedirectMode) {
-      pendingStates.delete(state);
+      await deleteOAuthState(state);
       res.redirect(`${returnTarget}${returnTarget.includes("?") ? "&" : "?"}oauth_error=${encodeURIComponent(error)}`);
     } else {
       res.send(popupHtml(null, `Square authorization failed: ${error}`));
@@ -193,29 +224,15 @@ router.get("/oauth/callback", async (req: Request, res: Response): Promise<void>
     }
     return;
   }
-  pendingStates.delete(state);
+  await deleteOAuthState(state);
 
-  const appId = process.env.SQUARE_APPLICATION_ID;
-  const appSecret = process.env.SQUARE_APPLICATION_SECRET;
   const redirectUri = pendingOAuthState.redirectUri || getRedirectUri(req);
 
   try {
-    const tokenRes = await fetch(`${SQUARE_OAUTH_BASE}/token`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Square-Version": "2024-12-18" },
-      body: JSON.stringify({
-        client_id: appId,
-        client_secret: appSecret,
-        code,
-        grant_type: "authorization_code",
-        redirect_uri: redirectUri,
-      }),
-    });
+    const exchange = await exchangeSquareAuthorizationCode(code, redirectUri);
 
-    const data = await tokenRes.json() as any;
-
-    if (!tokenRes.ok || !data.access_token) {
-      const msg = data.message || data.errors?.[0]?.detail || "Token exchange failed";
+    if (!exchange.ok || !exchange.tokens) {
+      const msg = exchange.error || "Token exchange failed";
       if (isRedirectMode) {
         // Full-page flows (onboarding, standalone PWA) must land back in the
         // app with oauth_error — a popup page here would strand the user.
@@ -226,9 +243,13 @@ router.get("/oauth/callback", async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    const ts = storePendingSquareOAuthToken({
-      token: data.access_token,
-      merchantId: data.merchant_id ?? "",
+    // Refresh token + expiry ride along so the stored connection can renew
+    // its 30-day access token instead of silently disconnecting.
+    const ts = await storePendingSquareOAuthToken({
+      token: exchange.tokens.accessToken,
+      refreshToken: exchange.tokens.refreshToken,
+      tokenExpiresAt: exchange.tokens.expiresAt,
+      merchantId: exchange.tokens.merchantId,
       userId: pendingOAuthState.userId,
       organizationId: pendingOAuthState.organizationId,
     });
@@ -240,10 +261,15 @@ router.get("/oauth/callback", async (req: Request, res: Response): Promise<void>
       res.send(popupHtml(ts, null));
     }
   } catch (e: any) {
+    // Full detail (including the driver's cause) goes to the server log only.
+    // The raw message can contain SQL parameters — never put it in a URL or
+    // page the browser sees.
+    console.error("[Square OAuth] callback failed:", e?.message ?? e, e?.cause ?? "");
+    const safeMsg = "Could not save the Square connection. Please try again, and contact support if it keeps failing.";
     if (isRedirectMode) {
-      res.redirect(`${returnTarget}${returnTarget.includes("?") ? "&" : "?"}oauth_error=${encodeURIComponent(e.message || "Unexpected error")}`);
+      res.redirect(`${returnTarget}${returnTarget.includes("?") ? "&" : "?"}oauth_error=${encodeURIComponent(safeMsg)}`);
     } else {
-      res.send(popupHtml(null, e.message || "Unexpected error during token exchange"));
+      res.send(popupHtml(null, safeMsg));
     }
   }
 });
@@ -255,7 +281,7 @@ router.get("/oauth/token", requireAuth as any, async (req: Request, res: Respons
   const user = (req as any).user;
   const organizationId =
     (req as any).organization?.id ?? (await ensureUserOrganization(user)).id;
-  const pending = peekPendingSquareOAuthToken({ claimId: ts, userId: user.id, organizationId });
+  const pending = await peekPendingSquareOAuthToken({ claimId: ts, userId: user.id, organizationId });
   if (!pending) {
     res.status(404).json({ error: "Token not found, expired, or already claimed" });
     return;
@@ -332,22 +358,20 @@ router.get("/locations", async (req: Request, res: Response): Promise<void> => {
   const user = (req as any).user;
   const organizationId =
     (req as any).organization?.id ?? (await ensureUserOrganization(user)).id;
-  const pending = peekPendingSquareOAuthToken({ claimId, userId: user.id, organizationId });
+  const pending = await peekPendingSquareOAuthToken({ claimId, userId: user.id, organizationId });
   const token = pending?.token;
   if (!token) { res.status(404).json({ error: "Square connection expired. Please connect again." }); return; }
 
   try {
-    const response = await fetch(`${SQUARE_BASE}/locations`, {
-      headers: squareHeaders(token),
-    });
-    const data = await response.json() as any;
+    // No location is bound yet — this is the picker that chooses one.
+    const response = await new SquareClient(token, "").get("/locations");
 
     if (!response.ok) {
-      res.status(response.status).json({ error: data.errors?.[0]?.detail || "Failed to load locations" });
+      res.status(response.status || 502).json({ error: response.error?.message || "Failed to load locations" });
       return;
     }
 
-    const locations = (data.locations || []).map((loc: any) => ({
+    const locations = (response.data?.locations || []).map((loc: any) => ({
       id: loc.id,
       name: loc.name,
       address: loc.address

@@ -76,7 +76,7 @@ const VENUE_TYPES: VenueType[] = [
     label: "Bar & lounge",
     tagline: "Tabs, pours, last call",
     icon: Martini,
-    names: ["Bev", "Rio", "Cash"],
+    names: ["Rio", "Cash", "Ace"],
     sampleLine: "Two ranch waters and a Bud heavy — starting a tab or closing out?",
   },
   {
@@ -196,7 +196,7 @@ export default function Onboarding() {
 
   const venueType = VENUE_TYPES.find((t) => t.id === venueTypeId) ?? null;
   const sampleLine = venueType?.sampleLine ?? DEFAULT_SAMPLE_LINE;
-  const namePlaceholder = venueType?.names[0] ?? "Bev";
+  const namePlaceholder = venueType?.names[0] ?? "Nova";
   const selectedVoice = VOICES.find((v) => v.id === voice) ?? VOICES[0];
 
   const goTo = useCallback(
@@ -610,7 +610,7 @@ export default function Onboarding() {
                       fontWeight: 600,
                       letterSpacing: "-0.03em",
                       color: "var(--color-vl-ink)",
-                      borderBottom: "2px solid rgba(14, 27, 44, 0.14)",
+                      borderBottom: "2px solid var(--vl-line)",
                       paddingBottom: "0.35rem",
                       caretColor: "var(--color-vl-coral)",
                     }}
@@ -618,7 +618,7 @@ export default function Onboarding() {
                 </motion.div>
 
                 <motion.div variants={rv} className="mt-5 flex flex-wrap justify-center gap-2">
-                  {(venueType?.names ?? ["Bev", "Piper", "Nova"]).map((n) => (
+                  {(venueType?.names ?? ["Nova", "Piper", "Rio"]).map((n) => (
                     <button
                       key={n}
                       type="button"
@@ -723,8 +723,8 @@ export default function Onboarding() {
                             key={text}
                             className="flex items-center gap-3 rounded-2xl border px-4 py-3"
                             style={{
-                              borderColor: "rgba(14, 27, 44, 0.08)",
-                              background: "rgba(255, 252, 248, 0.6)",
+                              borderColor: "var(--vl-line)",
+                              background: "rgba(255, 255, 255, 0.08)", backdropFilter: "blur(12px)",
                             }}
                           >
                             <Icon

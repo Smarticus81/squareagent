@@ -1,334 +1,371 @@
-import { useState } from "react";
-import { Link, useLocation, useSearch } from "wouter";
-import { Logo } from "@/components/logo";
-import { VoiceRail } from "@/components/voice-rail";
+import { useEffect, useRef, useState } from "react";
+import { useLocation, useSearch } from "wouter";
+import { AnimatePresence, motion } from "framer-motion";
+import { ArrowLeft, ArrowRight, Eye, EyeOff, Info } from "lucide-react";
 import { useForgotPassword, useLogin, useResetPassword } from "@/hooks/use-auth";
 import { consumeIntendedPath } from "@/lib/post-login-redirect";
-import { ArrowLeft, CheckCircle2, Loader2 } from "lucide-react";
+import {
+  AuthHeader,
+  AuthShell,
+  ConicSubmitButton,
+  Divider,
+  ErrorNote,
+  GoogleGlyph,
+  InputGroup,
+  SocialButton,
+  SuccessNote,
+  SunsetLink,
+  XGlyph,
+} from "@/components/auth-kit";
+
+/**
+ * Sign-in screen.
+ *
+ * Signing in is a two-step flow (email -> password) so the single
+ * "email + arrow" input group maps cleanly onto the email/password JWT login.
+ * Forgot-password and reset-link (`/login?reset=<token>`) modes reuse the
+ * same input group so every path through the screen feels like one surface.
+ */
+
+type Mode = "login" | "forgot" | "reset";
+type LoginStep = "email" | "password";
+
+const stepMotion = {
+  initial: { opacity: 0, x: 24, filter: "blur(4px)" },
+  animate: { opacity: 1, x: 0, filter: "blur(0px)" },
+  exit: { opacity: 0, x: -24, filter: "blur(4px)" },
+  transition: { duration: 0.28, ease: [0.22, 1, 0.36, 1] as const },
+};
 
 export default function Login() {
   const [, setLocation] = useLocation();
   const search = useSearch();
   const resetToken = new URLSearchParams(search).get("reset") ?? "";
+
   const login = useLogin();
   const forgotPassword = useForgotPassword();
   const resetPassword = useResetPassword();
+
+  const [mode, setMode] = useState<Mode>(resetToken ? "reset" : "login");
+  const [step, setStep] = useState<LoginStep>("email");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [mode, setMode] = useState<"login" | "forgot" | "reset">(resetToken ? "reset" : "login");
+  const [showPassword, setShowPassword] = useState(false);
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [resetComplete, setResetComplete] = useState(false);
+  const [socialNotice, setSocialNotice] = useState<string | null>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const emailRef = useRef<HTMLInputElement>(null);
+  const passwordRef = useRef<HTMLInputElement>(null);
+
+  // Keep the keyboard on the active field as the flow advances.
+  useEffect(() => {
+    if (mode !== "login") return;
+    const target = step === "email" ? emailRef.current : passwordRef.current;
+    const id = window.setTimeout(() => target?.focus(), 60);
+    return () => window.clearTimeout(id);
+  }, [mode, step]);
+
+  useEffect(() => {
+    if (!socialNotice) return;
+    const id = window.setTimeout(() => setSocialNotice(null), 4500);
+    return () => window.clearTimeout(id);
+  }, [socialNotice]);
+
+  const goToLogin = () => {
+    setMode("login");
+    setStep("email");
+    setPassword("");
+    login.reset();
+    forgotPassword.reset();
+    if (resetToken) window.history.replaceState(null, "", "/login");
+  };
+
+  const handleEmailContinue = (e: React.FormEvent) => {
     e.preventDefault();
-    login.mutate({ email, password }, {
-      onSuccess: () => {
-        // Land the user back on the page they originally tried to open.
-        const intended = consumeIntendedPath();
-        setLocation(sessionStorage.getItem("voycelab.pending_plan") ? "/pricing" : intended ?? "/assistants");
+    if (!email.trim()) return;
+    login.reset();
+    setStep("password");
+  };
+
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    login.mutate(
+      { email: email.trim(), password },
+      {
+        onSuccess: () => {
+          // Land the user back on the page they originally tried to open.
+          const intended = consumeIntendedPath();
+          setLocation(sessionStorage.getItem("voycelab.pending_plan") ? "/pricing" : intended ?? "/assistants");
+        },
       },
-    });
+    );
   };
 
   const handleForgotPassword = (e: React.FormEvent) => {
     e.preventDefault();
-    forgotPassword.mutate({ email });
+    forgotPassword.mutate({ email: email.trim() });
   };
 
   const handleResetPassword = (e: React.FormEvent) => {
     e.preventDefault();
     if (newPassword !== confirmPassword) return;
-    resetPassword.mutate({ token: resetToken, newPassword }, {
-      onSuccess: () => {
-        setResetComplete(true);
-        setPassword("");
-        setNewPassword("");
-        setConfirmPassword("");
+    resetPassword.mutate(
+      { token: resetToken, newPassword },
+      {
+        onSuccess: () => {
+          setResetComplete(true);
+          setPassword("");
+          setNewPassword("");
+          setConfirmPassword("");
+        },
       },
-    });
+    );
   };
 
-  const heading = mode === "forgot" ? "Recover access." : mode === "reset" ? "Set a new password." : "Welcome back.";
+  const heading =
+    mode === "forgot" ? "Reset password" : mode === "reset" ? "Choose a new password" : "Welcome back";
   const subtitle =
     mode === "forgot"
-      ? "Enter your account email and we’ll send a secure reset link."
+      ? "We’ll email you a secure link to get back in."
       : mode === "reset"
-      ? "Choose a new password for your VoyceLab account."
-      : "Open your assistants and pick up where you left off.";
+      ? "Pick something memorable. At least 8 characters."
+      : step === "password"
+      ? "Enter your password to continue."
+      : "Sign in to your account";
+
+  const passwordsMismatch = Boolean(newPassword && confirmPassword && newPassword !== confirmPassword);
 
   return (
-    <div className="vl-auth-shell relative flex min-h-screen items-center justify-center overflow-hidden p-6">
-      <div
-        aria-hidden
-        className="absolute inset-0 pointer-events-none"
-        style={{
-          background:
-            "radial-gradient(ellipse 60% 45% at 15% 20%, rgba(255, 107, 71,0.18), transparent 65%), radial-gradient(ellipse 50% 40% at 90% 80%, rgba(124, 110, 245,0.18), transparent 65%)",
-        }}
-      />
+    <AuthShell>
+      <AuthHeader title={heading} subtitle={subtitle} />
 
-      <div className="relative w-full max-w-105">
-        <div className="mb-5 flex justify-start">
-          <Link
-            href="/"
-            className="inline-flex items-center gap-1.5 rounded-2xl border bg-white/70 px-3 py-2 text-[13px] font-semibold shadow-sm backdrop-blur transition hover:bg-white hover:shadow"
-            style={{ color: "var(--color-vl-ink-muted)", borderColor: "rgba(14, 27, 44,0.08)" }}
-          >
-            <ArrowLeft className="w-3.5 h-3.5" /> Back
-          </Link>
-        </div>
-        <div className="flex justify-center mb-8">
-          <Logo size="lg" withTagline />
-        </div>
+      <AnimatePresence mode="wait" initial={false}>
+        {mode === "login" && step === "email" && (
+          <motion.div key="login-email" {...stepMotion} className="mt-8 space-y-5">
+            <div className="space-y-3">
+              <SocialButton
+                label="Continue with Google"
+                icon={<GoogleGlyph />}
+                onClick={() => setSocialNotice("Google sign-in is coming soon. Use your email below to continue.")}
+              />
+              <SocialButton
+                label="Continue with X"
+                icon={<XGlyph />}
+                onClick={() => setSocialNotice("X sign-in is coming soon. Use your email below to continue.")}
+              />
+            </div>
 
-        <div className="vl-card vl-edge-coral p-8 login-card">
-          <h1
-            className="vl-display text-[28px] text-center"
-            style={{ color: "var(--color-vl-ink)" }}
-          >
-            {heading.includes(" ") ? (
-              <>
-                {heading.split(" ")[0]} <em>{heading.split(" ").slice(1).join(" ")}</em>
-              </>
-            ) : heading}
-          </h1>
-          <p
-            className="text-[14px] text-center mt-2"
-            style={{ color: "var(--color-vl-ink-muted)" }}
-          >
-            {subtitle}
-          </p>
-          <div className="mt-6 mb-2">
-            <VoiceRail state="ready" intensity={0.4} />
-          </div>
-
-          {mode === "login" && (
-            <form onSubmit={handleSubmit} className="space-y-5 mt-6">
-              <Field label="Email">
-                <input
-                  type="email"
-                  placeholder="name@venue.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                  className="vl-input login-input"
-                />
-              </Field>
-              <Field label="Password">
-                <input
-                  type="password"
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  className="vl-input login-input"
-                />
-              </Field>
-
-              <div className="flex justify-end">
-                <button
-                  type="button"
-                  onClick={() => setMode("forgot")}
-                  className="text-[12.5px] font-bold hover:underline"
-                  style={{ color: "var(--color-vl-coral-deep)" }}
+            <AnimatePresence>
+              {socialNotice && (
+                <motion.p
+                  key="social-notice"
+                  initial={{ opacity: 0, y: -6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -6 }}
+                  className="flex items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-800"
                 >
-                  Forgot password?
-                </button>
-              </div>
-
-              {login.error && (
-                <p className="text-[13px]" style={{ color: "var(--color-vl-danger)" }}>
-                  {login.error.message}
-                </p>
+                  <Info className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>{socialNotice}</span>
+                </motion.p>
               )}
+            </AnimatePresence>
 
-              <button type="submit" disabled={login.isPending} className="vl-btn-primary w-full">
-                {login.isPending ? (
-                  <span className="inline-flex items-center justify-center gap-2">
-                    <Loader2 className="w-4 h-4 animate-spin" /> Signing in…
-                  </span>
-                ) : (
-                  "Sign in"
-                )}
-              </button>
-            </form>
-          )}
+            <Divider />
 
-          {mode === "forgot" && (
-            <form onSubmit={handleForgotPassword} className="space-y-5 mt-6">
-              <Field label="Account email">
+            <form onSubmit={handleEmailContinue}>
+              <InputGroup label="Email" htmlFor="login-email" action={<ConicSubmitButton label="Continue" />}>
                 <input
+                  ref={emailRef}
+                  id="login-email"
                   type="email"
-                  placeholder="name@venue.com"
+                  name="email"
+                  autoComplete="email"
+                  placeholder="Enter your email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
-                  className="vl-input login-input"
+                  className="vl-login-input"
                 />
-              </Field>
-
-              {forgotPassword.data && (
-                <div className="rounded-2xl border bg-emerald-50/70 p-4 text-[13px] font-semibold text-emerald-700">
-                  <div className="flex gap-2">
-                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
-                    <span>{forgotPassword.data.message}</span>
-                  </div>
-                </div>
-              )}
-
-              {forgotPassword.error && (
-                <p className="text-[13px]" style={{ color: "var(--color-vl-danger)" }}>
-                  {forgotPassword.error.message}
-                </p>
-              )}
-
-              <button type="submit" disabled={forgotPassword.isPending} className="vl-btn-primary w-full">
-                {forgotPassword.isPending ? (
-                  <span className="inline-flex items-center justify-center gap-2">
-                    <Loader2 className="w-4 h-4 animate-spin" /> Sending link…
-                  </span>
-                ) : (
-                  "Send reset link"
-                )}
-              </button>
-              <button
-                type="button"
-                onClick={() => setMode("login")}
-                className="vl-btn-ghost w-full"
-              >
-                Back to sign in
-              </button>
+              </InputGroup>
             </form>
-          )}
+          </motion.div>
+        )}
 
-          {mode === "reset" && (
-            <form onSubmit={handleResetPassword} className="space-y-5 mt-6">
-              {resetComplete ? (
-                <div className="rounded-2xl border bg-emerald-50/70 p-4 text-[13px] font-semibold text-emerald-700">
-                  <div className="flex gap-2">
-                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
-                    <span>Password updated. You can sign in with your new password.</span>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <Field label="New password">
-                    <input
-                      type="password"
-                      placeholder="Minimum 8 characters"
-                      value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
-                      minLength={8}
-                      required
-                      className="vl-input login-input"
-                    />
-                  </Field>
-                  <Field label="Confirm password">
-                    <input
-                      type="password"
-                      placeholder="Repeat new password"
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      minLength={8}
-                      required
-                      className="vl-input login-input"
-                    />
-                  </Field>
-                  {newPassword && confirmPassword && newPassword !== confirmPassword && (
-                    <p className="text-[13px]" style={{ color: "var(--color-vl-danger)" }}>
-                      Passwords do not match.
-                    </p>
-                  )}
-                  {resetPassword.error && (
-                    <p className="text-[13px]" style={{ color: "var(--color-vl-danger)" }}>
-                      {resetPassword.error.message}
-                    </p>
-                  )}
-                  <button
-                    type="submit"
-                    disabled={resetPassword.isPending || !resetToken || newPassword !== confirmPassword}
-                    className="vl-btn-primary w-full disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {resetPassword.isPending ? (
-                      <span className="inline-flex items-center justify-center gap-2">
-                        <Loader2 className="w-4 h-4 animate-spin" /> Updating password…
-                      </span>
-                    ) : (
-                      "Update password"
-                    )}
-                  </button>
-                </>
-              )}
+        {mode === "login" && step === "password" && (
+          <motion.form key="login-password" {...stepMotion} onSubmit={handleLogin} className="mt-8 space-y-4">
+            <div className="flex items-center justify-between rounded-[1.25rem] border border-gray-200 bg-gray-50 px-5 py-3">
+              <div className="min-w-0">
+                <p className="text-[11px] font-medium uppercase tracking-wider text-gray-500">Signing in as</p>
+                <p className="truncate text-[14px] font-medium text-gray-900">{email}</p>
+              </div>
               <button
                 type="button"
                 onClick={() => {
-                  setMode("login");
-                  window.history.replaceState(null, "", "/login");
+                  setStep("email");
+                  login.reset();
                 }}
-                className="vl-btn-ghost w-full"
+                className="shrink-0 text-[12.5px] font-semibold text-gray-500 transition hover:text-gray-900"
               >
-                Back to sign in
+                Change
               </button>
-            </form>
-          )}
-        </div>
+            </div>
 
-        <p
-          className="mt-8 text-center text-[13.5px]"
-          style={{ color: "var(--color-vl-ink-muted)" }}
-        >
-          No account?{" "}
-          <Link
-            href="/signup"
-            className="font-semibold hover:underline"
-            style={{ color: "var(--color-vl-coral-deep)" }}
-          >
-            Create your assistant
-          </Link>
-        </p>
-      </div>
-      <style>{`
-        .login-card {
-          background: rgba(255, 255, 255, 0.92);
-          border-color: rgba(14, 27, 44, 0.08);
-          box-shadow:
-            0 1px 2px rgba(14, 27, 44, 0.04),
-            0 18px 48px -32px rgba(14, 27, 44, 0.35);
-        }
-        .login-input {
-          background: #ffffff;
-          border-color: rgba(14, 27, 44, 0.14);
-          color: var(--color-vl-ink);
-          box-shadow: inset 0 1px 0 rgba(14, 27, 44, 0.02);
-        }
-        .login-input:focus {
-          border-color: var(--color-vl-accent);
-          background: #ffffff;
-          box-shadow: 0 0 0 4px rgba(124, 110, 245, 0.14);
-        }
-        .login-input:-webkit-autofill,
-        .login-input:-webkit-autofill:hover,
-        .login-input:-webkit-autofill:focus {
-          -webkit-text-fill-color: var(--color-vl-ink);
-          box-shadow: 0 0 0 1000px #ffffff inset, 0 0 0 4px rgba(124, 110, 245, 0.14);
-          transition: background-color 9999s ease-out 0s;
-        }
-      `}</style>
-    </div>
-  );
-}
+            <InputGroup
+              label="Password"
+              htmlFor="login-password"
+              trailing={
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  className="rounded-full p-2 text-gray-400 transition hover:text-gray-700"
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              }
+              action={<ConicSubmitButton label="Sign in" pending={login.isPending} />}
+            >
+              <input
+                ref={passwordRef}
+                id="login-password"
+                type={showPassword ? "text" : "password"}
+                name="password"
+                autoComplete="current-password"
+                placeholder="Enter your password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                className="vl-login-input"
+              />
+            </InputGroup>
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="block">
-      <span
-        className="block mb-1.5 text-[11px] font-semibold tracking-[0.18em] uppercase"
-        style={{ color: "var(--color-vl-ink-muted)" }}
-      >
-        {label}
-      </span>
-      {children}
-    </label>
+            {login.error && <ErrorNote>{login.error.message}</ErrorNote>}
+
+            <div className="flex justify-end px-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setMode("forgot");
+                  forgotPassword.reset();
+                }}
+                className="text-[12.5px] font-semibold text-gray-500 transition hover:text-gray-900"
+              >
+                Forgot password?
+              </button>
+            </div>
+          </motion.form>
+        )}
+
+        {mode === "forgot" && (
+          <motion.form key="forgot" {...stepMotion} onSubmit={handleForgotPassword} className="mt-8 space-y-4">
+            <InputGroup
+              label="Account email"
+              htmlFor="forgot-email"
+              action={<ConicSubmitButton label="Send reset link" pending={forgotPassword.isPending} />}
+            >
+              <input
+                id="forgot-email"
+                type="email"
+                name="email"
+                autoComplete="email"
+                placeholder="Enter your email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                autoFocus
+                className="vl-login-input"
+              />
+            </InputGroup>
+
+            {forgotPassword.data && <SuccessNote>{forgotPassword.data.message}</SuccessNote>}
+            {forgotPassword.error && <ErrorNote>{forgotPassword.error.message}</ErrorNote>}
+
+            <div className="flex justify-center px-1 pt-1">
+              <button
+                type="button"
+                onClick={goToLogin}
+                className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-gray-500 transition hover:text-gray-900"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" /> Back to sign in
+              </button>
+            </div>
+          </motion.form>
+        )}
+
+        {mode === "reset" && (
+          <motion.form key="reset" {...stepMotion} onSubmit={handleResetPassword} className="mt-8 space-y-4">
+            {resetComplete ? (
+              <>
+                <SuccessNote>Password updated. You can sign in with your new password.</SuccessNote>
+                <button type="button" onClick={goToLogin} className="vl-btn-primary w-full gap-2 py-4 text-[14px]">
+                  Continue to sign in <ArrowRight className="h-4 w-4" />
+                </button>
+              </>
+            ) : (
+              <>
+                <InputGroup label="New password" htmlFor="reset-new">
+                  <input
+                    id="reset-new"
+                    type="password"
+                    name="new-password"
+                    autoComplete="new-password"
+                    placeholder="Minimum 8 characters"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    minLength={8}
+                    required
+                    autoFocus
+                    className="vl-login-input"
+                  />
+                </InputGroup>
+                <InputGroup
+                  label="Confirm password"
+                  htmlFor="reset-confirm"
+                  action={
+                    <ConicSubmitButton
+                      label="Update password"
+                      pending={resetPassword.isPending}
+                      disabled={!resetToken || passwordsMismatch}
+                    />
+                  }
+                >
+                  <input
+                    id="reset-confirm"
+                    type="password"
+                    name="confirm-password"
+                    autoComplete="new-password"
+                    placeholder="Repeat new password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    minLength={8}
+                    required
+                    className="vl-login-input"
+                  />
+                </InputGroup>
+
+                {passwordsMismatch && <ErrorNote>Passwords do not match.</ErrorNote>}
+                {resetPassword.error && <ErrorNote>{resetPassword.error.message}</ErrorNote>}
+
+                <div className="flex justify-center px-1 pt-1">
+                  <button
+                    type="button"
+                    onClick={goToLogin}
+                    className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-gray-500 transition hover:text-gray-900"
+                  >
+                    <ArrowLeft className="h-3.5 w-3.5" /> Back to sign in
+                  </button>
+                </div>
+              </>
+            )}
+          </motion.form>
+        )}
+      </AnimatePresence>
+
+      <p className="mt-10 text-center text-sm text-gray-500">
+        Don&rsquo;t have an account? <SunsetLink href="/signup">Sign up</SunsetLink>
+      </p>
+    </AuthShell>
   );
 }

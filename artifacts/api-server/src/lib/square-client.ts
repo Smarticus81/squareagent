@@ -1,27 +1,49 @@
 /**
- * SquareClient — resilient HTTP client for the Square API.
+ * SquareClient — the single HTTP path to the Square API.
  *
- * Features:
- *   - Exponential backoff retry (3 attempts: 500ms → 1s → 2s)
- *   - Retry on transient errors (429, 500, 502, 503)
- *   - Per-venue circuit breaker (open after 5 failures in 60s, half-open after 30s)
- *   - Request timing & structured logging
- *   - Standardized error extraction from Square error format
+ * Every Square call the voice agents make (tools, live order sync, workflows,
+ * dashboard proxy routes) goes through this client so they all share:
+ *   - One API version and header set (SQUARE_API_VERSION, env-overridable)
+ *   - A hard per-request timeout (a Square stall must never hang a voice turn)
+ *   - Exponential backoff retry on transient failures (429/5xx/network), honoring
+ *     Retry-After on 429
+ *   - A per-credential circuit breaker (opens after 5 failures in 60s, probes
+ *     again after 30s) so a Square outage fails fast instead of piling up
+ *   - Cursor pagination helpers for list/search endpoints
+ *   - Uniform error extraction from Square's { errors: [...] } envelope
  */
 
-import { createComponentLogger } from "./logger";
 import crypto from "crypto";
+import { createComponentLogger } from "./logger";
 
 const log = createComponentLogger("square-client");
 
-const SQUARE_BASE = "https://connect.squareup.com/v2";
-const SQUARE_VERSION = "2024-12-18";
+export const SQUARE_BASE = "https://connect.squareup.com/v2";
+export const SQUARE_OAUTH_BASE = "https://connect.squareup.com/oauth2";
 
-const MAX_RETRIES = 3;
-const BASE_DELAY_MS = 500;
-const RETRYABLE_STATUS = new Set([429, 500, 502, 503]);
+/**
+ * Pinned Square API version. Bump deliberately: a version string Square does
+ * not recognise fails every request. Override per deployment with
+ * SQUARE_API_VERSION when validating a newer release.
+ */
+export const SQUARE_API_VERSION = process.env.SQUARE_API_VERSION?.trim() || "2025-04-16";
 
-// ── Circuit Breaker ─────────────────────────────────────────────────────────
+const DEFAULT_TIMEOUT_MS = Number(process.env.SQUARE_REQUEST_TIMEOUT_MS) || 10_000;
+const MAX_ATTEMPTS = 3;
+const BASE_DELAY_MS = 400;
+const MAX_RETRY_DELAY_MS = 4_000;
+const RETRYABLE_STATUS = new Set([408, 429, 500, 502, 503, 504]);
+
+/** Headers for a raw Square API request (OAuth routes need these without a client). */
+export function squareHeaders(token: string): Record<string, string> {
+  return {
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json",
+    "Square-Version": SQUARE_API_VERSION,
+  };
+}
+
+// ── Circuit breaker ──────────────────────────────────────────────────────────
 
 interface CircuitState {
   failures: number;
@@ -48,160 +70,94 @@ function getCircuit(key: string): CircuitState {
   return state;
 }
 
-function recordSuccess(key: string) {
+function recordSuccess(key: string): void {
   const state = getCircuit(key);
+  if (state.openedAt) log.info({ circuit: key }, "circuit CLOSED");
   state.failures = 0;
   state.openedAt = null;
 }
 
-function recordFailure(key: string) {
+function recordFailure(key: string): void {
   const state = getCircuit(key);
   const now = Date.now();
-  // Reset counter if outside failure window
-  if (now - state.lastFailure > CIRCUIT_FAILURE_WINDOW_MS) {
-    state.failures = 0;
-  }
+  if (now - state.lastFailure > CIRCUIT_FAILURE_WINDOW_MS) state.failures = 0;
   state.failures++;
   state.lastFailure = now;
-  if (state.failures >= CIRCUIT_FAILURE_THRESHOLD) {
+  if (state.failures >= CIRCUIT_FAILURE_THRESHOLD && !state.openedAt) {
     state.openedAt = now;
-    log.warn({ failures: CIRCUIT_FAILURE_THRESHOLD, windowS: CIRCUIT_FAILURE_WINDOW_MS / 1000 }, "circuit OPEN for venue");
+    log.warn({ circuit: key, failures: state.failures }, "circuit OPEN");
   }
 }
 
 function isCircuitOpen(key: string): boolean {
-  const state = getCircuit(key);
-  if (!state.openedAt) return false;
-  // Allow a test request after half-open period
-  if (Date.now() - state.openedAt > CIRCUIT_HALF_OPEN_MS) {
-    return false; // half-open: let one through
-  }
-  return true;
+  const state = circuits.get(key);
+  if (!state?.openedAt) return false;
+  // Half-open after the cool-down: let one request probe Square.
+  return Date.now() - state.openedAt <= CIRCUIT_HALF_OPEN_MS;
 }
 
-// ── Error extraction ────────────────────────────────────────────────────────
+/** Test hook — clears all breaker state. */
+export function resetSquareCircuits(): void {
+  circuits.clear();
+}
 
-interface SquareError {
+// ── Errors ───────────────────────────────────────────────────────────────────
+
+export interface SquareError {
   status: number;
   message: string;
   code?: string;
   category?: string;
 }
 
-function extractError(status: number, data: any): SquareError {
-  const err = data?.errors?.[0];
-  return {
-    status,
-    message: err?.detail || err?.code || `HTTP ${status}`,
-    code: err?.code,
-    category: err?.category,
-  };
+export function extractSquareError(status: number, data: unknown): SquareError {
+  const err = (data as { errors?: Array<Record<string, unknown>> } | null)?.errors?.[0];
+  const detail = typeof err?.detail === "string" ? err.detail : undefined;
+  const code = typeof err?.code === "string" ? err.code : undefined;
+  const category = typeof err?.category === "string" ? err.category : undefined;
+  return { status, message: detail || code || `HTTP ${status}`, code, category };
 }
 
-// ── Client ──────────────────────────────────────────────────────────────────
+/** Whether an error means the stored OAuth token is no longer accepted. */
+export function isSquareAuthError(error: SquareError | undefined): boolean {
+  return error?.status === 401 || error?.category === "AUTHENTICATION_ERROR";
+}
+
+// ── Client ───────────────────────────────────────────────────────────────────
 
 export interface SquareResponse<T = any> {
   ok: boolean;
+  status: number;
   data?: T;
   error?: SquareError;
   durationMs: number;
 }
 
-export class SquareClient {
-  private token: string;
-  private locationId: string;
-  private circuitKey: string;
+export interface RequestOptions {
+  /** Override the default request timeout. */
+  timeoutMs?: number;
+  /** Disable retries for this call. */
+  noRetry?: boolean;
+}
 
-  constructor(token: string, locationId: string) {
+export type FetchLike = typeof fetch;
+
+export class SquareClient {
+  readonly locationId: string;
+  private readonly token: string;
+  private readonly circuitKey: string;
+  private readonly fetchImpl: FetchLike;
+
+  constructor(token: string, locationId: string, fetchImpl: FetchLike = fetch) {
     this.token = token;
     this.locationId = locationId;
     this.circuitKey = `sq-${credentialFingerprint(token, locationId)}`;
+    this.fetchImpl = fetchImpl;
   }
 
-  private headers(): Record<string, string> {
-    return {
-      Authorization: `Bearer ${this.token}`,
-      "Content-Type": "application/json",
-      "Square-Version": SQUARE_VERSION,
-    };
-  }
-
-  async get<T = any>(path: string): Promise<SquareResponse<T>> {
-    return this.request<T>("GET", path);
-  }
-
-  async post<T = any>(path: string, body?: unknown): Promise<SquareResponse<T>> {
-    return this.request<T>("POST", path, body);
-  }
-
-  async put<T = any>(path: string, body?: unknown): Promise<SquareResponse<T>> {
-    return this.request<T>("PUT", path, body);
-  }
-
-  async del<T = any>(path: string): Promise<SquareResponse<T>> {
-    return this.request<T>("DELETE", path);
-  }
-
-  private async request<T>(method: string, path: string, body?: unknown): Promise<SquareResponse<T>> {
-    if (isCircuitOpen(this.circuitKey)) {
-      return {
-        ok: false,
-        error: { status: 503, message: "Circuit breaker open — Square API temporarily unavailable. Will retry shortly." },
-        durationMs: 0,
-      };
-    }
-
-    const url = `${SQUARE_BASE}${path}`;
-    const start = Date.now();
-    let lastError: SquareError | undefined;
-
-    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-      if (attempt > 0) {
-        const delay = BASE_DELAY_MS * Math.pow(2, attempt - 1);
-        await new Promise((r) => setTimeout(r, delay));
-      }
-
-      try {
-        const res = await fetch(url, {
-          method,
-          headers: this.headers(),
-          ...(body ? { body: JSON.stringify(body) } : {}),
-        });
-
-        const durationMs = Date.now() - start;
-
-        if (res.ok) {
-          recordSuccess(this.circuitKey);
-          // DELETE may return empty body
-          if (res.status === 204 || res.headers.get("content-length") === "0") {
-            return { ok: true, data: undefined as T, durationMs };
-          }
-          const data = await res.json();
-          return { ok: true, data: data as T, durationMs };
-        }
-
-        const errData = await res.json().catch(() => ({}));
-        lastError = extractError(res.status, errData);
-
-        // Non-retryable error
-        if (!RETRYABLE_STATUS.has(res.status)) {
-          recordFailure(this.circuitKey);
-          return { ok: false, error: lastError, durationMs };
-        }
-
-        // Retryable — log and continue
-        log.warn({ method, path, status: res.status, attempt: attempt + 1, maxRetries: MAX_RETRIES }, "retryable error");
-      } catch (e: any) {
-        lastError = { status: 0, message: e.message || "Network error" };
-        log.warn({ method, path, attempt: attempt + 1, maxRetries: MAX_RETRIES, err: e.message }, "network error");
-      }
-    }
-
-    // All retries exhausted
-    recordFailure(this.circuitKey);
-    const durationMs = Date.now() - start;
-    log.error({ method, path, maxRetries: MAX_RETRIES, durationMs }, "request FAILED after all retries");
-    return { ok: false, error: lastError ?? { status: 0, message: "Max retries exceeded" }, durationMs };
+  /** Stable key for per-credential caches. Never log the token itself. */
+  get cacheKey(): string {
+    return this.circuitKey;
   }
 
   /** Convenience: get the locationId this client was initialized with */
@@ -209,8 +165,171 @@ export class SquareClient {
     return this.locationId;
   }
 
-  /** Convenience: get the raw token (for backward compat with helpers that need it) */
+  /** Raw token, for the few call sites (OAuth revoke) that need it. */
   getToken(): string {
     return this.token;
   }
+
+  get<T = any>(path: string, opts?: RequestOptions): Promise<SquareResponse<T>> {
+    return this.request<T>("GET", path, undefined, opts);
+  }
+
+  post<T = any>(path: string, body?: unknown, opts?: RequestOptions): Promise<SquareResponse<T>> {
+    return this.request<T>("POST", path, body, opts);
+  }
+
+  put<T = any>(path: string, body?: unknown, opts?: RequestOptions): Promise<SquareResponse<T>> {
+    return this.request<T>("PUT", path, body, opts);
+  }
+
+  del<T = any>(path: string, opts?: RequestOptions): Promise<SquareResponse<T>> {
+    return this.request<T>("DELETE", path, undefined, opts);
+  }
+
+  /**
+   * Follow a cursor-paginated GET (e.g. /catalog/list?types=ITEM). Stops on
+   * the first failed page and returns what was collected plus the error.
+   */
+  async getAllPages<T = any>(
+    path: string,
+    pick: (page: T) => unknown[],
+    maxPages = 50,
+  ): Promise<{ ok: boolean; items: any[]; error?: SquareError }> {
+    const items: any[] = [];
+    let cursor: string | undefined;
+    for (let page = 0; page < maxPages; page++) {
+      const url = cursor ? `${path}${path.includes("?") ? "&" : "?"}cursor=${encodeURIComponent(cursor)}` : path;
+      const res = await this.get<T & { cursor?: string }>(url);
+      if (!res.ok || !res.data) return { ok: false, items, error: res.error };
+      items.push(...pick(res.data));
+      cursor = res.data.cursor;
+      if (!cursor) break;
+    }
+    return { ok: true, items };
+  }
+
+  /**
+   * Follow a cursor-paginated POST search (e.g. /orders/search). `maxItems`
+   * caps the total so a huge history can't blow up a voice turn.
+   */
+  async postAllPages<T = any>(
+    path: string,
+    body: Record<string, unknown>,
+    pick: (page: T) => unknown[],
+    maxItems = 2_000,
+  ): Promise<{ ok: boolean; items: any[]; truncated: boolean; error?: SquareError }> {
+    const items: any[] = [];
+    let cursor: string | undefined;
+    for (;;) {
+      const res = await this.post<T & { cursor?: string }>(path, cursor ? { ...body, cursor } : body);
+      if (!res.ok || !res.data) return { ok: false, items, truncated: false, error: res.error };
+      items.push(...pick(res.data));
+      cursor = res.data.cursor;
+      if (!cursor) return { ok: true, items, truncated: false };
+      if (items.length >= maxItems) return { ok: true, items: items.slice(0, maxItems), truncated: true };
+    }
+  }
+
+  private async request<T>(
+    method: string,
+    path: string,
+    body?: unknown,
+    opts: RequestOptions = {},
+  ): Promise<SquareResponse<T>> {
+    if (isCircuitOpen(this.circuitKey)) {
+      return {
+        ok: false,
+        status: 503,
+        error: { status: 503, message: "Square is temporarily unavailable. Please try again in a moment." },
+        durationMs: 0,
+      };
+    }
+
+    const url = path.startsWith("http") ? path : `${SQUARE_BASE}${path}`;
+    const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    const attempts = opts.noRetry ? 1 : MAX_ATTEMPTS;
+    const start = Date.now();
+    let lastError: SquareError | undefined;
+
+    for (let attempt = 0; attempt < attempts; attempt++) {
+      try {
+        const res = await this.fetchImpl(url, {
+          method,
+          headers: squareHeaders(this.token),
+          ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+          signal: AbortSignal.timeout(timeoutMs),
+        });
+        const durationMs = Date.now() - start;
+
+        if (res.ok) {
+          recordSuccess(this.circuitKey);
+          const text = await res.text();
+          const data = text ? (JSON.parse(text) as T) : (undefined as T);
+          return { ok: true, status: res.status, data, durationMs };
+        }
+
+        const errData = await res.json().catch(() => ({}));
+        lastError = extractSquareError(res.status, errData);
+
+        if (!RETRYABLE_STATUS.has(res.status)) {
+          // 4xx are the caller's problem (bad args, stale version, auth) — they
+          // are not a Square outage, so they do not trip the breaker.
+          if (res.status >= 500) recordFailure(this.circuitKey);
+          return { ok: false, status: res.status, error: lastError, durationMs };
+        }
+
+        if (attempt < attempts - 1) {
+          const retryAfter = Number(res.headers.get("retry-after"));
+          const delay = Number.isFinite(retryAfter) && retryAfter > 0
+            ? Math.min(retryAfter * 1000, MAX_RETRY_DELAY_MS)
+            : backoffDelay(attempt);
+          log.warn({ method, path, status: res.status, attempt: attempt + 1, delay }, "retryable Square error");
+          await sleep(delay);
+        }
+      } catch (e: any) {
+        const timedOut = e?.name === "TimeoutError" || e?.name === "AbortError";
+        lastError = {
+          status: 0,
+          message: timedOut ? "Square did not respond in time. Please try again." : e?.message || "Network error",
+        };
+        log.warn({ method, path, attempt: attempt + 1, err: lastError.message }, "Square network error");
+        if (attempt < attempts - 1) await sleep(backoffDelay(attempt));
+      }
+    }
+
+    recordFailure(this.circuitKey);
+    const durationMs = Date.now() - start;
+    log.error({ method, path, attempts, durationMs, err: lastError?.message }, "Square request failed");
+    return { ok: false, status: lastError?.status ?? 0, error: lastError ?? { status: 0, message: "Max retries exceeded" }, durationMs };
+  }
+}
+
+function backoffDelay(attempt: number): number {
+  const base = BASE_DELAY_MS * Math.pow(2, attempt);
+  // Full jitter keeps a burst of voice commands from retrying in lock-step.
+  return Math.min(MAX_RETRY_DELAY_MS, Math.round(base / 2 + Math.random() * base / 2));
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// ── Client registry ──────────────────────────────────────────────────────────
+// Tool executors receive raw credentials from the session store; memoizing the
+// client per credential keeps one object per venue instead of one per call.
+
+const clientRegistry = new Map<string, SquareClient>();
+const CLIENT_REGISTRY_MAX = 500;
+
+export function getSquareClient(token: string, locationId: string): SquareClient {
+  const key = credentialFingerprint(token, locationId);
+  const existing = clientRegistry.get(key);
+  if (existing) return existing;
+  if (clientRegistry.size >= CLIENT_REGISTRY_MAX) {
+    const oldest = clientRegistry.keys().next().value;
+    if (oldest) clientRegistry.delete(oldest);
+  }
+  const client = new SquareClient(token, locationId);
+  clientRegistry.set(key, client);
+  return client;
 }

@@ -41,6 +41,8 @@ import {
   buildGeminiLiveUrl,
 } from "../voice-pipelines/google/gemini-live";
 import { getCachedCredentials } from "../lib/credential-cache";
+import { getCachedCatalog } from "../lib/catalog-cache";
+import { getSquareClient } from "../lib/square-client";
 import { readServerApiKey, requiredApiKeyEnv } from "../lib/api-keys";
 import { createComponentLogger } from "../lib/logger";
 import type { NoiseMode } from "@workspace/voicelab-core/noise";
@@ -53,9 +55,50 @@ import {
   sanitizeRealtimeVoice,
   sanitizeRealtimeSpeed,
 } from "../lib/openai-realtime";
+import { finalizeVoiceSessionUsage, registerVoiceSession } from "../lib/voice-session-metering";
+import { getSessionOrRehydrate, persistSessionNow } from "../lib/session-store";
 
 const SENSITIVE_LOG_KEY_RE = /(token|secret|password|pass|credential|authorization|email|recipient|subject|body|message|text|query|sql|connection|string|address|phone|name)/i;
 const relayLog = createComponentLogger("ws-relay");
+
+const activeRelaySockets = new Set<WebSocket>();
+let relayDraining = false;
+
+export function isRelayDraining(): boolean {
+  return relayDraining;
+}
+
+export async function closeAllRelays(): Promise<void> {
+  relayDraining = true;
+  for (const ws of activeRelaySockets) {
+    try {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "x.server_draining", reason: "shutdown" }));
+        ws.close(1001, "server shutting down");
+      }
+    } catch {
+      // ignore
+    }
+  }
+  activeRelaySockets.clear();
+}
+
+async function finalizeRelayUsage(ctx: RelayCtx, sessionId: string, durationMs: number): Promise<void> {
+  if (durationMs < 1000) return;
+  try {
+    await finalizeVoiceSessionUsage({
+      sessionId,
+      userId: ctx.userId,
+      organizationId: ctx.organizationId,
+      durationMs,
+      provider: ctx.voicePipelineProvider ?? undefined,
+      venueId: ctx.venueId ?? undefined,
+      agentProfileId: ctx.agentProfileId,
+    });
+  } catch (err: any) {
+    relayLog.error({ err: err.message, sessionId }, "failed to finalize relay session usage");
+  }
+}
 
 // xAI Grok Voice (Realtime) upstream. xAI's realtime protocol mirrors the
 // OpenAI Realtime event model, so the relay reuses the same tool-call and
@@ -570,6 +613,27 @@ function buildInstructions(
   return instructions;
 }
 
+// -- Server-owned catalog ---
+
+// How long a relay waits for the venue catalog before sending its first
+// session config. A warm cache resolves instantly; a cold one usually within
+// a second. Past this the session starts and the catalog lands via a follow-up
+// context update rather than delaying first audio.
+const RELAY_CATALOG_WAIT_MS = 4_000;
+
+async function loadRelayCatalog(token: string, locationId: string): Promise<CatalogItem[]> {
+  if (!token || !locationId) return [];
+  try {
+    return (await getCachedCatalog(getSquareClient(token, locationId))).items;
+  } catch {
+    return [];
+  }
+}
+
+function awaitCatalog(ready: Promise<unknown>): Promise<unknown> {
+  return Promise.race([ready, new Promise((resolve) => setTimeout(resolve, RELAY_CATALOG_WAIT_MS))]);
+}
+
 // -- Attach WebSocket server to HTTP server ---
 
 export function attachWebSocketRelay(server: Server): void {
@@ -715,6 +779,8 @@ export function attachWebSocketRelay(server: Server): void {
         query: queryParams,
       };
       wss.emit("connection", clientWs, req, ctx);
+      activeRelaySockets.add(clientWs);
+      clientWs.on("close", () => { activeRelaySockets.delete(clientWs); });
     });
   });
 
@@ -736,13 +802,34 @@ export function attachWebSocketRelay(server: Server): void {
 
     // Session state
     const connectionStartMs = Date.now();
+    const relaySessionId = ctx.query.sessionId || `relay-openai-${ctx.userId}-${connectionStartMs}`;
     let catalog: CatalogItem[] = [];
     let order: OrderItem[] = [];
-    const session: LiveSession = { items: [] };
+    let session: LiveSession = { items: [] };
+    void registerVoiceSession({
+      id: relaySessionId,
+      userId: ctx.userId,
+      organizationId: ctx.organizationId,
+      venueId: ctx.venueId,
+      agentProfileId: ctx.agentProfileId,
+      pipelineProvider: ctx.voicePipelineProvider ?? "openai_realtime_server_ws",
+    }).catch(() => {});
+    void getSessionOrRehydrate(
+      relaySessionId,
+      ctx.squareToken,
+      ctx.squareLocationId,
+      { userId: ctx.userId, organizationId: ctx.organizationId, venueId: ctx.venueId ?? 0 },
+      ctx.agentProfileId,
+      ctx.voicePipelineProvider ?? "openai_realtime_server_ws",
+    ).then((s) => { session = s; }).catch(() => {});
     let sessionSquareToken = ctx.squareToken;
     let sessionLocationId = ctx.squareLocationId;
     const assistantKind: "venue" | "general" = sessionSquareToken ? "venue" : "general";
     const relayTools = buildRelayTools(ctx.plan, assistantKind, ctx.allowedToolNames, ctx.includeGeneralTools);
+    const catalogReady = loadRelayCatalog(sessionSquareToken, sessionLocationId).then((items) => {
+      if (items.length > 0) catalog = items;
+      return items;
+    });
 
     relayLog.info(
       {
@@ -770,8 +857,9 @@ export function attachWebSocketRelay(server: Server): void {
     let pendingFromClient: string[] = [];
     const pendingConfirmationCallIds = new Set<string>();
 
-    openaiWs.on("open", () => {
+    openaiWs.on("open", async () => {
       relayLog.info({ scope: "openai", userId: ctx.userId }, "upstream connected");
+      await awaitCatalog(catalogReady);
       openaiReady = true;
 
       // Configure session. The model is fixed by the connection URL, so strip
@@ -907,7 +995,7 @@ export function attachWebSocketRelay(server: Server): void {
 
       // Intercept custom context update -- update local state, send session.update to OpenAI
       if (event.type === "x.context_update") {
-        if (Array.isArray(event.catalog)) catalog = event.catalog as CatalogItem[];
+        if (Array.isArray(event.catalog) && catalog.length === 0) catalog = event.catalog as CatalogItem[];
         if (Array.isArray(event.order)) order = event.order as OrderItem[];
 
         const voice = event.voice ? sanitizeRealtimeVoice(event.voice) : undefined;
@@ -993,23 +1081,7 @@ export function attachWebSocketRelay(server: Server): void {
 
       // Record voice session minutes in database
       const durationMs = Date.now() - connectionStartMs;
-      if (durationMs >= 1000) {
-        db.insert(usageEventsTable).values({
-          kind: "voice_minutes",
-          userId: ctx.userId,
-          organizationId: ctx.organizationId,
-          agentProfileId: ctx.agentProfileId,
-          quantity: Math.ceil(durationMs / 60000),
-          occurredAt: new Date(),
-          metadata: {
-            durationMs,
-            provider: ctx.voicePipelineProvider ?? "openai_realtime_server_ws",
-            venueId: ctx.venueId || null,
-          },
-        }).catch((err: any) => {
-          relayLog.error({ err: err.message }, "failed to write usage event for closed openai relay session");
-        });
-      }
+      void finalizeRelayUsage(ctx, relaySessionId, durationMs);
     });
 
     clientWs.on("error", (err) => {
@@ -1038,11 +1110,15 @@ export function handleGeminiRelay(clientWs: WebSocket, ctx: RelayCtx): void {
 
   let catalog: CatalogItem[] = [];
   let order: OrderItem[] = [];
-  const session: LiveSession = { items: [] };
+  let session: LiveSession = { items: [] };
   let sessionSquareToken = ctx.squareToken;
   let sessionLocationId = ctx.squareLocationId;
   const assistantKind: "venue" | "general" = sessionSquareToken ? "venue" : "general";
   const relayTools = buildRelayTools(ctx.plan, assistantKind, ctx.allowedToolNames, ctx.includeGeneralTools);
+  const catalogReady = loadRelayCatalog(sessionSquareToken, sessionLocationId).then((items) => {
+    if (items.length > 0) catalog = items;
+    return items;
+  });
   let inputLanguageCodes = parseLanguageCodes(ctx.query.languageCodes);
   let proactiveAudio = parseBooleanQuery(ctx.query.proactiveAudio) ?? capabilityProfile === "ga_2_5";
   let affectiveDialog = parseBooleanQuery(ctx.query.affectiveDialog) ?? false;
@@ -1064,6 +1140,22 @@ export function handleGeminiRelay(clientWs: WebSocket, ctx: RelayCtx): void {
     "relay connected",
   );
   const sessionId = ctx.query.sessionId || `gemini-${ctx.userId}-${Date.now()}`;
+  void registerVoiceSession({
+    id: sessionId,
+    userId: ctx.userId,
+    organizationId: ctx.organizationId,
+    venueId: ctx.venueId,
+    agentProfileId: ctx.agentProfileId,
+    pipelineProvider: ctx.voicePipelineProvider ?? "google_gemini_live",
+  }).catch(() => {});
+  void getSessionOrRehydrate(
+    sessionId,
+    sessionSquareToken,
+    sessionLocationId,
+    { userId: ctx.userId, organizationId: ctx.organizationId, venueId: ctx.venueId ?? 0 },
+    ctx.agentProfileId,
+    ctx.voicePipelineProvider ?? "google_gemini_live",
+  ).then((s) => { session = s; }).catch(() => {});
 
   const upstreamUrl = (() => {
     try {
@@ -1110,8 +1202,9 @@ export function handleGeminiRelay(clientWs: WebSocket, ctx: RelayCtx): void {
     setupSent = true;
   }
 
-  upstream.on("open", () => {
+  upstream.on("open", async () => {
     relayLog.info({ scope: "gemini", userId: ctx.userId, modelId }, "upstream connected");
+    await awaitCatalog(catalogReady);
     upstreamReady = true;
     sendSetup();
   });
@@ -1242,7 +1335,7 @@ export function handleGeminiRelay(clientWs: WebSocket, ctx: RelayCtx): void {
 
     // Custom context update from the PWA -- refresh local state and re-send setup.
     if (event.type === "x.context_update") {
-      if (Array.isArray(event.catalog)) catalog = event.catalog as CatalogItem[];
+      if (Array.isArray(event.catalog) && catalog.length === 0) catalog = event.catalog as CatalogItem[];
       if (Array.isArray(event.order)) order = event.order as OrderItem[];
       if (Array.isArray(event.languageCodes)) inputLanguageCodes = event.languageCodes as string[];
       if (typeof event.proactiveAudio === "boolean") proactiveAudio = event.proactiveAudio;
@@ -1310,23 +1403,7 @@ export function handleGeminiRelay(clientWs: WebSocket, ctx: RelayCtx): void {
 
     // Record voice session minutes in database
     const durationMs = Date.now() - connectionStartMs;
-    if (durationMs >= 1000) {
-      db.insert(usageEventsTable).values({
-        kind: "voice_minutes",
-        userId: ctx.userId,
-        organizationId: ctx.organizationId,
-        agentProfileId: ctx.agentProfileId,
-        quantity: Math.ceil(durationMs / 60000),
-        occurredAt: new Date(),
-        metadata: {
-          durationMs,
-          provider: ctx.voicePipelineProvider ?? "google_gemini_live",
-          venueId: ctx.venueId || null,
-        },
-      }).catch((err: any) => {
-        relayLog.error({ err: err.message }, "failed to write usage event for closed gemini relay session");
-      });
-    }
+    void finalizeRelayUsage(ctx, sessionId, durationMs);
   });
 
   clientWs.on("error", (err) => {
@@ -1396,13 +1473,34 @@ export function handleXaiRelay(clientWs: WebSocket, ctx: RelayCtx): void {
   }
 
   const connectionStartMs = Date.now();
+  const xaiSessionId = ctx.query.sessionId || `xai-${ctx.userId}-${connectionStartMs}`;
   let catalog: CatalogItem[] = [];
   let order: OrderItem[] = [];
-  const session: LiveSession = { items: [] };
+  let session: LiveSession = { items: [] };
   const sessionSquareToken = ctx.squareToken;
   const sessionLocationId = ctx.squareLocationId;
   const assistantKind: "venue" | "general" = sessionSquareToken ? "venue" : "general";
   const relayTools = buildRelayTools(ctx.plan, assistantKind, ctx.allowedToolNames, ctx.includeGeneralTools);
+  const catalogReady = loadRelayCatalog(sessionSquareToken, sessionLocationId).then((items) => {
+    if (items.length > 0) catalog = items;
+    return items;
+  });
+  void registerVoiceSession({
+    id: xaiSessionId,
+    userId: ctx.userId,
+    organizationId: ctx.organizationId,
+    venueId: ctx.venueId,
+    agentProfileId: ctx.agentProfileId,
+    pipelineProvider: ctx.voicePipelineProvider ?? "xai_grok_realtime_ws",
+  }).catch(() => {});
+  void getSessionOrRehydrate(
+    xaiSessionId,
+    sessionSquareToken,
+    sessionLocationId,
+    { userId: ctx.userId, organizationId: ctx.organizationId, venueId: ctx.venueId ?? 0 },
+    ctx.agentProfileId,
+    ctx.voicePipelineProvider ?? "xai_grok_realtime_ws",
+  ).then((s) => { session = s; }).catch(() => {});
 
   relayLog.info(
     {
@@ -1456,7 +1554,8 @@ export function handleXaiRelay(clientWs: WebSocket, ctx: RelayCtx): void {
     };
   }
 
-  xaiWs.on("open", () => {
+  xaiWs.on("open", async () => {
+    await awaitCatalog(catalogReady);
     relayLog.info({ scope: "xai", userId: ctx.userId }, "upstream connected");
     xaiReady = true;
     xaiWs.send(JSON.stringify(buildXaiSessionUpdate(ctx.query.voice || "eve")));
@@ -1592,7 +1691,7 @@ export function handleXaiRelay(clientWs: WebSocket, ctx: RelayCtx): void {
     try { event = JSON.parse(raw); } catch { return; }
 
     if (event.type === "x.context_update") {
-      if (Array.isArray(event.catalog)) catalog = event.catalog as CatalogItem[];
+      if (Array.isArray(event.catalog) && catalog.length === 0) catalog = event.catalog as CatalogItem[];
       if (Array.isArray(event.order)) order = event.order as OrderItem[];
       const voice = event.voice ? String(event.voice) : undefined;
       if (xaiReady) {
@@ -1650,23 +1749,7 @@ export function handleXaiRelay(clientWs: WebSocket, ctx: RelayCtx): void {
     }
 
     const durationMs = Date.now() - connectionStartMs;
-    if (durationMs >= 1000) {
-      db.insert(usageEventsTable).values({
-        kind: "voice_minutes",
-        userId: ctx.userId,
-        organizationId: ctx.organizationId,
-        agentProfileId: ctx.agentProfileId,
-        quantity: Math.ceil(durationMs / 60000),
-        occurredAt: new Date(),
-        metadata: {
-          durationMs,
-          provider: ctx.voicePipelineProvider ?? "xai_grok_realtime_ws",
-          venueId: ctx.venueId || null,
-        },
-      }).catch((err: any) => {
-        relayLog.error({ err: err.message }, "failed to write usage event for closed xai relay session");
-      });
-    }
+    void finalizeRelayUsage(ctx, xaiSessionId, durationMs);
   });
 
   clientWs.on("error", (err) => {

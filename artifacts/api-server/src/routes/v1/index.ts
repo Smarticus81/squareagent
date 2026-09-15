@@ -7,6 +7,7 @@ import knowledgeRouter from "./knowledge";
 import usageRouter from "./usage";
 import workflowsRouter from "./workflows";
 import adminRouter from "./admin";
+import autonomyRouter from "./autonomy";
 
 const router = Router();
 
@@ -18,5 +19,6 @@ router.use("/knowledge", knowledgeRouter);
 router.use("/usage", usageRouter);
 router.use("/workflows", workflowsRouter);
 router.use("/admin", adminRouter);
+router.use("/autonomy", autonomyRouter);
 
 export default router;

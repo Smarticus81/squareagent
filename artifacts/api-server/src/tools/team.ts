@@ -3,7 +3,9 @@
  */
 
 import type { ToolDefinition, ToolExecutor, ToolContext, ToolResult } from "./types";
-import { SQUARE_BASE, squareFetch, squareHeaders } from "../lib/square-helpers";
+import { idempotencyKey, squareErrorMessage } from "../lib/square-helpers";
+import { squareFromCtx, idempotencySeed, venueTimeZone, NOT_CONNECTED } from "./_square";
+import { formatLocalTime } from "../lib/venue-time";
 
 // ── Definitions ───────────────────────────────────────────────────────────────
 
@@ -48,122 +50,79 @@ export const definitions: ToolDefinition[] = [
 
 // ── Executors ─────────────────────────────────────────────────────────────────
 
+function memberName(m: any): string {
+  return `${m?.given_name ?? ""} ${m?.family_name ?? ""}`.trim() || "Unnamed";
+}
+
+const ACTIVE_MEMBERS_QUERY = (locationId: string) => ({
+  query: { filter: { status: "ACTIVE", location_ids: [locationId] } },
+  limit: 200,
+});
+
 async function listTeam(_args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
-  if (!ctx.squareToken) return { result: "Square not connected." };
-  try {
-    const res = await squareFetch(`${SQUARE_BASE}/team-members/search`, {
-      method: "POST",
-      headers: squareHeaders(ctx.squareToken),
-      body: JSON.stringify({
-        query: {
-          filter: {
-            status: { members: ["ACTIVE"] },
-            ...(ctx.squareLocationId ? { location_ids: { any_of: [ctx.squareLocationId] } } : {}),
-          },
-        },
-      }),
-    });
-    const data = (await res.json()) as any;
-    if (!res.ok) return { result: `Failed: ${data.errors?.[0]?.detail ?? "Unknown error"}` };
-    const members = data.team_members ?? [];
-    if (members.length === 0) return { result: "No active team members found." };
-    const lines = members.map((m: any) => {
-      const name = `${m.given_name ?? ""} ${m.family_name ?? ""}`.trim() || "Unnamed";
-      return `${name} (${m.id})`;
-    });
-    return { result: `Team members:\n${lines.join("\n")}` };
-  } catch (e: any) {
-    return { result: `Failed to list team: ${e.message}` };
-  }
+  const client = squareFromCtx(ctx);
+  if (!client) return NOT_CONNECTED;
+  const res = await client.postAllPages(
+    "/team-members/search",
+    ACTIVE_MEMBERS_QUERY(client.locationId),
+    (page: { team_members?: any[] }) => page.team_members ?? [],
+    500,
+  );
+  if (!res.ok) return { result: `Failed: ${squareErrorMessage(res.error)}` };
+  if (res.items.length === 0) return { result: "No active team members found." };
+  const lines = res.items.map((m: any) => `${memberName(m)} (${m.id})`);
+  return { result: `Team members:\n${lines.join("\n")}` };
 }
 
 async function currentShifts(_args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
-  if (!ctx.squareToken) return { result: "Square not connected." };
-  try {
-    const res = await squareFetch(`${SQUARE_BASE}/labor/shifts/search`, {
-      method: "POST",
-      headers: squareHeaders(ctx.squareToken),
-      body: JSON.stringify({
-        query: {
-          filter: {
-            status: "OPEN",
-            ...(ctx.squareLocationId ? { location_ids: [ctx.squareLocationId] } : {}),
-          },
-        },
-      }),
-    });
-    const data = (await res.json()) as any;
-    if (!res.ok) return { result: `Failed: ${data.errors?.[0]?.detail ?? "Unknown error"}` };
-    const shifts = data.shifts ?? [];
-    if (shifts.length === 0) return { result: "Nobody is currently clocked in." };
-    const lines = shifts.map((s: any) => {
-      const start = s.start_at ? new Date(s.start_at).toLocaleTimeString() : "?";
-      return `${s.team_member_id} — clocked in at ${start} (shift: ${s.id})`;
-    });
-    return { result: `Currently working:\n${lines.join("\n")}` };
-  } catch (e: any) {
-    return { result: `Failed to get shifts: ${e.message}` };
-  }
+  const client = squareFromCtx(ctx);
+  if (!client) return NOT_CONNECTED;
+  const [shiftsRes, membersRes, tz] = await Promise.all([
+    client.post("/labor/shifts/search", { query: { filter: { status: "OPEN", location_ids: [client.locationId] } }, limit: 200 }),
+    client.post("/team-members/search", ACTIVE_MEMBERS_QUERY(client.locationId)),
+    venueTimeZone(client),
+  ]);
+  if (!shiftsRes.ok) return { result: `Failed: ${squareErrorMessage(shiftsRes.error)}` };
+  const shifts: any[] = shiftsRes.data?.shifts ?? [];
+  if (shifts.length === 0) return { result: "Nobody is currently clocked in." };
+  const names = new Map<string, string>();
+  for (const m of membersRes.ok ? membersRes.data?.team_members ?? [] : []) names.set(m.id, memberName(m));
+  const lines = shifts.map((s) => {
+    const who = names.get(s.team_member_id) ?? s.team_member_id;
+    return `${who} - clocked in at ${formatLocalTime(s.start_at, tz)} (shift: ${s.id})`;
+  });
+  return { result: `Currently working:\n${lines.join("\n")}` };
 }
 
 async function clockIn(args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
-  const teamMemberId = String(args.team_member_id ?? "");
+  const teamMemberId = String(args.team_member_id ?? "").trim();
   if (!teamMemberId) return { result: "Team member ID is required." };
-  if (!ctx.squareToken) return { result: "Square not connected." };
-  try {
-    const res = await squareFetch(`${SQUARE_BASE}/labor/shifts`, {
-      method: "POST",
-      headers: squareHeaders(ctx.squareToken),
-      body: JSON.stringify({
-        idempotency_key: `clock-in-${teamMemberId}-${Date.now()}`,
-        shift: {
-          team_member_id: teamMemberId,
-          location_id: ctx.squareLocationId,
-          start_at: new Date().toISOString(),
-        },
-      }),
-    });
-    const data = (await res.json()) as any;
-    if (!res.ok) return { result: `Failed: ${data.errors?.[0]?.detail ?? "Unknown error"}` };
-    return { result: `Clocked in ${teamMemberId}. Shift ID: ${data.shift?.id ?? "unknown"}.` };
-  } catch (e: any) {
-    return { result: `Failed to clock in: ${e.message}` };
-  }
+  const client = squareFromCtx(ctx);
+  if (!client) return NOT_CONNECTED;
+  const res = await client.post("/labor/shifts", {
+    idempotency_key: idempotencyKey("cin", idempotencySeed(ctx, "cin") ?? `${teamMemberId}-${Date.now()}`),
+    shift: { team_member_id: teamMemberId, location_id: client.locationId, start_at: new Date().toISOString() },
+  });
+  if (!res.ok) return { result: `Failed: ${squareErrorMessage(res.error)}` };
+  return { result: `Clocked in ${teamMemberId}. Shift ID: ${res.data.shift?.id ?? "unknown"}.` };
 }
 
 async function clockOut(args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
-  const shiftId = String(args.shift_id ?? "");
+  const shiftId = String(args.shift_id ?? "").trim();
   if (!shiftId) return { result: "Shift ID is required." };
-  if (!ctx.squareToken) return { result: "Square not connected." };
-  try {
-    // Get current shift to get version
-    const getRes = await squareFetch(`${SQUARE_BASE}/labor/shifts/${shiftId}`, {
-      headers: squareHeaders(ctx.squareToken),
-    });
-    const getData = (await getRes.json()) as any;
-    if (!getRes.ok) return { result: `Shift not found: ${getData.errors?.[0]?.detail ?? "Unknown"}` };
-
-    const shift = getData.shift;
-    const res = await squareFetch(`${SQUARE_BASE}/labor/shifts/${shiftId}`, {
-      method: "PUT",
-      headers: squareHeaders(ctx.squareToken),
-      body: JSON.stringify({
-        shift: {
-          ...shift,
-          end_at: new Date().toISOString(),
-          status: "CLOSED",
-        },
-      }),
-    });
-    const data = (await res.json()) as any;
-    if (!res.ok) return { result: `Failed: ${data.errors?.[0]?.detail ?? "Unknown error"}` };
-    return { result: `Clocked out. Shift ${shiftId} closed.` };
-  } catch (e: any) {
-    return { result: `Failed to clock out: ${e.message}` };
-  }
+  const client = squareFromCtx(ctx);
+  if (!client) return NOT_CONNECTED;
+  // Square requires the current version for an update.
+  const current = await client.get(`/labor/shifts/${encodeURIComponent(shiftId)}`);
+  if (!current.ok) return { result: `Shift not found: ${squareErrorMessage(current.error)}` };
+  const shift = current.data.shift;
+  if (shift?.status === "CLOSED") return { result: `Shift ${shiftId} is already closed.` };
+  const res = await client.put(`/labor/shifts/${encodeURIComponent(shiftId)}`, {
+    shift: { ...shift, end_at: new Date().toISOString(), status: "CLOSED" },
+  });
+  if (!res.ok) return { result: `Failed: ${squareErrorMessage(res.error)}` };
+  return { result: `Clocked out. Shift ${shiftId} closed.` };
 }
-
-// ── Export executor map ───────────────────────────────────────────────────────
 
 export const executors: Record<string, ToolExecutor> = {
   list_team: listTeam,

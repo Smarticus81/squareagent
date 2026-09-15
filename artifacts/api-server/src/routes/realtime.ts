@@ -17,7 +17,6 @@ import { requireAuth, requirePlan } from "./auth";
 import {
   db,
   serviceConnectionsTable,
-  usageEventsTable,
 } from "@workspace/db";
 import {
   PLANS,
@@ -33,8 +32,9 @@ import {
   type OrderItem,
   type SessionOrderItem,
 } from "../lib/square-helpers";
-import { SquareClient } from "../lib/square-client";
+import { getSquareClient } from "../lib/square-client";
 import { getCachedCredentials } from "../lib/credential-cache";
+import { getCachedCatalog } from "../lib/catalog-cache";
 import { getCachedAgentProfile } from "../lib/agent-profile-cache";
 import { ensureUserOrganization, userOwnsOrganization } from "./v1/_helpers";
 import { executeToolCall } from "../tools";
@@ -45,17 +45,30 @@ import {
   skillSummary,
 } from "../skills";
 import {
-  getOrCreateSession,
   getSession,
+  getSessionOrRehydrate,
   markDirty,
+  persistSessionNow,
   removeSession,
+  withSessionLock,
 } from "../lib/session-store";
 import { readServerApiKey, requiredApiKeyEnv } from "../lib/api-keys";
 import { OPENAI_REALTIME_MODEL, buildRealtimeSessionPayload } from "../lib/openai-realtime";
-import { getCachedVoiceMinutes, invalidateUsage } from "../lib/usage-cache";
+import { getCachedVoiceMinutes } from "../lib/usage-cache";
 import { hasGeneralConnectedSystemsCached } from "../lib/connected-systems-cache";
+import { beginCommandExecution, completeCommandExecution } from "../lib/command-ledger";
+import {
+  registerVoiceSession,
+  recordVoiceHeartbeat,
+  finalizeVoiceSessionUsage,
+  startVoiceSessionSweeper,
+} from "../lib/voice-session-metering";
+import { sendSanitizedError } from "../lib/error-sanitizer";
 
 const router = Router();
+
+// Start PostgreSQL-backed stale session sweeper
+startVoiceSessionSweeper();
 
 // Master switch for acoustic (full-duplex) barge-in. Off by default because
 // browser echo cancellation does not reliably suppress the agent's own voice
@@ -174,7 +187,7 @@ function buildVoycelabDemoInstructions(): string {
     )}, ${minutes}. ${plan.bullets.map((bullet) => bullet.text).join(" ")}`;
   }).join("\n");
 
-  return `You are Bev, the VoyceLab voice guide on the public website. You answer customer questions about VoyceLab, the business, the site, plans, setup, integrations, voice options, and how hospitality teams use the service.
+  return `You are Nova, the VoyceLab voice guide on the public website. You answer customer questions about VoyceLab, the business, the site, plans, setup, integrations, voice options, and how hospitality teams use the service.
 
 Conversation style:
 - Be warm, confident, plain-spoken, and natural.
@@ -192,7 +205,7 @@ Core positioning:
 
 How it works:
 - Owners create an account, start a 14-day free trial, connect Square or another supported service, create an assistant, choose what it can do, choose room/noise behavior, pick a voice experience, test it, then launch.
-- Setup is intentionally lightweight: name the assistant, set a wake phrase such as "Hey Bev", connect a system, choose allowed actions, tune the room, choose the voice engine, test, and launch.
+- Setup is intentionally lightweight: name the assistant, set a wake phrase such as "Hey Nova", connect a system, choose allowed actions, tune the room, choose the voice engine, test, and launch.
 - Assistants can be configured for a venue assistant, POS assistant, inventory assistant, or a general business assistant.
 - Permission controls matter: owners choose which actions are allowed, which require approval first, and which are not allowed. Sensitive actions such as refunds, catalog changes, item deletion, and team-status changes start locked down.
 - Room modes include standard, loud venue, and push-to-talk. Noisy rooms can use more controlled listening or push-to-talk.
@@ -724,7 +737,10 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
       return;
     }
   } catch {
-    // non-critical — allow session to proceed if usage check fails
+    if (process.env.USAGE_CHECK_FAIL_OPEN !== "1") {
+      res.status(503).json({ error: "usage_check_unavailable", code: "usage_check_unavailable" });
+      return;
+    }
   }
 
   const { voice = "ash", speed = 1.0, catalog = [], order = [], venueId, agentProfileId } = req.body ?? {};
@@ -818,6 +834,15 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
 
   if (assistantKind === "venue" && !squareToken) assistantKind = "general";
 
+  // The server owns the catalog: the prompt lists what the venue actually
+  // sells, straight from Square (cached), not whatever the client sent. A
+  // client-supplied catalog is only a fallback for when Square is unreachable.
+  let sessionCatalog: CatalogItem[] = Array.isArray(catalog) ? catalog : [];
+  if (squareToken) {
+    const loaded = await getCachedCatalog(getSquareClient(squareToken, squareLocationId));
+    if (loaded.items.length > 0) sessionCatalog = loaded.items;
+  }
+
   // When general connected systems are configured, merge those commands into
   // venue sessions so Square plus email/knowledge/database workflows can run
   // in one assistant.
@@ -840,7 +865,7 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
   const sessionConfig = buildRealtimeSessionConfig(
     String(providerConfig.voice ?? voice),
     Number(providerConfig.speed ?? speed),
-    catalog,
+    sessionCatalog,
     order,
     plan,
     assistantKind,
@@ -874,9 +899,24 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
     }
 
     const data = (await response.json()) as any;
-    // Tell the client how to drive the mic. Acoustic (full-duplex) barge-in is
-    // opt-in per noise mode AND gated by ACOUSTIC_BARGE_IN_ENABLED; the safe
-    // default is half-duplex mic gating during playback with tap-to-interrupt.
+    const transportSessionId = data.session?.id ?? "";
+    const ephemeralExpiresAt = data.expires_at ?? null;
+
+    // Register durable voice session for metering and order recovery
+    const logicalSessionId = transportSessionId;
+    try {
+      await registerVoiceSession({
+        id: logicalSessionId,
+        userId: req.user.id,
+        organizationId,
+        venueId: effectiveVenueId,
+        agentProfileId: agentProfileId ? String(agentProfileId) : null,
+        pipelineProvider: provider,
+      });
+    } catch (regErr: any) {
+      console.warn("[Realtime] Session registration failed:", regErr.message);
+    }
+
     const behavior = getNoiseModeBehavior(noiseMode);
     const acousticBargeIn = ACOUSTIC_BARGE_IN_ENABLED && behavior.bargeInEnabled;
     // Server-authoritative wake greeting: the client fires this verbatim as
@@ -885,8 +925,8 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
     const greetingPersona = profileDisplayName ? ` You are ${profileDisplayName}.` : "";
     const greeting = `The user just summoned you with your wake phrase.${greetingPersona} Immediately say one short, warm greeting — under eight words, e.g. "Hey! What can I do for you?". Do not list capabilities or mention commands. Then stop speaking and wait for their request.`;
     res.json({
-      id: data.session?.id ?? "",
-      client_secret: { value: data.value, expires_at: data.expires_at },
+      id: transportSessionId,
+      client_secret: { value: data.value, expires_at: ephemeralExpiresAt },
       instructions: sessionConfig.instructions,
       greeting,
       assistantKind,
@@ -895,6 +935,9 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
         bargeIn: acousticBargeIn,
         pushToTalk: behavior.pushToTalkRequired,
         orderHandlingMode,
+        logicalSessionId,
+        sessionRotateRecommendedMs: 420_000,
+        ephemeralExpiresAt,
         usage: usageLimits ? {
           used: usedMinutes,
           limit: usageLimits.includedMinutes,
@@ -905,7 +948,7 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
     });
   } catch (e: any) {
     console.error("[Realtime] Session error:", e.message);
-    res.status(500).json({ error: e.message });
+    sendSanitizedError(res, 500, "session_mint_failed", e);
   }
 });
 
@@ -915,6 +958,7 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
 router.post("/tools", requireAuth as any, requirePlan() as any, async (req: any, res: any) => {
   const {
     session_id,
+    call_id,
     tool_name,
     arguments: args = {},
     catalog = [],
@@ -937,7 +981,6 @@ router.post("/tools", requireAuth as any, requirePlan() as any, async (req: any,
     return;
   }
 
-  // Check overage cap on tool execution to prevent runaway loops
   if (!req.isAdmin) {
     try {
       const plan = req.subscription?.plan ?? "trial";
@@ -951,13 +994,13 @@ router.post("/tools", requireAuth as any, requirePlan() as any, async (req: any,
         return;
       }
     } catch {
-      // non-critical — proceed if db check fails
+      if (process.env.USAGE_CHECK_FAIL_OPEN !== "1") {
+        res.status(503).json({ error: "usage_check_unavailable", code: "usage_check_unavailable" });
+        return;
+      }
     }
   }
 
-  // venueId is optional: general-assistant tools (web/knowledge/email/db) don't
-  // need a Square-connected venue. We still try to load credentials when one
-  // is provided so venue-mode tools keep working.
   let squareToken = "";
   let squareLocationId = "";
   const organizationId = await currentOrganizationId(req);
@@ -1017,10 +1060,21 @@ router.post("/tools", requireAuth as any, requirePlan() as any, async (req: any,
     }
   }
 
-  // Use a stable fallback so multiple tool calls in one conversation share the same session
   const sessionId = String(session_id || `rt-${req.user.id}-${effectiveVenueId ?? "general"}`);
-  const existingSession = getSession(sessionId);
+  const callId = typeof call_id === "string" ? call_id : "";
   const numericVenueId = effectiveVenueId ?? 0;
+
+  // Server-owned catalog (cached per venue) so every command resolves item
+  // names against what Square actually has. Loaded before the session lock so
+  // a cold cache never holds the lock while Square is paged.
+  const squareClient = squareToken ? getSquareClient(squareToken, squareLocationId) : undefined;
+  let toolCatalog: CatalogItem[] = Array.isArray(catalog) ? catalog : [];
+  if (squareClient) {
+    const loaded = await getCachedCatalog(squareClient);
+    if (loaded.items.length > 0) toolCatalog = loaded.items;
+  }
+
+  const existingSession = getSession(sessionId);
   if (
     existingSession &&
     (existingSession.userId !== req.user.id || existingSession.venueId !== numericVenueId)
@@ -1028,207 +1082,172 @@ router.post("/tools", requireAuth as any, requirePlan() as any, async (req: any,
     res.status(403).json({ error: "session_forbidden" });
     return;
   }
-  const session = getOrCreateSession(sessionId, squareToken, squareLocationId, req.user.id, numericVenueId);
-  if (!existingSession && session.items.length === 0) {
-    const initialItems = orderSnapshotToSessionItems(order, catalog);
-    if (initialItems.length > 0) {
-      session.items.push(...initialItems);
-      markDirty(sessionId);
-    }
+
+  // Command idempotency ledger
+  const ledger = await beginCommandExecution({
+    sessionId,
+    callId,
+    toolName: String(tool_name),
+    args: args as Record<string, unknown>,
+    userId: req.user.id,
+    organizationId,
+    venueId: effectiveVenueId ?? undefined,
+    agentProfileId: agentProfileId ? String(agentProfileId) : null,
+  });
+
+  if (ledger.action === "replay" && ledger.entry) {
+    res.json({ result: ledger.entry.result ?? "Command completed.", command: ledger.entry.command ?? null });
+    return;
+  }
+  if (ledger.action === "wait") {
+    res.status(409).json({ error: "command_in_progress", code: "command_in_progress" });
+    return;
   }
 
+  const toolStart = Date.now();
+
   try {
-    const squareClient = squareToken ? new SquareClient(squareToken, squareLocationId) : undefined;
-    const assistantKind: "venue" | "general" = squareToken ? "venue" : "general";
-    const includeGeneralTools =
-      assistantKind === "venue" && (await hasGeneralConnectedSystemsCached(req.user.id, organizationId));
-    const toolDefinitions = buildToolsFromSkills(getSkillsForSession(
-      (req.subscription?.plan as string | undefined) ?? "trial",
-      { kind: assistantKind, includeGeneralTools },
-    ));
-    const allowedToolSet = new Set(toolDefinitions.map((tool) => tool.name));
-    if (profileAllowedTools && profileAllowedTools.length > 0) {
-      const profileAllowedSet = new Set(profileAllowedTools);
-      for (const name of [...allowedToolSet]) {
-        if (name !== "wait_for_user" && !profileAllowedSet.has(name)) allowedToolSet.delete(name);
-      }
-    }
-    if (!allowedToolSet.has(String(tool_name))) {
-      res.status(403).json({ error: "tool_not_allowed", detail: `Command not allowed in this assistant: ${tool_name}` });
-      return;
-    }
-    const { result, command } = await executeToolCall(
-      tool_name,
-      args,
-      {
-        catalog,
-        order,
+    const result = await withSessionLock(sessionId, async () => {
+      const session = await getSessionOrRehydrate(
+        sessionId,
         squareToken,
         squareLocationId,
-        session,
-        squareClient,
-        requestId: sessionId,
-        userId: req.user.id,
-        userRole: req.organization?.role,
-        organizationId,
-        venueId: effectiveVenueId ?? undefined,
-        assistantKind,
-        noiseMode,
-        orderHandlingMode:
-          orderHandlingModeOverride === "auto_complete" || orderHandlingModeOverride === "hold_for_review"
-            ? orderHandlingModeOverride
-            : profileOrderHandlingMode,
-        confirmed: confirmed === true,
-        confirmationToken: typeof confirmationToken === "string" ? confirmationToken : undefined,
-      },
-    );
+        { userId: req.user.id, organizationId, venueId: numericVenueId },
+        agentProfileId ? String(agentProfileId) : null,
+      );
 
-    if (session.items.length === 0 && !session.squareOrderId) {
+      if (session.items.length === 0) {
+        const initialItems = orderSnapshotToSessionItems(order, toolCatalog);
+        if (initialItems.length > 0) {
+          session.items.push(...initialItems);
+          markDirty(sessionId);
+        }
+      }
+
+      const assistantKind: "venue" | "general" = squareToken ? "venue" : "general";
+      const includeGeneralTools =
+        assistantKind === "venue" && (await hasGeneralConnectedSystemsCached(req.user.id, organizationId));
+      const toolDefinitions = buildToolsFromSkills(getSkillsForSession(
+        (req.subscription?.plan as string | undefined) ?? "trial",
+        { kind: assistantKind, includeGeneralTools },
+      ));
+      const allowedToolSet = new Set(toolDefinitions.map((tool) => tool.name));
+      if (profileAllowedTools && profileAllowedTools.length > 0) {
+        const profileAllowedSet = new Set(profileAllowedTools);
+        for (const name of [...allowedToolSet]) {
+          if (name !== "wait_for_user" && !profileAllowedSet.has(name)) allowedToolSet.delete(name);
+        }
+      }
+      if (!allowedToolSet.has(String(tool_name))) {
+        throw Object.assign(new Error("tool_not_allowed"), { statusCode: 403 });
+      }
+
+      return executeToolCall(
+        tool_name,
+        args,
+        {
+          catalog: toolCatalog,
+          order,
+          squareToken,
+          squareLocationId,
+          session,
+          squareClient,
+          requestId: sessionId,
+          callId,
+          userId: req.user.id,
+          userRole: req.organization?.role,
+          organizationId,
+          venueId: effectiveVenueId ?? undefined,
+          assistantKind,
+          noiseMode,
+          orderHandlingMode:
+            orderHandlingModeOverride === "auto_complete" || orderHandlingModeOverride === "hold_for_review"
+              ? orderHandlingModeOverride
+              : profileOrderHandlingMode,
+          confirmed: confirmed === true,
+          confirmationToken: typeof confirmationToken === "string" ? confirmationToken : undefined,
+        },
+      );
+    });
+
+    const managed = getSession(sessionId);
+    if (managed && managed.session.items.length === 0 && !managed.session.squareOrderId) {
       removeSession(sessionId);
     } else {
-      markDirty(sessionId);
+      await persistSessionNow(sessionId);
     }
 
-    res.json({ result, command: command ?? null });
+    const durationMs = Date.now() - toolStart;
+    await completeCommandExecution({
+      sessionId,
+      callId,
+      status: "succeeded",
+      result: result.result,
+      command: result.command,
+      durationMs,
+    });
+
+    res.json({ result: result.result, command: result.command ?? null });
   } catch (e: any) {
+    const durationMs = Date.now() - toolStart;
+    await completeCommandExecution({
+      sessionId,
+      callId,
+      status: "failed",
+      result: `Tool error: ${e.message}`,
+      durationMs,
+      errorMessage: e.message,
+    }).catch(() => {});
+
     console.error(`[Realtime] Tool error (${tool_name}):`, e.message);
-    res.status(500).json({ error: e.message });
+    if (e.statusCode === 403) {
+      res.status(403).json({ error: "tool_not_allowed", code: "tool_not_allowed" });
+      return;
+    }
+    sendSanitizedError(res, 500, "tool_execution_failed", e);
   }
 });
 
-// ── Voice-minute metering ─────────────────────────────────────────────────────
-
-interface HeartbeatEntry {
-  userId: number;
-  organizationId: string | null;
-  venueId: number;
-  provider?: string;
-  agentProfileId?: string | null;
-  lastHeartbeatMs: number;
-  startMs: number;
-  lastUpdatedMs: number;
-}
-
-const heartbeatMap = new Map<string, HeartbeatEntry>();
-
-// Sweeper for stale heartbeats to handle abrupt crashes
-setInterval(async () => {
-  const now = Date.now();
-  for (const [sessionId, entry] of heartbeatMap.entries()) {
-    if (now - entry.lastUpdatedMs > 120000) { // 2 minutes stale
-      heartbeatMap.delete(sessionId);
-      endedSessions.set(sessionId, now);
-      if (entry.lastHeartbeatMs > 0) {
-        try {
-          await db.insert(usageEventsTable).values({
-            kind: "voice_minutes",
-            userId: entry.userId,
-            organizationId: entry.organizationId,
-            agentProfileId: entry.agentProfileId,
-            quantity: Math.ceil(entry.lastHeartbeatMs / 60000),
-            occurredAt: new Date(),
-            metadata: {
-              durationMs: entry.lastHeartbeatMs,
-              provider: entry.provider ?? "openai_realtime_webrtc",
-              venueId: entry.venueId || null,
-              autoFlushed: true,
-            },
-          });
-          invalidateUsage(entry.userId, entry.organizationId);
-          console.log(`[Realtime] Autoflushed stale session ${sessionId}: ${entry.lastHeartbeatMs}ms`);
-        } catch (err: any) {
-          console.error(`[Realtime] Failed to autoflush stale session ${sessionId}:`, err.message);
-        }
-      }
-    }
-  }
-}, 60000); // Check every minute
+// ── Voice-minute metering (PostgreSQL-backed) ─────────────────────────────────
 
 router.post("/session/:id/heartbeat", requireAuth as any, async (req: any, res: any) => {
   const sessionId = req.params.id;
   const { elapsedMs, provider, agentProfileId } = req.body ?? {};
   const organizationId = await currentOrganizationId(req);
 
-  const existing = heartbeatMap.get(sessionId);
-  if (existing) {
-    if (existing.userId !== req.user.id || existing.organizationId !== organizationId) {
-      res.status(403).json({ error: "session_forbidden" });
-      return;
-    }
-    existing.lastHeartbeatMs = typeof elapsedMs === "number" ? elapsedMs : Date.now() - existing.startMs;
-    existing.lastUpdatedMs = Date.now();
-    if (typeof provider === "string" && provider) existing.provider = provider;
-    if (typeof agentProfileId === "string" && agentProfileId) existing.agentProfileId = agentProfileId;
-  } else {
-    heartbeatMap.set(sessionId, {
-      userId: req.user.id,
-      organizationId,
-      venueId: Number(req.body?.venueId ?? 0),
-      provider: typeof provider === "string" && provider ? provider : undefined,
-      agentProfileId: typeof agentProfileId === "string" && agentProfileId ? agentProfileId : null,
-      lastHeartbeatMs: typeof elapsedMs === "number" ? elapsedMs : 0,
-      startMs: Date.now(),
-      lastUpdatedMs: Date.now(),
-    });
+  const ok = await recordVoiceHeartbeat({
+    sessionId,
+    userId: req.user.id,
+    organizationId,
+    elapsedMs: typeof elapsedMs === "number" ? elapsedMs : 0,
+    venueId: Number(req.body?.venueId ?? 0),
+    provider: typeof provider === "string" ? provider : undefined,
+    agentProfileId: typeof agentProfileId === "string" ? agentProfileId : null,
+  });
+
+  if (!ok) {
+    res.status(403).json({ error: "session_forbidden", code: "session_forbidden" });
+    return;
   }
 
   res.sendStatus(200);
 });
 
-// Sessions already finalized — the client may legitimately POST /end more than
-// once (pagehide + beforeunload both fire); without this a retry re-bills the
-// body durationMs a second time.
-const endedSessions = new Map<string, number>();
-setInterval(() => {
-  const cutoff = Date.now() - 10 * 60_000;
-  for (const [id, endedAt] of endedSessions.entries()) {
-    if (endedAt < cutoff) endedSessions.delete(id);
-  }
-}, 60_000);
-
 router.post("/session/:id/end", requireAuth as any, async (req: any, res: any) => {
   const sessionId = req.params.id;
   const { durationMs, provider, agentProfileId } = req.body ?? {};
-  if (endedSessions.has(sessionId)) {
-    res.sendStatus(200);
-    return;
-  }
-  const entry = heartbeatMap.get(sessionId);
   const organizationId = await currentOrganizationId(req);
-  if (entry && (entry.userId !== req.user.id || entry.organizationId !== organizationId)) {
-    res.status(403).json({ error: "session_forbidden" });
-    return;
-  }
-  const venueId = entry?.venueId ?? Number(req.body?.venueId ?? 0);
-  const effectiveProvider = typeof provider === "string" && provider
-    ? provider
-    : entry?.provider ?? "openai_realtime_webrtc";
-  const effectiveAgentProfileId = typeof agentProfileId === "string" && agentProfileId
-    ? agentProfileId
-    : entry?.agentProfileId ?? null;
 
-  const effectiveDuration = typeof durationMs === "number" && durationMs > 0
-    ? durationMs
-    : entry?.lastHeartbeatMs ?? 0;
+  await finalizeVoiceSessionUsage({
+    sessionId,
+    userId: req.user.id,
+    organizationId,
+    durationMs: typeof durationMs === "number" ? durationMs : 0,
+    provider: typeof provider === "string" ? provider : undefined,
+    venueId: Number(req.body?.venueId ?? 0),
+    agentProfileId: typeof agentProfileId === "string" ? agentProfileId : null,
+  });
 
-  if (effectiveDuration > 0) {
-    try {
-      await db.insert(usageEventsTable).values({
-        kind: "voice_minutes",
-        userId: req.user.id,
-        organizationId,
-        agentProfileId: effectiveAgentProfileId,
-        quantity: Math.ceil(effectiveDuration / 60000),
-        metadata: { durationMs: effectiveDuration, provider: effectiveProvider, venueId: venueId || null },
-      });
-      invalidateUsage(req.user.id, organizationId);
-    } catch {
-      // non-critical — don't fail the response
-    }
-  }
-
-  endedSessions.set(sessionId, Date.now());
-  heartbeatMap.delete(sessionId);
   res.sendStatus(200);
 });
 

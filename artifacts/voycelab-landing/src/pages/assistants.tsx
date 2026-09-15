@@ -194,7 +194,7 @@ function AssistantArt({ assistant, compact = false }: { assistant: AssistantSumm
         glow: "rgba(47,158,100,0.40)",
         soft: "rgba(79,184,255,0.34)",
         line: "rgba(47,158,100,0.78)",
-        lineAlt: "rgba(14,27,44,0.70)",
+        lineAlt: "var(--color-vl-ink-soft)",
         ink: "#17633B",
       }
     : {
@@ -265,16 +265,16 @@ function AssistantDetailModal({
       <button
         type="button"
         aria-label={`Close ${assistant.name}`}
-        className="absolute inset-0 bg-[rgba(14,27,44,0.38)] backdrop-blur-sm"
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
         onClick={onClose}
       />
       <section
         role="dialog"
         aria-modal="true"
         className="relative flex max-h-[88vh] w-full max-w-[920px] flex-col overflow-hidden rounded-[28px] border bg-white shadow-2xl"
-        style={{ borderColor: "rgba(14, 27, 44,0.10)" }}
+        style={{ borderColor: "var(--vl-line)" }}
       >
-        <div className="grid gap-5 border-b p-6 lg:grid-cols-[240px_minmax(0,1fr)_auto]" style={{ borderColor: "rgba(14, 27, 44,0.08)" }}>
+        <div className="grid gap-5 border-b p-6 lg:grid-cols-[240px_minmax(0,1fr)_auto]" style={{ borderColor: "var(--vl-line)" }}>
           <AssistantArt assistant={assistant} compact />
           <div className="flex min-w-0 items-start gap-4">
             <div className="min-w-0">
@@ -287,7 +287,7 @@ function AssistantDetailModal({
           <button
             type="button"
             className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border bg-white/80 text-vl-ink-muted transition hover:bg-white hover:text-vl-ink"
-            style={{ borderColor: "rgba(14, 27, 44,0.10)" }}
+            style={{ borderColor: "var(--vl-line)" }}
             onClick={onClose}
           >
             <X className="h-4 w-4" />
@@ -304,14 +304,14 @@ function AssistantDetailModal({
                 <Row k="Room setting" v={assistant.room} />
                 <Row k="Wake phrase" v={assistant.wakePhrase} />
               </dl>
-              <div className="mt-6 rounded-2xl px-4 py-3" style={{ background: "rgba(14, 27, 44,0.04)", border: "1px solid rgba(14, 27, 44,0.07)" }}>
+              <div className="mt-6 rounded-2xl px-4 py-3" style={{ background: "var(--vl-surface)", border: "1px solid var(--vl-surface)" }}>
                 <p className="text-[13px]" style={{ color: "var(--color-vl-ink-muted)" }}>
                   Can do <strong style={{ color: "var(--color-vl-ink)" }}>{assistant.allowsAllTools ? "all" : assistant.allowedCount}</strong> {assistant.allowsAllTools ? "available actions" : "actions"}. Will ask before <strong style={{ color: "var(--color-vl-ink)" }}>{assistant.askFirstCount}</strong>.
                 </p>
               </div>
             </div>
 
-            <div className="grid gap-3 self-start rounded-[24px] border bg-white/70 p-4" style={{ borderColor: "rgba(14, 27, 44,0.08)" }}>
+            <div className="grid gap-3 self-start rounded-[24px] border bg-white/70 p-4" style={{ borderColor: "var(--vl-line)" }}>
               <button
                 type="button"
                 onClick={onLaunch}

@@ -132,7 +132,7 @@ function IntegrationSection({
         type="button"
         onClick={() => setOpen(true)}
         className="group flex aspect-square min-h-[218px] flex-col justify-between overflow-hidden rounded-[28px] border bg-white/72 p-4 text-left shadow-sm transition hover:-translate-y-1 hover:bg-white hover:shadow-lg"
-        style={{ borderColor: "rgba(14, 27, 44,0.07)" }}
+        style={{ borderColor: "var(--vl-line)" }}
       >
         <IntegrationArt title={title} icon={icon} iconBg={iconBg} iconColor={iconColor} />
 
@@ -143,7 +143,7 @@ function IntegrationSection({
           <h2 className="mt-2 text-[19px] font-bold leading-tight" style={{ color: "var(--color-vl-ink)" }}>
             {title}
           </h2>
-          <p className="mt-1.5 line-clamp-2 text-[12px] leading-relaxed" style={{ color: "rgba(14, 27, 44,0.58)" }}>
+          <p className="mt-1.5 line-clamp-2 text-[12px] leading-relaxed" style={{ color: "var(--color-vl-ink-muted)" }}>
             {subtitle}
           </p>
         </div>
@@ -159,16 +159,16 @@ function IntegrationSection({
           <button
             type="button"
             aria-label={`Close ${title}`}
-            className="absolute inset-0 bg-[rgba(14,27,44,0.38)] backdrop-blur-sm"
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
             onClick={() => setOpen(false)}
           />
           <section
             role="dialog"
             aria-modal="true"
             className="relative flex max-h-[88vh] w-full max-w-[1060px] flex-col overflow-hidden rounded-[28px] border bg-white shadow-2xl"
-            style={{ borderColor: "rgba(14, 27, 44,0.10)" }}
+            style={{ borderColor: "var(--vl-line)" }}
           >
-            <div className="grid gap-5 border-b p-6 lg:grid-cols-[220px_minmax(0,1fr)_auto]" style={{ borderColor: "rgba(14, 27, 44,0.08)" }}>
+            <div className="grid gap-5 border-b p-6 lg:grid-cols-[220px_minmax(0,1fr)_auto]" style={{ borderColor: "var(--vl-line)" }}>
               <IntegrationArt title={title} icon={icon} iconBg={iconBg} iconColor={iconColor} compact />
               <div className="flex min-w-0 items-start gap-4">
                 <div className="min-w-0">
@@ -186,7 +186,7 @@ function IntegrationSection({
               <button
                 type="button"
                 className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border bg-white/80 text-vl-ink-muted transition hover:bg-white hover:text-vl-ink"
-                style={{ borderColor: "rgba(14, 27, 44,0.10)" }}
+                style={{ borderColor: "var(--vl-line)" }}
                 onClick={() => setOpen(false)}
               >
                 <X className="h-4 w-4" />
@@ -268,7 +268,7 @@ function getIntegrationPalette(title: string) {
       glow: "rgba(47,158,100,0.42)",
       soft: "rgba(79,184,255,0.30)",
       line: "rgba(47,158,100,0.78)",
-      lineAlt: "rgba(14,27,44,0.70)",
+      lineAlt: "var(--color-vl-ink-soft)",
       border: "rgba(47,158,100,0.18)",
     };
   }
@@ -292,7 +292,7 @@ function getIntegrationPalette(title: string) {
       glow: "rgba(255,107,71,0.40)",
       soft: "rgba(255,185,90,0.30)",
       line: "rgba(255,107,71,0.74)",
-      lineAlt: "rgba(14,27,44,0.68)",
+      lineAlt: "var(--color-vl-ink-soft)",
       border: "rgba(255,107,71,0.18)",
     };
   }
@@ -462,7 +462,7 @@ export default function ConnectedServices() {
               >
                 Connected systems
               </h1>
-              <p className="mt-4 max-w-2xl text-[15px] leading-relaxed" style={{ color: "rgba(14, 27, 44,0.62)" }}>
+              <p className="mt-4 max-w-2xl text-[15px] leading-relaxed" style={{ color: "var(--color-vl-ink-muted)" }}>
                 Connect the live systems your assistants can act on. Square powers POS actions; knowledge, email, and databases expand what the assistant can answer and coordinate.
               </p>
             </div>
@@ -569,7 +569,7 @@ export default function ConnectedServices() {
                   <p className="text-[16px] font-semibold" style={{ color: "var(--color-vl-ink)" }}>
                     Connect your Square account
                   </p>
-                  <p className="mt-2 max-w-md text-[13px] leading-relaxed" style={{ color: "rgba(14, 27, 44,0.55)" }}>
+                  <p className="mt-2 max-w-md text-[13px] leading-relaxed" style={{ color: "var(--color-vl-ink-muted)" }}>
                     Choose a Square location so your assistant can search the menu, build orders, check inventory, and send to your terminal.
                   </p>
                 </div>
@@ -586,7 +586,7 @@ export default function ConnectedServices() {
               </div>
             ) : (
               (venues ?? []).map((v) => (
-                <div key={v.id} className="flex items-center gap-4 border-b border-[rgba(14, 27, 44,0.06)] p-5 last:border-b-0 md:p-6">
+                <div key={v.id} className="flex items-center gap-4 border-b border-[var(--vl-line)] p-5 last:border-b-0 md:p-6">
                   <div className="flex-1 min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-[14px] font-semibold truncate" style={{ color: "var(--color-vl-ink)" }}>
@@ -625,7 +625,7 @@ export default function ConnectedServices() {
                       })()}
                     </div>
                     {v.connectedAt && (
-                      <p className="mt-1 text-[12px]" style={{ color: "rgba(14, 27, 44,0.42)" }}>
+                      <p className="mt-1 text-[12px]" style={{ color: "var(--color-vl-ink-faint)" }}>
                         Connected {new Date(v.connectedAt).toLocaleDateString()}
                       </p>
                     )}
@@ -705,7 +705,7 @@ export default function ConnectedServices() {
 
       {/* Location picker modal */}
       {showLocationPicker && locations.length > 0 && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(14, 27, 44,0.36)] p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
           <div
             className="w-full max-w-md rounded-3xl border bg-white/94 p-6 md:p-7"
             style={{ borderColor: "rgba(14, 27, 44,0.10)", boxShadow: "0 24px 48px -12px rgba(14, 27, 44,0.25)" }}
@@ -716,7 +716,7 @@ export default function ConnectedServices() {
                 <h2 className="text-[22px] font-semibold tracking-tight mt-1" style={{ color: "var(--color-vl-ink)" }}>
                   Choose a location
                 </h2>
-                <p className="mt-1 text-[13px]" style={{ color: "rgba(14, 27, 44,0.55)" }}>
+                <p className="mt-1 text-[13px]" style={{ color: "var(--color-vl-ink-muted)" }}>
                   Pick the venue this assistant will control.
                 </p>
               </div>
@@ -728,9 +728,9 @@ export default function ConnectedServices() {
                 }}
                 className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition-colors"
                 style={{
-                  color: "rgba(14, 27, 44,0.45)",
-                  background: "rgba(14, 27, 44,0.04)",
-                  border: "1px solid rgba(14, 27, 44,0.08)",
+                  color: "var(--color-vl-ink-faint)",
+                  background: "var(--vl-surface)",
+                  border: "1px solid var(--vl-line)",
                 }}
               >
                 <X className="w-3.5 h-3.5" />
@@ -743,7 +743,7 @@ export default function ConnectedServices() {
                   onClick={() => handleSelectLocation(loc)}
                   disabled={saveVenue.isPending}
                   className="flex w-full items-center gap-3 rounded-xl border p-3.5 text-left transition-all hover:-translate-y-0.5 hover:border-[rgba(124,110,245,0.4)] disabled:opacity-50"
-                  style={{ borderColor: "rgba(14, 27, 44,0.08)" }}
+                  style={{ borderColor: "var(--vl-line)" }}
                 >
                   <span
                     className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
@@ -754,7 +754,7 @@ export default function ConnectedServices() {
                   <div className="min-w-0 flex-1">
                     <p className="text-[13px] font-semibold truncate" style={{ color: "var(--color-vl-ink)" }}>{loc.name}</p>
                     {loc.address && (
-                      <p className="mt-0.5 text-[11.5px] truncate" style={{ color: "rgba(14, 27, 44,0.45)" }}>
+                      <p className="mt-0.5 text-[11.5px] truncate" style={{ color: "var(--color-vl-ink-faint)" }}>
                         {loc.address}
                       </p>
                     )}
@@ -866,8 +866,8 @@ function KnowledgeSection() {
       className="rounded-3xl border bg-white/82 p-6"
       style={{ borderColor: "rgba(14, 27, 44,0.08)", boxShadow: "0 1px 2px rgba(14, 27, 44,0.04), 0 8px 24px -12px rgba(14, 27, 44,0.08)" }}
     >
-      <p className="text-[14px] mb-6" style={{ color: "rgba(14, 27, 44,0.62)" }}>
-        Upload PDFs, Word docs, or paste text. The assistant will use <code className="rounded px-1" style={{ color: "var(--color-vl-ink)", background: "rgba(14, 27, 44,0.06)" }}>search_knowledge</code> to
+      <p className="text-[14px] mb-6" style={{ color: "var(--color-vl-ink-muted)" }}>
+        Upload PDFs, Word docs, or paste text. The assistant will use <code className="rounded px-1" style={{ color: "var(--color-vl-ink)", background: "var(--vl-surface)" }}>search_knowledge</code> to
         quote from these when relevant.
       </p>
 
@@ -899,7 +899,7 @@ function KnowledgeSection() {
         <label className="flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-black/12 bg-white/56 p-6 transition hover:border-black/25 hover:bg-white/76">
           <Upload className="w-6 h-6 mb-2" style={{ color: "var(--color-vl-accent)" }} />
           <div className="text-sm" style={{ color: "var(--color-vl-ink)" }}>Upload a file</div>
-          <div className="text-xs mt-1" style={{ color: "rgba(14, 27, 44,0.52)" }}>PDF, DOCX, TXT, MD, HTML - up to 25 MB</div>
+          <div className="text-xs mt-1" style={{ color: "var(--color-vl-ink-muted)" }}>PDF, DOCX, TXT, MD, HTML - up to 25 MB</div>
           <input
             type="file"
             accept=".pdf,.docx,.txt,.md,.markdown,.html,.htm,.csv,.json,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/html,text/markdown"
@@ -924,16 +924,16 @@ function KnowledgeSection() {
       )}
 
       {loading ? (
-        <div className="text-sm" style={{ color: "rgba(14, 27, 44,0.52)" }}>Loading...</div>
+        <div className="text-sm" style={{ color: "var(--color-vl-ink-muted)" }}>Loading...</div>
       ) : docs.length === 0 ? (
-        <div className="text-sm" style={{ color: "rgba(14, 27, 44,0.52)" }}>No documents yet.</div>
+        <div className="text-sm" style={{ color: "var(--color-vl-ink-muted)" }}>No documents yet.</div>
       ) : (
         <ul className="divide-y divide-black/6">
           {docs.map((d) => (
             <li key={d.id} className="flex items-center justify-between py-3">
               <div>
                 <div className="text-sm" style={{ color: "var(--color-vl-ink)" }}>{d.title}</div>
-                <div className="text-xs" style={{ color: "rgba(14, 27, 44,0.52)" }}>
+                <div className="text-xs" style={{ color: "var(--color-vl-ink-muted)" }}>
                   {d.chunkCount} chunks · {fmtBytes(d.byteCount)} · {new Date(d.createdAt).toLocaleString()}
                 </div>
               </div>
@@ -1070,12 +1070,12 @@ function EmailSection() {
       className="rounded-3xl border bg-white/82 p-6"
       style={{ borderColor: "rgba(14, 27, 44,0.08)", boxShadow: "0 1px 2px rgba(14, 27, 44,0.04), 0 8px 24px -12px rgba(14, 27, 44,0.08)" }}
     >
-      <p className="text-[14px] mb-4" style={{ color: "rgba(14, 27, 44,0.62)" }}>
+      <p className="text-[14px] mb-4" style={{ color: "var(--color-vl-ink-muted)" }}>
         Choose how outbound mail is sent. The email command delivers from this address - the assistant always reads the recipient and subject back to you before sending.
       </p>
 
       {loading ? (
-        <div className="text-sm" style={{ color: "rgba(14, 27, 44,0.52)" }}>Loading...</div>
+        <div className="text-sm" style={{ color: "var(--color-vl-ink-muted)" }}>Loading...</div>
       ) : (
         <>
           <div className="flex gap-2 mb-4" role="tablist" aria-label="Email provider">
@@ -1101,7 +1101,7 @@ function EmailSection() {
 
           {provider === "gmail_oauth" ? (
             <div className="space-y-3">
-              <p className="text-[13px]" style={{ color: "rgba(14, 27, 44,0.55)" }}>
+              <p className="text-[13px]" style={{ color: "var(--color-vl-ink-muted)" }}>
                 Sign in with Google to let VoyceLab read, search, and send mail for assistant commands. Mail is sent from your Gmail address - no app password or SMTP setup. You can revoke access any time at <a href="https://myaccount.google.com/permissions" target="_blank" rel="noreferrer" className="underline" style={{ color: "var(--color-vl-accent)" }}>your Google Account</a>.
               </p>
 
@@ -1142,7 +1142,7 @@ function EmailSection() {
             </div>
           ) : (
             <form onSubmit={saveResend} className="space-y-3">
-              <p className="text-[13px]" style={{ color: "rgba(14, 27, 44,0.55)" }}>
+              <p className="text-[13px]" style={{ color: "var(--color-vl-ink-muted)" }}>
                 Plug in a <a href="https://resend.com" target="_blank" rel="noreferrer" className="underline" style={{ color: "var(--color-vl-accent)" }}>Resend</a> key. Best for sending from a verified custom domain.
               </p>
               <div className="grid md:grid-cols-2 gap-3">
@@ -1267,7 +1267,7 @@ function DatabaseSection() {
       className="rounded-3xl border bg-white/82 p-6"
       style={{ borderColor: "rgba(14, 27, 44,0.08)", boxShadow: "0 1px 2px rgba(14, 27, 44,0.04), 0 8px 24px -12px rgba(14, 27, 44,0.08)" }}
     >
-      <p className="text-[14px] mb-2" style={{ color: "rgba(14, 27, 44,0.62)" }}>
+      <p className="text-[14px] mb-2" style={{ color: "var(--color-vl-ink-muted)" }}>
         Read-only Postgres. The assistant gets a database command that runs SELECT
         statements (capped at 100 rows, 8 second timeout). The connection string is encrypted at rest.
       </p>
@@ -1316,16 +1316,16 @@ function DatabaseSection() {
       )}
 
       {loading ? (
-        <div className="text-sm" style={{ color: "rgba(14, 27, 44,0.52)" }}>Loading...</div>
+        <div className="text-sm" style={{ color: "var(--color-vl-ink-muted)" }}>Loading...</div>
       ) : conns.length === 0 ? (
-        <div className="text-sm" style={{ color: "rgba(14, 27, 44,0.52)" }}>No connections configured.</div>
+        <div className="text-sm" style={{ color: "var(--color-vl-ink-muted)" }}>No connections configured.</div>
       ) : (
         <ul className="divide-y divide-black/6">
           {conns.map((c) => (
             <li key={c.id} className="flex items-center justify-between py-3">
               <div>
                 <div className="text-sm font-mono" style={{ color: "var(--color-vl-ink)" }}>{c.label}</div>
-                <div className="text-xs" style={{ color: "rgba(14, 27, 44,0.52)" }}>
+                <div className="text-xs" style={{ color: "var(--color-vl-ink-muted)" }}>
                   {c.kind}
                   {c.schemaHint ? ` · ${c.schemaHint.slice(0, 80)}${c.schemaHint.length > 80 ? "..." : ""}` : ""}
                 </div>

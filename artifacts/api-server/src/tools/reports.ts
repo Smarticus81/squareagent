@@ -3,7 +3,9 @@
  */
 
 import type { ToolDefinition, ToolExecutor, ToolContext, ToolResult } from "./types";
-import { SQUARE_BASE, squareFetch, squareHeaders } from "../lib/square-helpers";
+import { searchOrders, summarizeOrders, squareErrorMessage } from "../lib/square-helpers";
+import { squareFromCtx, venueTimeZone, NOT_CONNECTED, money } from "./_square";
+import { dayRange, normalizePeriod, periodRange, hourInZone } from "../lib/venue-time";
 
 // ── Definitions ───────────────────────────────────────────────────────────────
 
@@ -47,180 +49,92 @@ export const definitions: ToolDefinition[] = [
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function parseDateRange(dateStr?: string): { start: string; end: string } {
-  const d = dateStr ? new Date(dateStr) : new Date();
-  const start = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  const end = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59);
-  return { start: start.toISOString(), end: end.toISOString() };
+function hourLabel(h: number): string {
+  return `${h.toString().padStart(2, "0")}:00`;
 }
 
-function parsePeriod(period: string): { start: string; end: string } {
-  const now = new Date();
-  const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
-  let start: Date;
-  switch (period) {
-    case "yesterday": {
-      const y = new Date(now); y.setDate(y.getDate() - 1);
-      start = new Date(y.getFullYear(), y.getMonth(), y.getDate());
-      const end = new Date(y.getFullYear(), y.getMonth(), y.getDate(), 23, 59, 59);
-      return { start: start.toISOString(), end: end.toISOString() };
-    }
-    case "this_week": {
-      const day = now.getDay(); const diff = now.getDate() - day + (day === 0 ? -6 : 1);
-      start = new Date(now.getFullYear(), now.getMonth(), diff);
-      return { start: start.toISOString(), end: endOfDay.toISOString() };
-    }
-    case "last_7_days":
-      start = new Date(now); start.setDate(start.getDate() - 7);
-      return { start: start.toISOString(), end: endOfDay.toISOString() };
-    case "this_month":
-      start = new Date(now.getFullYear(), now.getMonth(), 1);
-      return { start: start.toISOString(), end: endOfDay.toISOString() };
-    case "today":
-    default:
-      start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      return { start: start.toISOString(), end: endOfDay.toISOString() };
-  }
-}
-
-async function fetchOrders(squareToken: string, locationId: string, startAt: string, endAt: string, states?: string[]) {
-  const res = await squareFetch(`${SQUARE_BASE}/orders/search`, {
-    method: "POST",
-    headers: squareHeaders(squareToken),
-    body: JSON.stringify({
-      location_ids: [locationId],
-      query: {
-        filter: {
-          date_time_filter: { created_at: { start_at: startAt, end_at: endAt } },
-          ...(states ? { state_filter: { states } } : {}),
-        },
-        sort: { sort_field: "CREATED_AT", sort_order: "ASC" },
-      },
-      limit: 500,
-    }),
-  });
-  const data = (await res.json()) as any;
-  return data.orders ?? [];
+async function completedOrders(ctx: ToolContext, range: { start: string; end: string }) {
+  const client = squareFromCtx(ctx)!;
+  return searchOrders(client, { startAt: range.start, endAt: range.end, states: ["COMPLETED"], sortOrder: "ASC" });
 }
 
 // ── Executors ─────────────────────────────────────────────────────────────────
 
 async function hourlySales(args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
-  if (!ctx.squareToken || !ctx.squareLocationId) return { result: "Square not connected." };
-  const { start, end } = parseDateRange(args.date as string | undefined);
-  try {
-    const orders = await fetchOrders(ctx.squareToken, ctx.squareLocationId, start, end, ["COMPLETED"]);
-    if (orders.length === 0) return { result: "No completed orders for this date." };
+  const client = squareFromCtx(ctx);
+  if (!client) return NOT_CONNECTED;
+  const tz = await venueTimeZone(client);
+  const res = await completedOrders(ctx, dayRange(args.date as string | undefined, tz));
+  if (!res.ok) return { result: `Failed: ${squareErrorMessage(res.error)}` };
+  if (res.orders.length === 0) return { result: "No completed orders for this date." };
 
-    const hourly = new Map<number, { count: number; revenue: number }>();
-    for (const o of orders) {
-      const hour = new Date(o.created_at).getHours();
-      const existing = hourly.get(hour) ?? { count: 0, revenue: 0 };
-      existing.count++;
-      existing.revenue += (o.total_money?.amount ?? 0);
-      hourly.set(hour, existing);
-    }
-
-    const lines: string[] = [];
-    for (let h = 0; h < 24; h++) {
-      const data = hourly.get(h);
-      if (data) {
-        const timeLabel = `${h.toString().padStart(2, "0")}:00`;
-        lines.push(`${timeLabel} — ${data.count} orders, $${(data.revenue / 100).toFixed(2)}`);
-      }
-    }
-    return { result: `Hourly breakdown:\n${lines.join("\n")}` };
-  } catch (e: any) {
-    return { result: `Failed: ${e.message}` };
+  const hourly = new Map<number, { count: number; revenue: number }>();
+  for (const o of res.orders) {
+    const hour = hourInZone(o.created_at, tz);
+    const existing = hourly.get(hour) ?? { count: 0, revenue: 0 };
+    existing.count++;
+    existing.revenue += o.total_money?.amount ?? 0;
+    hourly.set(hour, existing);
   }
+
+  const lines: string[] = [];
+  for (let h = 0; h < 24; h++) {
+    const data = hourly.get(h);
+    if (data) lines.push(`${hourLabel(h)} - ${data.count} orders, ${money(data.revenue)}`);
+  }
+  return { result: `Hourly breakdown:\n${lines.join("\n")}${res.truncated ? "\n(Busy day: most recent orders only.)" : ""}` };
 }
 
 async function itemPerformance(args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
-  if (!ctx.squareToken || !ctx.squareLocationId) return { result: "Square not connected." };
-  const period = String(args.period ?? "today");
-  const sortBy = String(args.sort_by ?? "revenue");
-  const limit = Number(args.limit ?? 10);
-  const { start, end } = parsePeriod(period);
+  const client = squareFromCtx(ctx);
+  if (!client) return NOT_CONNECTED;
+  const period = normalizePeriod(args.period);
+  const sortBy = String(args.sort_by ?? "revenue") === "quantity" ? "quantity" : "revenue";
+  const limit = Math.min(Math.max(1, Number(args.limit ?? 10) || 10), 50);
+  const tz = await venueTimeZone(client);
+  const res = await completedOrders(ctx, periodRange(period, tz));
+  if (!res.ok) return { result: `Failed: ${squareErrorMessage(res.error)}` };
+  if (res.orders.length === 0) return { result: "No completed orders for this period." };
 
-  try {
-    const orders = await fetchOrders(ctx.squareToken, ctx.squareLocationId, start, end, ["COMPLETED"]);
-    if (orders.length === 0) return { result: "No completed orders for this period." };
-
-    const items = new Map<string, { qty: number; revenue: number }>();
-    for (const o of orders) {
-      for (const li of o.line_items ?? []) {
-        const name = li.name ?? "Unknown";
-        const qty = parseInt(li.quantity ?? "0");
-        const rev = li.total_money?.amount ?? 0;
-        const existing = items.get(name) ?? { qty: 0, revenue: 0 };
-        items.set(name, { qty: existing.qty + qty, revenue: existing.revenue + rev });
-      }
-    }
-
-    const sorted = [...items.entries()].sort((a, b) =>
-      sortBy === "quantity" ? b[1].qty - a[1].qty : b[1].revenue - a[1].revenue,
-    ).slice(0, limit);
-
-    const lines = sorted.map(([name, { qty, revenue }], i) =>
-      `${i + 1}. ${name}: ${qty} sold, $${(revenue / 100).toFixed(2)}`,
-    );
-    return { result: `Top items (${period.replace(/_/g, " ")}, by ${sortBy}):\n${lines.join("\n")}` };
-  } catch (e: any) {
-    return { result: `Failed: ${e.message}` };
-  }
+  const summary = summarizeOrders(res.orders, Number.MAX_SAFE_INTEGER, res.truncated);
+  const sorted = [...summary.topItems]
+    .sort((a, b) => (sortBy === "quantity" ? b.qty - a.qty : b.revenue - a.revenue))
+    .slice(0, limit);
+  const lines = sorted.map((item, i) => `${i + 1}. ${item.name}: ${item.qty} sold, $${item.revenue.toFixed(2)}`);
+  return { result: `Top items (${period.replace(/_/g, " ")}, by ${sortBy}):\n${lines.join("\n")}` };
 }
 
 async function dailySummary(args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
-  if (!ctx.squareToken || !ctx.squareLocationId) return { result: "Square not connected." };
-  const { start, end } = parseDateRange(args.date as string | undefined);
+  const client = squareFromCtx(ctx);
+  if (!client) return NOT_CONNECTED;
+  const tz = await venueTimeZone(client);
+  const res = await completedOrders(ctx, dayRange(args.date as string | undefined, tz));
+  if (!res.ok) return { result: `Failed: ${squareErrorMessage(res.error)}` };
+  if (res.orders.length === 0) return { result: "No completed orders for this date." };
 
-  try {
-    const orders = await fetchOrders(ctx.squareToken, ctx.squareLocationId, start, end, ["COMPLETED"]);
-    if (orders.length === 0) return { result: "No completed orders for this date." };
-
-    let totalRevenue = 0;
-    const hourly = new Map<number, number>();
-    const items = new Map<string, { qty: number; revenue: number }>();
-
-    for (const o of orders) {
-      totalRevenue += (o.total_money?.amount ?? 0);
-      const hour = new Date(o.created_at).getHours();
-      hourly.set(hour, (hourly.get(hour) ?? 0) + 1);
-      for (const li of o.line_items ?? []) {
-        const name = li.name ?? "Unknown";
-        const qty = parseInt(li.quantity ?? "0");
-        const rev = li.total_money?.amount ?? 0;
-        const existing = items.get(name) ?? { qty: 0, revenue: 0 };
-        items.set(name, { qty: existing.qty + qty, revenue: existing.revenue + rev });
-      }
-    }
-
-    // Find busiest hour
-    let busiestHour = 0;
-    let busiestCount = 0;
-    for (const [h, count] of hourly) {
-      if (count > busiestCount) { busiestHour = h; busiestCount = count; }
-    }
-
-    // Top 5 items
-    const topItems = [...items.entries()].sort((a, b) => b[1].revenue - a[1].revenue).slice(0, 5);
-
-    const lines = [
-      `Daily Summary:`,
-      `Total orders: ${orders.length}`,
-      `Total revenue: $${(totalRevenue / 100).toFixed(2)}`,
-      `Average ticket: $${(totalRevenue / 100 / orders.length).toFixed(2)}`,
-      `Busiest hour: ${busiestHour.toString().padStart(2, "0")}:00 (${busiestCount} orders)`,
-      `Top sellers:`,
-      ...topItems.map(([name, { qty, revenue }]) => `  ${name}: ${qty} sold, $${(revenue / 100).toFixed(2)}`),
-    ];
-    return { result: lines.join("\n") };
-  } catch (e: any) {
-    return { result: `Failed: ${e.message}` };
+  const summary = summarizeOrders(res.orders, 5, res.truncated);
+  const hourly = new Map<number, number>();
+  for (const o of res.orders) {
+    const hour = hourInZone(o.created_at, tz);
+    hourly.set(hour, (hourly.get(hour) ?? 0) + 1);
   }
-}
+  let busiestHour = 0;
+  let busiestCount = 0;
+  for (const [h, count] of hourly) {
+    if (count > busiestCount) { busiestHour = h; busiestCount = count; }
+  }
 
-// ── Export executor map ───────────────────────────────────────────────────────
+  const lines = [
+    `Daily Summary:`,
+    `Total orders: ${summary.totalOrders}${summary.truncated ? "+" : ""}`,
+    `Total revenue: $${summary.totalRevenue.toFixed(2)}`,
+    `Average ticket: $${summary.avgOrder.toFixed(2)}`,
+    `Busiest hour: ${hourLabel(busiestHour)} (${busiestCount} orders)`,
+    `Top sellers:`,
+    ...summary.topItems.map((item) => `  ${item.name}: ${item.qty} sold, $${item.revenue.toFixed(2)}`),
+  ];
+  return { result: lines.join("\n") };
+}
 
 export const executors: Record<string, ToolExecutor> = {
   hourly_sales: hourlySales,

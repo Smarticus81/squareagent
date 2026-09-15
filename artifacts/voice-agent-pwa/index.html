@@ -1,11 +1,11 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="light">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <meta name="theme-color" content="#FFFFFF" />
+  <meta name="theme-color" content="#050506" />
   <meta name="mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="VoyceLab" />
   <link rel="icon" href="%BASE_URL%favicon.svg" type="image/svg+xml" />
   <!-- iOS ignores SVG manifest icons; without a PNG apple-touch-icon the home-screen install shows a blank tile -->
@@ -20,12 +20,14 @@
   <div id="root"></div>
   <script>
     // Apply persisted theme before React renders to avoid flash, and keep the
-    // status-bar theme-color in step so the splash doesn't flash a mismatched color
+    // status-bar theme-color in step so the splash doesn't flash a mismatched
+    // color. Noir (dark) is the product default; light is an opt-in.
     (function() {
       var t = localStorage.getItem("voycelab_theme");
-      if (t === "dark" || t === "light") document.documentElement.setAttribute("data-theme", t);
+      if (t !== "light") t = "dark";
+      document.documentElement.setAttribute("data-theme", t);
       var meta = document.querySelector('meta[name="theme-color"]');
-      if (meta) meta.setAttribute("content", t === "dark" ? "#07080A" : "#FFFFFF");
+      if (meta) meta.setAttribute("content", t === "dark" ? "#050506" : "#FBF7F1");
     })();
   </script>
   <script type="module" src="/src/main.tsx"></script>

@@ -3,12 +3,31 @@ import { HealthCheckResponse } from "@workspace/api-zod";
 import { secretsEncryptionStatus } from "../lib/secrets";
 import { readServerApiKeyReadiness } from "../lib/api-keys";
 import { requireAuth } from "./auth";
+import { pool } from "@workspace/db";
 
 const router: IRouter = Router();
 
 router.get("/healthz", (_req, res) => {
   const data = HealthCheckResponse.parse({ status: "ok" });
   res.json(data);
+});
+
+router.get("/readyz", async (_req, res) => {
+  try {
+    if (!pool) {
+      res.status(503).json({ status: "unavailable", code: "database_not_configured" });
+      return;
+    }
+    await pool.query("SELECT 1");
+    const apiKeys = readServerApiKeyReadiness();
+    if (!apiKeys.openai.configured) {
+      res.status(503).json({ status: "unavailable", code: "openai_not_configured" });
+      return;
+    }
+    res.json({ status: "ready" });
+  } catch {
+    res.status(503).json({ status: "unavailable", code: "database_unreachable" });
+  }
 });
 
 router.get("/healthz/config", requireAuth as any, (req, res) => {

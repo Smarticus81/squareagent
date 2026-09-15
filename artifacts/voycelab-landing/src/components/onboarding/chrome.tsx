@@ -29,7 +29,7 @@ export function OnboardingChrome({
       {/* Flow progress — a luminous thread across the very top edge */}
       <div
         className="fixed inset-x-0 top-0 z-50 h-[3px]"
-        style={{ background: "rgba(14, 27, 44, 0.07)" }}
+        style={{ background: "rgba(255, 255, 255, 0.10)" }}
         role="progressbar"
         aria-valuemin={0}
         aria-valuemax={100}
@@ -39,8 +39,8 @@ export function OnboardingChrome({
         <motion.div
           className="h-full"
           style={{
-            background: "linear-gradient(90deg, #E54F2D, #FF6B47 55%, #7C6EF5)",
-            boxShadow: "0 0 12px rgba(255, 107, 71, 0.45)",
+            background: "linear-gradient(90deg, #FF512F, #F09819)",
+            boxShadow: "0 0 14px rgba(240, 152, 25, 0.6)",
             borderRadius: "0 3px 3px 0",
           }}
           initial={false}
@@ -69,15 +69,19 @@ export function OnboardingChrome({
               transition={{ duration: 0.2 }}
               className="flex h-9 w-9 items-center justify-center rounded-xl transition-colors"
               style={{
-                color: "var(--color-vl-ink-soft)",
-                border: "1px solid rgba(14, 27, 44, 0.10)",
-                background: "rgba(255, 252, 248, 0.7)",
+                color: "rgba(255, 255, 255, 0.85)",
+                border: "1px solid rgba(255, 255, 255, 0.16)",
+                background: "rgba(255, 255, 255, 0.08)",
+                backdropFilter: "blur(12px)",
               }}
             >
               <ArrowLeft className="h-4 w-4" />
             </motion.button>
-            <Link href="/" className="transition-opacity hover:opacity-80">
-              <Logo size="sm" />
+            <Link href="/" className="flex items-center gap-2 transition-opacity hover:opacity-80">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white shadow-[0_8px_24px_-10px_rgba(0,0,0,0.8)]">
+                <Logo size="sm" iconOnly />
+              </span>
+              <span className="hidden text-[13px] font-semibold tracking-tight text-white sm:inline">VoyceLab</span>
             </Link>
           </div>
 

@@ -4,6 +4,7 @@
 
 import type { ToolDefinition, ToolExecutor, ToolContext, ToolResult } from "./types";
 import { listLocations } from "../lib/square-helpers";
+import { squareFromCtx, NOT_CONNECTED } from "./_square";
 
 // ── Definitions ───────────────────────────────────────────────────────────────
 
@@ -19,15 +20,14 @@ export const definitions: ToolDefinition[] = [
 // ── Executors ─────────────────────────────────────────────────────────────────
 
 async function listLocationsExec(_args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
-  if (!ctx.squareToken) return { result: "Square not connected." };
-  const { ok, locations, error } = await listLocations(ctx.squareToken);
+  const client = squareFromCtx(ctx);
+  if (!client) return NOT_CONNECTED;
+  const { ok, locations, error } = await listLocations(client);
   if (!ok) return { result: `Failed: ${error}` };
   if (!locations || locations.length === 0) return { result: "No locations found." };
-  const lines = locations.map((l) => `${l.name} (${l.id}) — ${l.status}`);
+  const lines = locations.map((l) => `${l.name} (${l.id}) - ${l.status}${l.id === client.locationId ? " (this venue)" : ""}`);
   return { result: `Locations:\n${lines.join("\n")}` };
 }
-
-// ── Export executor map ───────────────────────────────────────────────────────
 
 export const executors: Record<string, ToolExecutor> = {
   list_locations: listLocationsExec,

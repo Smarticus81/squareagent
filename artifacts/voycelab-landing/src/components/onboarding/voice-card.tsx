@@ -101,9 +101,9 @@ export function VoiceCard({
       whileTap={reduced ? undefined : { scale: 0.985 }}
       className="vl-card relative flex w-full items-center gap-4 p-4 text-left sm:p-5"
       style={{
-        borderColor: selected ? "rgba(255, 107, 71, 0.55)" : "rgba(14, 27, 44, 0.09)",
+        borderColor: selected ? "rgba(255, 107, 71, 0.55)" : "var(--vl-line)",
         background: selected
-          ? "linear-gradient(160deg, rgba(255, 240, 234, 0.9), rgba(255, 252, 248, 0.8))"
+          ? "linear-gradient(160deg, #FFF0EA, #FFFFFF)"
           : undefined,
         boxShadow: selected
           ? "0 1px 0 rgba(255,255,255,0.7) inset, 0 14px 34px -22px rgba(229, 79, 45, 0.5)"
@@ -166,7 +166,7 @@ export function VoiceCard({
                 style={{
                   background: isPlaying
                     ? "linear-gradient(180deg, #FF6B47, #7C6EF5)"
-                    : "rgba(14, 27, 44, 0.16)",
+                    : "var(--vl-line)",
                 }}
                 initial={false}
                 animate={

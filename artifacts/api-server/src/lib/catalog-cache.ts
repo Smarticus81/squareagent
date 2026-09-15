@@ -1,94 +1,185 @@
 /**
- * Catalog Cache — per-venue cache of the transformed Square catalog served by
- * `GET /api/venues/:id/catalog`.
+ * Square read caches — catalog, inventory counts, location details.
  *
- * That endpoint paginates the venue's entire Square ITEM catalog and reshapes it
- * on every call. For a high-traffic venue whose PWA reloads the catalog often,
- * that is a repeated multi-page round trip to Square for data that changes
- * rarely. This cache holds the reshaped item list per venue for a short TTL.
+ * The voice hot path (POST /api/realtime/tools, the WS relays, workflows)
+ * needs the venue catalog on every command to resolve spoken item names.
+ * Previously the PWA shipped the entire catalog in every request; now the
+ * server owns it and reads it from here.
  *
- * Freshness strategy — stale-while-revalidate:
- *   • fresh (< TTL)        → served from memory, no Square call
- *   • stale (TTL..HARD)    → stale copy served immediately AND a background
- *                            refresh is kicked off, so a busy venue never blocks
- *                            on a full catalog fetch
- *   • absent / hard-expired → the loader runs and the caller awaits it
- *
- * Invalidation: catalog write tools (create/update/delete item) and Square
- * OAuth reconnect call `invalidateCatalog(venueId)` so edits show up at once;
- * the TTL bounds staleness for anything missed (e.g. edits made in the Square
- * dashboard, until webhook invalidation lands — see LATENCY_AUDIT.md Phase 4).
+ * Catalog entries are served stale-while-revalidate: a fresh entry is returned
+ * directly, an expired one is returned immediately while a background refresh
+ * runs, and only an entry older than the hard limit blocks. Catalog writes
+ * (create/update/delete item, create category) invalidate explicitly so the
+ * next command sees the change. Concurrent misses share one in-flight fetch.
  */
 
+import {
+  loadCatalog,
+  fetchInventoryCounts,
+  listLocations,
+  type CatalogItem,
+  type SquareLocation,
+} from "./square-helpers";
+import type { SquareClient, SquareError } from "./square-client";
 import { createComponentLogger } from "./logger";
 
-const log = createComponentLogger("catalog-cache");
+const log = createComponentLogger("square-cache");
 
-const TTL_MS = Number(process.env.CATALOG_CACHE_TTL_MS ?? 5 * 60_000);
-// How long a stale entry may still be served (while revalidating) before the
-// caller must wait for a fresh load. Bounds unbounded staleness if refreshes
-// keep failing.
-const HARD_TTL_MS = Number(process.env.CATALOG_CACHE_HARD_TTL_MS ?? 30 * 60_000);
+const CATALOG_TTL_MS = Number(process.env.SQUARE_CATALOG_CACHE_TTL_MS) || 5 * 60 * 1000;
+const CATALOG_MAX_STALE_MS = Number(process.env.SQUARE_CATALOG_MAX_STALE_MS) || 30 * 60 * 1000;
+const INVENTORY_TTL_MS = Number(process.env.SQUARE_INVENTORY_CACHE_TTL_MS) || 10 * 1000;
+const LOCATION_TTL_MS = 60 * 60 * 1000;
 
-export type CatalogLoader = () => Promise<any[]>;
-
-interface Entry {
-  items: any[];
-  loadedAt: number;
-  refreshing: boolean;
+interface CatalogEntry {
+  items: CatalogItem[];
+  fetchedAt: number;
 }
 
-const cache = new Map<number, Entry>();
+const catalogCache = new Map<string, CatalogEntry>();
+const catalogInFlight = new Map<string, Promise<CatalogEntry | null>>();
+// Per-location invalidation generation. invalidateCatalog() bumps it; an
+// in-flight refresh captures it at start and only stores its result if the
+// generation is unchanged on completion. Without this fence, a background
+// stale-revalidation that began before a catalog write or Square reconnect
+// could reinsert pre-invalidation (even wrong-account) items and mark them
+// fresh for another full TTL.
+const catalogGeneration = new Map<string, number>();
+
+async function fetchCatalogEntry(client: SquareClient, key: string): Promise<CatalogEntry | null> {
+  const existing = catalogInFlight.get(key);
+  if (existing) return existing;
+  const startGeneration = catalogGeneration.get(key) ?? 0;
+  const task = (async () => {
+    const start = Date.now();
+    const res = await loadCatalog(client);
+    if (!res.ok) {
+      log.warn({ location: key, err: res.error?.message }, "catalog load failed");
+      return null;
+    }
+    // Discard the result if the cache was invalidated (catalog write / Square
+    // reconnect) while this fetch was in flight — otherwise we would resurface
+    // stale or wrong-account items and treat them as freshly loaded.
+    if ((catalogGeneration.get(key) ?? 0) !== startGeneration) {
+      log.info({ location: key }, "catalog refresh discarded (invalidated mid-flight)");
+      return null;
+    }
+    const entry = { items: res.items, fetchedAt: Date.now() };
+    catalogCache.set(key, entry);
+    log.info({ location: key, items: entry.items.length, durationMs: Date.now() - start }, "catalog loaded");
+    return entry;
+  })().finally(() => catalogInFlight.delete(key));
+  catalogInFlight.set(key, task);
+  return task;
+}
+
+export interface CatalogLoadResult {
+  items: CatalogItem[];
+  /** True when the items came from cache (fresh or stale). */
+  cached: boolean;
+  /** Set when a live load was attempted and failed. */
+  error?: SquareError;
+}
 
 /**
- * Return the venue's catalog items, using the cache with stale-while-revalidate.
- * `loader` performs the authoritative Square fetch + reshape; it is only awaited
- * on a cold or hard-expired entry.
+ * The venue catalog for a Square client. Returns `[]` with `error` when Square
+ * is unreachable and nothing is cached, so callers can fall back gracefully.
  */
-export async function getCachedCatalog(venueId: number, loader: CatalogLoader): Promise<any[]> {
+export async function getCachedCatalog(
+  client: SquareClient,
+  opts: { force?: boolean } = {},
+): Promise<CatalogLoadResult> {
+  const key = client.locationId;
   const now = Date.now();
-  const entry = cache.get(venueId);
+  const hit = opts.force ? undefined : catalogCache.get(key);
 
-  if (entry) {
-    const age = now - entry.loadedAt;
-    if (age < TTL_MS) return entry.items; // fresh
-    if (age < HARD_TTL_MS) {
-      // Stale but usable — serve now, refresh in the background.
-      if (!entry.refreshing) {
-        entry.refreshing = true;
-        loader()
-          .then((items) => {
-            cache.set(venueId, { items, loadedAt: Date.now(), refreshing: false });
-          })
-          .catch((e: any) => {
-            entry.refreshing = false;
-            log.warn({ venueId, err: e?.message }, "background catalog refresh failed; keeping stale");
-          });
-      }
-      return entry.items;
+  if (hit) {
+    const age = now - hit.fetchedAt;
+    if (age < CATALOG_TTL_MS) return { items: hit.items, cached: true };
+    if (age < CATALOG_MAX_STALE_MS) {
+      // Serve stale, refresh in the background — never on the voice path.
+      void fetchCatalogEntry(client, key);
+      return { items: hit.items, cached: true };
     }
   }
 
-  // Cold or hard-expired — load synchronously and cache.
-  const items = await loader();
-  cache.set(venueId, { items, loadedAt: Date.now(), refreshing: false });
-  return items;
+  const fresh = await fetchCatalogEntry(client, key);
+  if (fresh) return { items: fresh.items, cached: false };
+  // Load failed: prefer stale data over nothing.
+  const stale = catalogCache.get(key);
+  if (stale) return { items: stale.items, cached: true };
+  return { items: [], cached: false, error: { status: 0, message: "Catalog unavailable" } };
 }
 
-/** Drop a venue's cached catalog (call after catalog writes / reconnect). */
-export function invalidateCatalog(venueId: number): void {
-  cache.delete(venueId);
+/** Drop the cached catalog for a location (call after any catalog write). */
+export function invalidateCatalog(locationId: string): void {
+  catalogCache.delete(locationId);
+  // Bump the generation so any refresh already in flight discards its result
+  // instead of repopulating the cache with pre-invalidation data.
+  catalogGeneration.set(locationId, (catalogGeneration.get(locationId) ?? 0) + 1);
 }
 
-/** Number of cached venues (diagnostics). */
-export function catalogCacheSize(): number {
-  return cache.size;
+// ── Inventory counts (micro-cache) ───────────────────────────────────────────
+// Workflows run several inventory tools back-to-back over the same ids; a
+// short TTL dedupes those into one Square round trip without hiding real
+// stock changes for more than a few seconds.
+
+interface InventoryEntry {
+  counts: Map<string, number>;
+  ids: Set<string>;
+  fetchedAt: number;
 }
 
-// Bound memory: sweep hard-expired entries periodically.
-setInterval(() => {
-  const cutoff = Date.now() - HARD_TTL_MS;
-  for (const [venueId, entry] of cache) {
-    if (entry.loadedAt < cutoff) cache.delete(venueId);
+const inventoryCache = new Map<string, InventoryEntry>();
+
+export async function getCachedInventoryCounts(
+  client: SquareClient,
+  variationIds: string[],
+): Promise<{ ok: boolean; counts: Map<string, number>; error?: SquareError }> {
+  const key = client.locationId;
+  const hit = inventoryCache.get(key);
+  if (hit && Date.now() - hit.fetchedAt < INVENTORY_TTL_MS && variationIds.every((id) => hit.ids.has(id))) {
+    return { ok: true, counts: hit.counts };
   }
-}, 5 * 60_000);
+  const res = await fetchInventoryCounts(client, variationIds);
+  if (res.ok) inventoryCache.set(key, { counts: res.counts, ids: new Set(variationIds), fetchedAt: Date.now() });
+  return res;
+}
+
+/** Drop cached counts for a location (call after any inventory write). */
+export function invalidateInventoryCounts(locationId: string): void {
+  inventoryCache.delete(locationId);
+}
+
+// ── Location details ─────────────────────────────────────────────────────────
+
+const locationCache = new Map<string, { location: SquareLocation | null; fetchedAt: number }>();
+
+/** Details (timezone, currency) for the client's own location. */
+export async function getCachedLocation(client: SquareClient): Promise<SquareLocation | null> {
+  const key = client.locationId;
+  const hit = locationCache.get(key);
+  if (hit && Date.now() - hit.fetchedAt < LOCATION_TTL_MS) return hit.location;
+  const res = await listLocations(client);
+  if (!res.ok) return hit?.location ?? null;
+  const location = res.locations?.find((l) => l.id === key) ?? null;
+  locationCache.set(key, { location, fetchedAt: Date.now() });
+  return location;
+}
+
+/** Test hook. */
+export function resetSquareCaches(): void {
+  catalogCache.clear();
+  catalogInFlight.clear();
+  catalogGeneration.clear();
+  inventoryCache.clear();
+  locationCache.clear();
+}
+
+// Bound memory: sweep entries past the hard stale limit.
+const sweeper = setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of catalogCache) if (now - entry.fetchedAt > CATALOG_MAX_STALE_MS) catalogCache.delete(key);
+  for (const [key, entry] of inventoryCache) if (now - entry.fetchedAt > INVENTORY_TTL_MS) inventoryCache.delete(key);
+  for (const [key, entry] of locationCache) if (now - entry.fetchedAt > LOCATION_TTL_MS) locationCache.delete(key);
+}, 5 * 60 * 1000);
+if (typeof sweeper.unref === "function") sweeper.unref();

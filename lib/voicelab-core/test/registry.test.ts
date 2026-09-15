@@ -36,9 +36,10 @@ describe("connected-service registry", () => {
 });
 
 describe("voice-pipeline registry", () => {
-  it("lists all registered voice pipeline providers across all categories", () => {
+  it("lists every registered voice pipeline provider across all categories", () => {
     const list = listVoicePipelineProviders();
-    expect(list.length).toBe(7);
+    expect(list).toHaveLength(Object.keys(VOICE_PIPELINE_PROVIDERS).length);
+    expect(list.map((provider) => provider.provider)).toContain("xai_grok_realtime_ws");
   });
 
   it("marks fallbacks correctly", () => {
