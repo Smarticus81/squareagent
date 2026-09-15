@@ -66,6 +66,39 @@ describe("catalog cache", () => {
     expect(res.items).toEqual([]);
     expect(res.error).toBeDefined();
   });
+
+  it("discards a fetch whose load overlapped an invalidation instead of caching it", async () => {
+    // Reproduces the race: a fetch in flight when invalidateCatalog() runs
+    // (catalog write / Square reconnect) must NOT repopulate the cache with its
+    // pre-invalidation result. A gate holds the first /catalog/list response
+    // open until after invalidation.
+    const counter = { calls: 0 };
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const fetchFn = (async (url: string | URL | Request) => {
+      counter.calls++;
+      if (String(url).includes("/catalog/list")) {
+        await gate;
+        return new Response(JSON.stringify({
+          objects: [
+            { type: "ITEM", id: "i1", item_data: { name: "Lager", variations: [{ id: "v1", item_variation_data: { price_money: { amount: 600 } } }] } },
+          ],
+        }), { status: 200 });
+      }
+      return new Response("{}", { status: 200 });
+    }) as typeof fetch;
+    const client = new SquareClient("tok", "LOC-RACE", fetchFn);
+
+    const inFlight = getCachedCatalog(client); // cold miss → fetch started, awaiting the gate
+    invalidateCatalog("LOC-RACE");             // generation bumped while the fetch is in flight
+    release();                                 // let the (now-stale) fetch resolve
+    await inFlight;
+
+    // The discarded result must not have been cached: the next read fetches again.
+    const after = await getCachedCatalog(client);
+    expect(after.items).toHaveLength(1);
+    expect(counter.calls).toBe(2);
+  });
 });
 
 describe("inventory count cache", () => {

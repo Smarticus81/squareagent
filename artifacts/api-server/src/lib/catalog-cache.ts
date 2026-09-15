@@ -37,15 +37,30 @@ interface CatalogEntry {
 
 const catalogCache = new Map<string, CatalogEntry>();
 const catalogInFlight = new Map<string, Promise<CatalogEntry | null>>();
+// Per-location invalidation generation. invalidateCatalog() bumps it; an
+// in-flight refresh captures it at start and only stores its result if the
+// generation is unchanged on completion. Without this fence, a background
+// stale-revalidation that began before a catalog write or Square reconnect
+// could reinsert pre-invalidation (even wrong-account) items and mark them
+// fresh for another full TTL.
+const catalogGeneration = new Map<string, number>();
 
 async function fetchCatalogEntry(client: SquareClient, key: string): Promise<CatalogEntry | null> {
   const existing = catalogInFlight.get(key);
   if (existing) return existing;
+  const startGeneration = catalogGeneration.get(key) ?? 0;
   const task = (async () => {
     const start = Date.now();
     const res = await loadCatalog(client);
     if (!res.ok) {
       log.warn({ location: key, err: res.error?.message }, "catalog load failed");
+      return null;
+    }
+    // Discard the result if the cache was invalidated (catalog write / Square
+    // reconnect) while this fetch was in flight — otherwise we would resurface
+    // stale or wrong-account items and treat them as freshly loaded.
+    if ((catalogGeneration.get(key) ?? 0) !== startGeneration) {
+      log.info({ location: key }, "catalog refresh discarded (invalidated mid-flight)");
       return null;
     }
     const entry = { items: res.items, fetchedAt: Date.now() };
@@ -98,6 +113,9 @@ export async function getCachedCatalog(
 /** Drop the cached catalog for a location (call after any catalog write). */
 export function invalidateCatalog(locationId: string): void {
   catalogCache.delete(locationId);
+  // Bump the generation so any refresh already in flight discards its result
+  // instead of repopulating the cache with pre-invalidation data.
+  catalogGeneration.set(locationId, (catalogGeneration.get(locationId) ?? 0) + 1);
 }
 
 // ── Inventory counts (micro-cache) ───────────────────────────────────────────
@@ -152,6 +170,7 @@ export async function getCachedLocation(client: SquareClient): Promise<SquareLoc
 export function resetSquareCaches(): void {
   catalogCache.clear();
   catalogInFlight.clear();
+  catalogGeneration.clear();
   inventoryCache.clear();
   locationCache.clear();
 }
