@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { buildLiveDelegation, buildLiveSessionPayload, createLiveWebRtcSession, validLiveSdp } from "../src/lib/openai-live";
+import { buildLiveDelegation, buildLiveSessionPayload, buildWakeGreeting, createLiveWebRtcSession, validLiveSdp } from "../src/lib/openai-live";
 
 afterEach(() => vi.unstubAllGlobals());
 describe("GPT-Live session contract", () => {
@@ -27,6 +27,11 @@ describe("GPT-Live session contract", () => {
     expect(delegation.responses.instructions).toContain("Updated catalog rules.");
     expect(delegation.responses.tools.map(tool => tool.name)).toEqual(["add_item"]);
     expect(buildLiveSessionPayload({ instructions: "Updated catalog rules.", tools }).delegation).toEqual(delegation);
+  });
+  it("builds a speakable wake greeting that names the assistant", () => {
+    expect(buildWakeGreeting("Joy")).toContain('"Hey, it\'s Joy! What can I do for you?"');
+    expect(buildWakeGreeting("")).toContain('"Hey! What can I do for you?"');
+    expect(buildWakeGreeting(undefined)).toMatch(/right now/);
   });
   it("configures PCM only for WS and sanitizes migrated provider voices", () => {
     const config = buildLiveSessionPayload({ instructions: "Test", voice: "Kore", transport: "websocket" });

@@ -61,6 +61,19 @@ Only announce actions after the backend confirms success. Ask for required confi
   };
 }
 
+/**
+ * Speakable wake greeting, sent by the client as `session.commentary.append`
+ * the moment the wake word activates a session. Commentary is the only Live
+ * client event that asks the model to speak: `session.instructions.append`
+ * only steers later behaviour and never requests speech on its own, which is
+ * why an instruction-shaped greeting was silently ignored.
+ */
+export function buildWakeGreeting(displayName?: string): string {
+  const name = (displayName ?? "").trim();
+  const line = name ? `Hey, it's ${name}! What can I do for you?` : "Hey! What can I do for you?";
+  return `The user just said your wake phrase. Say this greeting right now, word for word, then stop and listen for their request: "${line}"`;
+}
+
 export function validLiveSdp(sdp: unknown): sdp is string {
   return typeof sdp === "string" && sdp.length <= 65536 && sdp.startsWith("v=0") && sdp.includes("m=audio");
 }

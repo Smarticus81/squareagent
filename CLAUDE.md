@@ -73,6 +73,10 @@ cd artifacts/api-server && npx tsx scripts/enable-pgvector.ts
 
 **Square integration**: OAuth flow at `/api/square/oauth/*` stores encrypted tokens per-venue (in `service_connections`, with the legacy venue columns kept in step). Credentials are AES-256-GCM encrypted via `secrets.ts`. The credential cache decrypts on read and renews 30-day Square access tokens ahead of expiry using the stored refresh token (`lib/square-oauth.ts`). All Square HTTP goes through `lib/square-client.ts` (`SquareClient`, memoized per credential via `getSquareClient`); the pinned API version lives there as `SQUARE_API_VERSION` (env override `SQUARE_API_VERSION`). Tools obtain the client with `squareFromCtx(ctx)` from `tools/_square.ts` and never call `fetch` directly.
 
+**Default venue**: an assistant profile with no venue binding runs against the organization's Square-connected venue (`lib/default-venue.ts`, `resolveDefaultVenueId`). The WebRTC session mint, `/api/realtime/tools`, the WS relay, `/v1/realtime/sessions`, and the PWA launch exchange code all apply this fallback, so a workspace with a healthy Square connection never silently launches a POS-less "general" session. The one-minute cache is cleared whenever venue credentials are invalidated.
+
+**Wake greeting**: the PWA sends the server-built greeting (`buildWakeGreeting` in `lib/openai-live.ts`) as `session.commentary.append` the moment the wake word activates a session. Commentary is the only GPT-Live client event that asks the model to speak; `session.instructions.append` only steers later turns.
+
 **Catalog ownership**: the server owns the venue catalog. `/api/realtime/session`, `/api/realtime/tools`, the WS relays, and `/v1/workflows/:slug/run` all read it from `lib/catalog-cache.ts`; a client-supplied `catalog` in a request body is only a fallback for when Square is unreachable. Item names spoken by users are resolved with `findCatalogItem` (normalized, tiered matching) in `square-helpers.ts`. Reports use the venue's Square location timezone via `lib/venue-time.ts`.
 
 ## Skills System

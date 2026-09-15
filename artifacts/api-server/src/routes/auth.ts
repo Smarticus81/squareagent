@@ -12,6 +12,7 @@ import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import nodemailer from "nodemailer";
 import { db, usersTable, sessionsTable, subscriptionsTable, exchangeCodesTable, organizationMembershipsTable, organizationsTable, venuesTable, agentProfilesTable, passwordResetTokensTable } from "@workspace/db";
+import { resolveDefaultVenueId } from "../lib/default-venue";
 import { and, eq, gte, inArray, isNull, lt, or } from "drizzle-orm";
 import { checkClerkOrgPlan, isClerkConfigured, ensureClerkIdentity, createClerkSignInToken, formatClerkApiError } from "../lib/clerk-billing";
 import { decrypt, encrypt } from "../lib/secrets";
@@ -909,6 +910,12 @@ async function validateExchangeLaunchScope(
     normalizedVenueId = String(numericVenueId);
   } else if (profileVenueId !== null) {
     normalizedVenueId = String(profileVenueId);
+  } else {
+    // A venue-less assistant launches against the organization's Square
+    // venue so the PWA verifies real credentials instead of booting as a
+    // POS-less "general" assistant.
+    const defaultVenueId = await resolveDefaultVenueId(userId, organizationId);
+    if (defaultVenueId !== null) normalizedVenueId = String(defaultVenueId);
   }
 
   return {
