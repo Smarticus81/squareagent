@@ -54,7 +54,8 @@ import {
   withSessionLock,
 } from "../lib/session-store";
 import { readServerApiKey, requiredApiKeyEnv } from "../lib/api-keys";
-import { OPENAI_LIVE_MODEL, buildLiveSessionPayload, createLiveWebRtcSession, validLiveSdp } from "../lib/openai-live";
+import { OPENAI_LIVE_MODEL, buildLiveSessionPayload, buildWakeGreeting, createLiveWebRtcSession, validLiveSdp } from "../lib/openai-live";
+import { resolveDefaultVenueId } from "../lib/default-venue";
 import { getCachedVoiceMinutes } from "../lib/usage-cache";
 import { hasGeneralConnectedSystemsCached } from "../lib/connected-systems-cache";
 import { beginCommandExecution, completeCommandExecution } from "../lib/command-ledger";
@@ -735,7 +736,13 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
   }
 
   // Look up credentials server-side if a venue is in scope. The effective
-  // venue may come from the launch request or from the bound assistant profile.
+  // venue may come from the launch request, from the bound assistant profile,
+  // or — for an assistant with no venue binding — from the organization's
+  // Square-connected venue, so a connected workspace never silently runs a
+  // POS-less session.
+  if (effectiveVenueId === null && profileUsesSquareService) {
+    effectiveVenueId = await resolveDefaultVenueId(req.user.id, organizationId);
+  }
   let squareToken = "";
   let squareLocationId = "";
   if (effectiveVenueId !== null && profileUsesSquareService) {
@@ -822,9 +829,9 @@ router.post("/session", requireAuth as any, requirePlan() as any, async (req: an
     }
 
     const behavior = getNoiseModeBehavior(noiseMode);
-    // The client appends this server-built greeting after session.started.
-    const greetingPersona = profileDisplayName ? ` You are ${profileDisplayName}.` : "";
-    const greeting = `The user just summoned you with your wake phrase.${greetingPersona} Immediately say one short, warm greeting — under eight words, e.g. "Hey! What can I do for you?". Do not list capabilities or mention commands. Then stop speaking and wait for their request.`;
+    // The client sends this as speakable commentary the moment the wake word
+    // activates the session, so the assistant greets immediately.
+    const greeting = buildWakeGreeting(profileDisplayName);
     res.json({
       id: transportSessionId,
       transport: data.transport,
@@ -954,6 +961,11 @@ router.post("/tools", requireAuth as any, requirePlan() as any, async (req: any,
     }
   }
 
+  // Same default-venue fallback as the session mint, so a command executes
+  // against the venue the session was built for.
+  if (effectiveVenueId === null && profileUsesSquareService) {
+    effectiveVenueId = await resolveDefaultVenueId(req.user.id, organizationId);
+  }
   if (effectiveVenueId !== null && profileUsesSquareService) {
     const creds = await getCachedCredentials(req.user.id, effectiveVenueId, organizationId, profileConnectedServiceId);
     if (creds) {

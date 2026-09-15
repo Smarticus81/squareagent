@@ -38,16 +38,26 @@ export default function Assistants() {
   if (!auth?.user) return null;
 
   const venueById = new Map((venues ?? []).map((v) => [v.id, v]));
+  // An assistant with no venue of its own runs against the workspace's
+  // Square-connected venue (the server applies the same fallback), so the
+  // list says so instead of claiming Square is not connected.
+  const defaultVenue = (venues ?? []).find((v) => v.squareLocationId) ?? null;
   const list: AssistantSummary[] = (profiles ?? []).map((profile) => {
     const venue = profile.venueId ? venueById.get(profile.venueId) : undefined;
     const approvals = Object.values((profile.confirmationPolicy?.approvals ?? {}) as Record<string, string>);
     const askFirstCount = approvals.filter((level) => level === "ask_first").length;
+    const venueLabel = profile.venueId
+      ? venue?.squareLocationName ?? venue?.name ?? "Unnamed venue"
+      : defaultVenue
+        ? `${defaultVenue.squareLocationName ?? defaultVenue.name} (workspace default)`
+        : "General assistant";
+    const hasSquare = profile.venueId ? Boolean(venue?.squareLocationId) : Boolean(defaultVenue);
     return {
     id: profile.id,
     venueId: profile.venueId,
     name: profile.displayName,
-    venue: profile.venueId ? venue?.squareLocationName ?? venue?.name ?? "Unnamed venue" : "General assistant",
-    service: profile.venueId ? "Square" : "Square not connected",
+    venue: venueLabel,
+    service: hasSquare ? "Square" : "Square not connected",
     voice: pipelineLabel(profile.voicePipelineProvider),
     room: roomLabel(profile.noiseMode),
     wakePhrase: profile.wakePhrase,

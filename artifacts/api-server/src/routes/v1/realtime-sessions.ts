@@ -25,6 +25,7 @@ import {
   readVoicePipelineEnvCredentials,
 } from "../../voice-pipelines";
 import { getCachedCredentials } from "../../lib/credential-cache";
+import { resolveDefaultVenueId } from "../../lib/default-venue";
 import {
   buildToolsFromSkills,
   buildInstructionsFromSkills,
@@ -203,13 +204,21 @@ router.post("/", async (req: Request, res: Response) => {
     assistantKind = "general";
   }
 
+  // An assistant with no venue binding (and no non-Square service) runs
+  // against the organization's Square-connected venue.
+  const effectiveVenueId =
+    profile.venueId ??
+    (assistantKind === "venue" || !profile.connectedServiceId
+      ? await resolveDefaultVenueId(user.id, profile.organizationId)
+      : null);
+
   if (assistantKind === "venue") {
-    if (!profile.venueId) {
+    if (!effectiveVenueId) {
       assistantKind = "general";
     } else {
       const creds = await getCachedCredentials(
         user.id,
-        profile.venueId,
+        effectiveVenueId,
         profile.organizationId,
         profile.connectedServiceId,
       );
@@ -219,8 +228,8 @@ router.post("/", async (req: Request, res: Response) => {
         assistantKind = "general";
       }
     }
-  } else if (!profile.connectedServiceId && profile.venueId) {
-    const creds = await getCachedCredentials(user.id, profile.venueId, profile.organizationId);
+  } else if (!profile.connectedServiceId && effectiveVenueId) {
+    const creds = await getCachedCredentials(user.id, effectiveVenueId, profile.organizationId);
     if (creds) {
       assistantKind = "venue";
       sessionConnectionId = creds.serviceConnectionId ?? "";

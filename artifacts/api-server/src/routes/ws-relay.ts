@@ -51,6 +51,7 @@ import { planAllowsPipeline } from "@workspace/voicelab-core/pricing";
 import type { VoicePipelineProvider } from "@workspace/voicelab-core/voice-pipeline";
 import { isAdminEmail, JWT_SECRET } from "./auth";
 import { OPENAI_LIVE_WS_URL, buildLiveDelegation, buildLiveSessionPayload } from "../lib/openai-live";
+import { resolveDefaultVenueId } from "../lib/default-venue";
 import { LiveProtocol } from "@workspace/voicelab-client/live-protocol";
 import { finalizeVoiceSessionUsage, registerVoiceSession } from "../lib/voice-session-metering";
 import { getSessionOrRehydrate, persistSessionNow } from "../lib/session-store";
@@ -543,6 +544,10 @@ async function validateRelayScope(
     if (profileVenueId !== null && profileVenueId !== venueId) return { ok: false, status: 400 };
   } else if (profileVenueId !== null) {
     venueId = profileVenueId;
+  } else if (usesSquareService) {
+    // No venue on the request or the assistant: use the organization's
+    // Square-connected venue rather than silently dropping every command.
+    venueId = await resolveDefaultVenueId(userId, organizationId);
   }
 
   return {

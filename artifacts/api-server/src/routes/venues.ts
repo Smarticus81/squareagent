@@ -15,6 +15,7 @@ import { eq, and, desc, inArray, isNull, or } from "drizzle-orm";
 import { requireAuth } from "./auth";
 import { ensureUserOrganization } from "./v1/_helpers";
 import { getCachedCredentials, invalidateCredentials, type StoredSquareCredentials } from "../lib/credential-cache";
+import { invalidateDefaultVenue } from "../lib/default-venue";
 import { encrypt, decrypt } from "../lib/secrets";
 import { claimPendingSquareOAuthToken } from "../lib/square-oauth-claims";
 import { externalPaymentBody, idempotencyKey } from "../lib/square-helpers";
@@ -295,6 +296,7 @@ router.post("/", requireAuth as any, async (req: Request, res: Response): Promis
         locationName: locationName || updated.squareLocationName,
       });
       invalidateCredentials(user.id, updated.id);
+      invalidateDefaultVenue();
 
       res.json({
         venue: {
@@ -337,6 +339,7 @@ router.post("/", requireAuth as any, async (req: Request, res: Response): Promis
         locationName: locationName || updated.squareLocationName,
       });
       invalidateCredentials(user.id, updated.id);
+      invalidateDefaultVenue();
 
       res.json({
         venue: {
@@ -380,6 +383,7 @@ router.post("/", requireAuth as any, async (req: Request, res: Response): Promis
       locationName: locationName || venue.squareLocationName,
     });
     invalidateCredentials(user.id, venue.id);
+    invalidateDefaultVenue();
 
     res.json({
       venue: {
@@ -436,6 +440,7 @@ router.delete("/:id", requireAuth as any, async (req: Request, res: Response): P
 
     await db.delete(venuesTable).where(venueIdTenantWhere(venueId, user.id, organizationId));
     invalidateCredentials(user.id, venueId);
+    invalidateDefaultVenue();
     res.json({ ok: true });
   } catch (e: any) {
     console.error("[Venues] Delete error:", e.message);

@@ -198,9 +198,10 @@ const RECONNECT_MAX_MS = 8_000;
 const STALL_SILENCE_MS = 45_000;
 const STALL_SPEAKING_MS = 12_000;
 const LIVE_SESSION_ROTATE_MS = 7 * 60_000;
-// Fallback only — the server returns the authoritative greeting instruction.
+// Fallback only — the server returns the authoritative greeting text. Sent as
+// speakable commentary, so it must read as something to say right now.
 const DEFAULT_GREETING_INSTRUCTIONS =
-  "The user just summoned you with your wake phrase. Immediately say one short, warm greeting (under eight words), then stop speaking and wait for their request.";
+  'The user just said your wake phrase. Say this greeting right now, word for word, then stop and listen for their request: "Hey! What can I do for you?"';
 const GEMINI_PROVIDER_PREFIX = "google_gemini_";
 const OPENAI_SERVER_WS_PROVIDER = "openai_realtime_server_ws";
 const XAI_REALTIME_WS_PROVIDER = "xai_grok_realtime_ws";
@@ -687,12 +688,28 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
     }, 60_000);
   }, []);
 
-  /** Fire the spoken wake greeting. Instruction text is server-built. */
+  /**
+   * Fire the spoken wake greeting. The text is server-built and goes out as
+   * `session.commentary.append`: that is the one Live client event that asks
+   * the voice model to speak. An instruction append (the old path) only steers
+   * later turns, so the greeting never played until the user spoke first.
+   */
   const sendGreeting = useCallback(() => {
+    const event = {
+      type: "session.commentary.append",
+      delegation_id: null,
+      content: greetingRef.current || DEFAULT_GREETING_INSTRUCTIONS,
+    };
     const dc = dcRef.current;
-    if (dc?.readyState !== "open") return;
-    requestResponse({ instructions: greetingRef.current || DEFAULT_GREETING_INSTRUCTIONS });
-  }, [requestResponse]);
+    if (dc?.readyState === "open") {
+      liveProtocolRef.current?.send(event);
+      return;
+    }
+    const ws = wsRef.current;
+    if (ws?.readyState === WebSocket.OPEN && voicePipelineProviderRef.current === OPENAI_SERVER_WS_PROVIDER) {
+      ws.send(JSON.stringify(event));
+    }
+  }, []);
 
   const clearStandbyExpire = useCallback(() => {
     if (standbyExpireTimerRef.current) {
