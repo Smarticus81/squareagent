@@ -18,6 +18,26 @@ export interface LiveSessionOptions {
   noiseMode?: string;
 }
 
+/** Task-backend delegation block. Every `session.update` that touches
+ * delegation must carry this complete object: GPT-Live rejects a partial
+ * delegation with "Missing required parameter: 'session.delegation.type'".
+ */
+export function buildLiveDelegation(instructions: string, tools?: unknown[]) {
+  return {
+    type: "responses" as const,
+    responses: {
+      model: OPENAI_LIVE_BACKEND_MODEL,
+      instructions: `${instructions}\n\nYou are the task backend for a live voice assistant. Return concise verified results or clarifications for it to communicate. Apply the latest user corrections. Do not treat silence, transcript fragments, or interrupted speech as approval or cancellation. Never claim success before a command succeeds. Do not invoke wait_for_user merely to control speaking; the voice model manages conversation timing.`,
+      tools: (tools ?? []).filter((tool: any) => tool.name !== "wait_for_user").map((tool: any) => ({
+        type: "function", name: tool.name, description: tool.description,
+        parameters: tool.parameters, strict: false,
+      })),
+      tool_choice: "auto",
+      parallel_tool_calls: false,
+    },
+  };
+}
+
 /** Split speech persona from task rules. No Realtime-only parameters reach Live. */
 export function buildLiveSessionPayload(opts: LiveSessionOptions) {
   const voice = sanitizeLiveVoice(opts.voice);
@@ -37,19 +57,7 @@ Only announce actions after the backend confirms success. Ask for required confi
       ...(opts.transport === "websocket" ? { format: { type: "audio/pcm", rate: 24000 } } : {}),
       output: { voice: voice.startsWith("voice_") ? { id: voice } : voice },
     },
-    delegation: {
-      type: "responses",
-      responses: {
-        model: OPENAI_LIVE_BACKEND_MODEL,
-        instructions: `${opts.instructions}\n\nYou are the task backend for a live voice assistant. Return concise verified results or clarifications for it to communicate. Apply the latest user corrections. Do not treat silence, transcript fragments, or interrupted speech as approval or cancellation. Never claim success before a command succeeds. Do not invoke wait_for_user merely to control speaking; the voice model manages conversation timing.`,
-        tools: (opts.tools ?? []).filter((tool: any) => tool.name !== "wait_for_user").map((tool: any) => ({
-          type: "function", name: tool.name, description: tool.description,
-          parameters: tool.parameters, strict: false,
-        })),
-        tool_choice: "auto",
-        parallel_tool_calls: false,
-      },
-    },
+    delegation: buildLiveDelegation(opts.instructions, opts.tools),
   };
 }
 

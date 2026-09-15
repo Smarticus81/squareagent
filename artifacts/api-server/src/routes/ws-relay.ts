@@ -50,7 +50,7 @@ import type { NoiseMode } from "@workspace/voicelab-core/noise";
 import { planAllowsPipeline } from "@workspace/voicelab-core/pricing";
 import type { VoicePipelineProvider } from "@workspace/voicelab-core/voice-pipeline";
 import { isAdminEmail, JWT_SECRET } from "./auth";
-import { OPENAI_LIVE_WS_URL, buildLiveSessionPayload } from "../lib/openai-live";
+import { OPENAI_LIVE_WS_URL, buildLiveDelegation, buildLiveSessionPayload } from "../lib/openai-live";
 import { LiveProtocol } from "@workspace/voicelab-client/live-protocol";
 import { finalizeVoiceSessionUsage, registerVoiceSession } from "../lib/voice-session-metering";
 import { getSessionOrRehydrate, persistSessionNow } from "../lib/session-store";
@@ -1008,9 +1008,11 @@ export function attachWebSocketRelay(server: Server): void {
         if (Array.isArray(event.catalog) && catalog.length === 0) catalog = event.catalog as CatalogItem[];
         if (Array.isArray(event.order)) order = event.order as OrderItem[];
 
+        // GPT-Live requires the complete delegation object (including `type`)
+        // on every update; a bare `{ responses: { instructions } }` is rejected.
         if (openaiReady) protocol.send({
           type: "session.update",
-          session: { delegation: { responses: { instructions: buildInstructions(ctx, catalog, order, assistantKind) } } },
+          session: { delegation: buildLiveDelegation(buildInstructions(ctx, catalog, order, assistantKind), relayTools) },
         });
         return;
       }

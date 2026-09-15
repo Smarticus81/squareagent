@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { buildLiveSessionPayload, createLiveWebRtcSession, validLiveSdp } from "../src/lib/openai-live";
+import { buildLiveDelegation, buildLiveSessionPayload, createLiveWebRtcSession, validLiveSdp } from "../src/lib/openai-live";
 
 afterEach(() => vi.unstubAllGlobals());
 describe("GPT-Live session contract", () => {
@@ -18,6 +18,15 @@ describe("GPT-Live session contract", () => {
     expect(config.delegation.responses.tools[0]).toMatchObject({ name: "refund_payment", strict: false });
     expect(config.audio).toEqual({ output: { voice: "quartz" } });
     expect(JSON.stringify(config)).not.toMatch(/turn_detection|output_modalities|transcription|"speed"/);
+  });
+  it("emits a complete delegation block for session.update context refreshes", () => {
+    const tools = [{ name: "add_item", description: "Add", parameters: { type: "object" } }, { name: "wait_for_user" }];
+    const delegation = buildLiveDelegation("Updated catalog rules.", tools);
+    expect(delegation.type).toBe("responses");
+    expect(delegation.responses.model).toBeTruthy();
+    expect(delegation.responses.instructions).toContain("Updated catalog rules.");
+    expect(delegation.responses.tools.map(tool => tool.name)).toEqual(["add_item"]);
+    expect(buildLiveSessionPayload({ instructions: "Updated catalog rules.", tools }).delegation).toEqual(delegation);
   });
   it("configures PCM only for WS and sanitizes migrated provider voices", () => {
     const config = buildLiveSessionPayload({ instructions: "Test", voice: "Kore", transport: "websocket" });
