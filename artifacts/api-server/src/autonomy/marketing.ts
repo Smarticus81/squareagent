@@ -43,6 +43,7 @@ const CAMPAIGN_SCHEMA = {
 } as const;
 
 const PRIMARY_METRIC = "outbound_subscription_attributed";
+const CAMPAIGN_STRATEGY_VERSION = "venue-owner-v1";
 
 function campaignSlug(now = new Date()): string {
   const first = new Date(Date.UTC(now.getUTCFullYear(), 0, 1));
@@ -56,8 +57,9 @@ async function existingRunningCampaign(): Promise<string | null> {
   const result = await pool.query<{ slug: string }>(
     `SELECT slug FROM experiments
      WHERE status='running' AND primary_metric=$1
+       AND hypothesis LIKE $2
      ORDER BY started_at DESC NULLS LAST, created_at DESC LIMIT 1`,
-    [PRIMARY_METRIC],
+    [PRIMARY_METRIC, `[${CAMPAIGN_STRATEGY_VERSION}]%`],
   );
   return result.rows[0]?.slug ?? null;
 }
@@ -115,6 +117,17 @@ export async function reconcileOutboundSubscriptionAttribution(): Promise<{ attr
 
 export async function ensureOutboundCampaign(snapshot: BusinessSnapshot, runId?: string): Promise<string | null> {
   if (!pool) return null;
+
+  // Retire paid-conversion campaigns from earlier positioning generations so a
+  // material strategy change cannot inherit stale variants or attribution.
+  await pool.query(
+    `UPDATE experiments
+     SET status='superseded', ended_at=COALESCE(ended_at,now()), updated_at=now()
+     WHERE status='running' AND primary_metric=$1
+       AND hypothesis NOT LIKE $2`,
+    [PRIMARY_METRIC, `[${CAMPAIGN_STRATEGY_VERSION}]%`],
+  );
+
   const running = await existingRunningCampaign();
   if (running) return running;
 
@@ -203,7 +216,7 @@ export async function ensureOutboundCampaign(snapshot: BusinessSnapshot, runId?:
 
   const experimentId = await createExperiment({
     slug,
-    hypothesis: proposed.campaignThesis,
+    hypothesis: `[${CAMPAIGN_STRATEGY_VERSION}] ${proposed.campaignThesis}`,
     primaryMetric: PRIMARY_METRIC,
     variants,
     guardrails: [{ metric: "outreach_opt_out", max: 0.05 }],
@@ -215,7 +228,7 @@ export async function ensureOutboundCampaign(snapshot: BusinessSnapshot, runId?:
     actorId: "marketing",
     campaign: slug,
     experimentId,
-    properties: { campaignThesis: proposed.campaignThesis, successDefinition: "paid_customer_and_mrr" },
+    properties: { campaignThesis: proposed.campaignThesis, campaignStrategyVersion: CAMPAIGN_STRATEGY_VERSION, successDefinition: "paid_customer_and_mrr" },
     dedupeKey: `campaign-created:${slug}`,
   });
   await markActionExecuted(action.id, { experimentId, slug, primaryMetric: PRIMARY_METRIC });
