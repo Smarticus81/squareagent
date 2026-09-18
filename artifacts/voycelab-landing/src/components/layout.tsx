@@ -178,7 +178,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   <span className="text-[15px] font-semibold tracking-tight text-white">VoyceLab</span>
                 </div>
                 <p className="text-[13px] mt-5 max-w-85 leading-relaxed text-white/55">
-                  Voice for event venues on Square. Bartenders speak. Managers get answers. Owners stay in control.
+                  A Voice AI agent for venue owners. Ask about inventory, sales, orders, booking inquiries and the day-to-day work of running the venue.
                 </p>
               </div>
               <FooterCol title="Product" links={[{ href: "/assistants/new", label: "Create your assistant" },{ href: "/assistants", label: "Assistants" },{ href: "/services", label: "Integrations" },{ href: "/pricing", label: "Pricing" }]} />
