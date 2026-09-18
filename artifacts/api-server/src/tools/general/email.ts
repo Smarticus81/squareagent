@@ -124,7 +124,7 @@ export const definitions: ToolDefinition[] = [
   },
 ];
 
-async function sendEmail(args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
+async function sendEmail(args: Record<string, unknown>, ctx: ToolContext, forcedFromName?: string): Promise<ToolResult> {
   if (!ctx.userId) return { result: "send_email: missing user context." };
   if (!db) return { result: "send_email: database is not configured." };
 
@@ -147,6 +147,7 @@ async function sendEmail(args: Record<string, unknown>, ctx: ToolContext): Promi
     .where(tenantWhere(ctx.userId, ctx.organizationId))
     .limit(1);
   if (!creds) return { result: "send_email: no email credentials configured. Add an email provider in the dashboard." };
+  const effectiveFromName = forcedFromName?.trim() || creds.fromName?.trim() || null;
 
   if (creds.provider === "resend") {
     if (!creds.apiKey) return { result: "send_email: Resend API key is missing." };
@@ -157,7 +158,7 @@ async function sendEmail(args: Record<string, unknown>, ctx: ToolContext): Promi
         method: "POST",
         headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
         body: JSON.stringify({
-          from: creds.fromName ? `${creds.fromName} <${creds.fromAddress}>` : creds.fromAddress,
+          from: effectiveFromName ? `${effectiveFromName} <${creds.fromAddress}>` : creds.fromAddress,
           to: [to],
           ...(cc ? { cc: [cc] } : {}),
           subject,
@@ -188,7 +189,7 @@ async function sendEmail(args: Record<string, unknown>, ctx: ToolContext): Promi
       oauth2.setCredentials({ refresh_token: refreshToken });
       const gmail = google.gmail({ version: "v1", auth: oauth2 });
       const cc = args.cc ? String(args.cc).trim() : undefined;
-      const fromHeader = creds.fromName ? `${creds.fromName} <${creds.fromAddress}>` : creds.fromAddress;
+      const fromHeader = effectiveFromName ? `${effectiveFromName} <${creds.fromAddress}>` : creds.fromAddress;
       const raw = encodeGmailMessage({ from: fromHeader, to, cc, subject, text: body, html });
       const send = await gmail.users.messages.send({ userId: "me", requestBody: { raw } });
       return { result: `Email sent to ${to} (id=${send.data.id ?? "unknown"}).` };
@@ -215,7 +216,7 @@ async function sendEmail(args: Record<string, unknown>, ctx: ToolContext): Promi
     try {
       const transporter = nodemailer.createTransport({ host, port, secure: port === 465, auth: { user, pass } });
       const info = await transporter.sendMail({
-        from: creds.fromName ? `${creds.fromName} <${creds.fromAddress}>` : creds.fromAddress,
+        from: effectiveFromName ? `${effectiveFromName} <${creds.fromAddress}>` : creds.fromAddress,
         to,
         ...(cc ? { cc } : {}),
         subject,
@@ -233,6 +234,10 @@ async function sendEmail(args: Record<string, unknown>, ctx: ToolContext): Promi
   }
 
   return { result: `send_email: provider "${creds.provider}" is not supported for outbound mail.` };
+}
+
+export async function sendVoyceLabCampaignEmail(args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
+  return sendEmail(args, ctx, "VoyceLab");
 }
 
 export const executors: Record<string, ToolExecutor> = { send_email: sendEmail };
