@@ -50,7 +50,7 @@ function Hero({ reduceMotion }: { reduceMotion: boolean }) {
         >
           <div className="mb-5 flex flex-wrap items-center gap-3">
             <span className="inline-flex items-center gap-2 rounded-full border border-blue-300/20 bg-blue-400/10 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[.16em] text-blue-200">
-              <Volume2 className="h-3.5 w-3.5" /> Voice for event venues
+              <Volume2 className="h-3.5 w-3.5" /> Voice AI for venue owners
             </span>
             <span className="inline-flex items-center gap-2 text-[12px] text-white/55">
               <img src="/brand/square-logo.png" alt="Square" className="h-4 w-auto invert" />
@@ -58,23 +58,23 @@ function Hero({ reduceMotion }: { reduceMotion: boolean }) {
             </span>
           </div>
 
-          <h1 className="vl-display max-w-3xl text-[clamp(3.5rem,7.7vw,7.2rem)] leading-[.91] tracking-[-.055em]">
-            Less tapping.
+          <h1 className="vl-display max-w-3xl text-[clamp(3.35rem,7vw,6.8rem)] leading-[.92] tracking-[-.055em]">
+            A Voice AI agent.
             <span className="block bg-gradient-to-r from-[#86baff] via-[#5d9fff] to-[#a9cfff] bg-clip-text text-transparent">
-              Faster service.
+              To help run your venue.
             </span>
           </h1>
 
           <p className="mt-7 max-w-2xl text-[18px] leading-8 text-white/70 sm:text-[20px]">
-            VoyceLab lets bartenders and venue managers use voice to get things done in Square while they keep serving guests.
+            Ask VoyceLab what is happening in your business and let it handle approved work. Inventory counts, sales, open orders, booking and tour inquiries, event details, and Square-connected operations — by voice.
           </p>
 
-          <div className="mt-7 grid max-w-xl gap-3 text-[15px] text-white/75 sm:grid-cols-2">
+          <div className="mt-7 grid max-w-2xl gap-3 text-[15px] text-white/75 sm:grid-cols-2">
             {[
-              "Ask for sales and open tabs",
-              "Check and update inventory",
-              "Run common Square tasks by voice",
-              "Built for busy event service",
+              "Ask for inventory counts",
+              "Check sales and open orders",
+              "Stay on top of booking and tour inquiries",
+              "Run approved Square tasks by voice",
             ].map((item) => (
               <div key={item} className="flex items-center gap-2.5">
                 <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-blue-400/15 text-blue-200">
@@ -119,31 +119,31 @@ function Hero({ reduceMotion }: { reduceMotion: boolean }) {
 function WhyItMatters() {
   const cards = [
     {
-      label: "Bartender",
-      title: "Keep your hands on the job.",
-      text: "Ask VoyceLab for the task you need instead of stopping service to dig through screens.",
+      label: "Inventory",
+      title: "Ask what is low.",
+      text: "Get inventory counts and low-stock answers without opening another dashboard or chasing a manager.",
+      icon: Package,
+    },
+    {
+      label: "Bookings & tours",
+      title: "Know which inquiries need attention.",
+      text: "Use your business inbox and connected information to surface booking and tour inquiries while you are moving.",
       icon: Mic,
     },
     {
-      label: "Venue manager",
-      title: "Get answers without chasing a dashboard.",
-      text: "Ask for sales, inventory and open tabs while the event is happening.",
+      label: "Venue operations",
+      title: "Ask the business what is happening.",
+      text: "Sales, open orders, event details and approved Square tasks are available through the same Voice AI agent.",
       icon: BarChart3,
-    },
-    {
-      label: "Owner",
-      title: "Know what is happening now.",
-      text: "See the operation clearly and let your team move faster without adding another complicated system.",
-      icon: Zap,
     },
   ];
 
   return (
     <section className="border-y border-white/8 bg-white/[.025] px-5 py-20 sm:px-8 lg:px-10">
       <div className="mx-auto max-w-7xl">
-        <p className="font-mono text-[11px] uppercase tracking-[.24em] text-blue-200/70">Built for live events</p>
+        <p className="font-mono text-[11px] uppercase tracking-[.24em] text-blue-200/70">Built for venue owners</p>
         <h2 className="vl-display mt-3 max-w-4xl text-[clamp(2.6rem,5vw,5rem)] leading-[.98]">
-          Your staff should be serving guests, not fighting the POS.
+          Stop chasing the information needed to run the venue.
         </h2>
         <div className="mt-10 grid gap-4 lg:grid-cols-3">
           {cards.map((card) => {
@@ -185,7 +185,7 @@ function LiveDemo() {
           <p className="font-mono text-[11px] uppercase tracking-[.24em] text-blue-200/70">The demo is right here</p>
           <h2 className="vl-display mt-3 text-[clamp(2.8rem,5vw,5.3rem)] leading-[.96]">Try it before you sign up.</h2>
           <p className="mt-5 max-w-xl text-[17px] leading-7 text-white/65">
-            No booking. No meeting. Tap the mic and talk to the demo the way a bartender or venue manager would.
+            No booking. No meeting. Tap the mic and hear how natural the voice experience feels before you create your own venue agent.
           </p>
           <div className="mt-7 space-y-2.5">
             {examples.map((line) => (
@@ -288,10 +288,10 @@ function OwnerView() {
         </div>
 
         <div className="order-1 lg:order-2">
-          <p className="font-mono text-[11px] uppercase tracking-[.24em] text-blue-200/70">For owners and managers</p>
-          <h2 className="vl-display mt-3 text-[clamp(2.8rem,5vw,5.2rem)] leading-[.96]">Know what’s happening. Instantly.</h2>
+          <p className="font-mono text-[11px] uppercase tracking-[.24em] text-blue-200/70">Your Voice AI agent</p>
+          <h2 className="vl-display mt-3 text-[clamp(2.8rem,5vw,5.2rem)] leading-[.96]">Ask your venue. Get the answer.</h2>
           <p className="mt-5 max-w-xl text-[17px] leading-7 text-white/65">
-            Bartenders use voice on the floor. Owners get a clear view of sales, inventory and what still needs attention.
+            Ask about inventory, sales, orders, event details and the work that still needs attention. Then let VoyceLab handle the approved actions you choose.
           </p>
           <Link href="/signup" className="vl-btn-primary mt-8 inline-flex min-w-44 justify-center gap-2 px-6 py-3.5 text-[15px]">
             Start free <ArrowRight className="h-4 w-4" />
@@ -317,10 +317,10 @@ function Closing() {
     <section className="relative px-5 py-28 text-center sm:px-8 lg:px-10">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_40%,rgba(75,145,255,.13),transparent_32%)]" />
       <div className="relative mx-auto max-w-4xl">
-        <p className="font-mono text-[11px] uppercase tracking-[.24em] text-blue-200/70">Voice for event venues</p>
-        <h2 className="vl-display mt-4 text-[clamp(3.2rem,7vw,7rem)] leading-[.92]">Let them talk. Let the work move.</h2>
+        <p className="font-mono text-[11px] uppercase tracking-[.24em] text-blue-200/70">Voice AI for venue owners</p>
+        <h2 className="vl-display mt-4 text-[clamp(3.2rem,7vw,7rem)] leading-[.92]">Give your venue an agent you can talk to.</h2>
         <p className="mx-auto mt-6 max-w-2xl text-[17px] leading-7 text-white/62">
-          If your venue uses Square, you can try VoyceLab now. The demo is already on this page. When you’re ready, start free.
+          Connect Square, create your Voice AI agent, and start asking the questions you normally open dashboards, inboxes and reports to answer.
         </p>
         <Link href="/signup" className="vl-btn-primary mt-9 inline-flex min-w-52 justify-center gap-2 px-7 py-4 text-[16px]">
           Start free <ArrowRight className="h-4 w-4" />
