@@ -74,7 +74,91 @@ function signupUrl(campaign: { slug: string; variantId: string } | null): string
 function brandedEmailHtml(params: { body: string; ctaUrl: string }): string {
   const body = escapeHtml(params.body).replace(/\n+/g, "<br><br>");
   const url = escapeHtml(params.ctaUrl);
-  return `<!doctype html><html><body style="margin:0;padding:0;background:#f4f7fb;font-family:Arial,Helvetica,sans-serif;color:#152033"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f4f7fb"><tr><td align="center" style="padding:24px 12px"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;background:#ffffff;border-radius:20px;overflow:hidden;border:1px solid #dbe4f0"><tr><td style="padding:26px 28px;background:#07111f;color:#ffffff"><div style="font-size:19px;font-weight:700;letter-spacing:-.3px"><span style="color:#65a8ff">▂▅█▅▂</span>&nbsp; Voyce<span style="color:#65a8ff">Lab</span></div><div style="margin-top:18px;font-size:28px;line-height:1.05;font-weight:750;letter-spacing:-.8px">Voice for event venues.</div><div style="margin-top:9px;font-size:15px;line-height:1.45;color:#b8c9df">Your bartenders can speak instead of tapping through Square.</div></td></tr><tr><td style="padding:26px 28px"><div style="font-size:15px;line-height:1.65;color:#34445a">${body}</div><table role="presentation" cellspacing="0" cellpadding="0" style="margin-top:24px"><tr><td style="border-radius:12px;background:#3f8df7"><a href="${url}" style="display:inline-block;padding:13px 22px;color:#ffffff;text-decoration:none;font-size:15px;font-weight:700">Start free →</a></td></tr></table><div style="margin-top:18px;font-size:12px;color:#7b8ba1">The demo is already on voycelab.com. No meeting required.</div></td></tr></table></td></tr></table></body></html>`;
+  const base = (process.env.PUBLIC_BASE_URL ?? "https://www.voycelab.com").replace(/\/$/, "");
+  const logo = escapeHtml(`${base}/brand/voycelab-logo.png`);
+  const square = escapeHtml(`${base}/brand/square-logo.png`);
+
+  return `<!doctype html>
+<html>
+  <body style="margin:0;padding:0;background:#050506;font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;color:#0E1B2C">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#050506">
+      <tr>
+        <td align="center" style="padding:28px 12px">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:620px">
+            <tr>
+              <td style="padding:0 8px 18px">
+                <img src="${logo}" alt="VoyceLab" width="132" style="display:block;width:132px;max-width:100%;height:auto;border:0" />
+              </td>
+            </tr>
+            <tr>
+              <td style="overflow:hidden;border:1px solid rgba(255,255,255,.12);border-radius:32px;background:#07111d">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                  <tr>
+                    <td style="padding:34px 32px 30px;background:#07111d;color:#ffffff">
+                      <div style="font-size:11px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:#9fc7ff">For venue owners</div>
+                      <div style="margin-top:12px;font-family:Georgia,'Times New Roman',serif;font-size:36px;line-height:1.02;font-weight:700;letter-spacing:-1.1px;color:#ffffff">A Voice AI agent to help run your venue.</div>
+                      <div style="margin-top:14px;font-size:16px;line-height:1.55;color:rgba(255,255,255,.68)">Ask the business what you need. VoyceLab finds the answer or handles the approved task.</div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="padding:0 18px 18px;background:#07111d">
+                      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-radius:24px;background:#ffffff;border:1px solid #E5E7EB">
+                        <tr>
+                          <td style="padding:22px 22px 8px">
+                            <div style="font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#657080">Your owner view</div>
+                          </td>
+                        </tr>
+                        <tr>
+                          <td style="padding:8px 14px 18px">
+                            <table role="presentation" width="100%" cellspacing="8" cellpadding="0">
+                              <tr>
+                                <td width="33%" valign="top" style="border:1px solid #E5E7EB;border-radius:18px;padding:14px;background:#F9FAFB">
+                                  <div style="font-size:11px;text-transform:uppercase;letter-spacing:.10em;color:#657080">Inventory</div>
+                                  <div style="margin-top:7px;font-size:15px;font-weight:700;color:#0E1B2C">Ask what is low</div>
+                                </td>
+                                <td width="33%" valign="top" style="border:1px solid #E5E7EB;border-radius:18px;padding:14px;background:#F9FAFB">
+                                  <div style="font-size:11px;text-transform:uppercase;letter-spacing:.10em;color:#657080">Bookings</div>
+                                  <div style="margin-top:7px;font-size:15px;font-weight:700;color:#0E1B2C">See tour inquiries</div>
+                                </td>
+                                <td width="33%" valign="top" style="border:1px solid #E5E7EB;border-radius:18px;padding:14px;background:#F9FAFB">
+                                  <div style="font-size:11px;text-transform:uppercase;letter-spacing:.10em;color:#657080">Operations</div>
+                                  <div style="margin-top:7px;font-size:15px;font-weight:700;color:#0E1B2C">Check sales & orders</div>
+                                </td>
+                              </tr>
+                            </table>
+                          </td>
+                        </tr>
+                      </table>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="padding:26px 32px 32px;background:#ffffff;border-radius:30px 30px 32px 32px">
+                      <div style="font-size:15px;line-height:1.65;color:#2C394A">${body}</div>
+                      <table role="presentation" cellspacing="0" cellpadding="0" style="margin-top:24px">
+                        <tr>
+                          <td style="border-radius:16px;background:#0A0A0B;border:2px solid #5D9FFF">
+                            <a href="${url}" style="display:inline-block;padding:14px 24px;color:#ffffff;text-decoration:none;font-size:15px;font-weight:700">Start free</a>
+                          </td>
+                        </tr>
+                      </table>
+                      <table role="presentation" cellspacing="0" cellpadding="0" style="margin-top:22px">
+                        <tr>
+                          <td style="vertical-align:middle"><img src="${square}" alt="Square" width="18" style="display:block;width:18px;height:auto;border:0" /></td>
+                          <td style="padding-left:8px;font-size:12px;color:#657080">Works with Square. 14 days free. No card required.</td>
+                        </tr>
+                      </table>
+                      <div style="margin-top:10px;font-size:12px;line-height:1.5;color:#9299A3">Live demo on voycelab.com. No sales call required.</div>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`;
 }
 
 function profileObject(value: unknown): Record<string, any> {
@@ -103,14 +187,15 @@ export async function researchProspects(runId?: string): Promise<{ discovered: n
   const research = await structuredModel<{ leads: ResearchLead[]; marketObservation: string }>(
     [
       "You are VoyceLab's market intelligence worker. Your job is to find real, currently operating businesses with verified public contact information, not merely plausible leads.",
-      "Find real US prospects where VoyceLab's voice control for Square is immediately understandable and useful.",
-      "Priority order: event venues, wedding venues, private-event spaces, bars/taprooms/breweries with significant live-event business, then multi-location hospitality groups with strong bar/event operations.",
+      "Find real US venue-owner prospects where VoyceLab can help run the business by voice.",
+      "Priority order: wedding venues, event venues, private-event spaces, banquet/event properties, and multi-location venue groups. Bars, taprooms, breweries, restaurants, or hospitality groups are secondary only when their public website clearly shows a meaningful private-event or venue business.",
+      "Optimize for reaching a venue owner, general manager, director of events, or other person responsible for the whole operation. Do not optimize for bartenders as the buyer.",
       "Every lead must have a real official business website that appears current and active.",
       "Only return a contactEmail when that exact email address is visibly published on the business's own official website. Never infer, guess, pattern-generate, scrape a people-search site, or use a third-party directory as the source of an email.",
       "When contactEmail is non-null, contactSourceUrl MUST be the exact page on the official business website where that exact email is publicly visible. If you cannot find such a page, set contactEmail and contactSourceUrl to null.",
       "Free-mail addresses such as Gmail are acceptable only when the exact address is visibly published on the official business website.",
-      "Strongly prefer businesses with public evidence of Square usage plus event-day operational complexity. Generic restaurants or cafes without meaningful event/bar operations should score lower.",
-      "VoyceLab lets bartenders and venue managers use voice for permitted Square-connected POS, inventory and reporting tasks while they keep serving guests.",
+      "Strongly prefer businesses with public evidence of Square usage plus event-day operational complexity. Generic restaurants or cafes without a meaningful venue/events business should score lower.",
+      "VoyceLab gives venue owners and managers a Voice AI agent that helps run the venue: answer operational questions, check inventory and sales, work with approved Square tasks, use business email for booking/tour inquiries, and use connected knowledge or business data where configured.",
       "Do not collect sensitive personal information. Business contact information only.",
       "Fit score should reflect realistic likelihood of becoming a paying customer and confidence the business/contact are genuine, not business prestige.",
     ].join("\n"),
@@ -274,15 +359,18 @@ export async function runOutboundBatch(runId?: string, maxBatch = 12): Promise<{
     const ctaUrl = signupUrl(campaign ? { slug: campaign.slug, variantId: campaign.variantId } : null);
     const copy = await structuredModel<{ subject: string; body: string }>(
       [
-        "Write an extremely short first-touch email for VoyceLab to an event venue or bar operator.",
-        "Plain English only. The reader is busy and should understand the product in five seconds.",
-        "State directly that VoyceLab lets bartenders and venue managers use voice to get things done in Square instead of tapping through screens.",
+        "Write an extremely short first-touch email for VoyceLab to the OWNER or GENERAL MANAGER of an event venue or wedding venue.",
+        "Plain English only. Be blunt and concrete. The reader should understand the product in five seconds.",
+        "Lead with this idea in natural language: VoyceLab is a Voice AI agent that helps run the venue.",
+        "Use concrete owner examples drawn only from confirmed capabilities: ask for inventory counts, sales, open orders, approved Square tasks, booking or tour inquiries from business email, event details from connected knowledge, and other day-to-day operational answers.",
+        "Do NOT claim VoyceLab can directly create or modify calendar appointments or schedule a tour. Direct calendar scheduling is not a confirmed product capability yet.",
+        "Do not make the bartender the buyer or center the message on 'less tapping'. The buyer is responsible for the whole venue.",
         "Use at most one short personalization sentence and only if supplied public evidence makes it useful.",
-        "Body must be 30-55 words, 2-3 short paragraphs, no marketing jargon and no technical terminology.",
+        "Body must be 32-58 words, 2-3 short paragraphs, no marketing jargon and no technical terminology.",
         "Never use phrases like voice layer, orchestration, operational intelligence, workflow transformation, connected systems, AI-powered operations, streamline, unlock, leverage, or optimize.",
-        "Do not ask for a call, meeting, reply, demo booking, or calendar time. The demo is already on the website.",
+        "Do not ask for a call, meeting, reply, demo booking, or calendar time. The live demo is already on the website.",
         "Do not invent results, integrations, customers, urgency, discounts or capabilities.",
-        "The subject must be concrete and under 45 characters. Use ASCII punctuation only: straight apostrophes and normal hyphens, never curly quotes, smart apostrophes, or em dashes.",
+        "The subject supplied by the model is ignored; keep it plain anyway. Use ASCII punctuation only.",
         "Do not put a URL, 'Start Free', 'Try it', 'Sign up', or any CTA phrase in the generated body. The system adds the single Start Free button and link after the body.",
       ].join("\n"),
       {
@@ -296,6 +384,7 @@ export async function runOutboundBatch(runId?: string, maxBatch = 12): Promise<{
       { schemaName: "voycelab_outbound_email", schema: EMAIL_SCHEMA as unknown as Record<string, unknown>, reasoningEffort: "low", maxOutputTokens: 420 },
     );
 
+    const subject = "A Voice AI agent for your venue";
     const plainBody = `${copy.body.trim()}\n\nStart free: ${ctaUrl}\n\nIf this isn't relevant, just say so and I won't follow up.`;
     const html = brandedEmailHtml({ body: copy.body.trim(), ctaUrl });
 
@@ -304,7 +393,7 @@ export async function runOutboundBatch(runId?: string, maxBatch = 12): Promise<{
       agent: "growth-outbound",
       actionType: "outreach.email",
       riskLevel: "medium",
-      input: { leadId: lead.id, to: email, subject: copy.subject, campaign: campaign?.slug ?? null, variant: campaign?.variantId ?? null, ctaUrl, contactVerifiedAt: verification.checkedAt },
+      input: { leadId: lead.id, to: email, subject, campaign: campaign?.slug ?? null, variant: campaign?.variantId ?? null, ctaUrl, contactVerifiedAt: verification.checkedAt },
       expectedImpact: { goal: "paid_customer_conversion", primaryMetric: "outbound_subscription_attributed", leadingMetric: "signup_completed", guardrail: "hard_bounce_rate" },
     });
     if (action.authority === "founder" || action.authority === "forbidden") { skipped++; continue; }
@@ -312,7 +401,7 @@ export async function runOutboundBatch(runId?: string, maxBatch = 12): Promise<{
     try {
       const executor = emailExecutors.send_email;
       if (!executor) throw new Error("send_email executor is unavailable");
-      const result = await executor({ to: email, subject: copy.subject, body: plainBody, html }, { userId: operatorUserId, organizationId: operatorOrgId } as any);
+      const result = await executor({ to: email, subject, body: plainBody, html }, { userId: operatorUserId, organizationId: operatorOrgId } as any);
       if (/failed|error|missing|limit|rejected/i.test(result.result)) throw new Error(result.result);
 
       const providerMessageId = extractProviderMessageId(result.result);
