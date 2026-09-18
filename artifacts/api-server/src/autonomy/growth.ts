@@ -5,7 +5,7 @@ import { recordAutonomousAction, markActionExecuted, markActionFailed, recordBus
 import { assignOutboundCampaign } from "./marketing";
 import { extractProviderMessageId } from "./outbound-reconciliation";
 import { collectDeliverabilityHealth, verifyPublicBusinessContact } from "./deliverability";
-import { executors as emailExecutors } from "../tools/general/email";
+import { sendVoyceLabCampaignEmail } from "../tools/general/email";
 
 interface ResearchLead {
   companyName: string;
@@ -399,9 +399,7 @@ export async function runOutboundBatch(runId?: string, maxBatch = 12): Promise<{
     if (action.authority === "founder" || action.authority === "forbidden") { skipped++; continue; }
 
     try {
-      const executor = emailExecutors.send_email;
-      if (!executor) throw new Error("send_email executor is unavailable");
-      const result = await executor({ to: email, subject, body: plainBody, html }, { userId: operatorUserId, organizationId: operatorOrgId } as any);
+      const result = await sendVoyceLabCampaignEmail({ to: email, subject, body: plainBody, html }, { userId: operatorUserId, organizationId: operatorOrgId } as any);
       if (/failed|error|missing|limit|rejected/i.test(result.result)) throw new Error(result.result);
 
       const providerMessageId = extractProviderMessageId(result.result);
