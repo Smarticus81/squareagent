@@ -264,7 +264,7 @@ function getIntegrationPalette(title: string) {
     return {
       start: "rgba(47,158,100,0.22)",
       mid: "rgba(79,184,255,0.18)",
-      end: "rgba(255,255,255,0.88)",
+      end: "rgba(244,243,240,0.06)",
       glow: "rgba(47,158,100,0.42)",
       soft: "rgba(79,184,255,0.30)",
       line: "rgba(47,158,100,0.78)",
@@ -274,36 +274,36 @@ function getIntegrationPalette(title: string) {
   }
   if (title.includes("Knowledge")) {
     return {
-      start: "rgba(124,110,245,0.22)",
-      mid: "rgba(255,107,71,0.16)",
-      end: "rgba(255,255,255,0.88)",
-      glow: "rgba(124,110,245,0.40)",
-      soft: "rgba(255,107,71,0.28)",
-      line: "rgba(124,110,245,0.78)",
-      lineAlt: "rgba(255,107,71,0.68)",
-      border: "rgba(124,110,245,0.18)",
+      start: "rgba(207,225,255,0.22)",
+      mid: "rgba(255,122,77,0.16)",
+      end: "rgba(244,243,240,0.06)",
+      glow: "rgba(207,225,255,0.40)",
+      soft: "rgba(255,122,77,0.28)",
+      line: "rgba(207,225,255,0.78)",
+      lineAlt: "rgba(255,122,77,0.68)",
+      border: "rgba(207,225,255,0.18)",
     };
   }
   if (title.includes("Email")) {
     return {
-      start: "rgba(255,107,71,0.20)",
+      start: "rgba(255,122,77,0.20)",
       mid: "rgba(255,185,90,0.18)",
-      end: "rgba(255,255,255,0.88)",
-      glow: "rgba(255,107,71,0.40)",
+      end: "rgba(244,243,240,0.06)",
+      glow: "rgba(255,122,77,0.40)",
       soft: "rgba(255,185,90,0.30)",
-      line: "rgba(255,107,71,0.74)",
+      line: "rgba(255,122,77,0.74)",
       lineAlt: "var(--color-vl-ink-soft)",
-      border: "rgba(255,107,71,0.18)",
+      border: "rgba(255,122,77,0.18)",
     };
   }
   return {
     start: "rgba(79,184,255,0.20)",
-    mid: "rgba(124,110,245,0.18)",
-    end: "rgba(255,255,255,0.88)",
+    mid: "rgba(207,225,255,0.18)",
+    end: "rgba(244,243,240,0.06)",
     glow: "rgba(79,184,255,0.38)",
-    soft: "rgba(124,110,245,0.30)",
+    soft: "rgba(207,225,255,0.30)",
     line: "rgba(79,184,255,0.76)",
-    lineAlt: "rgba(124,110,245,0.72)",
+    lineAlt: "rgba(207,225,255,0.72)",
     border: "rgba(79,184,255,0.18)",
   };
 }
@@ -466,7 +466,7 @@ export default function ConnectedServices() {
                 Connect the live systems your assistants can act on. Square powers POS actions; knowledge, email, and databases expand what the assistant can answer and coordinate.
               </p>
             </div>
-            <div className="rounded-3xl border bg-white/70 p-4 shadow-sm" style={{ borderColor: "rgba(14, 27, 44,0.07)" }}>
+            <div className="rounded-3xl border bg-white/70 p-4 shadow-sm" style={{ borderColor: "var(--vl-line)" }}>
               <p className="text-[11px] font-bold uppercase tracking-[0.16em]" style={{ color: "var(--color-vl-ink-faint)" }}>
                 Current status
               </p>
@@ -561,7 +561,7 @@ export default function ConnectedServices() {
 
           <div
             className="overflow-hidden rounded-3xl border bg-white/82"
-            style={{ borderColor: "rgba(14, 27, 44,0.08)", boxShadow: "0 1px 2px rgba(14, 27, 44,0.04), 0 8px 24px -12px rgba(14, 27, 44,0.08)" }}
+            style={{ borderColor: "var(--vl-line)", boxShadow: "0 1px 2px var(--vl-line), 0 8px 24px -12px var(--vl-line)" }}
           >
             {!hasVenues ? (
               <div className="flex flex-col gap-6 p-7 sm:flex-row sm:items-center sm:justify-between md:p-8">
@@ -670,7 +670,7 @@ export default function ConnectedServices() {
           {/* ── 2. Knowledge Base ───────────────────────────────────── */}
           <IntegrationSection
             icon={<FileText className="h-4.5 w-4.5" />}
-            iconBg="linear-gradient(135deg, #FFFCF8, rgba(124,110,245,0.24))"
+            iconBg="linear-gradient(135deg, #FFFCF8, rgba(207,225,255,0.24))"
             iconColor="var(--color-vl-accent)"
             title="Knowledge Base"
             subtitle="Upload documents the assistant can search and quote from"
@@ -708,7 +708,7 @@ export default function ConnectedServices() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
           <div
             className="w-full max-w-md rounded-3xl border bg-white/94 p-6 md:p-7"
-            style={{ borderColor: "rgba(14, 27, 44,0.10)", boxShadow: "0 24px 48px -12px rgba(14, 27, 44,0.25)" }}
+            style={{ borderColor: "var(--vl-line)", boxShadow: "0 24px 48px -12px var(--vl-line)" }}
           >
             <div className="mb-5 flex items-start justify-between gap-4">
               <div>
@@ -742,7 +742,7 @@ export default function ConnectedServices() {
                   key={loc.id}
                   onClick={() => handleSelectLocation(loc)}
                   disabled={saveVenue.isPending}
-                  className="flex w-full items-center gap-3 rounded-xl border p-3.5 text-left transition-all hover:-translate-y-0.5 hover:border-[rgba(124,110,245,0.4)] disabled:opacity-50"
+                  className="flex w-full items-center gap-3 rounded-xl border p-3.5 text-left transition-all hover:-translate-y-0.5 hover:border-[rgba(207,225,255,0.4)] disabled:opacity-50"
                   style={{ borderColor: "var(--vl-line)" }}
                 >
                   <span
@@ -864,7 +864,7 @@ function KnowledgeSection() {
   return (
     <div
       className="rounded-3xl border bg-white/82 p-6"
-      style={{ borderColor: "rgba(14, 27, 44,0.08)", boxShadow: "0 1px 2px rgba(14, 27, 44,0.04), 0 8px 24px -12px rgba(14, 27, 44,0.08)" }}
+      style={{ borderColor: "var(--vl-line)", boxShadow: "0 1px 2px var(--vl-line), 0 8px 24px -12px var(--vl-line)" }}
     >
       <p className="text-[14px] mb-6" style={{ color: "var(--color-vl-ink-muted)" }}>
         Upload PDFs, Word docs, or paste text. The assistant will use <code className="rounded px-1" style={{ color: "var(--color-vl-ink)", background: "var(--vl-surface)" }}>search_knowledge</code> to
@@ -1068,7 +1068,7 @@ function EmailSection() {
   return (
     <div
       className="rounded-3xl border bg-white/82 p-6"
-      style={{ borderColor: "rgba(14, 27, 44,0.08)", boxShadow: "0 1px 2px rgba(14, 27, 44,0.04), 0 8px 24px -12px rgba(14, 27, 44,0.08)" }}
+      style={{ borderColor: "var(--vl-line)", boxShadow: "0 1px 2px var(--vl-line), 0 8px 24px -12px var(--vl-line)" }}
     >
       <p className="text-[14px] mb-4" style={{ color: "var(--color-vl-ink-muted)" }}>
         Choose how outbound mail is sent. The email command delivers from this address - the assistant always reads the recipient and subject back to you before sending.
@@ -1265,7 +1265,7 @@ function DatabaseSection() {
   return (
     <div
       className="rounded-3xl border bg-white/82 p-6"
-      style={{ borderColor: "rgba(14, 27, 44,0.08)", boxShadow: "0 1px 2px rgba(14, 27, 44,0.04), 0 8px 24px -12px rgba(14, 27, 44,0.08)" }}
+      style={{ borderColor: "var(--vl-line)", boxShadow: "0 1px 2px var(--vl-line), 0 8px 24px -12px var(--vl-line)" }}
     >
       <p className="text-[14px] mb-2" style={{ color: "var(--color-vl-ink-muted)" }}>
         Read-only Postgres. The assistant gets a database command that runs SELECT

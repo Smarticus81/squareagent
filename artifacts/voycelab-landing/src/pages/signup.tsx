@@ -84,7 +84,7 @@ export default function Signup() {
               type="button"
               onClick={() => setShowPassword((v) => !v)}
               aria-label={showPassword ? "Hide password" : "Show password"}
-              className="rounded-full p-2 text-gray-400 transition hover:text-gray-700"
+              className="rounded-full p-2 text-vl-ink-faint transition hover:text-vl-ink-soft"
             >
               {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </button>
@@ -115,18 +115,18 @@ export default function Signup() {
           {signup.isPending ? "Creating your account…" : hasPendingPlan ? "Create account and continue" : "Start free — no card required"}
         </button>
 
-        <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-[12px] leading-5 text-gray-500">
-          <p className="font-medium text-gray-700">What happens next</p>
+        <div className="rounded-2xl border border-vl-line bg-vl-cream px-4 py-3 text-[12px] leading-5 text-vl-ink-muted">
+          <p className="font-medium text-vl-ink-soft">What happens next</p>
           <p className="mt-1">Create the account, connect Square, then set up your venue assistant. No sales call required.</p>
         </div>
 
-        <p className="flex items-center justify-center gap-1.5 pt-1 text-[12px] text-gray-400">
+        <p className="flex items-center justify-center gap-1.5 pt-1 text-[12px] text-vl-ink-faint">
           <ShieldCheck className="h-3.5 w-3.5" />
           Disconnect Square anytime. Your data stays yours.
         </p>
       </form>
 
-      <p className="mt-8 text-center text-sm text-gray-500">
+      <p className="mt-8 text-center text-sm text-vl-ink-muted">
         Have an account? <SunsetLink href="/login">Sign in</SunsetLink>
       </p>
     </AuthShell>

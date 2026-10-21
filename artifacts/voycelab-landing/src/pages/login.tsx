@@ -164,7 +164,7 @@ export default function Login() {
                   initial={{ opacity: 0, y: -6 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -6 }}
-                  className="flex items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-800"
+                  className="flex items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-vl-warning"
                 >
                   <Info className="mt-0.5 h-4 w-4 shrink-0" />
                   <span>{socialNotice}</span>
@@ -195,10 +195,10 @@ export default function Login() {
 
         {mode === "login" && step === "password" && (
           <motion.form key="login-password" {...stepMotion} onSubmit={handleLogin} className="mt-8 space-y-4">
-            <div className="flex items-center justify-between rounded-[1.25rem] border border-gray-200 bg-gray-50 px-5 py-3">
+            <div className="flex items-center justify-between rounded-[1.25rem] border border-vl-line bg-vl-cream px-5 py-3">
               <div className="min-w-0">
-                <p className="text-[11px] font-medium uppercase tracking-wider text-gray-500">Signing in as</p>
-                <p className="truncate text-[14px] font-medium text-gray-900">{email}</p>
+                <p className="text-[11px] font-medium uppercase tracking-wider text-vl-ink-muted">Signing in as</p>
+                <p className="truncate text-[14px] font-medium text-vl-ink">{email}</p>
               </div>
               <button
                 type="button"
@@ -206,7 +206,7 @@ export default function Login() {
                   setStep("email");
                   login.reset();
                 }}
-                className="shrink-0 text-[12.5px] font-semibold text-gray-500 transition hover:text-gray-900"
+                className="shrink-0 text-[12.5px] font-semibold text-vl-ink-muted transition hover:text-vl-ink"
               >
                 Change
               </button>
@@ -220,7 +220,7 @@ export default function Login() {
                   type="button"
                   onClick={() => setShowPassword((v) => !v)}
                   aria-label={showPassword ? "Hide password" : "Show password"}
-                  className="rounded-full p-2 text-gray-400 transition hover:text-gray-700"
+                  className="rounded-full p-2 text-vl-ink-faint transition hover:text-vl-ink-soft"
                 >
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
@@ -250,7 +250,7 @@ export default function Login() {
                   setMode("forgot");
                   forgotPassword.reset();
                 }}
-                className="text-[12.5px] font-semibold text-gray-500 transition hover:text-gray-900"
+                className="text-[12.5px] font-semibold text-vl-ink-muted transition hover:text-vl-ink"
               >
                 Forgot password?
               </button>
@@ -286,7 +286,7 @@ export default function Login() {
               <button
                 type="button"
                 onClick={goToLogin}
-                className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-gray-500 transition hover:text-gray-900"
+                className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-vl-ink-muted transition hover:text-vl-ink"
               >
                 <ArrowLeft className="h-3.5 w-3.5" /> Back to sign in
               </button>
@@ -352,7 +352,7 @@ export default function Login() {
                   <button
                     type="button"
                     onClick={goToLogin}
-                    className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-gray-500 transition hover:text-gray-900"
+                    className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-vl-ink-muted transition hover:text-vl-ink"
                   >
                     <ArrowLeft className="h-3.5 w-3.5" /> Back to sign in
                   </button>
@@ -363,7 +363,7 @@ export default function Login() {
         )}
       </AnimatePresence>
 
-      <p className="mt-10 text-center text-sm text-gray-500">
+      <p className="mt-10 text-center text-sm text-vl-ink-muted">
         Don&rsquo;t have an account? <SunsetLink href="/signup">Sign up</SunsetLink>
       </p>
     </AuthShell>

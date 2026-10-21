@@ -1,7 +1,7 @@
 import { motion, useReducedMotion } from "framer-motion";
 import { Link } from "wouter";
 import { ArrowLeft } from "lucide-react";
-import { Logo } from "@/components/logo";
+import { Wordmark } from "@/components/logo";
 
 /**
  * Minimal full-screen chrome for the onboarding flow: a hairline gradient
@@ -39,8 +39,8 @@ export function OnboardingChrome({
         <motion.div
           className="h-full"
           style={{
-            background: "linear-gradient(90deg, #FF512F, #F09819)",
-            boxShadow: "0 0 14px rgba(240, 152, 25, 0.6)",
+            background: "var(--color-vl-ink)",
+            boxShadow: "0 0 14px rgba(244, 243, 240, 0.35)",
             borderRadius: "0 3px 3px 0",
           }}
           initial={false}
@@ -69,7 +69,7 @@ export function OnboardingChrome({
               transition={{ duration: 0.2 }}
               className="flex h-9 w-9 items-center justify-center rounded-xl transition-colors"
               style={{
-                color: "rgba(255, 255, 255, 0.85)",
+                color: "rgba(244,243,240,0.06)",
                 border: "1px solid rgba(255, 255, 255, 0.16)",
                 background: "rgba(255, 255, 255, 0.08)",
                 backdropFilter: "blur(12px)",
@@ -78,10 +78,7 @@ export function OnboardingChrome({
               <ArrowLeft className="h-4 w-4" />
             </motion.button>
             <Link href="/" className="flex items-center gap-2 transition-opacity hover:opacity-80">
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white shadow-[0_8px_24px_-10px_rgba(0,0,0,0.8)]">
-                <Logo size="sm" iconOnly />
-              </span>
-              <span className="hidden text-[13px] font-semibold tracking-tight text-white sm:inline">VoyceLab</span>
+              <Wordmark />
             </Link>
           </div>
 

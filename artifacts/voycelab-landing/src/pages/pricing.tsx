@@ -288,7 +288,7 @@ export default function Pricing() {
             {selectedCheckoutPlan && (
               <div
                 className="mb-5 rounded-2xl border bg-white/70 p-4 text-[13px]"
-                style={{ borderColor: "rgba(124,110,245,0.24)", color: "var(--color-vl-ink-muted)" }}
+                style={{ borderColor: "rgba(207,225,255,0.24)", color: "var(--color-vl-ink-muted)" }}
               >
                 <span className="font-semibold" style={{ color: "var(--color-vl-ink)" }}>
                   Selected: {selectedCheckoutPlan.name} · {selectedCheckout?.cadence === "yearly" ? "Yearly" : "Monthly"}
@@ -475,9 +475,9 @@ function CadenceToggle({ value, onChange }: { value: Cadence; onChange: (v: Cade
             onClick={() => onChange(opt)}
             className="rounded-xl px-4 py-1.5 text-[12px] transition-colors"
             style={{
-              background: selected ? "rgba(124,110,245,0.14)" : "transparent",
+              background: selected ? "rgba(207,225,255,0.14)" : "transparent",
               color: selected ? "var(--color-vl-ink)" : "var(--color-vl-ink-muted)",
-              border: selected ? "1px solid rgba(124,110,245,0.45)" : "1px solid transparent",
+              border: selected ? "1px solid rgba(207,225,255,0.45)" : "1px solid transparent",
             }}
           >
             {opt === "monthly" ? "Monthly" : "Yearly"}
@@ -509,8 +509,8 @@ function PlanCard({
     <article
       className="vl-panel flex flex-col overflow-hidden p-4"
       style={{
-        borderColor: plan.highlighted ? "rgba(124,110,245,0.6)" : undefined,
-        boxShadow: plan.highlighted ? "0 0 0 1px rgba(124,110,245,0.4)" : undefined,
+        borderColor: plan.highlighted ? "rgba(207,225,255,0.6)" : undefined,
+        boxShadow: plan.highlighted ? "0 0 0 1px rgba(207,225,255,0.4)" : undefined,
       }}
     >
       <PlanArt plan={plan} />
@@ -521,7 +521,7 @@ function PlanCard({
         {plan.ribbon && (
           <span
             className="vl-chip"
-            style={{ color: "var(--color-vl-ink-soft)", borderColor: "rgba(124,110,245,0.45)", fontSize: 10 }}
+            style={{ color: "var(--color-vl-ink-soft)", borderColor: "rgba(207,225,255,0.45)", fontSize: 10 }}
           >
             {plan.ribbon}
           </span>
@@ -613,19 +613,19 @@ function PlanArt({ plan }: { plan: PlanResponse }) {
   const bars = highlighted ? [50, 76, 60, 92, 70, 84] : isTrial ? [34, 48, 40, 62, 46, 56] : [42, 64, 52, 78, 58, 72];
   const palette = highlighted
     ? {
-        start: "rgba(124,110,245,0.24)",
+        start: "rgba(207,225,255,0.24)",
         mid: "rgba(79,184,255,0.18)",
-        glow: "rgba(124,110,245,0.42)",
+        glow: "rgba(207,225,255,0.42)",
         soft: "rgba(79,184,255,0.30)",
-        line: "rgba(124,110,245,0.78)",
+        line: "rgba(207,225,255,0.78)",
         lineAlt: "rgba(79,184,255,0.72)",
-        border: "rgba(124,110,245,0.22)",
+        border: "rgba(207,225,255,0.22)",
         ink: "#332B93",
       }
     : isTrial
       ? {
           start: "rgba(47,158,100,0.18)",
-          mid: "rgba(255,255,255,0.86)",
+          mid: "rgba(244,243,240,0.06)",
           glow: "rgba(47,158,100,0.34)",
           soft: "rgba(255,185,90,0.26)",
           line: "rgba(47,158,100,0.70)",
@@ -634,13 +634,13 @@ function PlanArt({ plan }: { plan: PlanResponse }) {
           ink: "#17633B",
         }
       : {
-          start: "rgba(255,107,71,0.18)",
+          start: "rgba(255,122,77,0.18)",
           mid: "rgba(255,185,90,0.16)",
-          glow: "rgba(255,107,71,0.34)",
+          glow: "rgba(255,122,77,0.34)",
           soft: "rgba(255,185,90,0.26)",
-          line: "rgba(255,107,71,0.72)",
+          line: "rgba(255,122,77,0.72)",
           lineAlt: "var(--color-vl-ink-soft)",
-          border: "rgba(255,107,71,0.16)",
+          border: "rgba(255,122,77,0.16)",
           ink: "#8F2F1D",
         };
 
@@ -649,7 +649,7 @@ function PlanArt({ plan }: { plan: PlanResponse }) {
       className="relative h-[104px] overflow-hidden rounded-[22px] border shadow-inner"
       style={{
         borderColor: palette.border,
-        background: `linear-gradient(135deg, ${palette.start}, ${palette.mid} 54%, rgba(255,255,255,0.90))`,
+        background: `linear-gradient(135deg, ${palette.start}, ${palette.mid} 54%, rgba(244,243,240,0.06))`,
       }}
     >
       <div className="absolute -right-8 -top-12 h-32 w-32 rounded-[36%] blur-2xl" style={{ background: palette.glow }} />

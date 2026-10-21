@@ -71,7 +71,7 @@ export function TeachSequence({
               className="vl-light flex items-center gap-3 rounded-2xl border px-4 py-3"
               style={{
                 borderColor:
-                  state === "active" ? "rgba(255, 107, 71, 0.35)" : "var(--vl-line)",
+                  state === "active" ? "rgba(255,122,77,0.35)" : "var(--vl-line)",
                 background:
                   state === "active" ? "#FFF0EA" : "#F9FAFB",
               }}
@@ -80,7 +80,7 @@ export function TeachSequence({
                 className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl"
                 style={{
                   background: state === "done" ? "var(--color-vl-success)" : "var(--color-vl-coral-tint)",
-                  color: state === "done" ? "#fff" : "var(--color-vl-coral-deep)",
+                  color: state === "done" ? "var(--vl-surface-solid)" : "var(--color-vl-coral-deep)",
                 }}
               >
                 {state === "done" ? (
@@ -115,7 +115,7 @@ export function TeachSequence({
             {learnedSomething ? (
               <div
                 className="vl-card overflow-hidden p-6 text-center"
-                style={{ borderColor: "rgba(255, 107, 71, 0.28)" }}
+                style={{ borderColor: "rgba(255,122,77,0.28)" }}
               >
                 <p className="vl-eyebrow" style={{ color: "var(--color-vl-coral-deep)" }}>
                   {venueName}

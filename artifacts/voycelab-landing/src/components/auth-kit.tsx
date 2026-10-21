@@ -1,80 +1,23 @@
 import { Link } from "wouter";
-import { useReducedMotion } from "framer-motion";
 import { ArrowLeft, ArrowRight, CheckCircle2, Loader2 } from "lucide-react";
-import { LogoMark } from "@/components/logo";
-import { AMBIENT_VIDEO_SRC } from "@/components/layout";
+import { Wordmark } from "@/components/logo";
 
 /**
- * Shared building blocks for the sign-in / sign-up screens: the two-panel
- * white card over the ambient film, the stacked input group, the conic-ring
- * submit disc, social buttons, divider and status notes.
+ * Building blocks for the sign-in and sign-up screens: one quiet column on
+ * the canvas, the stacked input group, a round submit control, and notes.
  */
-
-/** Two-panel card: masked film on the left, form column on the right. */
 export function AuthShell({ children }: { children: React.ReactNode }) {
-  const reduceMotion = useReducedMotion();
   return (
-    <div className="relative flex min-h-screen items-center justify-center p-3 sm:p-6">
-      <div className="relative z-10 flex w-full max-w-[1040px] flex-col overflow-hidden rounded-[2.5rem] border border-gray-200 bg-white p-2.5 shadow-[0_40px_120px_-30px_rgba(0,0,0,0.75)] md:min-h-[650px] md:flex-row">
-        <div className="relative h-52 shrink-0 overflow-hidden rounded-[2rem] bg-[#0c0c0e] sm:h-64 md:h-auto md:w-[45%]">
-          <div aria-hidden="true" className="vl-ambient-aurora" />
-          <video
-            className="absolute inset-0 h-full w-full object-cover"
-            src={AMBIENT_VIDEO_SRC}
-            autoPlay={!reduceMotion}
-            muted
-            loop
-            playsInline
-            preload="auto"
-            aria-hidden="true"
-          />
-
-          <Link
-            href="/"
-            className="absolute left-4 top-4 inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-[12px] font-semibold text-white backdrop-blur-md transition hover:bg-white/20"
-          >
-            <ArrowLeft className="h-3.5 w-3.5" />
-            Back to site
-          </Link>
-
-          <div className="absolute inset-x-4 bottom-4 hidden items-center gap-3 rounded-2xl border border-white/15 bg-white/10 p-3 text-white backdrop-blur-md md:flex">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/90">
-              <LogoMark size={26} />
-            </span>
-            <div className="min-w-0">
-              <p className="text-[13px] font-semibold leading-tight">VoyceLab</p>
-              <p className="truncate text-[12px] leading-tight text-white/70">
-                Run your bar by voice. Orders, reports, stock.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="relative flex flex-1 flex-col justify-center overflow-hidden px-6 py-10 sm:px-12 md:w-[55%] lg:px-16">
-          <div aria-hidden="true" className="vl-halo -left-16 -top-16" />
-          <div className="relative mx-auto w-full max-w-[400px]">{children}</div>
-        </div>
+    <div className="vl-auth-shell relative flex min-h-screen flex-col items-center px-5 py-6 sm:px-8">
+      <div className="flex w-full max-w-5xl items-center justify-between">
+        <Link href="/" className="inline-flex items-center gap-1.5 text-[13px] font-medium transition-opacity hover:opacity-80" style={{ color: "var(--color-vl-ink-muted)" }}>
+          <ArrowLeft className="h-3.5 w-3.5" /> Back
+        </Link>
+        <Wordmark />
       </div>
-
-      <style>{`
-        .vl-login-input {
-          width: 100%;
-          background: transparent;
-          border: 0;
-          outline: none;
-          font-size: 15px;
-          line-height: 1.4;
-          color: #111827;
-          padding: 0;
-        }
-        .vl-login-input::placeholder { color: #9ca3af; }
-        .vl-login-input:-webkit-autofill,
-        .vl-login-input:-webkit-autofill:hover,
-        .vl-login-input:-webkit-autofill:focus {
-          -webkit-text-fill-color: #111827;
-          transition: background-color 9999s ease-out 0s;
-        }
-      `}</style>
+      <div className="flex w-full flex-1 items-center justify-center py-12">
+        <div className="w-full max-w-[400px]">{children}</div>
+      </div>
     </div>
   );
 }
@@ -82,8 +25,8 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
 export function AuthHeader({ title, subtitle }: { title: string; subtitle: string }) {
   return (
     <header className="text-center">
-      <h1 className="text-[40px] font-semibold leading-none tracking-tight text-gray-900">{title}</h1>
-      <p className="mt-3 text-sm text-gray-500">{subtitle}</p>
+      <h1 className="vl-display text-[34px]">{title}</h1>
+      <p className="mt-3 text-[14px]" style={{ color: "var(--color-vl-ink-muted)" }}>{subtitle}</p>
     </header>
   );
 }
@@ -102,11 +45,9 @@ export function InputGroup({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center gap-2 rounded-[1.25rem] border border-gray-200 bg-gray-50 p-2 pl-5 transition-colors duration-200 focus-within:border-gray-400 focus-within:bg-white">
+    <div className="vl-input-group">
       <div className="flex min-w-0 flex-1 flex-col py-1">
-        <label htmlFor={htmlFor} className="mb-0.5 text-[11px] font-medium uppercase tracking-wider text-gray-500">
-          {label}
-        </label>
+        <label htmlFor={htmlFor}>{label}</label>
         {children}
       </div>
       {trailing}
@@ -115,51 +56,12 @@ export function InputGroup({
   );
 }
 
-/**
- * The hero control: a 52px black disc wrapped in a conic-gradient ring. On
- * hover the ring spins and a matching blurred halo fades in behind it.
- */
-export function ConicSubmitButton({
-  label,
-  pending = false,
-  disabled = false,
-}: {
-  label: string;
-  pending?: boolean;
-  disabled?: boolean;
-}) {
+/** Round submit control that sits inside an input group. */
+export function ConicSubmitButton({ label, pending = false, disabled = false }: { label: string; pending?: boolean; disabled?: boolean }) {
   const inactive = pending || disabled;
   return (
-    <button
-      type="submit"
-      aria-label={label}
-      title={label}
-      disabled={inactive}
-      className="group/conic vl-conic-btn relative h-[52px] w-[52px] shrink-0 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-black/40 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
-    >
-      <span
-        aria-hidden="true"
-        className="vl-conic-spin absolute -inset-1.5 rounded-full opacity-0 blur-md transition-opacity duration-300 group-hover/conic:opacity-100 group-focus-visible/conic:opacity-70"
-        style={{ background: "var(--vl-conic)" }}
-      />
-      <span aria-hidden="true" className="vl-conic-spin absolute inset-0 rounded-full" style={{ background: "var(--vl-conic)" }} />
-      <span className="absolute inset-[3px] flex items-center justify-center rounded-full bg-black shadow-[inset_0_2px_4px_rgba(255,255,255,0.18),inset_0_-3px_8px_rgba(0,0,0,0.9)]">
-        {pending ? (
-          <Loader2 className="h-5 w-5 animate-spin text-white" />
-        ) : (
-          <ArrowRight className="h-5 w-5 text-white transition-transform duration-200 group-hover/conic:translate-x-0.5" />
-        )}
-      </span>
-      <style>{`
-        .vl-conic-btn:hover:not(:disabled) .vl-conic-spin,
-        .vl-conic-btn:focus-visible .vl-conic-spin {
-          animation: vl-conic-spin 1.6s linear infinite;
-        }
-        @keyframes vl-conic-spin { to { transform: rotate(360deg); } }
-        @media (prefers-reduced-motion: reduce) {
-          .vl-conic-spin { animation: none !important; }
-        }
-      `}</style>
+    <button type="submit" aria-label={label} title={label} disabled={inactive} className="vl-conic-disc shrink-0">
+      {pending ? <Loader2 className="h-5 w-5 animate-spin" /> : <ArrowRight className="h-5 w-5" />}
     </button>
   );
 }
@@ -169,11 +71,12 @@ export function SocialButton({ label, icon, onClick }: { label: string; icon: Re
     <button
       type="button"
       onClick={onClick}
-      className="group/social flex w-full items-center gap-3 rounded-[1.25rem] border border-gray-200 bg-gray-50 p-4 text-left text-[14px] font-medium text-gray-900 transition-colors hover:border-gray-300 hover:bg-gray-100"
+      className="group/social flex w-full items-center gap-3 rounded-2xl border p-4 text-left text-[14px] font-medium transition-colors"
+      style={{ borderColor: "var(--vl-line)", background: "var(--vl-surface)", color: "var(--color-vl-ink)" }}
     >
       <span className="flex h-5 w-5 shrink-0 items-center justify-center">{icon}</span>
       <span className="flex-1">{label}</span>
-      <ArrowRight className="h-4 w-4 text-gray-400 transition-all group-hover/social:translate-x-0.5 group-hover/social:text-gray-700" />
+      <ArrowRight className="h-4 w-4 transition-transform group-hover/social:translate-x-0.5" style={{ color: "var(--color-vl-ink-faint)" }} />
     </button>
   );
 }
@@ -181,16 +84,16 @@ export function SocialButton({ label, icon, onClick }: { label: string; icon: Re
 export function Divider({ label = "or" }: { label?: string }) {
   return (
     <div className="flex items-center gap-4" role="separator" aria-label={label}>
-      <span className="h-px flex-1 bg-linear-to-r from-transparent to-gray-200" />
-      <span className="text-[10px] font-medium uppercase tracking-[0.25em] text-gray-400">{label}</span>
-      <span className="h-px flex-1 bg-linear-to-r from-gray-200 to-transparent" />
+      <span className="h-px flex-1" style={{ background: "var(--vl-line)" }} />
+      <span className="text-[10px] font-medium uppercase tracking-[0.25em]" style={{ color: "var(--color-vl-ink-faint)" }}>{label}</span>
+      <span className="h-px flex-1" style={{ background: "var(--vl-line)" }} />
     </div>
   );
 }
 
 export function ErrorNote({ children }: { children: React.ReactNode }) {
   return (
-    <p role="alert" className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-[13px] text-red-700">
+    <p role="alert" className="rounded-2xl border px-4 py-3 text-[13px]" style={{ color: "var(--color-vl-danger)", borderColor: "rgba(255,107,107,0.22)", background: "rgba(255,107,107,0.08)" }}>
       {children}
     </p>
   );
@@ -198,20 +101,17 @@ export function ErrorNote({ children }: { children: React.ReactNode }) {
 
 export function SuccessNote({ children }: { children: React.ReactNode }) {
   return (
-    <div role="status" className="flex gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-[13px] font-medium text-emerald-700">
+    <div role="status" className="flex gap-2 rounded-2xl border px-4 py-3 text-[13px] font-medium" style={{ color: "var(--color-vl-success)", borderColor: "rgba(143,227,180,0.22)", background: "rgba(143,227,180,0.08)" }}>
       <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
       <span>{children}</span>
     </div>
   );
 }
 
-/** Sunset-gradient inline link used in auth footers. */
+/** Inline link used in auth footers. */
 export function SunsetLink({ href, children }: { href: string; children: React.ReactNode }) {
   return (
-    <Link
-      href={href}
-      className="bg-linear-to-r from-[#FF512F] to-[#F09819] bg-clip-text font-semibold text-transparent transition hover:opacity-80"
-    >
+    <Link href={href} className="font-medium underline-offset-4 transition hover:underline" style={{ color: "var(--color-vl-ink)" }}>
       {children}
     </Link>
   );

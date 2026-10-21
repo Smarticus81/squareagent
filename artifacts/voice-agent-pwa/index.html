@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <meta name="theme-color" content="#050506" />
+  <meta name="theme-color" content="#09090B" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="VoyceLab" />
@@ -13,23 +13,11 @@
   <link rel="manifest" href="%BASE_URL%manifest.json" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Montserrat:wght@700;800;900&display=swap" rel="stylesheet" />
-  <title>VoyceLab — Voice surface</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <title>VoyceLab</title>
 </head>
 <body>
   <div id="root"></div>
-  <script>
-    // Apply persisted theme before React renders to avoid flash, and keep the
-    // status-bar theme-color in step so the splash doesn't flash a mismatched
-    // color. Noir (dark) is the product default; light is an opt-in.
-    (function() {
-      var t = localStorage.getItem("voycelab_theme");
-      if (t !== "light") t = "dark";
-      document.documentElement.setAttribute("data-theme", t);
-      var meta = document.querySelector('meta[name="theme-color"]');
-      if (meta) meta.setAttribute("content", t === "dark" ? "#050506" : "#FBF7F1");
-    })();
-  </script>
   <script type="module" src="/src/main.tsx"></script>
 </body>
 </html>
