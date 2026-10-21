@@ -448,7 +448,7 @@ export default function Settings() {
 
         {auth.user.isAdmin && (
           <div className="mt-8 flex justify-start">
-            <div className="inline-flex rounded-2xl border bg-white/70 p-1.5 shadow-sm" role="tablist" aria-label="Account sections" style={{ borderColor: "rgba(14, 27, 44,0.08)" }}>
+            <div className="inline-flex rounded-2xl border bg-white/70 p-1.5 shadow-sm" role="tablist" aria-label="Account sections" style={{ borderColor: "var(--vl-line)" }}>
               <button
                 type="button"
                 role="tab"
@@ -457,8 +457,8 @@ export default function Settings() {
                 className="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-[13.5px] font-bold transition-all duration-200"
                 style={{
                   color: settingsTab === "account" ? "var(--color-vl-ink)" : "var(--color-vl-ink-muted)",
-                  background: settingsTab === "account" ? "#fff" : "transparent",
-                  boxShadow: settingsTab === "account" ? "0 4px 12px rgba(14, 27, 44,0.05)" : "none",
+                  background: settingsTab === "account" ? "var(--vl-surface-solid)" : "transparent",
+                  boxShadow: settingsTab === "account" ? "0 4px 12px var(--vl-line)" : "none",
                 }}
               >
                 <UserRound className="h-4 w-4" />
@@ -472,8 +472,8 @@ export default function Settings() {
                 className="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-[13.5px] font-bold transition-all duration-200"
                 style={{
                   color: settingsTab === "admin" ? "var(--color-vl-ink)" : "var(--color-vl-ink-muted)",
-                  background: settingsTab === "admin" ? "#fff" : "transparent",
-                  boxShadow: settingsTab === "admin" ? "0 4px 12px rgba(14, 27, 44,0.05)" : "none",
+                  background: settingsTab === "admin" ? "var(--vl-surface-solid)" : "transparent",
+                  boxShadow: settingsTab === "admin" ? "0 4px 12px var(--vl-line)" : "none",
                 }}
               >
                 <ShieldCheck className="h-4 w-4" />
@@ -567,7 +567,7 @@ export default function Settings() {
               {auth.user.isAdmin && (
                 <Section icon={<KeyRound className="h-5 w-5" />} title="Launch Readiness" description="Confirm the live product is ready for customers.">
                   <div className="grid gap-5 lg:grid-cols-[230px_minmax(0,1fr)]">
-                    <div className="rounded-[24px] border p-5" style={{ borderColor: "var(--vl-surface)", background: "linear-gradient(135deg, rgba(124,110,245,0.12), rgba(255,107,71,0.10), rgba(79,184,255,0.10))" }}>
+                    <div className="rounded-[24px] border p-5" style={{ borderColor: "var(--vl-surface)", background: "linear-gradient(135deg, rgba(207,225,255,0.12), rgba(255,122,77,0.10), rgba(79,184,255,0.10))" }}>
                       <p className="text-[11px] font-bold uppercase tracking-[0.16em]" style={{ color: "var(--color-vl-ink-faint)" }}>
                         Production score
                       </p>
@@ -660,27 +660,6 @@ export default function Settings() {
         )}
 
       </div>
-
-      <style>{`
-        .vl-compact-input {
-          width: 100%;
-          height: 44px;
-          padding: 0 16px;
-          border-radius: 14px;
-          background: rgba(255,255,255,0.78);
-          border: 1px solid var(--vl-line);
-          color: var(--color-vl-ink);
-          font-size: 14px;
-          outline: none;
-          transition: all .2s ease;
-        }
-        .vl-compact-input::placeholder { color: var(--vl-line-strong); }
-        .vl-compact-input:focus {
-          border-color: #FF6B47;
-          background: #fff;
-          box-shadow: 0 0 0 4px rgba(255, 107, 71, 0.08);
-        }
-      `}</style>
     </div>
   );
 }
@@ -844,27 +823,27 @@ function PremiumSettingsArt({ title }: { title: string }) {
 function getSettingsArtPalette(title: string) {
   if (title.includes("Billing")) {
     return {
-      start: "rgba(255,107,71,0.20)",
+      start: "rgba(255,122,77,0.20)",
       mid: "rgba(255,185,90,0.22)",
-      end: "rgba(255,255,255,0.88)",
-      glow: "rgba(255,107,71,0.45)",
+      end: "rgba(244,243,240,0.06)",
+      glow: "rgba(255,122,77,0.45)",
       soft: "rgba(255,185,90,0.32)",
-      line: "rgba(255,107,71,0.72)",
+      line: "rgba(255,122,77,0.72)",
       lineAlt: "var(--color-vl-ink-soft)",
-      border: "rgba(255,107,71,0.18)",
+      border: "rgba(255,122,77,0.18)",
       ink: "#8F2F1D",
     };
   }
   if (title.includes("Launch")) {
     return {
-      start: "rgba(124,110,245,0.22)",
+      start: "rgba(207,225,255,0.22)",
       mid: "rgba(79,184,255,0.20)",
-      end: "rgba(255,255,255,0.88)",
-      glow: "rgba(124,110,245,0.42)",
+      end: "rgba(244,243,240,0.06)",
+      glow: "rgba(207,225,255,0.42)",
       soft: "rgba(79,184,255,0.34)",
-      line: "rgba(124,110,245,0.74)",
+      line: "rgba(207,225,255,0.74)",
       lineAlt: "rgba(79,184,255,0.78)",
-      border: "rgba(124,110,245,0.18)",
+      border: "rgba(207,225,255,0.18)",
       ink: "#332B93",
     };
   }
@@ -872,7 +851,7 @@ function getSettingsArtPalette(title: string) {
     return {
       start: "rgba(47,158,100,0.20)",
       mid: "rgba(79,184,255,0.18)",
-      end: "rgba(255,255,255,0.88)",
+      end: "rgba(244,243,240,0.06)",
       glow: "rgba(47,158,100,0.40)",
       soft: "rgba(79,184,255,0.32)",
       line: "rgba(47,158,100,0.78)",
@@ -884,37 +863,37 @@ function getSettingsArtPalette(title: string) {
   if (title.includes("Security")) {
     return {
       start: "var(--vl-line)",
-      mid: "rgba(124,110,245,0.18)",
-      end: "rgba(255,255,255,0.88)",
+      mid: "rgba(207,225,255,0.18)",
+      end: "rgba(244,243,240,0.06)",
       glow: "var(--vl-line-strong)",
-      soft: "rgba(124,110,245,0.32)",
+      soft: "rgba(207,225,255,0.32)",
       line: "var(--color-vl-ink-soft)",
-      lineAlt: "rgba(124,110,245,0.74)",
+      lineAlt: "rgba(207,225,255,0.74)",
       border: "var(--vl-line)",
-      ink: "#0E1B2C",
+      ink: "var(--color-vl-ink)",
     };
   }
   if (title.includes("Workspaces")) {
     return {
-      start: "rgba(255,107,71,0.16)",
-      mid: "rgba(124,110,245,0.18)",
-      end: "rgba(255,255,255,0.88)",
-      glow: "rgba(124,110,245,0.34)",
-      soft: "rgba(255,107,71,0.30)",
-      line: "rgba(124,110,245,0.74)",
-      lineAlt: "rgba(255,107,71,0.70)",
-      border: "rgba(124,110,245,0.16)",
+      start: "rgba(255,122,77,0.16)",
+      mid: "rgba(207,225,255,0.18)",
+      end: "rgba(244,243,240,0.06)",
+      glow: "rgba(207,225,255,0.34)",
+      soft: "rgba(255,122,77,0.30)",
+      line: "rgba(207,225,255,0.74)",
+      lineAlt: "rgba(255,122,77,0.70)",
+      border: "rgba(207,225,255,0.16)",
       ink: "#3C2FA6",
     };
   }
   return {
     start: "rgba(79,184,255,0.18)",
-    mid: "rgba(255,107,71,0.16)",
-    end: "rgba(255,255,255,0.88)",
+    mid: "rgba(255,122,77,0.16)",
+    end: "rgba(244,243,240,0.06)",
     glow: "rgba(79,184,255,0.34)",
-    soft: "rgba(255,107,71,0.30)",
+    soft: "rgba(255,122,77,0.30)",
     line: "rgba(79,184,255,0.74)",
-    lineAlt: "rgba(255,107,71,0.70)",
+    lineAlt: "rgba(255,122,77,0.70)",
     border: "rgba(79,184,255,0.16)",
     ink: "#135D82",
   };
@@ -992,7 +971,7 @@ function AdminPanel({
   className?: string;
 }) {
   return (
-    <section className={`vl-panel rounded-3xl border p-5 shadow-sm ${className ?? ""}`} style={{ borderColor: "rgba(14,27,44,0.06)" }}>
+    <section className={`vl-panel rounded-3xl border p-5 shadow-sm ${className ?? ""}`} style={{ borderColor: "var(--vl-line)" }}>
       <div className="mb-5 flex flex-wrap items-start justify-between gap-4 border-b pb-4" style={{ borderColor: "var(--vl-line)" }}>
         <div className="flex min-w-0 items-start gap-3.5">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-orange-100 shadow-sm" style={{ background: "var(--color-vl-coral-tint)", color: "var(--color-vl-coral-deep)" }}>
@@ -1060,7 +1039,7 @@ function BillingBadge({ tone, text }: { tone: "ok" | "warn"; text: string }) {
 
 function ChecklistItem({ isCompleted, label, subtext }: { isCompleted: boolean; label: string; subtext: string }) {
   return (
-    <div className="flex items-start gap-3 rounded-2xl border bg-white/50 p-4 shadow-sm" style={{ borderColor: "rgba(14, 27, 44,0.06)" }}>
+    <div className="flex items-start gap-3 rounded-2xl border bg-white/50 p-4 shadow-sm" style={{ borderColor: "var(--vl-line)" }}>
       <div className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border ${isCompleted ? 'bg-emerald-50 border-emerald-200 text-emerald-600' : 'bg-amber-50 border-amber-200 text-amber-600'}`}>
         {isCompleted ? <Check className="h-3.5 w-3.5 font-bold" /> : <HelpCircle className="h-3.5 w-3.5" />}
       </div>
@@ -1368,7 +1347,7 @@ function AdminConsole({ token }: { token: string | null }) {
 
 function AdminStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl border bg-white/65 px-4 py-3 shadow-sm" style={{ borderColor: "rgba(14, 27, 44,0.06)" }}>
+    <div className="rounded-2xl border bg-white/65 px-4 py-3 shadow-sm" style={{ borderColor: "var(--vl-line)" }}>
       <p className="text-[10px] font-bold uppercase tracking-[0.15em]" style={{ color: "var(--color-vl-ink-faint)" }}>
         {label}
       </p>
@@ -1401,9 +1380,9 @@ function usageRiskColor(risk: AdminUserAccess["usage"]["risk"]) {
     case "near_cap":
       return { text: "#B45309", bg: "rgba(245,158,11,0.12)", border: "rgba(245,158,11,0.24)", bar: "rgba(245,158,11,0.72)" };
     case "over_included":
-      return { text: "#C2410C", bg: "rgba(255,107,71,0.12)", border: "rgba(255,107,71,0.26)", bar: "rgba(255,107,71,0.72)" };
+      return { text: "#C2410C", bg: "rgba(255,122,77,0.12)", border: "rgba(255,122,77,0.26)", bar: "rgba(255,122,77,0.72)" };
     case "watch":
-      return { text: "#5B21B6", bg: "rgba(124,110,245,0.12)", border: "rgba(124,110,245,0.24)", bar: "rgba(124,110,245,0.72)" };
+      return { text: "#5B21B6", bg: "rgba(207,225,255,0.12)", border: "rgba(207,225,255,0.24)", bar: "rgba(207,225,255,0.72)" };
     default:
       return { text: "#047857", bg: "rgba(16,185,129,0.10)", border: "rgba(16,185,129,0.22)", bar: "rgba(16,185,129,0.72)" };
   }
@@ -1457,8 +1436,8 @@ function UsageRiskTile({ label, value, tone, onClick }: { label: string; value: 
       : tone === "warn"
       ? { bg: "rgba(245,158,11,0.12)", border: "rgba(245,158,11,0.22)", text: "#B45309" }
       : tone === "orange"
-      ? { bg: "rgba(255,107,71,0.12)", border: "rgba(255,107,71,0.24)", text: "#C2410C" }
-      : { bg: "rgba(124,110,245,0.12)", border: "rgba(124,110,245,0.22)", text: "#5B21B6" };
+      ? { bg: "rgba(255,122,77,0.12)", border: "rgba(255,122,77,0.24)", text: "#C2410C" }
+      : { bg: "rgba(207,225,255,0.12)", border: "rgba(207,225,255,0.22)", text: "#5B21B6" };
 
   return (
     <button
@@ -1575,7 +1554,7 @@ function AdminDiagnosticsModal({
           ) : (
             <div className="grid gap-6 md:grid-cols-2">
               {/* Service Latencies */}
-              <div className="rounded-[24px] border bg-white p-5 shadow-xs" style={{ borderColor: "rgba(14, 27, 44,0.06)" }}>
+              <div className="rounded-[24px] border bg-white p-5 shadow-xs" style={{ borderColor: "var(--vl-line)" }}>
                 <h3 className="text-[15px] font-black mb-4 flex items-center gap-2" style={{ color: "var(--color-vl-ink)" }}>
                   <Activity className="h-4.5 w-4.5 text-[#FF6B47]" />
                   Live API Latency
@@ -1663,7 +1642,7 @@ function AdminDiagnosticsModal({
               </div>
 
               {/* Environment Checklist */}
-              <div className="rounded-[24px] border bg-white p-5 shadow-xs flex flex-col justify-between" style={{ borderColor: "rgba(14, 27, 44,0.06)" }}>
+              <div className="rounded-[24px] border bg-white p-5 shadow-xs flex flex-col justify-between" style={{ borderColor: "var(--vl-line)" }}>
                 <div>
                   <h3 className="text-[15px] font-black mb-4 flex items-center gap-2" style={{ color: "var(--color-vl-ink)" }}>
                     <ShieldCheck className="h-4.5 w-4.5 text-emerald-600" />
@@ -1951,7 +1930,7 @@ function AdminControlCenterModal({
           {/* Accounts & Form */}
           <div className="grid gap-5 lg:grid-cols-[440px_minmax(0,1fr)] 2xl:grid-cols-[460px_minmax(0,1fr)] pb-2">
             {/* Accounts Panel */}
-            <div className="rounded-3xl border bg-white p-4 shadow-xs" style={{ borderColor: "rgba(14, 27, 44,0.06)" }}>
+            <div className="rounded-3xl border bg-white p-4 shadow-xs" style={{ borderColor: "var(--vl-line)" }}>
               <div className="mb-3 flex items-end justify-between gap-3">
                 <div>
                   <p className="text-[11px] font-black uppercase tracking-[0.16em]" style={{ color: "var(--color-vl-ink-faint)" }}>
@@ -1994,8 +1973,8 @@ function AdminControlCenterModal({
                     onClick={() => setUsageFilter(value === "over" ? "over_included" : value)}
                     className="rounded-xl border py-2 text-[10px] font-black uppercase tracking-[0.12em] transition hover:bg-white"
                     style={{
-                      borderColor: (value === "over" ? usageFilter === "over_included" : usageFilter === value) ? "rgba(255,107,71,0.34)" : "var(--vl-line)",
-                      background: (value === "over" ? usageFilter === "over_included" : usageFilter === value) ? "rgba(255,107,71,0.08)" : "rgba(255,255,255,0.58)",
+                      borderColor: (value === "over" ? usageFilter === "over_included" : usageFilter === value) ? "rgba(255,122,77,0.34)" : "var(--vl-line)",
+                      background: (value === "over" ? usageFilter === "over_included" : usageFilter === value) ? "rgba(255,122,77,0.08)" : "rgba(255,255,255,0.58)",
                       color: (value === "over" ? usageFilter === "over_included" : usageFilter === value) ? "var(--color-vl-coral-deep)" : "var(--color-vl-ink-muted)",
                     }}
                   >
@@ -2023,8 +2002,8 @@ function AdminControlCenterModal({
                         type="button"
                         className="w-full rounded-2xl border p-3.5 text-left transition hover:bg-white hover:shadow-xs"
                         style={{
-                          borderColor: isSelected ? "rgba(255,107,71,0.34)" : "var(--vl-line)",
-                          background: isSelected ? "rgba(255,107,71,0.08)" : "rgba(255,255,255,0.66)",
+                          borderColor: isSelected ? "rgba(255,122,77,0.34)" : "var(--vl-line)",
+                          background: isSelected ? "rgba(255,122,77,0.08)" : "rgba(244,243,240,0.06)",
                         }}
                         onClick={() => setSelectedUserId(user.id)}
                       >
@@ -2057,7 +2036,7 @@ function AdminControlCenterModal({
             </div>
 
             {/* Account Details Form */}
-            <div className="rounded-3xl border bg-white p-5 shadow-xs flex flex-col justify-between" style={{ borderColor: "rgba(14, 27, 44,0.06)" }}>
+            <div className="rounded-3xl border bg-white p-5 shadow-xs flex flex-col justify-between" style={{ borderColor: "var(--vl-line)" }}>
               {selectedUser ? (
                 <div className="space-y-5">
                   <div className="border-b pb-4 flex justify-between items-start gap-4" style={{ borderColor: "var(--vl-line)" }}>
@@ -2337,7 +2316,7 @@ function AdminAccessModal({
         <div className="relative border-b p-6" style={{ borderColor: "var(--vl-line)" }}>
           <div className="pointer-events-none absolute inset-0 opacity-80" style={{
             background:
-              "radial-gradient(circle at 14% 18%, rgba(255, 107, 71,0.12), transparent 28%), radial-gradient(circle at 85% 5%, rgba(124, 110, 245,0.12), transparent 30%), radial-gradient(circle at 92% 88%, rgba(16,185,129,0.10), transparent 30%)",
+              "radial-gradient(circle at 14% 18%, rgba(255,122,77,0.12), transparent 28%), radial-gradient(circle at 85% 5%, rgba(207,225,255,0.12), transparent 30%), radial-gradient(circle at 92% 88%, rgba(16,185,129,0.10), transparent 30%)",
           }} />
           <div className="relative flex items-start justify-between gap-5">
             <div>
@@ -2417,7 +2396,7 @@ function AdminAccessModal({
 
 function AdminMetricCard({ label, value, icon, bgColor, textColor, isFailure = false }: { label: string; value: number; icon: ReactNode; bgColor: string; textColor: string; isFailure?: boolean }) {
   return (
-    <div className="flex min-w-0 items-center gap-3 rounded-2xl border bg-white/70 p-3 shadow-sm transition duration-200 hover:bg-white hover:shadow" style={{ borderColor: "rgba(14, 27, 44,0.06)" }}>
+    <div className="flex min-w-0 items-center gap-3 rounded-2xl border bg-white/70 p-3 shadow-sm transition duration-200 hover:bg-white hover:shadow" style={{ borderColor: "var(--vl-line)" }}>
       <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl shadow-inner ${bgColor} ${textColor}`}>
         {icon}
       </div>
@@ -2504,8 +2483,8 @@ function UsageCard({ token, plan, isAdmin = false }: { token: string | null; pla
   const statusConfig: Record<string, { label: string; text: string; bg: string; border: string; bar: string }> = {
     blocked: { label: "Suspended (At Cap)", text: "#B91C1C", bg: "rgba(239,68,68,0.08)", border: "rgba(239,68,68,0.20)", bar: "bg-red-600" },
     near_cap: { label: "Critical (Near Cap)", text: "#B45309", bg: "rgba(245,158,11,0.08)", border: "rgba(245,158,11,0.20)", bar: "bg-amber-500" },
-    over_included: { label: "Overage Active", text: "#C2410C", bg: "rgba(255,107,71,0.08)", border: "rgba(255,107,71,0.20)", bar: "bg-[#FF6B47]" },
-    watch: { label: "Approaching Limit", text: "#5B21B6", bg: "rgba(124,110,245,0.08)", border: "rgba(124,110,245,0.20)", bar: "bg-[#7C6EF5]" },
+    over_included: { label: "Overage Active", text: "#C2410C", bg: "rgba(255,122,77,0.08)", border: "rgba(255,122,77,0.20)", bar: "bg-[#FF6B47]" },
+    watch: { label: "Approaching Limit", text: "#5B21B6", bg: "rgba(207,225,255,0.08)", border: "rgba(207,225,255,0.20)", bar: "bg-[#7C6EF5]" },
     ok: { label: "Optimal", text: "#047857", bg: "rgba(16,185,129,0.08)", border: "rgba(16,185,129,0.18)", bar: "bg-[#10B981]" }
   };
   const activeStatus = statusConfig[risk] || statusConfig.ok;
@@ -2572,7 +2551,7 @@ function UsageCard({ token, plan, isAdmin = false }: { token: string | null; pla
             {hasFiniteLimit ? (
               <div className="space-y-2">
                 <div className="relative">
-                  <div className="h-3 overflow-hidden rounded-full bg-[rgba(14,27,44,0.06)] shadow-inner" style={{ border: "1px solid rgba(14,27,44,0.04)" }}>
+                  <div className="h-3 overflow-hidden rounded-full bg-[var(--vl-line)] shadow-inner" style={{ border: "1px solid var(--vl-line)" }}>
                     <div
                       className={`h-full rounded-full ${activeStatus.bar} transition-all duration-500`}
                       style={{

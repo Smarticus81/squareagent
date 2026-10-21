@@ -538,7 +538,7 @@ export default function Onboarding() {
                         }}
                         className="vl-card flex items-center gap-4 p-5 text-left"
                         style={{
-                          borderColor: active ? "rgba(255, 107, 71, 0.5)" : undefined,
+                          borderColor: active ? "rgba(255,122,77,0.5)" : undefined,
                         }}
                       >
                         <span
@@ -627,7 +627,7 @@ export default function Onboarding() {
                       style={
                         name === n
                           ? {
-                              borderColor: "rgba(255, 107, 71, 0.5)",
+                              borderColor: "rgba(255,122,77,0.5)",
                               color: "var(--color-vl-coral-deep)",
                             }
                           : undefined

@@ -1,21 +1,16 @@
-import { Link, useLocation } from "wouter";
-import { useReducedMotion } from "framer-motion";
-import { Logo } from "./logo";
-import { useAuth, useLogout } from "@/hooks/use-auth";
-import { LogOut, Menu, X, ArrowRight } from "lucide-react";
 import { useState } from "react";
-
-/** The ambient film that runs behind every screen of the product. */
-export const AMBIENT_VIDEO_SRC = "https://cdn.midjourney.com/video/71048e88-d8e6-470e-88ef-555c01eacb12/0.mp4";
+import { Link, useLocation } from "wouter";
+import { Menu, X } from "lucide-react";
+import { useAuth, useLogout } from "@/hooks/use-auth";
+import { Wordmark } from "./logo";
 
 const APP_NAV = [
-  { href: "/assistants", label: "Assistants" },
-  { href: "/services", label: "Integrations" },
+  { href: "/assistants", label: "Assistant" },
+  { href: "/services", label: "Connections" },
   { href: "/settings", label: "Account" },
 ];
 
-const LANDING_NAV: { href: string; label: string }[] = [
-  { href: "#demo", label: "Demo" },
+const PUBLIC_NAV = [
   { href: "/pricing", label: "Pricing" },
 ];
 
@@ -27,36 +22,19 @@ function normalizeAppPath(loc: string): string {
   return loc;
 }
 
-const PUBLIC_SITE_NAV = [
-  { href: "/", label: "Home" },
-  { href: "/pricing", label: "Pricing" },
-];
-
 function navLinkActive(canonicalPath: string, href: string): boolean {
   return canonicalPath === href || canonicalPath.startsWith(`${href}/`);
 }
 
-export function AmbientBackdrop({ deep = false }: { deep?: boolean }) {
-  const reduceMotion = useReducedMotion();
-  return (
-    <div className="vl-premium-backdrop" aria-hidden="true">
-      <div className="vl-ambient-aurora" />
-      <video
-        className="vl-ambient-video"
-        src={AMBIENT_VIDEO_SRC}
-        autoPlay={!reduceMotion}
-        muted
-        loop
-        playsInline
-        preload="auto"
-      />
-      <div className="vl-ambient-veil" />
-      {deep && <div className="vl-ambient-veil vl-ambient-veil-deep" />}
-      <div className="vl-premium-grain" />
-    </div>
-  );
+/** The quiet backdrop behind every screen. */
+export function AmbientBackdrop() {
+  return <div className="vl-premium-backdrop" aria-hidden="true" />;
 }
 
+/**
+ * The shell is a single hairline of navigation. Nothing floats, nothing
+ * glows; the assistant is the only thing on any screen that is allowed to.
+ */
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const { data: auth, isLoading } = useAuth();
@@ -65,143 +43,113 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   const canonicalPath = normalizeAppPath(location);
   const missionControlQuery =
-    typeof window !== "undefined" &&
-    new URLSearchParams(window.location.search).get("view") === "autonomy";
+    typeof window !== "undefined" && new URLSearchParams(window.location.search).get("view") === "autonomy";
   const effectivePath = missionControlQuery ? "/autonomy" : canonicalPath;
   const isPlatformAdmin = Boolean(auth?.isAdmin ?? auth?.user?.isAdmin);
 
-  const isAuthPage =
-    effectivePath === "/login" ||
-    effectivePath === "/signup" ||
-    effectivePath === "/onboarding";
+  const isAuthPage = effectivePath === "/login" || effectivePath === "/signup" || effectivePath === "/onboarding";
   const isLanding = effectivePath === "/";
+  const signedIn = Boolean(auth?.user);
 
-  const showAppShellNav = Boolean(auth?.user) && !isLanding && !isAuthPage;
-  const showPublicInteriorNav = !auth?.user && !isLanding && !isAuthPage;
-
-  const adminAppNav = isPlatformAdmin
-    ? [...APP_NAV, { href: "/autonomy", label: "Mission Control" }]
-    : APP_NAV;
-  const landingNav = isPlatformAdmin
-    ? [...LANDING_NAV, { href: "/autonomy", label: "Mission Control" }]
-    : LANDING_NAV;
-  const headerNavItems = showAppShellNav ? adminAppNav : isLanding ? landingNav : PUBLIC_SITE_NAV;
+  const nav = signedIn
+    ? (isPlatformAdmin ? [...APP_NAV, { href: "/autonomy", label: "Mission Control" }] : APP_NAV)
+    : PUBLIC_NAV;
 
   return (
-    <div className="vl-app-shell min-h-screen flex flex-col relative">
-      <AmbientBackdrop deep={!isLanding && !isAuthPage} />
+    <div className="vl-app-shell relative flex min-h-screen flex-col">
+      <AmbientBackdrop />
 
       {!isAuthPage && (
-        <header className={`fixed top-0 inset-x-0 z-50 ${isLanding ? "vl-landing-header" : ""}`}>
-          <div className="vl-glass">
-            <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-10 h-16 sm:h-18 flex items-center justify-between gap-2 sm:gap-4">
-              <Link href="/" className="flex items-center gap-2.5 hover:opacity-90 transition-opacity min-w-0 shrink">
-                <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white shadow-[0_8px_24px_-10px_rgba(0,0,0,0.8)]">
-                  <Logo size="sm" iconOnly />
-                </span>
-                <span className="hidden text-[14px] font-semibold tracking-tight text-white sm:inline">VoyceLab</span>
+        <header className="fixed inset-x-0 top-0 z-50">
+          <div className={isLanding ? "" : "vl-glass"}>
+            <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between gap-4 px-5 sm:px-8">
+              <Link href={signedIn ? "/assistants" : "/"} className="flex items-center gap-2.5 transition-opacity hover:opacity-80">
+                <Wordmark />
               </Link>
 
-              <nav className="hidden lg:flex items-center gap-1 rounded-full border border-white/10 bg-white/5 p-1 backdrop-blur-md">
-                {headerNavItems.map((item, idx) => {
-                  const isAnchor = item.href.startsWith("#");
-                  const active =
-                    !isAnchor &&
-                    (showAppShellNav || showPublicInteriorNav || (isLanding && isPlatformAdmin)) &&
-                    navLinkActive(effectivePath, item.href);
-                  const cls = `rounded-full px-3.5 py-1.5 text-[13px] font-medium transition-colors ${
-                    active ? "bg-white text-gray-900 shadow-sm" : "text-white/70 hover:bg-white/10 hover:text-white"
-                  }`;
-                  if (isLanding && isAnchor) {
-                    return <a key={`${item.href}-${idx}`} href={item.href} className={cls}>{item.label}</a>;
-                  }
-                  return <Link key={`${item.href}-${idx}`} href={item.href} className={cls}>{item.label}</Link>;
+              <nav className="hidden items-center gap-7 md:flex" aria-label="Primary">
+                {nav.map((item) => {
+                  const active = !isLanding && navLinkActive(effectivePath, item.href);
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      className="text-[13.5px] font-medium transition-colors"
+                      style={{ color: active ? "var(--color-vl-ink)" : "var(--color-vl-ink-muted)" }}
+                    >
+                      {item.label}
+                    </Link>
+                  );
                 })}
+                {!isLoading && (signedIn ? (
+                  <button
+                    type="button"
+                    onClick={() => logout.mutate()}
+                    className="text-[13.5px] font-medium transition-colors hover:text-white"
+                    style={{ color: "var(--color-vl-ink-faint)" }}
+                  >
+                    Sign out
+                  </button>
+                ) : (
+                  <>
+                    <Link href="/login" className="text-[13.5px] font-medium transition-colors" style={{ color: "var(--color-vl-ink-muted)" }}>
+                      Sign in
+                    </Link>
+                    <Link href="/signup" className="vl-btn-primary text-[13px]" style={{ padding: "0.5rem 1rem" }}>
+                      Start free
+                    </Link>
+                  </>
+                ))}
               </nav>
 
-              <div className="flex items-center gap-2 sm:gap-3">
-                {!isLoading &&
-                  (auth?.user ? (
-                    <>
-                      {!showAppShellNav && (
-                        <Link href="/assistants" className="vl-btn-outline hidden text-[13px] sm:inline-flex" style={{ padding: "0.5rem 1.1rem" }}>
-                          Open assistants
-                        </Link>
-                      )}
-                      <button onClick={() => logout.mutate()} className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] font-medium text-white/70 transition-colors hover:bg-white/10 hover:text-white">
-                        <LogOut className="w-3.5 h-3.5" />
-                        <span className="hidden sm:inline">Sign out</span>
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <Link href="/login" className="rounded-full px-3 py-1.5 text-[13px] font-medium text-white/75 transition-colors hover:bg-white/10 hover:text-white">Sign in</Link>
-                      <Link href="/signup" className="vl-btn-primary text-[13px] gap-2" style={{ padding: "0.5rem 0.6rem 0.5rem 1.1rem" }}>
-                        Start Free
-                        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-white/15"><ArrowRight className="w-3 h-3 text-white" /></span>
-                      </Link>
-                    </>
-                  ))}
-
-                <button className="flex h-9 w-9 items-center justify-center rounded-full border border-white/12 bg-white/8 text-white lg:hidden" onClick={() => setMobileOpen((s) => !s)} aria-label="Toggle menu">
-                  {mobileOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
-                </button>
-              </div>
+              <button
+                type="button"
+                className="flex h-10 w-10 items-center justify-center rounded-full md:hidden"
+                style={{ color: "var(--color-vl-ink)", background: "var(--vl-surface)" }}
+                onClick={() => setMobileOpen((s) => !s)}
+                aria-label="Toggle menu"
+                aria-expanded={mobileOpen}
+              >
+                {mobileOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
+              </button>
             </div>
 
             {mobileOpen && (
-              <div className="lg:hidden px-4 sm:px-6 py-4 flex flex-col gap-1 border-t border-white/8 bg-[#050506]/90">
-                {headerNavItems.map((item, idx) => {
-                  const isAnchor = item.href.startsWith("#");
-                  const cls = "rounded-2xl px-3 py-2.5 text-[14px] text-white/80 hover:bg-white/8 hover:text-white";
-                  if (isLanding && isAnchor) {
-                    return <a key={`${item.href}-${idx}`} href={item.href} onClick={() => setMobileOpen(false)} className={cls}>{item.label}</a>;
-                  }
-                  return <Link key={`${item.href}-${idx}`} href={item.href} onClick={() => setMobileOpen(false)} className={cls}>{item.label}</Link>;
-                })}
-                {!auth?.user && <Link href="/signup" onClick={() => setMobileOpen(false)} className="vl-btn-primary mt-2 justify-center text-[13px]">Start Free</Link>}
+              <div className="vl-glass flex flex-col gap-1 border-t px-5 py-4 md:hidden" style={{ borderColor: "var(--vl-line)" }}>
+                {nav.map((item) => (
+                  <Link key={item.href} href={item.href} onClick={() => setMobileOpen(false)} className="rounded-xl px-3 py-2.5 text-[15px]" style={{ color: "var(--color-vl-ink-soft)" }}>
+                    {item.label}
+                  </Link>
+                ))}
+                {signedIn ? (
+                  <button type="button" onClick={() => logout.mutate()} className="rounded-xl px-3 py-2.5 text-left text-[15px]" style={{ color: "var(--color-vl-ink-muted)" }}>
+                    Sign out
+                  </button>
+                ) : (
+                  <>
+                    <Link href="/login" onClick={() => setMobileOpen(false)} className="rounded-xl px-3 py-2.5 text-[15px]" style={{ color: "var(--color-vl-ink-soft)" }}>Sign in</Link>
+                    <Link href="/signup" onClick={() => setMobileOpen(false)} className="vl-btn-primary mt-2 justify-center text-[14px]">Start free</Link>
+                  </>
+                )}
               </div>
             )}
           </div>
         </header>
       )}
 
-      <main className={`flex-1 flex flex-col ${isAuthPage ? "" : "pt-16 sm:pt-18"}`}>{children}</main>
+      <main className={`flex flex-1 flex-col ${isAuthPage ? "" : "pt-16"}`}>{children}</main>
 
       {!isAuthPage && (
         <footer className="vl-footer mt-auto border-t">
-          <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-10 py-10 sm:py-14">
-            <div className="grid sm:grid-cols-2 md:grid-cols-[1.6fr_1fr_1fr_1fr] gap-8 md:gap-10">
-              <div>
-                <div className="flex items-center gap-3">
-                  <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white"><Logo size="sm" iconOnly /></span>
-                  <span className="text-[15px] font-semibold tracking-tight text-white">VoyceLab</span>
-                </div>
-                <p className="text-[13px] mt-5 max-w-85 leading-relaxed text-white/55">
-                  A Voice AI agent for venue owners. Ask about inventory, sales, orders, booking inquiries and the day-to-day work of running the venue.
-                </p>
-              </div>
-              <FooterCol title="Product" links={[{ href: "/assistants/new", label: "Create your assistant" },{ href: "/assistants", label: "Assistants" },{ href: "/services", label: "Integrations" },{ href: "/pricing", label: "Pricing" }]} />
-              <FooterCol title="Account" links={[{ href: "/settings", label: "Settings" },{ href: "/pricing", label: "Plans & billing" }]} />
-              <FooterCol title="Start" links={[{ href: "/signup", label: "Start free" },{ href: "/login", label: "Sign in" }]} />
-            </div>
-            <div className="vl-line my-10" />
-            <div className="flex flex-col sm:flex-row justify-between items-center gap-2 text-[11.5px] text-white/40">
-              <p className="tracking-wider">&copy; {new Date().getFullYear()} VoyceLab</p>
-              <p className="tracking-[0.22em] uppercase">Voice for event venues</p>
+          <div className="mx-auto flex w-full max-w-6xl flex-col items-start justify-between gap-3 px-5 py-8 text-[12.5px] sm:flex-row sm:items-center sm:px-8" style={{ color: "var(--color-vl-ink-faint)" }}>
+            <p>&copy; {new Date().getFullYear()} VoyceLab · An always-on assistant for venues</p>
+            <div className="flex gap-5">
+              <Link href="/pricing" className="transition-colors hover:text-white">Pricing</Link>
+              <Link href={signedIn ? "/settings" : "/login"} className="transition-colors hover:text-white">{signedIn ? "Account" : "Sign in"}</Link>
             </div>
           </div>
         </footer>
       )}
-    </div>
-  );
-}
-
-function FooterCol({ title, links }: { title: string; links: { href: string; label: string }[] }) {
-  return (
-    <div className="space-y-2.5">
-      <p className="vl-gradient-text mb-3 text-[11px] font-semibold tracking-[0.22em] uppercase">{title}</p>
-      {links.map((l) => <Link key={l.href} href={l.href} className="block text-[13.5px] text-white/70 transition-colors hover:text-white">{l.label}</Link>)}
     </div>
   );
 }

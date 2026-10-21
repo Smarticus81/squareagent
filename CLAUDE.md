@@ -169,18 +169,15 @@ All plans have a 1.5x overage hard cap. Seven voice pipeline providers (LiveKit,
 - **Session Store** (`lib/session-store.ts`) -- in-memory + DB write-through for voice session state, survives server restarts
 - **Pino Logging** (`lib/logger.ts`) -- structured JSON logging via pino + pino-http; LOG_LEVEL env var
 
-## Landing Page Design System
+## Design System ("Presence")
 
-The marketing site (`voycelab-landing`) uses a warm, hospitality-focused light theme.
+Both frontends share one visual direction, documented in `artifacts/voycelab-landing/design-notes.md`: the product is an always-on assistant, so the interface is a near-black canvas, one living presence (a soft sphere of light whose state and audio level drive its colour and bloom), white ink at a few opacities, and a single warm accent (`#FF7A4D`) reserved for the presence while it speaks. Inter only; no serif display face, gradient text, conic rings, or ambient video.
 
-**Visual identity**: Cream paper backgrounds, deep navy ink, coral accent, painterly watercolor washes. Serif display headlines (Fraunces), sans-serif body (Inter).
+**PWA (`voice-agent-pwa`)**: `App.tsx` renders the always-on surface (status line, presence, the current words, a ledger of recent actions, a ticket pill). The ticket and settings live in `components/Sheet.tsx`, a bottom sheet on phones and a drawer on wide screens. `components/Presence.tsx` drives the light from real state and from `createPresenceMeter` (`lib/voicelab-client/src/presence-meter.ts`), which turns the assistant's remote audio into a 0..1 level. The surface never fakes speech: silence is still.
 
-**Key tokens** (defined in `index.css`):
-- Background: `#FBF7F1` (cream) / Ink: `#0E1B2C` (navy) / Accent: `#FF6B47` (coral)
+**Dashboard (`voycelab-landing`)**: `index.css` defines the tokens and keeps the shared class vocabulary (`vl-panel`, `vl-btn-primary`, `vl-display`, `vl-eyebrow`, `vl-input`...) so every screen inherits the system; light-theme utilities such as `bg-white` and `text-gray-*` are remapped to dark surfaces inside `.vl-app-shell`. `components/layout.tsx` is a single hairline of navigation. The landing page's hero is the live demo presence ("Nova", backed by `/api/realtime/demo-bar-session`).
 
-**Customer-facing language**: Say "assistant" not "agent". Say "commands" not "tools". Say "connected systems" not "APIs". Never expose technical internals in user-facing UI.
-
-**Landing demo**: Mock-bar demo backed by an in-memory mock order store in `realtime.ts` (`/api/realtime/demo-bar-session`). Users talk to "Nova" and see a live order ticket update in real time. The name "Bev" must never appear in the landing app or the website demo persona.
+**Customer-facing language**: Say "assistant" not "agent". Say "commands" not "tools". Say "connected systems" not "APIs". Never expose technical internals in user-facing UI. The name "Bev" must never appear in the landing app or the website demo persona.
 
 ## Key Conventions
 

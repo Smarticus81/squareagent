@@ -11,7 +11,8 @@
     "./live-protocol": "./src/live-protocol.ts",
     "./live-browser": "./src/live-browser.ts",
     "./voice-termination": "./src/voice-termination.ts",
-    "./voice-prefs": "./src/voice-prefs.ts"
+    "./voice-prefs": "./src/voice-prefs.ts",
+    "./presence-meter": "./src/presence-meter.ts"
   },
   "scripts": {
     "typecheck": "tsc --build",

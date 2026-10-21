@@ -546,8 +546,8 @@ export default function CreateAssistant() {
               className="rounded-xl border p-4 text-[13px]"
               style={{
                 color: "var(--color-vl-ink-muted)",
-                background: "rgba(124,110,245,0.12)",
-                borderColor: "rgba(124, 110, 245,0.12)",
+                background: "rgba(207,225,255,0.12)",
+                borderColor: "rgba(207,225,255,0.12)",
               }}
             >
               Your assistant starts without POS access. Connect Square anytime from{" "}
@@ -659,9 +659,9 @@ export default function CreateAssistant() {
                         className="vl-card p-3 text-left transition-colors"
                         style={{
                           borderColor: wakeMode === option.id
-                            ? "rgba(124,110,245,0.6)"
+                            ? "rgba(207,225,255,0.6)"
                             : "var(--vl-line)",
-                          background: wakeMode === option.id ? "rgba(124,110,245,0.06)" : "#FFFFFF",
+                          background: wakeMode === option.id ? "rgba(207,225,255,0.06)" : "var(--vl-surface-solid)",
                           opacity: disabled ? 0.48 : 1,
                           cursor: disabled ? "not-allowed" : "pointer",
                         }}
@@ -693,9 +693,9 @@ export default function CreateAssistant() {
                         className="vl-card p-3 text-left transition-colors"
                         style={{
                           borderColor: orderHandlingMode === option.id
-                            ? "rgba(124,110,245,0.6)"
+                            ? "rgba(207,225,255,0.6)"
                             : "var(--vl-line)",
-                          background: orderHandlingMode === option.id ? "rgba(124,110,245,0.06)" : "#FFFFFF",
+                          background: orderHandlingMode === option.id ? "rgba(207,225,255,0.06)" : "var(--vl-surface-solid)",
                           cursor: "pointer",
                         }}
                       >
@@ -830,27 +830,6 @@ export default function CreateAssistant() {
           </aside>
         </form>
       </div>
-
-      <style>{`
-        .vl-input {
-          width: 100%;
-          height: 48px;
-          padding: 0 16px;
-          border-radius: 14px;
-          background: rgba(255,255,255,0.78);
-          border: 1px solid var(--vl-line);
-          color: var(--color-vl-ink);
-          font-size: 15px;
-          outline: none;
-          transition: border-color .2s ease, background .2s ease, box-shadow .2s ease;
-        }
-        .vl-input::placeholder { color: var(--vl-line-strong); }
-        .vl-input:focus {
-          border-color: var(--color-vl-coral);
-          background: #fff;
-          box-shadow: 0 0 0 3px rgba(124, 110, 245,0.14);
-        }
-      `}</style>
     </div>
   );
 }
@@ -948,12 +927,12 @@ function AssistantSetupArt({ compact = false }: { compact?: boolean }) {
     <div
       className={`relative w-full overflow-hidden rounded-[22px] border shadow-inner ${compact ? "h-[120px]" : "h-[98px]"}`}
       style={{
-        borderColor: "rgba(124,110,245,0.18)",
-        background: "linear-gradient(135deg, rgba(124,110,245,0.22), rgba(255,107,71,0.16) 52%, rgba(255,255,255,0.88))",
+        borderColor: "rgba(207,225,255,0.18)",
+        background: "linear-gradient(135deg, rgba(207,225,255,0.22), rgba(255,122,77,0.16) 52%, rgba(244,243,240,0.06))",
       }}
     >
-      <div className="absolute -right-8 -top-12 h-32 w-32 rounded-[36%] blur-2xl" style={{ background: "rgba(124,110,245,0.40)" }} />
-      <div className="absolute -bottom-12 -left-10 h-32 w-32 rounded-[40%] blur-2xl" style={{ background: "rgba(255,107,71,0.30)" }} />
+      <div className="absolute -right-8 -top-12 h-32 w-32 rounded-[36%] blur-2xl" style={{ background: "rgba(207,225,255,0.40)" }} />
+      <div className="absolute -bottom-12 -left-10 h-32 w-32 rounded-[40%] blur-2xl" style={{ background: "rgba(255,122,77,0.30)" }} />
       <div className="absolute inset-x-4 bottom-4 flex h-14 items-end gap-1.5">
         {bars.map((height, index) => (
           <span
@@ -961,7 +940,7 @@ function AssistantSetupArt({ compact = false }: { compact?: boolean }) {
             className="w-full rounded-md shadow-sm"
             style={{
               height: `${height}%`,
-              background: index % 2 === 0 ? "rgba(124,110,245,0.76)" : "rgba(255,107,71,0.70)",
+              background: index % 2 === 0 ? "rgba(207,225,255,0.76)" : "rgba(255,122,77,0.70)",
               opacity: 0.88,
             }}
           />
@@ -973,8 +952,8 @@ function AssistantSetupArt({ compact = false }: { compact?: boolean }) {
       >
         <Volume2 className="h-5 w-5" />
       </div>
-      <div className="absolute right-4 top-4 h-3 w-12 rounded-md bg-[rgba(124,110,245,0.72)]" />
-      <div className="absolute right-4 top-9 h-3 w-8 rounded-md bg-[rgba(255,107,71,0.64)]" />
+      <div className="absolute right-4 top-4 h-3 w-12 rounded-md bg-[rgba(207,225,255,0.72)]" />
+      <div className="absolute right-4 top-9 h-3 w-8 rounded-md bg-[rgba(255,122,77,0.64)]" />
     </div>
   );
 }
@@ -1014,11 +993,11 @@ function VoiceEngineCard({
       className="vl-card p-4 text-left transition-colors"
       style={{
         borderColor: selected
-          ? "rgba(124,110,245,0.6)"
+          ? "rgba(207,225,255,0.6)"
             : disabled
             ? "var(--vl-line)"
             : "var(--vl-line)",
-        background: selected ? "rgba(124,110,245,0.06)" : "#FFFFFF",
+        background: selected ? "rgba(207,225,255,0.06)" : "var(--vl-surface-solid)",
         opacity: disabled ? 0.6 : 1,
         cursor: disabled ? "not-allowed" : "pointer",
       }}
@@ -1068,8 +1047,8 @@ function ToggleCard({
       onClick={() => onChange(!checked)}
       className="vl-card flex min-h-[88px] items-start gap-3 p-3 text-left transition-colors"
       style={{
-        borderColor: checked ? "rgba(124,110,245,0.6)" : "var(--vl-line)",
-        background: checked ? "rgba(124,110,245,0.06)" : "#FFFFFF",
+        borderColor: checked ? "rgba(207,225,255,0.6)" : "var(--vl-line)",
+        background: checked ? "rgba(207,225,255,0.06)" : "var(--vl-surface-solid)",
       }}
       aria-pressed={checked}
     >
@@ -1183,9 +1162,9 @@ function VoiceOption({
       className="vl-card relative flex flex-col items-center gap-2 p-4 transition-colors"
       style={{
         borderColor: selected
-          ? "rgba(124,110,245,0.6)"
+          ? "rgba(207,225,255,0.6)"
           : "var(--vl-line)",
-        background: selected ? "rgba(124,110,245,0.06)" : undefined,
+        background: selected ? "rgba(207,225,255,0.06)" : undefined,
       }}
     >
       {selected && (
@@ -1215,7 +1194,7 @@ function VoiceOption({
         className="mt-1 inline-flex items-center gap-1.5 rounded-xl border px-3 py-1 text-[11px] transition-colors"
         style={{
           borderColor: isPlaying
-            ? "rgba(124,110,245,0.6)"
+            ? "rgba(207,225,255,0.6)"
             : "var(--vl-line)",
           background: isPlaying
             ? "var(--color-vl-coral-tint)"
